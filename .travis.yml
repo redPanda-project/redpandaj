@@ -1,15 +1,15 @@
 language: java
 jdk:
   - oraclejdk8
-  - oraclejdk9
-  - openjdk8
+#  - oraclejdk9
+#  - openjdk8
 dist: trusty
 sudo: false
 
 script: mvn test
 
 after_success:
-  - mvn clean test jacoco:report coveralls:jacoco
+  - mvn clean test jacoco:report coveralls:report
 
 cache:
   directories:
