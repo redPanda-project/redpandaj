@@ -9,7 +9,7 @@ sudo: false
 script: mvn test
 
 after_success:
-  - mvn clean test jacoco:report coveralls:report
+  - mvn clean test jacoco:report coveralls:jacoco
 
 cache:
   directories:
