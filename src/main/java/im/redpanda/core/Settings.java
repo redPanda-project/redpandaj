@@ -9,6 +9,8 @@ public class Settings {
     public static int pingDelay = 30000; //time in msec
     public static int peerListRequestDelay = 60 * 60;//time in sec
 
+    public static final int k = 20; //k value from kademlia (nodes in one bucket)
+
     public static boolean IPV6_ONLY = false;
     public static boolean IPV4_ONLY = false;
 

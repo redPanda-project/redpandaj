@@ -20,12 +20,21 @@ public class Server {
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
 
 
-    public static void start() {
-
+    static {
 
         peerList = Saver.loadPeers();
 
         NONCE = new KademliaId();
+
+        //init all buckets!
+        for (int i = 0; i < buckets.length; i++) {
+            buckets[i] = new ArrayList<>(Settings.k);
+            bucketsReplacement[i] = new ArrayList<>();
+        }
+
+    }
+
+    public static void start() {
 
 
         connectionHandler = new ConnectionHandler();

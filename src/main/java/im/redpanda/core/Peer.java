@@ -469,7 +469,7 @@ public class Peer implements Comparable<Peer>, Serializable {
             return;
         }
 
-        Server.peerListLock.readLock().lock();
+        Server.peerListLock.writeLock().lock();
         try {
             System.out.println("############################################ new node id: " + nodeId + " old: " + this.nodeId);
 
@@ -497,7 +497,7 @@ public class Peer implements Comparable<Peer>, Serializable {
             this.nodeId = nodeId;
             Server.addPeerToBucket(this);
         } finally {
-            Server.peerListLock.readLock().unlock();
+            Server.peerListLock.writeLock().unlock();
         }
     }
 
