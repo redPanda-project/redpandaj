@@ -278,7 +278,14 @@ public class ConnectionHandler extends Thread {
                         }
                         if (key.isReadable()) {
                             ByteBuffer allocate = ByteBuffer.allocate(1024);
-                            peerInHandshake.getSocketChannel().read(allocate);
+                            int read = peerInHandshake.getSocketChannel().read(allocate);
+                            if (read == -1) {
+                                System.out.println("peer disconnected...");
+                                key.cancel();
+                                continue;
+                            }
+                            System.out.println("read: " + read + " " + key.interestOps());
+
                             boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
                             System.out.println("handshake okay?: " + b);
                         }
@@ -443,8 +450,6 @@ public class ConnectionHandler extends Thread {
                 "ConnectionHandler thread died...");
 
     }
-
-
 
 
     public void addConnection(Peer peer, boolean connectionPending) {

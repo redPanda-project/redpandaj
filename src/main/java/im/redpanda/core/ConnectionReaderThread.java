@@ -277,6 +277,12 @@ public class ConnectionReaderThread extends Thread {
 
         buffer.flip();
 
+        if (buffer.remaining() < 29) {
+            System.out.println("not enough bytes for handshake");
+            return false;
+        }
+
+
         System.out.println(buffer);
 
         String magic = readString(buffer, 4);
@@ -292,7 +298,12 @@ public class ConnectionReaderThread extends Thread {
         peer.setIdentity(identity);
         peer.setPort(port);
 
-        Log.put("Verbindungsaufbau (" + peer.ip + "): " + magic + " " + version + " " + identity + " " + port + " initByMe: ", 10);
+        if (port <0 || port >  65535) {
+            System.out.println("wrong port...");
+            return false;
+        }
+
+        Log.put("Verbindungsaufbau (" + peer.ip + "): " + magic + " " + version + " " + identity.toString() + " " + port + " initByMe: ", 10);
 
         buffer.compact();
 

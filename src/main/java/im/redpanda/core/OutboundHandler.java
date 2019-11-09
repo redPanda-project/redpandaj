@@ -79,6 +79,11 @@ public class OutboundHandler extends Thread {
 
                     actCons += connectingCons;
 
+
+                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 15000)) {
+                        peer.disconnect("timeout");
+                    }
+
                 }
 
 
@@ -259,6 +264,7 @@ public class OutboundHandler extends Thread {
         peer.retries++;
         peer.isConnecting = true;
         peer.isConnectionInitializedByMe = true;
+        peer.lastActionOnConnection = System.currentTimeMillis();
 
         try {
             SocketChannel open = SocketChannel.open();
@@ -266,19 +272,20 @@ public class OutboundHandler extends Thread {
 
             open.connect(new InetSocketAddress(peer.ip, peer.port));
 
-            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip,peer,open);
+            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
 
             peerInHandshake.addConnection();
 
 //            peer.setSocketChannel(open);
-            System.out.println("C"); System.out.println("CCCCCC");
+            System.out.println("C");
+            System.out.println("CCCCCC");
 //            Server.connectionHandler.addConnection(peer, true);
             System.out.println("d");
 
         } catch (UnknownHostException ex) {
             System.out.println("outgoing con failed, unknown host...");
         } catch (Exception ex) {
-ex.printStackTrace();
+            ex.printStackTrace();
             Log.put("outgoing con failed...", 0);
         }
     }
