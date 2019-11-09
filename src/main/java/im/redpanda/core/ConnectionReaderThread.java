@@ -6,19 +6,10 @@
 package im.redpanda.core;
 
 
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.nio.BufferOverflowException;
-import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -210,7 +201,6 @@ public class ConnectionReaderThread extends Thread {
         ByteBuffer writeBuffer = peer.writeBuffer;
         SelectionKey key = peer.selectionKey;
 
-        System.out.println("todo: parse data " + readBuffer.flip().remaining());
 
         int read = -2;
         try {
@@ -246,7 +236,74 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
+        //no encryption
+        peer.readBufferCrypted.flip();
+        peer.readBuffer.put(peer.readBufferCrypted);
+        peer.readBufferCrypted.compact();
+
+
+        readBuffer.flip();
+
+        System.out.println("todo: parse data " + readBuffer.remaining());
+
+        readBuffer.compact();
+
     }
 
+
+    public static void sendHandshake(PeerInHandshake peerInHandshake) {
+
+        ByteBuffer writeBuffer = ByteBuffer.allocate(30);
+
+        writeBuffer.put(Server.MAGIC.getBytes());
+        writeBuffer.put((byte) Server.VERSION);
+        writeBuffer.put(Server.NONCE.getBytes());
+        writeBuffer.putInt(Server.MY_PORT);
+
+        writeBuffer.flip();
+
+        try {
+            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
+            System.out.println("written bytes of handshake: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static boolean parseHandshake(PeerInHandshake peer, ByteBuffer buffer) {
+
+
+        buffer.flip();
+
+        System.out.println(buffer);
+
+        String magic = readString(buffer, 4);
+        int version = (int) buffer.get();
+
+        byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
+        buffer.get(nonceBytes);
+
+        KademliaId identity = new KademliaId(nonceBytes);
+
+        int port = buffer.getInt();
+
+        peer.setIdentity(identity);
+        peer.setPort(port);
+
+        Log.put("Verbindungsaufbau (" + peer.ip + "): " + magic + " " + version + " " + identity + " " + port + " initByMe: ", 10);
+
+        buffer.compact();
+
+        return true;
+    }
+
+    public static String readString(ByteBuffer byteBuffer, int length) {
+
+        if (byteBuffer.limit() - byteBuffer.arrayOffset() < length) {
+            return null; //not enough bytes rdy!
+        }
+        byteBuffer.position(byteBuffer.position() + length);
+        return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
+    }
 
 }

@@ -6,9 +6,9 @@
 package im.redpanda.core;
 
 
-
-
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.text.DecimalFormat;
@@ -29,8 +29,8 @@ public class ConnectionHandler extends Thread {
 
     public static final boolean ENCRYPTION_ENABLED = false;
 
-    public Selector selector;
-    final ReentrantLock selectorLock = new ReentrantLock();
+    public static Selector selector;
+    public static final ReentrantLock selectorLock = new ReentrantLock();
 
     public static ArrayList<Peer> peerList = new ArrayList<>();
     public static ReentrantLock allSocketsLock = new ReentrantLock(false);
@@ -42,10 +42,59 @@ public class ConnectionHandler extends Thread {
     public Random random = new Random();
 
 
-    public ConnectionHandler() {
+    static {
 
         try {
             selector = Selector.open();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+
+    }
+
+
+    public void bind() {
+
+
+        try {
+            ServerSocketChannel serverSocketChannel;
+            serverSocketChannel = ServerSocketChannel.open();
+            serverSocketChannel.configureBlocking(false);
+
+            boolean bound = false;
+            //MY_PORT = Settings.STD_PORT;
+            Server.MY_PORT = Settings.getStartPort();
+            ServerSocket serverSocket = null;
+
+
+            System.out.println("searching port to bind to...");
+
+
+            while (!bound) {
+
+                bound = true;
+                try {
+                    serverSocketChannel.socket().bind(new InetSocketAddress(Server.MY_PORT));
+                } catch (Throwable e) {
+
+
+                    System.out.println("could not bound to port: " + Server.MY_PORT);
+
+
+                    //e.printStackTrace();
+                    bound = false;
+                    //MY_PORT = Settings.STD_PORT + random.nextInt(30);
+                    Server.MY_PORT += 1;
+                }
+
+            }
+
+            System.out.println("bound successfuly to port: " + Server.MY_PORT);
+
+
+            addServerSocketChannel(serverSocketChannel);
+//                startedUpSuccessful();
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -185,7 +234,9 @@ public class ConnectionHandler extends Thread {
                             selector.wakeup();
                             SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
 
-                            PeerInHandshake peerInHandshake = new PeerInHandshake(ip);
+                            PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
+
+                            ConnectionReaderThread.sendHandshake(peerInHandshake);
 
                             newKey.attach(peerInHandshake);
                             selector.wakeup();
@@ -201,6 +252,40 @@ public class ConnectionHandler extends Thread {
 //                        addConnection(peer1, false);
                         continue;
                     }
+
+
+                    if (key.attachment() instanceof PeerInHandshake) {
+                        PeerInHandshake peerInHandshake = (PeerInHandshake) key.attachment();
+
+                        if (key.isConnectable()) {
+                            boolean connected = false;
+                            try {
+                                connected = peerInHandshake.getSocketChannel().finishConnect();
+                            } catch (IOException e) {
+                            } catch (SecurityException e) {
+                            }
+//                            Log.putStd("finished!");
+
+                            if (!connected) {
+                                Log.put("connection could not be established...", 150);
+                                key.cancel();
+//                                peer.disconnect("connection could not be established");
+                                continue;
+                            }
+
+                            Log.putStd("Connection established...");
+                            ConnectionReaderThread.sendHandshake(peerInHandshake);
+                        }
+                        if (key.isReadable()) {
+                            ByteBuffer allocate = ByteBuffer.allocate(1024);
+                            peerInHandshake.getSocketChannel().read(allocate);
+                            boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
+                            System.out.println("handshake okay?: " + b);
+                        }
+
+                        continue;
+                    }
+
 
                     Peer peer = (Peer) key.attachment();
                     if (peer == null) {
@@ -234,7 +319,7 @@ public class ConnectionHandler extends Thread {
                         }
 
                         Log.putStd("Connection established...");
-                        sendHandshake(peer);
+//                        sendHandshake(peer);
                         key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
 
@@ -343,11 +428,11 @@ public class ConnectionHandler extends Thread {
 
                 } catch (Throwable e) {
                     key.cancel();
-                    Peer peer = ((Peer) key.attachment());
-                    Log.putStd("Catched fatal exception! " + peer.ip);
+//                    Peer peer = ((Peer) key.attachment());
+//                    Log.putStd("Catched fatal exception! " + peer.ip);
                     e.printStackTrace();
                     //peer.disconnect(" IOException 4827f3fj");
-                    peer.disconnect("Fatal exception");
+//                    peer.disconnect("Fatal exception");
                     Log.putCritical(e);
                 }
 
@@ -359,15 +444,7 @@ public class ConnectionHandler extends Thread {
 
     }
 
-    private void sendHandshake(Peer peer) {
-        ByteBuffer writeBuffer = peer.writeBufferCrypted;
-        peer.writeBufferLock.lock();
-        writeBuffer.put(Server.MAGIC.getBytes());
-        writeBuffer.put((byte) Server.VERSION);
-        writeBuffer.put(Server.NONCE.getBytes());
-        writeBuffer.putInt(Server.MY_PORT);
-        peer.writeBufferLock.unlock();
-    }
+
 
 
     public void addConnection(Peer peer, boolean connectionPending) {
@@ -426,15 +503,5 @@ public class ConnectionHandler extends Thread {
 
     }
 
-
-    static class PeerInHandshake {
-
-        String ip;
-        int status = 0;
-
-        public PeerInHandshake(String ip) {
-            this.ip = ip;
-        }
-    }
 
 }

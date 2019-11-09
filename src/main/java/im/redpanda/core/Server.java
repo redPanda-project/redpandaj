@@ -6,7 +6,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class Server {
 
     public static final int VERSION = 21;
-    public static final int MY_PORT = 59558;
+    public static int MY_PORT = -1;
     static String MAGIC = "k3gV";
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;

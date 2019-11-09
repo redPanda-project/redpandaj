@@ -16,4 +16,7 @@ public class Settings {
 
     public static String[] knownNodes = {"195.201.25.223:59558", "51.15.99.205:59558"};
 
+    public static int getStartPort() {
+        return STD_PORT;
+    }
 }

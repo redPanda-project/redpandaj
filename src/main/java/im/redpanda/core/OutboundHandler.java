@@ -266,13 +266,15 @@ public class OutboundHandler extends Thread {
             SocketChannel open = SocketChannel.open();
             open.configureBlocking(false);
 
-            System.out.println("A");
-
             open.connect(new InetSocketAddress(peer.ip, peer.port));
-            System.out.println("B");
-            peer.setSocketChannel(open);
+
+            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip,peer,open);
+
+            peerInHandshake.addConnection();
+
+//            peer.setSocketChannel(open);
             System.out.println("C"); System.out.println("CCCCCC");
-            Server.connectionHandler.addConnection(peer, true);
+//            Server.connectionHandler.addConnection(peer, true);
             System.out.println("d");
 
         } catch (UnknownHostException ex) {
