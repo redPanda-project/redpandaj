@@ -1,47 +1,16 @@
 language: java
-
-dist: trusty
-
-sudo: false
-
-
-
-os:
-  - linux
-  - osx
-
 jdk:
-  - openjdk9
-  - openjdk10
-  - openjdk11
-  - openjdk-ea
-  - oraclejdk-ea
-
-matrix:
-  include:
-    - os: linux
-      jdk: openjdk8
-  allow_failures:
-    - os: osx
-      jdk: oraclejdk-ea # TODO Download, install and use "dmg" on Travis CI
-
-
-before_install:
-  - unset _JAVA_OPTIONS
-
-install:
-  - echo "The default Travis install script is being skipped!"
-
-before_script:
-  - echo JAVA_HOME = ${JAVA_HOME}
-  - echo PATH = ${PATH}
-
+  - oraclejdk8
+  - oraclejdk11
+  - openjdk8
+dist: trusty
+sudo: false
 
 script: mvn test
 
-after_script:
-  - ls ${JAVA_HOME}
-  - cat "${JAVA_HOME}/release"
-
 after_success:
   - mvn clean jacoco:prepare-agent install jacoco:report coveralls:report
+
+cache:
+  directories:
+    - $HOME/.m2
