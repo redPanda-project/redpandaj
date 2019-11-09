@@ -77,7 +77,7 @@ public class Server {
 
     public static Peer findPeer(Peer peer) {
 
-        peerListLock.readLock().lock();
+        peerListLock.writeLock().lock();
         try {
             for (Peer p : peerList) {
 
@@ -87,12 +87,12 @@ public class Server {
 
             }
 
-            peerListLock.writeLock().lock();
+
             peerList.add(peer);
-            peerListLock.writeLock().unlock();
+
 
         } finally {
-            peerListLock.readLock().unlock();
+            peerListLock.writeLock().unlock();
         }
         return peer;
     }
