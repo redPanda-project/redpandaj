@@ -30,7 +30,7 @@ cd ..
 
 
 echo "updating build script from gitrepo"
-  cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/
+  cp ./$DIRECTORY/helpful/build.sh ./bin/build.sh
 
 
 if [ ! -d "bin" ]; then
