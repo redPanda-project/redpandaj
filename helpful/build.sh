@@ -36,7 +36,7 @@ echo "updating build script from gitrepo"
 if [ ! -d "bin" ]; then
   echo "bin directory does not exists lets copy the start script over..."
   mkdir bin
-  cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/
+  cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/redpanda-console.sh
   chmod +x ./bin/redpanda-console.sh
 fi
 
