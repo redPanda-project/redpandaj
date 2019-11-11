@@ -36,24 +36,24 @@ do
 if [ -f $FILE ];
 then
    echo "installing update..."
-   rm redPandaj.jar.bak
-   mv redPandaj.jar redPandaj.jar.bak
-   mv update redPandaj.jar
+   rm redpanda.jar.bak
+   mv redpanda.jar redpanda.jar.bak
+   mv update redpanda.jar
 fi
 
 
 
 
 
-#rm redPandaj.jar.bak
-#mv redPandaj.jar redPandaj.jar.bak
-#mv update redPandaj.jar
+#rm redpanda.jar.bak
+#mv redpanda.jar redpanda.jar.bak
+#mv update redpanda.jar
 
 #rm -f $FILE
 
 #$cmd -jar loadupdate.jar
 
-$cmd -jar redPandaj.jar
+$cmd -jar redpanda.jar
 
 
 if [ -f $FILE ];
