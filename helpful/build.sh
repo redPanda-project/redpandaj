@@ -29,16 +29,15 @@ cp ./target/redpanda.jar ../
 cd ..
 
 
-echo "updating build script from gitrepo"
-  cp ./$DIRECTORY/helpful/build.sh ./bin/build.sh
-
-
 if [ ! -d "bin" ]; then
   echo "bin directory does not exists lets copy the start script over..."
   mkdir bin
   cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/redpanda-console.sh
   chmod +x ./bin/redpanda-console.sh
 fi
+
+echo "updating build script from gitrepo"
+  cp ./$DIRECTORY/helpful/build.sh ./bin/build.sh
 
   echo "update sucesfully..."
   echo "start repanda by typing ./bin/redpanda-console.sh"
