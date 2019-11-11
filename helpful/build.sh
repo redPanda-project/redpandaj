@@ -37,7 +37,7 @@ if [ ! -d "bin" ]; then
 fi
 
 echo "updating build script from gitrepo"
-  cp ./$DIRECTORY/helpful/build.sh ./bin/build.sh
+  cp ./$DIRECTORY/helpful/build.sh build.sh
 
   echo "update sucesfully..."
   echo "start repanda by typing ./bin/redpanda-console.sh"
