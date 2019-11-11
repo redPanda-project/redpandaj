@@ -13,6 +13,10 @@ import java.security.spec.X509EncodedKeySpec;
 
 public class NodeId {
 
+
+    public static final int PUBLIC_KEYLEN = 92;
+    public static final int PRIVATE_KEYLEN = 252;
+
     KeyPair keyPair;
     KademliaId kademliaId;
 
@@ -98,8 +102,35 @@ public class NodeId {
         encoded = keyPair.getPublic().getEncoded();
         buffer.putInt(encoded.length);
         buffer.put(encoded);
-        System.out.println("len: " + buffer);
         return buffer.array();
+    }
+
+    public byte[] exportPublic() {
+        ByteBuffer buffer = ByteBuffer.allocate(92);
+        byte[] encoded = keyPair.getPublic().getEncoded();
+        buffer.put(encoded);
+        return buffer.array();
+    }
+
+    public static NodeId importPublic(byte[] bytes) {
+        EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(bytes);
+
+        KeyFactory keyFactory = null;
+        try {
+            keyFactory = KeyFactory.getInstance("ECDH", "BC");
+            PublicKey newPublicKey = keyFactory.generatePublic(publicKeySpec);
+
+            KeyPair keyPair = new KeyPair(newPublicKey, null);
+            return new NodeId(keyPair);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (NoSuchProviderException e) {
+            e.printStackTrace();
+        } catch (InvalidKeySpecException e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     @Override

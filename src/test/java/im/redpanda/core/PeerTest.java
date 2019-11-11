@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.crypt.Utils;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -67,7 +68,31 @@ public class PeerTest {
     public void setNodeId() {
         Peer peer = new Peer("1.1.1.1", 123);
         KademliaId id1 = new KademliaId();
-//        peer.setNodeId(id1);
-//        assertTrue(peer.getNodeId().equals(id1));
+        peer.setNodeId(id1);
+        assertTrue(peer.getNodeId().equals(id1));
+    }
+
+    @Test
+    public void peerIsHigher() {
+
+
+
+
+        Peer peer = new Peer("1.1.1.1", 123);
+        Peer peer2 = new Peer("1.1.1.1", 123);
+
+        KademliaId kademliaId = KademliaId.fromFirstBytes(Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000"));
+        KademliaId kademliaId2 = KademliaId.fromFirstBytes(Utils.parseAsHexOrBase58("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
+
+        byte[] bytes = Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000");
+
+
+
+        peer.setNodeId(kademliaId);
+        peer2.setNodeId(kademliaId2);
+
+        assertFalse(peer.peerIsHigher());
+        assertTrue(peer2.peerIsHigher());
+
     }
 }

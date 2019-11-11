@@ -408,9 +408,8 @@ public class Peer implements Comparable<Peer>, Serializable {
 
 
     public boolean peerIsHigher() {
-//        return isConnectionInitializedByMe;
         for (int i = 0; i < KademliaId.ID_LENGTH / 8; i++) {
-            int compare = Byte.compare(Server.NONCE.getBytes()[i], nodeId.getBytes()[i]);
+            int compare = Byte.toUnsignedInt(nodeId.getBytes()[i]) - Byte.toUnsignedInt(Server.NONCE.getBytes()[i]);
             if (compare > 0) {
                 return true;
             } else if (compare < 0) {

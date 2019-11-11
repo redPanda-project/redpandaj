@@ -20,7 +20,7 @@ public class NodeIdTest {
         NodeId nodeId = new NodeId();
 
         byte[] bytes = nodeId.exportWithPrivate();
-        assertTrue(bytes.length == 252);
+        assertTrue(bytes.length == NodeId.PRIVATE_KEYLEN);
 
     }
 
@@ -39,6 +39,32 @@ public class NodeIdTest {
 
         assertTrue(nodeId1.equals(nodeId));
 
+
+    }
+
+    @Test
+    public void exportPublic() {
+
+
+        NodeId nodeId = new NodeId();
+
+        byte[] bytes = nodeId.exportPublic();
+
+        assertTrue(bytes.length == NodeId.PUBLIC_KEYLEN);
+
+
+    }
+
+    @Test
+    public void importPublic() {
+
+        NodeId nodeId = new NodeId();
+
+        byte[] bytes = nodeId.exportPublic();
+
+        NodeId nodeId1 = NodeId.importPublic(bytes);
+
+        assertTrue(nodeId1.equals(nodeId));
 
     }
 }
