@@ -13,11 +13,8 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-package im.redpanda.core;
+package im.redpanda.crypt;
 
-
-import im.redpanda.crypt.AddressFormatException;
-import im.redpanda.crypt.Base58;
 import org.bouncycastle.crypto.digests.RIPEMD160Digest;
 import org.bouncycastle.util.encoders.Hex;
 

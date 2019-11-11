@@ -16,8 +16,6 @@
 
 package im.redpanda.crypt;
 
-import im.redpanda.core.Utils;
-
 import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.util.Arrays;

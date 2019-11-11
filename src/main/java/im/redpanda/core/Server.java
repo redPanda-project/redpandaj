@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import java.security.Security;
 import java.util.ArrayList;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -8,6 +9,7 @@ public class Server {
     public static final int VERSION = 21;
     public static int MY_PORT = -1;
     static String MAGIC = "k3gV";
+    public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
     public static ArrayList<Peer> peerList = null;
@@ -22,9 +24,12 @@ public class Server {
 
     static {
 
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+
         peerList = Saver.loadPeers();
 
-        NONCE = new KademliaId();
+        nodeId = new NodeId();
+        NONCE = nodeId.getKademliaId();
 
         //init all buckets!
         for (int i = 0; i < buckets.length; i++) {

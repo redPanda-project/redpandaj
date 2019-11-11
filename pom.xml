@@ -29,9 +29,17 @@
         <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk16 -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk16</artifactId>
-            <version>1.46</version>
+            <artifactId>bcprov-jdk15on</artifactId>
+            <version>1.56</version>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/com.google.guava/guava -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>28.1-jre</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -91,8 +99,8 @@
                     <configuration>
                         <archive>
                             <manifest>
-<!--                                <addClasspath>true</addClasspath>-->
-<!--                                <classpathPrefix>lib/</classpathPrefix>-->
+                                <!--                                <addClasspath>true</addClasspath>-->
+                                <!--                                <classpathPrefix>lib/</classpathPrefix>-->
                                 <mainClass>im.redpanda.App</mainClass>
                             </manifest>
                         </archive>

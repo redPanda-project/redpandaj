@@ -7,6 +7,7 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.AddressFormatException;
 import im.redpanda.crypt.Base58;
+import im.redpanda.crypt.Utils;
 
 import java.io.Serializable;
 import java.math.BigInteger;
