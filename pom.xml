@@ -96,7 +96,7 @@
                                 <mainClass>im.redpanda.App</mainClass>
                             </manifest>
                         </archive>
-                        <finalName>redPanda.jar</finalName>
+                        <finalName>redPanda</finalName>
                     </configuration>
                 </plugin>
                 <plugin>
