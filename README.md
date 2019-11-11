@@ -4,7 +4,7 @@
 New start of the server for redpanda written in java. The protocoll will change to FlatBuffers for the Flutter app. See the old repro for more information.
 
 
-## Install
+## compile
 An easy way to download and install redpanda is to run the build.sh, this is not very safe and will be changed in the future. Make sure you have maven, git and jdk installed.
 
 ```bash
