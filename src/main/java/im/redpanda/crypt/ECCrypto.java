@@ -15,7 +15,6 @@ import javax.crypto.SecretKey;
 import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import javax.xml.bind.DatatypeConverter;
 
 import org.bouncycastle.asn1.x9.X9ECParameters;
 import org.bouncycastle.crypto.ec.CustomNamedCurves;
@@ -34,7 +33,6 @@ public class ECCrypto {
         // Initialize two key pairs
         KeyPair keyPairA = generateECKeys();
         KeyPair keyPairB = generateECKeys();
-
 
 
         System.out.println("" + keyPairA.getPublic().getFormat());
@@ -98,7 +96,7 @@ public class ECCrypto {
          */
 
         byte[] realSig = ecdsa.sign();
-        System.out.println("Signature: " + DatatypeConverter.printHexBinary(realSig));
+        System.out.println("Signature: " + Utils.bytesToHexString(realSig));
 
 
         Signature ecdsa2 = Signature.getInstance("SHA256withECDSA");
