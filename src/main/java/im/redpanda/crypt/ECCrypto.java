@@ -3,6 +3,7 @@ package im.redpanda.crypt;
 
 import java.io.UnsupportedEncodingException;
 import java.security.*;
+import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Enumeration;
 
@@ -25,7 +26,7 @@ public class ECCrypto {
     public static byte[] iv = new SecureRandom().generateSeed(16);
 
     public static void main(String[] args) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, UnsupportedEncodingException, SignatureException {
-
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
         String plainText = "Look mah, I'm a message!";
         System.out.println("Original plaintext message: " + plainText);
@@ -105,6 +106,10 @@ public class ECCrypto {
         ecdsa2.update(strByte);
 
         System.out.println("verified: " + ecdsa2.verify(realSig));
+
+
+
+
     }
 
     public static KeyPair generateECKeys() {
