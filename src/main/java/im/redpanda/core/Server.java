@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import java.security.Security;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
@@ -12,8 +13,8 @@ public class Server {
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
-    public static ArrayList<Peer> peerList = null;
-    public static ReentrantReadWriteLock peerListLock = new ReentrantReadWriteLock();
+    public static PeerList peerList;
+    public static ReentrantReadWriteLock peerListLock;
     public static int outBytes = 0;
     public static int inBytes = 0;
     public static ConnectionHandler connectionHandler;
@@ -26,7 +27,9 @@ public class Server {
 
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
-        peerList = Saver.loadPeers();
+//        peerList = Saver.loadPeers();
+        peerList = new PeerList();
+        peerListLock = peerList.getReadWriteLock();
 
         nodeId = new NodeId();
         NONCE = nodeId.getKademliaId();
@@ -62,9 +65,10 @@ public class Server {
     public static void addPeerToBucket(Peer p) {
         peerListLock.writeLock().lock();
         try {
-            int distanceToUs = p.getNodeId().getDistanceToUs();
+            int distanceToUs = p.getKademliaId().getDistanceToUs();
             buckets[distanceToUs - 1].add(p);
         } finally {
+
             peerListLock.writeLock().unlock();
         }
     }
@@ -72,7 +76,7 @@ public class Server {
     public static void removePeerFromBucket(Peer p) {
         peerListLock.writeLock().lock();
         try {
-            int distanceToUs = p.getNodeId().getDistanceToUs();
+            int distanceToUs = p.getKademliaId().getDistanceToUs();
             buckets[distanceToUs - 1].remove(p);
         } finally {
             peerListLock.writeLock().unlock();
@@ -82,24 +86,26 @@ public class Server {
 
     public static Peer findPeer(Peer peer) {
 
-        peerListLock.writeLock().lock();
-        try {
-            for (Peer p : peerList) {
+//        peerListLock.writeLock().lock();
+//        try {
+//            for (Peer p : peerList.values()) {
+//
+//                if (p.equalsIpAndPort(peer)) {
+//                    return p;
+//                }
+//
+//            }
+//
+//
+//            peerList.put(peer.getKademliaId(),peer);
+//
+//
+//        } finally {
+//            peerListLock.writeLock().unlock();
+//        }
+//        return peer;
 
-                if (p.equalsIpAndPort(peer)) {
-                    return p;
-                }
-
-            }
-
-
-            peerList.add(peer);
-
-
-        } finally {
-            peerListLock.writeLock().unlock();
-        }
-        return peer;
+        return null;
     }
 
     public static void removePeer(Peer peer) {

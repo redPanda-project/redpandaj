@@ -1,12 +1,12 @@
 /**
  * Copyright 2011 Google Inc.
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -42,6 +42,7 @@ public class Utils {
             throw new RuntimeException(e);  // Can't happen.
         }
     }
+
     /**
      * The string that prefixes all text messages signed using Bitcoin keys.
      */
@@ -49,7 +50,7 @@ public class Utils {
     // TODO: Replace this nanocoins business with something better.
     /**
      * How many "nanocoins" there are in a Bitcoin.
-     * <p/>
+     * <p></p>
      * A nanocoin is the smallest unit that can be transferred using Bitcoin.
      * The term nanocoin is very misleading, though, because there are only 100
      * million of them in a coin (whereas one would expect 1 billion.
@@ -57,7 +58,7 @@ public class Utils {
     public static final BigInteger COIN = new BigInteger("100000000", 10);
     /**
      * How many "nanocoins" there are in 0.01 BitCoins.
-     * <p/>
+     * <p></p>
      * A nanocoin is the smallest unit that can be transferred using Bitcoin.
      * The term nanocoin is very misleading, though, because there are only 100
      * million of them in a coin (whereas one would expect 1 billion).
@@ -98,9 +99,9 @@ public class Utils {
     /**
      * Convert an amount expressed in the way humans are used to into
      * nanocoins.<p>
-     * <p/>
+     * <p></p>
      * This takes string in a format understood by
-     * {@link BigDecimal#BigDecimal(String)}, for example "0", "1", "0.10",
+     * BigDecimal#BigDecimal(String), for example "0", "1", "0.10",
      * "1.23E3", "1234.5E-5".
      *
      * @throws ArithmeticException if you try to specify fractional nanocoins
@@ -188,7 +189,7 @@ public class Utils {
      * Calculates SHA256(SHA256(byte range 1 + byte range 2)).
      */
     public static byte[] doubleDigestTwoBuffers(byte[] input1, int offset1, int length1,
-            byte[] input2, int offset2, int length2) {
+                                                byte[] input2, int offset2, int length2) {
         synchronized (digest) {
             digest.reset();
             digest.update(input1, offset1, length1);
@@ -443,6 +444,7 @@ public class Utils {
         }
         return decodeMPI(bytes, true);
     }
+
     /**
      * If non-null, overrides the return value of now().
      */
@@ -501,9 +503,9 @@ public class Utils {
      * <p>
      * Given a textual message, returns a byte buffer formatted as follows:</p>
      *
-     * <tt><p>
+     *
      * [24] "Bitcoin Signed Message:\n" [message.length as a varint]
-     * message</p></tt>
+     * message
      */
     public static byte[] formatMessageForSigning(String message) {
         //VarInt size = new VarInt(message.length());
@@ -524,6 +526,7 @@ public class Utils {
         return message.getBytes();
 
     }
+
     // 00000001, 00000010, 00000100, 00001000, ...
     private static final int bitMask[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
 

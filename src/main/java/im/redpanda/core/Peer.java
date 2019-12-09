@@ -31,7 +31,8 @@ public class Peer implements Comparable<Peer>, Serializable {
     public long lastActionOnConnection = 0;
     int cnt = 0;
     public long connectedSince = 0;
-    private KademliaId nodeId;
+    private NodeId nodeId;
+    private KademliaId kademliaId;
     private ArrayList<String> filterAdresses;
     private SocketChannel socketChannel;
     //    public ArrayList<ByteBuffer> readBuffers = new ArrayList<ByteBuffer>();
@@ -125,8 +126,8 @@ public class Peer implements Comparable<Peer>, Serializable {
 //        }
 //    }
 
-    public KademliaId getNodeId() {
-        return nodeId;
+    public KademliaId getKademliaId() {
+        return kademliaId;
     }
 
     public boolean equalsIpAndPort(Object obj) {
@@ -149,12 +150,12 @@ public class Peer implements Comparable<Peer>, Serializable {
 
             Peer n2 = (Peer) obj;
 
-            if (nodeId == null || n2.nodeId == null) {
+            if (kademliaId == null || n2.kademliaId == null) {
                 return false;
             }
 
             //return (ip.equals(n2.ip) && port == n2.port && nonce == n2.nonce);
-            return nodeId.equals(n2.nodeId);
+            return kademliaId.equals(n2.kademliaId);
 
         } else {
             return false;
@@ -219,7 +220,7 @@ public class Peer implements Comparable<Peer>, Serializable {
             a += 2000;
         }
 
-        if (nodeId == null) {
+        if (kademliaId == null) {
             a -= 1000;
         }
 
@@ -409,7 +410,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public boolean peerIsHigher() {
         for (int i = 0; i < KademliaId.ID_LENGTH / 8; i++) {
-            int compare = Byte.toUnsignedInt(nodeId.getBytes()[i]) - Byte.toUnsignedInt(Server.NONCE.getBytes()[i]);
+            int compare = Byte.toUnsignedInt(kademliaId.getBytes()[i]) - Byte.toUnsignedInt(Server.NONCE.getBytes()[i]);
             if (compare > 0) {
                 return true;
             } else if (compare < 0) {
@@ -458,38 +459,38 @@ public class Peer implements Comparable<Peer>, Serializable {
         return false;
     }
 
-    public void setNodeId(KademliaId nodeId) {
+    public void setKademliaId(KademliaId kademliaId) {
 
-        if (nodeId == null) {
+        if (kademliaId == null) {
             return;
         }
 
         Server.peerListLock.writeLock().lock();
         try {
-            System.out.println("############################################ new node id: " + nodeId + " old: " + this.nodeId);
+            System.out.println("############################################ new node id: " + kademliaId + " old: " + this.kademliaId);
 
-            if (this.nodeId == null) {
+            if (this.kademliaId == null) {
                 //only add
                 //we have to set the new nodeId in advance!
-                this.nodeId = nodeId;
+                this.kademliaId = kademliaId;
                 Server.addPeerToBucket(this);
                 return;
             }
 
-            if (this.nodeId.equals(nodeId)) {
+            if (this.kademliaId.equals(kademliaId)) {
                 //maybe a new instance!
-                this.nodeId = nodeId;
+                this.kademliaId = kademliaId;
                 return;
             }
 
             //if we are here the old id is not null and we have a new id/id changed
             //first remove the old id from bucket
             Server.removePeerFromBucket(this);
-            System.out.println("removed peer from buckets: new node id: " + nodeId + " old: " + this.nodeId);
+            System.out.println("removed peer from buckets: new node id: " + kademliaId + " old: " + this.kademliaId);
 
 
             //we have to set the new nodeId in advance!
-            this.nodeId = nodeId;
+            this.kademliaId = kademliaId;
             Server.addPeerToBucket(this);
         } finally {
             Server.peerListLock.writeLock().unlock();
@@ -497,12 +498,12 @@ public class Peer implements Comparable<Peer>, Serializable {
     }
 
     public PeerSaveable toSaveable() {
-        return new PeerSaveable(ip, port, nodeId, retries);
+        return new PeerSaveable(ip, port, kademliaId, retries);
     }
 
     public void removeNodeId() {
 
-        if (this.nodeId == null) {
+        if (this.kademliaId == null) {
             return;
         }
 

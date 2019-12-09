@@ -272,7 +272,7 @@ public class ConnectionReaderThread extends Thread {
         }
     }
 
-    public static boolean parseHandshake(PeerInHandshake peer, ByteBuffer buffer) {
+    public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
 
         buffer.flip();
@@ -295,15 +295,15 @@ public class ConnectionReaderThread extends Thread {
 
         int port = buffer.getInt();
 
-        peer.setIdentity(identity);
-        peer.setPort(port);
+        peerInHandshake.setIdentity(identity);
+        peerInHandshake.setPort(port);
 
         if (port <0 || port >  65535) {
             System.out.println("wrong port...");
             return false;
         }
 
-        Log.put("Verbindungsaufbau (" + peer.ip + "): " + magic + " " + version + " " + identity.toString() + " " + port + " initByMe: ", 10);
+        Log.put("Verbindungsaufbau (" + peerInHandshake.ip + "): " + magic + " " + version + " " + identity.toString() + " " + port + " initByMe: ", 10);
 
         buffer.compact();
 

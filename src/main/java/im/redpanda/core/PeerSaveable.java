@@ -26,7 +26,7 @@ public class PeerSaveable implements Serializable {
 
     public Peer toPeer() {
         Peer out = new Peer(ip, port);
-        out.setNodeId(nonce);
+        out.setKademliaId(nonce);
         out.retries = retries;
         return out;
     }

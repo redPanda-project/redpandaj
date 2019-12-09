@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -52,7 +53,7 @@ public class Saver {
 
     }
 
-    public static ArrayList<Peer> loadPeers() {
+    public static HashMap<KademliaId, Peer> loadPeers() {
         try {
             File file = new File(SAVE_DIR + "/peers.dat");
 
@@ -63,11 +64,11 @@ public class Saver {
             fileInputStream.close();
 
             ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
-            ArrayList<Peer> arrayList = new ArrayList<Peer>();
+            HashMap<KademliaId, Peer> arrayList = new HashMap<KademliaId, Peer>();
 
 
             for (PeerSaveable p : pp) {
-                arrayList.add(p.toPeer());
+                arrayList.put(p.nonce, p.toPeer());
             }
 
 
@@ -81,7 +82,7 @@ public class Saver {
 
         System.out.println("could not load peers.dat");
 
-        return new ArrayList<Peer>();
+        return new HashMap<KademliaId, Peer>();
     }
 
 }

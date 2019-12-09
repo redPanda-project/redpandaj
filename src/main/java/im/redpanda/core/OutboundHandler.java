@@ -4,6 +4,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -38,13 +39,13 @@ public class OutboundHandler extends Thread {
 
 
         ReadWriteLock peerListLock = Server.peerListLock;
-        ArrayList<Peer> peerList = Server.peerList;
+        ArrayList<Peer> peerList = PeerList.getPeerArrayList();
 
         long loopCount = 0;
 
         while (!Server.SHUTDOWN) {
 
-            System.out.println("Peers: " + Server.peerList.size());
+            System.out.println("Peers: " + PeerList.size());
 
 
             if (Server.peerList.size() < 5) {
@@ -172,7 +173,7 @@ public class OutboundHandler extends Thread {
 
 //                    if (peerList.size() > 20) {
                     //(System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 * 4)
-                    if ((peer.retries > 10 || (peer.getNodeId() == null && peer.retries >= 5)) && peer.ping != -1) {
+                    if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
                         //peerList.remove(peer);
                         Server.removePeer(peer);
 

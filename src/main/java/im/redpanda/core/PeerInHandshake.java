@@ -10,6 +10,7 @@ public class PeerInHandshake {
     int port = 0;
     int status = 0;
     KademliaId identity;
+    NodeId nodeId;
     Peer peer;
     SocketChannel socketChannel;
     SelectionKey key;
@@ -95,5 +96,13 @@ public class PeerInHandshake {
 
     public SocketChannel getSocketChannel() {
         return socketChannel;
+    }
+
+    public NodeId getNodeId() {
+        return nodeId;
+    }
+
+    public void setNodeId(NodeId nodeId) {
+        this.nodeId = nodeId;
     }
 }

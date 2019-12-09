@@ -263,8 +263,8 @@ public class ConnectionHandler extends Thread {
                             boolean connected = false;
                             try {
                                 connected = peerInHandshake.getSocketChannel().finishConnect();
-                            } catch (IOException e) {
-                            } catch (SecurityException e) {
+                            } catch (IOException | SecurityException e) {
+                                e.printStackTrace();
                             }
 //                            Log.putStd("finished!");
 
@@ -290,6 +290,13 @@ public class ConnectionHandler extends Thread {
 
                             boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
                             System.out.println("handshake okay?: " + b);
+
+
+                            if (peerInHandshake.getPeer() == null) {
+                                System.out.println("we have to search peer for this handshake...");
+                            }
+
+
                         }
 
                         continue;
@@ -429,11 +436,14 @@ public class ConnectionHandler extends Thread {
 
                 } catch (IOException e) {
                     key.cancel();
-                    Peer peer = ((Peer) key.attachment());
-                    Log.putStd("error! " + peer.ip);
+                    if (key.attachment() instanceof PeerInHandshake) {
+                        Peer peer = ((Peer) key.attachment());
+                        Log.putStd("error! " + peer.ip);
+                        peer.disconnect("IOException");
+                    }
+
                     e.printStackTrace();
 
-                    peer.disconnect("IOException");
 
                 } catch (Throwable e) {
                     key.cancel();
