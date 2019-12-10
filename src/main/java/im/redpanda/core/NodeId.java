@@ -20,9 +20,26 @@ public class NodeId {
     KeyPair keyPair;
     KademliaId kademliaId;
 
-
+    /**
+     * Generates a new NodeId with a new random key.
+     */
     public NodeId() {
-        keyPair = generateECKeys();
+        System.out.println("generating new node id, this may take some time");
+        while (true) {
+//            System.out.print(".");
+            keyPair = generateECKeys();
+            Sha256Hash sha256Hash = Sha256Hash.createDouble(keyPair.getPublic().getEncoded());
+            byte[] bytes = sha256Hash.getBytes();
+
+//            if (bytes[0] == 0 && bytes[1] == 0) {
+            if (bytes[0] == 0) {
+                //todo change later for prod to more 0's
+                /**
+                 * This key is valid
+                 */
+                break;
+            }
+        }
     }
 
     public NodeId(KeyPair keyPair) {
@@ -106,7 +123,8 @@ public class NodeId {
     }
 
     public byte[] exportPublic() {
-        ByteBuffer buffer = ByteBuffer.allocate(92);
+        //Todo: save the value after first creation... speeed!
+        ByteBuffer buffer = ByteBuffer.allocate(PUBLIC_KEYLEN);
         byte[] encoded = keyPair.getPublic().getEncoded();
         buffer.put(encoded);
         return buffer.array();

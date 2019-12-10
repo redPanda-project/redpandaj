@@ -6,6 +6,8 @@
 package im.redpanda.core;
 
 
+import im.redpanda.commands.SendPublicKey;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -279,21 +281,68 @@ public class ConnectionHandler extends Thread {
                             ConnectionReaderThread.sendHandshake(peerInHandshake);
                         }
                         if (key.isReadable()) {
-                            ByteBuffer allocate = ByteBuffer.allocate(1024);
+
+                            /**
+                             * Lets read that data from the other Peer.
+                             */
+                            ByteBuffer allocate = ByteBuffer.allocate(117);
                             int read = peerInHandshake.getSocketChannel().read(allocate);
                             if (read == -1) {
                                 System.out.println("peer disconnected...");
                                 key.cancel();
                                 continue;
                             }
+
+                            allocate.flip();
+
+
                             System.out.println("read: " + read + " " + key.interestOps());
+                            if (peerInHandshake.getStatus() == 0) {
+                                /**
+                                 * The status indicates that no handshake was parsed before for this PeerInHandshake
+                                 */
+                                boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
+                                System.out.println("handshake okay?: " + b);
+                            } else {
 
-                            boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
-                            System.out.println("handshake okay?: " + b);
+                                /**
+                                 * The status indicates that the first handshake was already parsed before for this
+                                 * PeerInHandshake. Here we are providing more data for the other Peer like the public key.
+                                 */
+                                byte command = allocate.get();
+                                if (command == Command.REQUEST_PUBLIC_KEY) {
+                                    /**
+                                     * The other Peer request our public key, lets send our public key!
+                                     */
+                                    ConnectionReaderThread.sendPublicKeyToPeer(peerInHandshake);
+                                } else if (command == Command.SEND_PUBLIC_KEY) {
+                                    /**
+                                     * We got the public Peer, lets store it and check that this public key
+                                     * indeed corresponds to the KademliaId.
+                                     */
+                                    SendPublicKey rootAsSendPublicKey = SendPublicKey.getRootAsSendPublicKey(allocate);
+                                    ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
 
+                                    byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
+                                    byteBuffer.get(bytes);
+                                    NodeId nodeId = NodeId.importPublic(bytes);
+                                    System.out.println("new nodeid from peer: " + nodeId.getKademliaId());
 
-                            if (peerInHandshake.getPeer() == null) {
-                                System.out.println("we have to search peer for this handshake...");
+                                    if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
+                                        /**
+                                         * We obtained a public key which does not match the KademliaId of this Peer
+                                         * and should cancel that connection here.
+                                         */
+                                        //todo: disconnect peerinhandshake
+                                    } else {
+                                        /**
+                                         * We obtained the correct public key and can add it to the Peer
+                                         */
+                                        peerInHandshake.getPeer().setNodeId(nodeId);
+                                    }
+
+                                }
+
                             }
 
 

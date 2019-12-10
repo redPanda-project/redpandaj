@@ -249,8 +249,8 @@ public class OutboundHandler extends Thread {
                 int port = Integer.parseInt(split[1]);
 
 
-                Server.findPeer(new Peer(host, port));
-
+//                Server.findPeer(new Peer(host, port));
+                PeerList.add(new Peer(host, port));
 
             }
         } finally {

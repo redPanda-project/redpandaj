@@ -33,6 +33,7 @@ public class Server {
 
         nodeId = new NodeId();
         NONCE = nodeId.getKademliaId();
+        System.out.println("started node with KademliaId: " + NONCE.toString());
 
         //init all buckets!
         for (int i = 0; i < buckets.length; i++) {

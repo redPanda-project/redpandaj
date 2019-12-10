@@ -60,6 +60,14 @@
             <version>3.0.7</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.google.flatbuffers/flatbuffers-java -->
+        <dependency>
+            <groupId>com.google.flatbuffers</groupId>
+            <artifactId>flatbuffers-java</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+
+
     </dependencies>
 
     <build>

@@ -98,6 +98,10 @@ public class KademliaId implements Serializable {
             return true;
         }
 
+        if (o == null) {
+            return false;
+        }
+
         if (o instanceof KademliaId) {
             KademliaId nid = (KademliaId) o;
             return this.hashCode() == nid.hashCode();

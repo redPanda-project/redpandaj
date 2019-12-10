@@ -6,6 +6,9 @@
 package im.redpanda.core;
 
 
+import com.google.flatbuffers.FlatBufferBuilder;
+import im.redpanda.commands.SendPublicKey;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -266,16 +269,53 @@ public class ConnectionReaderThread extends Thread {
 
         try {
             int write = peerInHandshake.getSocketChannel().write(writeBuffer);
-            System.out.println("written bytes of handshake: " + write);
+//            System.out.println("written bytes of handshake: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void requestPublicKey(PeerInHandshake peerInHandshake) {
+        ByteBuffer writeBuffer = ByteBuffer.allocate(1);
+
+        writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
+        writeBuffer.flip();
+
+        try {
+            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
+            System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
+
+
+        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
+        int sendPublicKey = SendPublicKey.createSendPublicKey(builder, publicKeyBytes);
+        builder.finish(sendPublicKey);
+        ByteBuffer byteBuffer = builder.dataBuffer();
+
+        ByteBuffer commandBuffer = ByteBuffer.allocate(1);
+
+        commandBuffer.put(Command.SEND_PUBLIC_KEY);
+        commandBuffer.flip();
+
+        ByteBuffer[] buffers = new ByteBuffer[2];
+        buffers[0] = commandBuffer;
+        buffers[1] = byteBuffer;
+
+        try {
+            long write = peerInHandshake.getSocketChannel().write(buffers);
+            System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
-
-
-        buffer.flip();
 
         if (buffer.remaining() < 29) {
             System.out.println("not enough bytes for handshake");
@@ -296,9 +336,10 @@ public class ConnectionReaderThread extends Thread {
         int port = buffer.getInt();
 
         peerInHandshake.setIdentity(identity);
+
         peerInHandshake.setPort(port);
 
-        if (port <0 || port >  65535) {
+        if (port < 0 || port > 65535) {
             System.out.println("wrong port...");
             return false;
         }
@@ -307,8 +348,53 @@ public class ConnectionReaderThread extends Thread {
 
         buffer.compact();
 
+        /**
+         * If the connection was not initialized by us we have to find the peer first for this handshake.
+         */
+        if (peerInHandshake.getPeer() == null) {
+            Peer peer = PeerList.get(identity);
+            if (peer == null) {
+                //No peer found with this identity, lets create a new Peer instance and add it to the list
+                peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
+                peer.setKademliaId(identity);
+            }
+            peerInHandshake.setPeer(peer);
+        } else {
+            /**
+             * Lets check if the node send us the expected Identity
+             */
+            if (!identity.equals(peerInHandshake.getPeer().getKademliaId())) {
+                // the Identity is not as expected, maybe there where no Identity for this peer?
+                if (peerInHandshake.getPeer().getKademliaId() == null) {
+                    //we can now update the Identity of the Peer since we had non, most likely we connect from a reseed list
+                    PeerList.updateKademliaId(peerInHandshake.getPeer(), identity);
+                }
+            }
+        }
+
+        //lets check if the peer has a NodeId
+        if (peerInHandshake.getPeer().getNodeId() == null) {
+            /**
+             * Since the Peer has no NodeId, we have to request the public key of the Peer.
+             */
+
+            /**
+             * We set the status of the handshake that we are still awaiting data from the Peer to complete the handshake
+             */
+            peerInHandshake.setStatus(1);
+            requestPublicKey(peerInHandshake);
+        } else {
+            /**
+             * We set the status of the handshake to finished from our site since we are not expecting more data
+             * to complete the handshake, the other peer may still request our public key.
+             */
+            peerInHandshake.setStatus(-1);
+        }
+
+
         return true;
     }
+
 
     public static String readString(ByteBuffer byteBuffer, int length) {
 

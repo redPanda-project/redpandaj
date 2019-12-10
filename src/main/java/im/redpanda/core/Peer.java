@@ -74,7 +74,20 @@ public class Peer implements Comparable<Peer>, Serializable {
         this.port = port;
     }
 
-//    public void setNodeId(KademliaId nodeId) {
+    /**
+     * Set the nodeId of this Peer, does not check the consitency with the KademliaId.
+     *
+     * @param nodeId
+     */
+    public void setNodeId(NodeId nodeId) {
+        this.nodeId = nodeId;
+    }
+
+    public NodeId getNodeId() {
+        return nodeId;
+    }
+
+    //    public void setNodeId(KademliaId nodeId) {
 //
 //        if (nodeId == null) {
 //            return;
@@ -459,42 +472,49 @@ public class Peer implements Comparable<Peer>, Serializable {
         return false;
     }
 
+    /**
+     * Sets the KademliaId, the updates for Buckets and HashMap should be directly handled by the PeerList.
+     *
+     * @param kademliaId
+     */
     public void setKademliaId(KademliaId kademliaId) {
-
-        if (kademliaId == null) {
-            return;
-        }
-
-        Server.peerListLock.writeLock().lock();
-        try {
-            System.out.println("############################################ new node id: " + kademliaId + " old: " + this.kademliaId);
-
-            if (this.kademliaId == null) {
-                //only add
-                //we have to set the new nodeId in advance!
-                this.kademliaId = kademliaId;
-                Server.addPeerToBucket(this);
-                return;
-            }
-
-            if (this.kademliaId.equals(kademliaId)) {
-                //maybe a new instance!
-                this.kademliaId = kademliaId;
-                return;
-            }
-
-            //if we are here the old id is not null and we have a new id/id changed
-            //first remove the old id from bucket
-            Server.removePeerFromBucket(this);
-            System.out.println("removed peer from buckets: new node id: " + kademliaId + " old: " + this.kademliaId);
+        this.kademliaId = kademliaId;
 
 
-            //we have to set the new nodeId in advance!
-            this.kademliaId = kademliaId;
-            Server.addPeerToBucket(this);
-        } finally {
-            Server.peerListLock.writeLock().unlock();
-        }
+//        if (kademliaId == null) {
+//            return;
+//        }
+//
+//        Server.peerListLock.writeLock().lock();
+//        try {
+//            System.out.println("############################################ new node id: " + kademliaId + " old: " + this.kademliaId);
+//
+//            if (this.kademliaId == null) {
+//                //only add
+//                //we have to set the new nodeId in advance!
+//                this.kademliaId = kademliaId;
+////                Server.addPeerToBucket(this);
+//                return;
+//            }
+//
+//            if (this.kademliaId.equals(kademliaId)) {
+//                //maybe a new instance!
+//                this.kademliaId = kademliaId;
+//                return;
+//            }
+//
+//            //if we are here the old id is not null and we have a new id/id changed
+//            //first remove the old id from bucket
+//            Server.removePeerFromBucket(this);
+//            System.out.println("removed peer from buckets: new node id: " + kademliaId + " old: " + this.kademliaId);
+//
+//
+//            //we have to set the new nodeId in advance!
+//            this.kademliaId = kademliaId;
+//            Server.addPeerToBucket(this);
+//        } finally {
+//            Server.peerListLock.writeLock().unlock();
+//        }
     }
 
     public PeerSaveable toSaveable() {

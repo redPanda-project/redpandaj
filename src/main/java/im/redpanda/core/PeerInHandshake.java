@@ -26,6 +26,29 @@ public class PeerInHandshake {
         this.socketChannel = socketChannel;
     }
 
+    /**
+     * 0 default value, before any handshake was parsed.
+     * <p></p>
+     * 1 first handshake was parsed, here we are waiting to obtain more information of the peer like the public key
+     * to finish the complete handshake.
+     * -1 handshake finished from our site, we do not expect more data before switching to encryption.
+     * We are waiting for the switching byte to start the encryption.
+     *
+     * @param status
+     */
+    public void setStatus(int status) {
+        this.status = status;
+    }
+
+    /**
+     * For the status information see the setter method.
+     *
+     * @return
+     */
+    public int getStatus() {
+        return status;
+    }
+
     public PeerInHandshake(String ip) {
         this.ip = ip;
     }

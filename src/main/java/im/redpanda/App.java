@@ -24,7 +24,7 @@ public class App {
                 Manifest manifest = new Manifest(resources.nextElement().openStream());
                 // check that this is your manifest and do what you need or get the next one
 
-                System.out.println(" build number: " + manifest.getMainAttributes().getValue("Implementation-Build"));
+//                System.out.println(" build number: " + manifest.getMainAttributes().getValue("Implementation-Build"));
 
             } catch (IOException E) {
                 // handle

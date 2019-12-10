@@ -11,7 +11,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * In addition, a peer can be optionally be stored in the DHT routing table, called the Buckets.
  * Note that not all nodes will be in the routing table (Buckets).
  * <p>
- * <b>Warning</b>: Do not change any of the required data ({@link KademliaId}, Ip, Port) of a {@link Peer} if it is present in the Peerlist.
+ * <b>Warning</b>: Do not change any of the required data ({@link KademliaId}, Ip, Port) of a {@link Peer} if
+ * it is present in the Peerlist without updating the corresponding List/HashMap.
  */
 public class PeerList {
 
@@ -59,19 +60,36 @@ public class PeerList {
     /**
      * Adds a Peer to the Peerlist by handling all Hashmaps and the Arraylist.
      * Acquires locks.
+     * KademliaId is optional, ip and port have to be known of the Peer.
      *
      * @param peer The peer to add to the PeerList.
      * @return old peer, null if no old peer or old peer null.
      */
     public static Peer add(Peer peer) {
-        if (peer.getKademliaId() == null) {
-            throw new RuntimeException("Its not allowed to insert a peer in the PeerList without a KademliaId!");
+        Peer oldPeer = null;
+
+        // we have to check if the peer is already in the PeerList, for this we use the HashMaps since they are much faster
+        if (peer.getKademliaId() != null) {
+            oldPeer = peerlist.get(peer.getKademliaId());
+            if (oldPeer != null) {
+                // Peer with same KademliaId exists already
+                System.out.println("Peer with same KademliaId exists already");
+                return oldPeer;
+            }
         }
 
-        Peer oldPeer = null;
+        oldPeer = peerlistIpPort.get(getIpPortHash(peer));
+        if (oldPeer != null) {
+            // Peer with same Ip+Port exists already
+            System.out.println("Peer with same Ip+Port exists already");
+            return oldPeer;
+        }
+
         try {
             readWriteLock.writeLock().lock();
-            oldPeer = peerlist.put(peer.getKademliaId(), peer);
+            if (peer.getKademliaId() != null) {
+                oldPeer = peerlist.put(peer.getKademliaId(), peer);
+            }
             peerlistIpPort.put(getIpPortHash(peer), peer);
             peerArrayList.add(peer);
         } finally {
@@ -136,6 +154,11 @@ public class PeerList {
     }
 
 
+    /**
+     * Returns the size of the ArrayList which should contain all Peers.
+     *
+     * @return
+     */
     public static int size() {
         readWriteLock.readLock().lock();
         try {
@@ -145,5 +168,27 @@ public class PeerList {
         }
     }
 
+    /**
+     * Call this method to update an identity/KademliaId of a Peer.
+     *
+     * @param peer
+     */
+    public static void updateKademliaId(Peer peer, KademliaId newId) {
 
+        KademliaId oldId = peer.getKademliaId();
+        System.out.println("updating KadId, old " + oldId + " new: " + newId.toString());
+
+        readWriteLock.writeLock().lock();
+        try {
+            if (oldId != null) {
+                // We have to remove the old id
+                peerlist.remove(oldId);
+            }
+            peer.setKademliaId(newId);
+            peerlist.put(newId, peer);
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+
+    }
 }
