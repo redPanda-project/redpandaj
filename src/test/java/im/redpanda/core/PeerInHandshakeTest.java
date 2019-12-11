@@ -103,9 +103,10 @@ public class PeerInHandshakeTest {
 
             assertTrue(ConnectionReaderThread.parseHandshake(peerInHandshake, readBuffer));
 
+            byte[] bytes = new byte[KademliaId.ID_LENGTH];
+            KademliaId zeorByteKadId = KademliaId.fromFirstBytes(bytes);
 
-            assertTrue(peerInHandshake.getIdentity().equals(Server.NONCE));
-            assertTrue(peerInHandshake.getPort() == Server.MY_PORT);
+            assertTrue(peerInHandshake.getIdentity().equals(zeorByteKadId));
 
         }
 

@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 public class Settings {
 
+    public static boolean DEBUG = true;
     public static int STD_PORT = 59558;
     public static int MIN_CONNECTIONS = 20;
     public static int MAX_CONNECTIONS = 50;

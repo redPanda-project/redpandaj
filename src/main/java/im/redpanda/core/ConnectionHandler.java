@@ -291,6 +291,9 @@ public class ConnectionHandler extends Thread {
                                 System.out.println("peer disconnected...");
                                 key.cancel();
                                 continue;
+                            } else if (read == 0) {
+                                System.out.println("read zero bytes...");
+                                continue;
                             }
 
                             allocate.flip();
