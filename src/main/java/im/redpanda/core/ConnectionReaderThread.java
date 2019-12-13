@@ -242,15 +242,22 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
-        //no encryption
-        peer.readBufferCrypted.flip();
-        peer.readBuffer.put(peer.readBufferCrypted);
-        peer.readBufferCrypted.compact();
+        /**
+         * Decrypt all bytes from the readBufferCrypted to the readBuffer
+         */
+        peer.decryptInputdata();
 
 
         readBuffer.flip();
 
-        System.out.println("todo: parse data " + readBuffer.remaining());
+        if (readBuffer.hasRemaining()) {
+            peer.setLastActionOnConnection(System.currentTimeMillis());
+            System.out.println("todo: parse data " + readBuffer.remaining());
+            byte b = readBuffer.get();
+            System.out.println("command: " + b);
+            peer.ping();
+        }
+
 
         readBuffer.compact();
 

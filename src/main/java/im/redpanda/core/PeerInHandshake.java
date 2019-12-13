@@ -137,6 +137,10 @@ public class PeerInHandshake {
         this.peer = peer;
     }
 
+    public void setKey(SelectionKey key) {
+        this.key = key;
+    }
+
     public SelectionKey getKey() {
         return key;
     }
@@ -326,4 +330,11 @@ public class PeerInHandshake {
         }
     }
 
+    public Cipher getCipherSend() {
+        return cipherSend;
+    }
+
+    public Cipher getCipherReceive() {
+        return cipherReceive;
+    }
 }

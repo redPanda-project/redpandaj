@@ -4,6 +4,12 @@
  */
 package im.redpanda.core;
 
+import im.redpanda.crypt.Utils;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
@@ -60,7 +66,6 @@ public class Peer implements Comparable<Peer>, Serializable {
     public ArrayList<Integer> removedSendMessages = new ArrayList<Integer>();
     public int maxSimultaneousRequests = 1;
 
-    public ArrayList<Integer> myInterestedChannelsCodedInHisIDs = new ArrayList<Integer>(); //for perfomance, so I dont have to look in the database for every message i am introduced.
 
     public long sendBytes = 0;
     public long receivedBytes = 0;
@@ -68,6 +73,10 @@ public class Peer implements Comparable<Peer>, Serializable {
     public boolean isConnectionInitializedByMe = false;
 
     private boolean isIntegrated = false;
+
+    //new variables since redpanda2.0
+    Cipher cipherSend;
+    Cipher cipherReceive;
 
     public Peer(String ip, int port) {
         this.ip = ip;
@@ -321,6 +330,10 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public void ping() {
 
+        if (System.currentTimeMillis() - lastPinged < 5000) {
+            return;
+        }
+
         if (getSelectionKey() == null || writeBuffer == null) {
             setConnected(false);
             return;
@@ -336,8 +349,8 @@ public class Peer implements Comparable<Peer>, Serializable {
 
         if (writeBufferLock.tryLock()) {
             if (writeBuffer.capacity() > 0) {
-                writeBuffer.put((byte) 100);
-//                System.out.println("pinged...");
+                writeBuffer.put(Command.PING);
+                System.out.println("pinged...");
             } else {
                 System.out.println("didnt ping, buffer has content...");
             }
@@ -389,33 +402,90 @@ public class Peer implements Comparable<Peer>, Serializable {
         return false;
     }
 
+    public int encrypteOutputdata() {
+
+        writeBufferLock.lock();
+        try {
+
+            if (writeBuffer == null) {
+                return 0;
+            }
+
+            writeBuffer.flip();
+            int remaining = writeBuffer.remaining();
+
+
+            if (remaining == 0) {
+                writeBuffer.compact();
+                return 0;
+            }
+
+            byte[] bytesToEncrypt = new byte[remaining];
+            writeBuffer.get(bytesToEncrypt);
+
+
+            byte[] encrypt = encrypt(bytesToEncrypt);
+
+            writeBufferCrypted.put(encrypt);
+
+
+            writeBuffer.compact();
+
+            System.out.println("encrypted " + remaining + " bytes...");
+
+            return remaining;
+        } finally {
+            writeBufferLock.unlock();
+        }
+
+
+    }
+
+    public int decryptInputdata() {
+
+        writeBufferLock.lock();
+        try {
+
+            if (readBuffer == null) {
+                return 0;
+            }
+
+            readBufferCrypted.flip();
+            int remaining = readBufferCrypted.remaining();
+
+
+            if (remaining == 0) {
+                readBufferCrypted.compact();
+                return 0;
+            }
+
+            byte[] bytesToDecrypt = new byte[remaining];
+            readBufferCrypted.get(bytesToDecrypt);
+
+
+            byte[] decrypt = decrypt(bytesToDecrypt);
+
+            readBuffer.put(decrypt);
+
+
+            readBufferCrypted.compact();
+
+            System.out.println("decrypted  " + remaining + " bytes...");
+
+            return remaining;
+        } finally {
+            writeBufferLock.unlock();
+        }
+
+
+    }
+
     int writeBytesToPeer(ByteBuffer writeBuffer) throws IOException {
-        int writtenBytes = 0;
-
-        writeBuffer.flip();
-        //TODO groesse anpassen vom crypted buffer
-        byte[] buffer = new byte[Math.min(writeBuffer.remaining(), writeBufferCrypted.remaining())];
-        writeBuffer.get(buffer);
-        writeBuffer.compact();
-//            byte[] encryptedBytes = writeKey.encrypt(buffer);
-//encryption disabled, just copy over the original bytes
-        byte[] encryptedBytes = buffer;
-
-//            if (writeBufferCrypted.remaining() < encryptedBytes.length) {
-//                //buffer zu klein :(
-//                ByteBuffer newBuffer = ByteBuffer.allocate(writeBufferCrypted.capacity() + encryptedBytes.length);
-//                newBuffer.put(writeBufferCrypted);
-//                writeBufferCrypted = newBuffer;
-//            }
-
-        writeBufferCrypted.put(encryptedBytes);
         writeBufferCrypted.flip();
-        writtenBytes = getSocketChannel().write(writeBufferCrypted);
+        int writtenBytes = getSocketChannel().write(writeBufferCrypted);
         writeBufferCrypted.compact();
 
-//            System.out.println("written bytes to node: " + writtenBytes);
-        //System.out.println("crypted bytes: " + Utils.bytesToHexString(buffer) + " to " + Utils.bytesToHexString(encryptedBytes));
-
+        System.out.println("written bytes to node: " + writtenBytes);
 
         return writtenBytes;
     }
@@ -533,5 +603,118 @@ public class Peer implements Comparable<Peer>, Serializable {
         } finally {
             Server.peerListLock.writeLock().unlock();
         }
+    }
+
+    public void setLastActionOnConnection(long lastActionOnConnection) {
+        this.lastActionOnConnection = lastActionOnConnection;
+    }
+
+    public Cipher getCipherSend() {
+        return cipherSend;
+    }
+
+    public void setCipherSend(Cipher cipherSend) {
+        this.cipherSend = cipherSend;
+    }
+
+    public Cipher getCipherReceive() {
+        return cipherReceive;
+    }
+
+    public void setCipherReceive(Cipher cipherReceive) {
+        this.cipherReceive = cipherReceive;
+    }
+
+    public byte[] encrypt(byte[] toEncrypt) {
+
+        try {
+
+            byte[] outputEncryptedBytes;
+
+            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
+            int encryptLength = cipherSend.update(toEncrypt, 0,
+                    toEncrypt.length, outputEncryptedBytes, 0);
+            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
+
+
+            return outputEncryptedBytes;
+        } catch (ShortBufferException
+                | IllegalBlockSizeException | BadPaddingException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public byte[] decrypt(byte[] bytesToDecrypt) {
+        try {
+            byte[] outPlain;
+
+            System.out.println("len to decrypt: " + bytesToDecrypt.length);
+
+            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
+            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
+                    bytesToDecrypt.length, outPlain, 0);
+            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
+
+            return outPlain;
+        } catch (IllegalBlockSizeException | BadPaddingException
+                | ShortBufferException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+
+    public void setupConnection(PeerInHandshake peerInHandshake) {
+
+
+        //disconnect old connection if present
+        disconnect("new connection for this peer");
+
+
+        /**
+         * setup the buffers
+         */
+        writeBufferLock.lock();
+        try {
+            readBuffer = ByteBuffer.allocate(10 * 1024);
+            readBufferCrypted = ByteBuffer.allocate(10 * 1024);
+            writeBuffer = ByteBuffer.allocate(10 * 1024);
+            writeBufferCrypted = ByteBuffer.allocate(10 * 1024);
+        } catch (Throwable e) {
+            Log.putStd("Speicher konnte nicht reserviert werden. Disconnect peer...");
+            disconnect("Speicher konnte nicht reserviert werden.");
+        } finally {
+            writeBufferLock.unlock();
+        }
+
+
+        //setup the peer with all data from the peerInHandshake
+        setLastActionOnConnection(System.currentTimeMillis());
+        setConnected(true);
+
+        setSocketChannel(peerInHandshake.getSocketChannel());
+        setSelectionKey(peerInHandshake.getKey());
+
+        setCipherSend(peerInHandshake.getCipherSend());
+        setCipherReceive(peerInHandshake.getCipherReceive());
+
+
+        //update the selection key to the actual peer
+        peerInHandshake.getKey().attach(this);
+
+        /**
+         * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
+         */
+        PeerList.add(this);
+
+    }
+
+    @Override
+    public String toString() {
+        return "Peer{" +
+                "ip='" + ip + '\'' +
+                ", port=" + port +
+                '}';
     }
 }

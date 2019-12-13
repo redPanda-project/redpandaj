@@ -245,6 +245,7 @@ public class ConnectionHandler extends Thread {
                             ConnectionReaderThread.sendHandshake(peerInHandshake);
 
                             newKey.attach(peerInHandshake);
+                            peerInHandshake.setKey(newKey);
                             selector.wakeup();
                             //Log.putStd("added con");
                         } catch (IOException ex) {
@@ -442,6 +443,18 @@ public class ConnectionHandler extends Thread {
 
                                 if (decryptedCommand == Command.PING) {
                                     System.out.println("received first ping...");
+
+                                    /**
+                                     * We can now safely transfer the open connection from the peerInHandshake to the
+                                     * actual peer
+                                     */
+
+                                    Peer peer = peerInHandshake.getPeer();
+
+                                    peer.setupConnection(peerInHandshake);
+                                    continue;
+
+
                                 }
 
 
@@ -502,7 +515,7 @@ public class ConnectionHandler extends Thread {
                         } else if (interestOps == (SelectionKey.OP_READ)) {
                             key.interestOps(0);
                         } else {
-                            throw new RuntimeException("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs");
+                            System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs");
                         }
 
                         if (!workingRead.contains(peer)) {
@@ -521,40 +534,23 @@ public class ConnectionHandler extends Thread {
 
                         try {
 
-                            if (peer.writeBufferCrypted == null) {
-                                try {
-                                    if (key.isValid()) {
-                                        if (key.interestOps() == SelectionKey.OP_READ) {
-                                            key.interestOps(SelectionKey.OP_READ);
-                                        } else {
-                                            key.interestOps(0);
-                                        }
-                                    }
-                                } catch (CancelledKeyException e) {
-                                }
-                                peer.writeBufferLock.unlock();
-                                Log.put("writebuffer was null and writeable?", 0);
-                                continue;
-                            }
-
-//                                int position = writeBuffer.position();
-//                                int limit = writeBuffer.limit();
                             int writtenBytes = 0;
                             boolean remainingBytes = false;
 
 
-//                        if (peer.writeBufferCrypted == null) {
-//                            remainingBytes = peer.writeBuffer.hasRemaining();
-//                        } else {
-//                            peer.writeBufferCrypted.flip();
-//                            remainingBytes = (peer.writeBuffer.hasRemaining() || peer.writeBufferCrypted.hasRemaining());
-//                            peer.writeBufferCrypted.compact();
-//                        }
+                            /**
+                             * First encrypt all bytes from the writebuffer to the writebuffercrypted...
+                             * todo: this should be done in a seperate thread/threadpool...
+                             */
+                            peer.encrypteOutputdata();
+
+
                             peer.writeBufferCrypted.flip();
                             remainingBytes = peer.writeBufferCrypted.hasRemaining();
                             peer.writeBufferCrypted.compact();
 
                             Log.putStd("remainingBytes: " + remainingBytes);
+
                             //switch buffer for reading
                             if (!remainingBytes) {
                                 key.interestOps(SelectionKey.OP_READ);

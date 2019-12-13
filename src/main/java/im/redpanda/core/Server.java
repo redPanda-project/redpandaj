@@ -56,6 +56,8 @@ public class Server {
         outboundHandler = new OutboundHandler();
         outboundHandler.init();
 
+        PeerJobs.startUp();
+
     }
 
 
