@@ -11,6 +11,14 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
+/**
+ * This class represents a NodeId for every Peer in the network. This is an ellipic curve diffie hellman key,
+ * where the public key is required and the private key is optional. The KademliaId is computed from a SHA256 hash
+ * of the public key. We use HashCash to make the computation of many valid keys costy.
+ * <p>
+ * The curve 'brainpoolp256r1' may change later
+ * as well as the import and export methods.
+ */
 public class NodeId {
 
 
@@ -19,6 +27,14 @@ public class NodeId {
 
     KeyPair keyPair;
     KademliaId kademliaId;
+
+    /**
+     * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically computed when calling the get method.
+     * @param keyPair
+     */
+    public NodeId(KeyPair keyPair) {
+        this.keyPair = keyPair;
+    }
 
     /**
      * Generates a new NodeId with a new random key.
@@ -42,9 +58,19 @@ public class NodeId {
         }
     }
 
-    public NodeId(KeyPair keyPair) {
-        this.keyPair = keyPair;
+    /**
+     * Checks if this NodeId satisfies the required property
+     * (first byte from SHA256-double from public key bytes should be zero).
+     *
+     * @return
+     */
+    public boolean checkValid() {
+        Sha256Hash sha256Hash = Sha256Hash.createDouble(keyPair.getPublic().getEncoded());
+        byte[] bytes = sha256Hash.getBytes();
+        return bytes[0] == 0;
     }
+
+
 
     public static KeyPair generateECKeys() {
         try {
@@ -98,6 +124,10 @@ public class NodeId {
         return null;
     }
 
+    /**
+     * The KademliaId is automatically computed upon the first call of this method.
+     * @return
+     */
     public KademliaId getKademliaId() {
         if (kademliaId == null) {
             kademliaId = fromPublicKey(keyPair.getPublic());
@@ -151,6 +181,11 @@ public class NodeId {
         return null;
     }
 
+    /**
+     * Two NodeId are equal if their KademliaId is equal.
+     * @param obj
+     * @return
+     */
     @Override
     public boolean equals(Object obj) {
 
@@ -163,5 +198,9 @@ public class NodeId {
         }
 
         return false;
+    }
+
+    public KeyPair getKeyPair() {
+        return keyPair;
     }
 }

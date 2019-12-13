@@ -25,21 +25,21 @@ public class Log {
         if (level > LEVEL) {
             return;
         }
-        System.out.println(msg);
+        System.out.println("Log: " + msg);
     }
 
     public static void putStd(String msg) {
         if (20 > LEVEL) {
             return;
         }
-        System.out.println(msg);
+        System.out.println("Log: "+msg);
     }
 
     public static void putCritical(Throwable e) {
         if (-200 > LEVEL) {
             return;
         }
-        System.out.println(e);
+        e.printStackTrace();
     }
 
     public static boolean isJUnitTest() {

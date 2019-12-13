@@ -212,6 +212,7 @@ public class ConnectionReaderThread extends Thread {
             read = peer.getSocketChannel().read(peer.readBufferCrypted);
             System.out.println("!!read bytes: " + read);
         } catch (IOException e) {
+            e.printStackTrace();
             key.cancel();
             peer.disconnect("could not read...");
             return;
@@ -276,6 +277,7 @@ public class ConnectionReaderThread extends Thread {
     }
 
     private static void requestPublicKey(PeerInHandshake peerInHandshake) {
+        peerInHandshake.setStatus(1);
         ByteBuffer writeBuffer = ByteBuffer.allocate(1);
 
         writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
@@ -348,6 +350,28 @@ public class ConnectionReaderThread extends Thread {
 
         buffer.compact();
 
+        if (identity.equals(Server.NONCE)) {
+            /**
+             * We connected to ourselves, disconnect
+             */
+            System.out.println("connected to ourselves, disconnecting...");
+            peerInHandshake.setStatus(2); //set disconnect code
+            try {
+                peerInHandshake.getSocketChannel().close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            /**
+             * Lets remove this peer from our peerlist if it is present, note that an incoming connection is not in our peerlist
+             */
+            if (peerInHandshake.getPeer() != null) {
+//                PeerList.remove(peerInHandshake.getPeer());
+                boolean b = PeerList.removeIpPort(peerInHandshake.ip, peerInHandshake.port);
+                System.out.println("remove of peer successful?: " + b);
+            }
+            return false;
+        }
+
         /**
          * If the connection was not initialized by us we have to find the peer first for this handshake.
          */
@@ -375,14 +399,36 @@ public class ConnectionReaderThread extends Thread {
         //lets check if the peer has a NodeId
         if (peerInHandshake.getPeer().getNodeId() == null) {
             /**
-             * Since the Peer has no NodeId, we have to request the public key of the Peer.
+             * Since the Peer has no NodeId, we have to search the peer in the PeerList or
+             * request the public key of the Peer.
              */
 
-            /**
-             * We set the status of the handshake that we are still awaiting data from the Peer to complete the handshake
-             */
-            peerInHandshake.setStatus(1);
-            requestPublicKey(peerInHandshake);
+            Peer peer = PeerList.get(identity);
+            if (peer != null) {
+                /**
+                 * We found a peer for this KademliaId, lets set the data for the PeerInHandShake
+                 */
+                peerInHandshake.setPeer(peer);
+
+                if (peerInHandshake.getPeer().getNodeId() == null) {
+                    peerInHandshake.setStatus(1);
+                    requestPublicKey(peerInHandshake);
+                } else {
+                    peerInHandshake.setNodeId(peer.getNodeId());
+                    /**
+                     * We set the status of the handshake to finished from our site since we are not expecting more data
+                     * to complete the handshake, the other peer may still request our public key.
+                     */
+                    peerInHandshake.setStatus(-1);
+                }
+
+
+            } else {
+                /**
+                 * We set the status of the handshake that we are still awaiting data from the Peer to complete the handshake
+                 */
+                requestPublicKey(peerInHandshake);
+            }
         } else {
             /**
              * We set the status of the handshake to finished from our site since we are not expecting more data

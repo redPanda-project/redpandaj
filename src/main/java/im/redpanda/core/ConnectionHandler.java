@@ -7,12 +7,15 @@ package im.redpanda.core;
 
 
 import im.redpanda.commands.SendPublicKey;
+import io.sentry.Sentry;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -41,7 +44,6 @@ public class ConnectionHandler extends Thread {
     public static BlockingQueue<Peer> doneRead = new LinkedBlockingQueue<>(600);
     public static long time;
     public static DecimalFormat df = new DecimalFormat("#.000");
-    public Random random = new Random();
 
 
     static {
@@ -225,7 +227,7 @@ public class ConnectionHandler extends Thread {
 
                         String[] split = ip.split("\\.");
                         if (split.length == 4) {
-                            ip = split[0] + "." + split[1] + "." + split[2] + "." + random.nextInt(255);
+                            ip = split[0] + "." + split[1] + "." + split[2] + "." + split[3];
                         } else {
                             ip = "not4blocks";
                         }
@@ -298,56 +300,152 @@ public class ConnectionHandler extends Thread {
 
                             allocate.flip();
 
+                            if (!peerInHandshake.isEncryptionActive()) {
 
-                            System.out.println("read: " + read + " " + key.interestOps());
-                            if (peerInHandshake.getStatus() == 0) {
-                                /**
-                                 * The status indicates that no handshake was parsed before for this PeerInHandshake
-                                 */
-                                boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
-                                System.out.println("handshake okay?: " + b);
-                            } else {
-
-                                /**
-                                 * The status indicates that the first handshake was already parsed before for this
-                                 * PeerInHandshake. Here we are providing more data for the other Peer like the public key.
-                                 */
-                                byte command = allocate.get();
-                                if (command == Command.REQUEST_PUBLIC_KEY) {
+                                System.out.println("read: " + read + " " + key.interestOps());
+                                if (peerInHandshake.getStatus() == 0) {
                                     /**
-                                     * The other Peer request our public key, lets send our public key!
+                                     * The status indicates that no handshake was parsed before for this PeerInHandshake
                                      */
-                                    ConnectionReaderThread.sendPublicKeyToPeer(peerInHandshake);
-                                } else if (command == Command.SEND_PUBLIC_KEY) {
+                                    boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
+                                    System.out.println("handshake okay?: " + b);
+                                } else {
+
                                     /**
-                                     * We got the public Peer, lets store it and check that this public key
-                                     * indeed corresponds to the KademliaId.
+                                     * The status indicates that the first handshake was already parsed before for this
+                                     * PeerInHandshake. Here we are providing more data for the other Peer like the public key.
                                      */
-                                    SendPublicKey rootAsSendPublicKey = SendPublicKey.getRootAsSendPublicKey(allocate);
-                                    ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
-
-                                    byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
-                                    byteBuffer.get(bytes);
-                                    NodeId nodeId = NodeId.importPublic(bytes);
-                                    System.out.println("new nodeid from peer: " + nodeId.getKademliaId());
-
-                                    if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
+                                    byte command = allocate.get();
+                                    if (command == Command.REQUEST_PUBLIC_KEY) {
                                         /**
-                                         * We obtained a public key which does not match the KademliaId of this Peer
-                                         * and should cancel that connection here.
+                                         * The other Peer request our public key, lets send our public key!
                                          */
-                                        //todo: disconnect peerinhandshake
-                                    } else {
+                                        ConnectionReaderThread.sendPublicKeyToPeer(peerInHandshake);
+                                    } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
                                         /**
-                                         * We obtained the correct public key and can add it to the Peer
+                                         * We got the public Peer, lets store it and check that this public key
+                                         * indeed corresponds to the KademliaId.
                                          */
-                                        peerInHandshake.getPeer().setNodeId(nodeId);
+                                        SendPublicKey rootAsSendPublicKey = SendPublicKey.getRootAsSendPublicKey(allocate);
+                                        ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
+
+                                        byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
+                                        byteBuffer.get(bytes);
+                                        NodeId nodeId = NodeId.importPublic(bytes);
+                                        System.out.println("new nodeid from peer: " + nodeId.getKademliaId());
+
+                                        if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
+                                            /**
+                                             * We obtained a public key which does not match the KademliaId of this Peer
+                                             * and should cancel that connection here.
+                                             */
+                                            peerInHandshake.setStatus(2);
+                                            peerInHandshake.getSocketChannel().close();
+                                        } else {
+                                            /**
+                                             * We obtained the correct public key and can add it to the Peer
+                                             * and lets set that peerInHandshake status to waiting for encryption
+                                             */
+                                            peerInHandshake.getPeer().setNodeId(nodeId);
+                                            peerInHandshake.setNodeId(nodeId);
+                                            peerInHandshake.setStatus(-1);
+                                        }
+
+                                    } else if (command == Command.ACTIVATE_ENCRYPTION) {
+
+
+                                        /**
+                                         * We received the byte to activate the encryption and we are awaiting the encryption activation byte
+                                         */
+
+                                        //lets read the random bytes from them
+
+                                        if (allocate.remaining() < 16) {
+                                            System.out.println("not enough bytes for encryption...");
+                                            peerInHandshake.getSocketChannel().close();
+                                        }
+
+                                        byte[] randomBytesFromThem = new byte[16];
+                                        allocate.get(randomBytesFromThem);
+
+                                        peerInHandshake.setRandomFromThem(randomBytesFromThem);
+
+                                        peerInHandshake.setAwaitingEncryption(true);
+
+                                    }
+
+                                    /**
+                                     * Lets check if we are ready to start the encryption for this handshaking peer
+                                     */
+                                    if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
+                                        ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + 16);
+                                        activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
+
+                                        activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
+
+                                        activateEncryptionBuffer.flip();
+
+                                        long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
+                                        System.out.println("written bytes for ACTIVATE_ENCRYPTION: " + write);
+                                        peerInHandshake.setWeSendOurRandom(true);
+                                    }
+
+                                    if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
+                                        peerInHandshake.setAwaitingEncryption(false);
+
+                                        System.out.println("lets generate the shared secret");
+
+                                        peerInHandshake.calculateSharedSecret();
+
+                                        /**
+                                         * Shared Secret and IV calculated via ECDH and random bytes,
+                                         * lets activate the encryption
+                                         */
+
+                                        peerInHandshake.activateEncryption();
+
+
+                                        /**
+                                         * lets send the first ping
+                                         */
+
+                                        byte[] bytesSendToPing = new byte[1];
+                                        bytesSendToPing[0] = Command.PING;
+
+                                        byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
+                                        ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+
+                                        try {
+                                            int write = peerInHandshake.getSocketChannel().write(wrap);
+                                            System.out.println("written bytes for PING: " + write);
+                                        } catch (IOException e) {
+                                            e.printStackTrace();
+                                        }
+
+
                                     }
 
                                 }
+                            } else {
+                                /**
+                                 * The encryption is active in this section, lets check that first ping
+                                 */
+                                System.out.println("received first encrypted command...");
+
+//                                allocate.flip();
+                                byte[] bytesToDecrypt = new byte[allocate.remaining()];
+                                allocate.get(bytesToDecrypt);
+
+                                ByteBuffer wrap = ByteBuffer.wrap(peerInHandshake.decrypt(bytesToDecrypt));
+
+                                byte decryptedCommand = wrap.get();
+
+                                if (decryptedCommand == Command.PING) {
+                                    System.out.println("received first ping...");
+                                }
+
 
                             }
-
 
                         }
 
@@ -375,7 +473,9 @@ public class ConnectionHandler extends Thread {
                         try {
                             connected = peer.getSocketChannel().finishConnect();
                         } catch (IOException e) {
+                            e.printStackTrace();
                         } catch (SecurityException e) {
+                            e.printStackTrace();
                         }
 //                            Log.putStd("finished!");
 
@@ -489,6 +589,10 @@ public class ConnectionHandler extends Thread {
                 } catch (IOException e) {
                     key.cancel();
                     if (key.attachment() instanceof PeerInHandshake) {
+                        PeerInHandshake peerInHandshake = ((PeerInHandshake) key.attachment());
+                        Log.putStd("error! " + peerInHandshake.ip);
+//                        peer.disconnect("IOException");
+                    } else if (key.attachment() instanceof Peer) {
                         Peer peer = ((Peer) key.attachment());
                         Log.putStd("error! " + peer.ip);
                         peer.disconnect("IOException");
@@ -502,9 +606,10 @@ public class ConnectionHandler extends Thread {
 //                    Peer peer = ((Peer) key.attachment());
 //                    Log.putStd("Catched fatal exception! " + peer.ip);
                     e.printStackTrace();
+                    Sentry.capture(e);
                     //peer.disconnect(" IOException 4827f3fj");
 //                    peer.disconnect("Fatal exception");
-                    Log.putCritical(e);
+//                    Log.putCritical(e);
                 }
 
             }

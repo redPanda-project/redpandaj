@@ -108,8 +108,6 @@ public class ECCrypto {
         System.out.println("verified: " + ecdsa2.verify(realSig));
 
 
-
-
     }
 
     public static KeyPair generateECKeys() {

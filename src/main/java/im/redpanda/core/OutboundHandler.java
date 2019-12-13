@@ -275,6 +275,13 @@ public class OutboundHandler extends Thread {
 
             PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
 
+            /**
+             * Lets check if we have a nodeId and add it to the PeerInHandShake
+             */
+            if (peer.getNodeId() != null) {
+                peerInHandshake.setNodeId(peer.getNodeId());
+            }
+
             peerInHandshake.addConnection();
 
 //            peer.setSocketChannel(open);

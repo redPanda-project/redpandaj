@@ -105,8 +105,12 @@ public class PeerList {
      * @return hash value
      */
     private static Integer getIpPortHash(Peer peer) {
+        return getIpPortHash(peer.getIp(), peer.getPort());
+    }
+
+    private static Integer getIpPortHash(String ip, int port) {
         //ToDo: we need later a better method
-        return peer.getIp().hashCode() + peer.getPort();
+        return ip.hashCode() + port;
     }
 
     /**
@@ -115,8 +119,45 @@ public class PeerList {
      *
      * @param peer
      */
-    public static void remove(Peer peer) {
-        remove(peer.getKademliaId());
+    public static boolean remove(Peer peer) {
+        readWriteLock.writeLock().lock();
+        try {
+            if (peer.getKademliaId() == null) {
+                return removeByObject(peer);
+            }
+            return remove(peer.getKademliaId());
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
+
+    private static boolean removeByObject(Peer peer) {
+        readWriteLock.writeLock().lock();
+        try {
+            Peer remove = peerlist.remove(peer);
+            if (remove == null) {
+                return false;
+            }
+            peerlistIpPort.remove(getIpPortHash(remove));
+            return true;
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
+
+    public static boolean removeIpPort(String ip, int port) {
+        readWriteLock.writeLock().lock();
+        try {
+            Peer peer = peerlistIpPort.get(getIpPortHash(ip, port));
+            if (peer == null) {
+                return false;
+            }
+            peerlist.remove(peer.getKademliaId());
+            peerArrayList.remove(peer);
+            return true;
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
     }
 
     /**
@@ -125,15 +166,17 @@ public class PeerList {
      *
      * @param id
      */
-    public static void remove(KademliaId id) {
+    public static boolean remove(KademliaId id) {
+        boolean removedOnePeer = false;
         try {
             readWriteLock.writeLock().lock();
             Peer remove = peerlist.remove(id);
-            peerArrayList.remove(remove);
+            removedOnePeer = peerArrayList.remove(remove);
             peerlistIpPort.remove(getIpPortHash(remove));
         } finally {
             readWriteLock.writeLock().unlock();
         }
+        return removedOnePeer;
     }
 
     public static Peer get(KademliaId id) {

@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,6 +22,8 @@ public class Server {
     public static OutboundHandler outboundHandler;
     public static ArrayList<Peer>[] buckets = new ArrayList[KademliaId.ID_LENGTH];
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
+
+    public static SecureRandom secureRandom = new SecureRandom();
 
 
     static {

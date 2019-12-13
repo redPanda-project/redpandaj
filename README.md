@@ -2,9 +2,10 @@
 
 This is a rework of the redpanda app. The old system does not work on current versions of android due to the restrictive battery optimization.
 The new idea is to use push notifications (firebase massaging) to notify the user of new messages and the app itself does not run in the background on mobile phones. Therefore, the routing of messages has to be done by other (full) nodes of the network.
+This may lead to a certain centralization of the app which we try to mini
 This new system is designed around a new flutter app we are developing.   
 
-The idea for the routing of messages will be based on Kademlia DHT and is inspired by the floodfill of the i2p network.
+The idea for the routing of messages is based on Kademlia DHT and is inspired by the floodfill of the i2p network to provide anonymity.
 
 The protocol will change to FlatBuffers.
 
