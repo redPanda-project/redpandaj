@@ -8,12 +8,6 @@
     <artifactId>server</artifactId>
     <version>0.1-SNAPSHOT</version>
 
-    <scm>
-        <connection>scm:svn:http://127.0.0.1/dummy</connection>
-        <developerConnection>scm:svn:https://127.0.0.1/dummy</developerConnection>
-        <tag>HEAD</tag>
-        <url>http://127.0.0.1/dummy</url>
-    </scm>
 
     <name>server</name>
     <!-- FIXME change it to the project's website -->
@@ -33,19 +27,19 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk16 -->
+        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk15on -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.56</version>
+            <version>1.64</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/com.google.guava/guava -->
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>28.1-jre</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.google.guava</groupId>-->
+<!--            <artifactId>guava</artifactId>-->
+<!--            <version>28.1-jre</version>-->
+<!--        </dependency>-->
 
         <!-- https://mvnrepository.com/artifact/io.sentry/sentry -->
         <dependency>

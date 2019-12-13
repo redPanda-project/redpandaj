@@ -31,7 +31,8 @@ public class PeerInHandshake {
     boolean encryptionActive = false;
 
     //Secret key and iv used for AES encryption
-    SecretKey sharedSecret;
+    SecretKey sharedSecretSend;
+    SecretKey sharedSecretReceive;
     IvParameterSpec ivSend;
     IvParameterSpec ivReceive;
     Cipher cipherSend;
@@ -189,28 +190,32 @@ public class PeerInHandshake {
             byte[] encoded = intermediateSharedSecret.getEncoded();
 
 
-            ByteBuffer bytesForPrivateAESkey = ByteBuffer.allocate(32 + 16 + 16);
+            ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + 16 + 16);
+            ByteBuffer bytesForPrivateAESkeyReceive = ByteBuffer.allocate(32 + 16 + 16);
 
-            bytesForPrivateAESkey.put(encoded);
+            bytesForPrivateAESkeySend.put(encoded);
+            bytesForPrivateAESkeyReceive.put(encoded);
 
-            if (peerIsHigher()) {
-                bytesForPrivateAESkey.put(randomFromUs);
-                bytesForPrivateAESkey.put(randomFromThem);
-            } else {
-                bytesForPrivateAESkey.put(randomFromThem);
-                bytesForPrivateAESkey.put(randomFromUs);
-            }
 
-            if (bytesForPrivateAESkey.remaining() != 0) {
+            bytesForPrivateAESkeySend.put(randomFromUs);
+            bytesForPrivateAESkeySend.put(randomFromThem);
+
+            bytesForPrivateAESkeyReceive.put(randomFromThem);
+            bytesForPrivateAESkeyReceive.put(randomFromUs);
+
+
+            if (bytesForPrivateAESkeySend.remaining() != 0) {
                 throw new RuntimeException("here is something wrong with the random bytes length!");
             }
 
 
-            Sha256Hash sha256Hash = Sha256Hash.create(bytesForPrivateAESkey.array());
+            Sha256Hash sha256HashSend = Sha256Hash.create(bytesForPrivateAESkeySend.array());
+            Sha256Hash sha256HashReceive = Sha256Hash.create(bytesForPrivateAESkeyReceive.array());
 
-            sharedSecret = new SecretKeySpec(sha256Hash.getBytes(), "AES");
+            sharedSecretSend = new SecretKeySpec(sha256HashSend.getBytes(), "AES");
+            sharedSecretReceive = new SecretKeySpec(sha256HashReceive.getBytes(), "AES");
 
-            System.out.println("asf " + Base58.encode(sharedSecret.getEncoded()));
+            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
 
 
             ByteBuffer bytesForIVsend = ByteBuffer.allocate(16 + 16);
@@ -222,10 +227,17 @@ public class PeerInHandshake {
             bytesForIVreceive.put(randomFromUs);
 
             //todo: iv are just the way around for send/receive, is this a security risk?
-            ivSend = new IvParameterSpec(bytesForIVsend.array());
-            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
-            ivReceive = new IvParameterSpec(bytesForIVreceive.array());
-            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+//            ivSend = new IvParameterSpec(bytesForIVsend.array());
+//            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
+//            ivReceive = new IvParameterSpec(bytesForIVreceive.array());
+//            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+
+            //todo we have to change this here for the real crypto algo
+
+            ivSend = new IvParameterSpec(randomFromUs);
+            System.out.println("send iv: " + Base58.encode(randomFromUs));
+            ivReceive = new IvParameterSpec(randomFromThem);
+            System.out.println("rec iv: " + Base58.encode(randomFromThem));
 
         } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchProviderException e) {
             e.printStackTrace();
@@ -274,14 +286,21 @@ public class PeerInHandshake {
     public void activateEncryption() {
         encryptionActive = true;
         try {
+
+            /**
+             * todo we have to use a encryption authentication algorithm for the stream
+             * but currently bouncycastle AES/GCM only support block cipher!
+             * maybe we should go for the chacha20-poly
+             */
+
             //let set up the send Cipher
-            cipherSend = Cipher.getInstance("AES/GCM/NoPadding", "BC");
-            cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecret, ivSend);
+            cipherSend = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+            cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, ivSend);
 
 
             //let set up the receive Cipher
-            cipherReceive = Cipher.getInstance("AES/GCM/NoPadding", "BC");
-            cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecret, ivReceive);
+            cipherReceive = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+            cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, ivReceive);
 
 
         } catch (NoSuchAlgorithmException | NoSuchProviderException

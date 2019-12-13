@@ -17,8 +17,6 @@ import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import org.bouncycastle.asn1.x9.X9ECParameters;
-import org.bouncycastle.crypto.ec.CustomNamedCurves;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 
@@ -26,6 +24,19 @@ public class ECCrypto {
     public static byte[] iv = new SecureRandom().generateSeed(16);
 
     public static void main(String[] args) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, UnsupportedEncodingException, SignatureException {
+
+        try {
+            Provider p[] = Security.getProviders();
+            for (int i = 0; i < p.length; i++) {
+                System.out.println(p[i]);
+                for (Enumeration e = p[i].keys(); e.hasMoreElements(); ) {
+                    System.out.println("\t" + e.nextElement());
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
         String plainText = "Look mah, I'm a message!";
