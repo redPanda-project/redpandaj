@@ -15,6 +15,10 @@ import java.security.*;
 
 public class PeerInHandshake {
 
+    public static final int IVbytelen = 12;
+    public static final String ALGORITHM = "AES/CTR/NoPadding";
+
+
     String ip;
     int port = 0;
     int status = 0;
@@ -161,7 +165,7 @@ public class PeerInHandshake {
     public byte[] getRandomFromUs() {
 
         if (randomFromUs == null) {
-            byte[] randomBytesForEncryption = new byte[16];
+            byte[] randomBytesForEncryption = new byte[PeerInHandshake.IVbytelen / 2];
             Server.secureRandom.nextBytes(randomBytesForEncryption);
             randomFromUs = randomBytesForEncryption;
         }
@@ -190,8 +194,8 @@ public class PeerInHandshake {
             byte[] encoded = intermediateSharedSecret.getEncoded();
 
 
-            ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + 16 + 16);
-            ByteBuffer bytesForPrivateAESkeyReceive = ByteBuffer.allocate(32 + 16 + 16);
+            ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
+            ByteBuffer bytesForPrivateAESkeyReceive = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
 
             bytesForPrivateAESkeySend.put(encoded);
             bytesForPrivateAESkeyReceive.put(encoded);
@@ -218,8 +222,8 @@ public class PeerInHandshake {
             System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
 
 
-            ByteBuffer bytesForIVsend = ByteBuffer.allocate(16 + 16);
-            ByteBuffer bytesForIVreceive = ByteBuffer.allocate(16 + 16);
+            ByteBuffer bytesForIVsend = ByteBuffer.allocate(IVbytelen);
+            ByteBuffer bytesForIVreceive = ByteBuffer.allocate(IVbytelen);
 
             bytesForIVsend.put(randomFromUs);
             bytesForIVsend.put(randomFromThem);
@@ -227,17 +231,17 @@ public class PeerInHandshake {
             bytesForIVreceive.put(randomFromUs);
 
             //todo: iv are just the way around for send/receive, is this a security risk?
-//            ivSend = new IvParameterSpec(bytesForIVsend.array());
-//            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
-//            ivReceive = new IvParameterSpec(bytesForIVreceive.array());
-//            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+            ivSend = new IvParameterSpec(bytesForIVsend.array());
+            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
+            ivReceive = new IvParameterSpec(bytesForIVreceive.array());
+            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
 
             //todo we have to change this here for the real crypto algo
 
-            ivSend = new IvParameterSpec(randomFromUs);
-            System.out.println("send iv: " + Base58.encode(randomFromUs));
-            ivReceive = new IvParameterSpec(randomFromThem);
-            System.out.println("rec iv: " + Base58.encode(randomFromThem));
+//            ivSend = new IvParameterSpec(randomFromUs);
+//            System.out.println("send iv: " + Base58.encode(randomFromUs));
+//            ivReceive = new IvParameterSpec(randomFromThem);
+//            System.out.println("rec iv: " + Base58.encode(randomFromThem));
 
         } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchProviderException e) {
             e.printStackTrace();
@@ -290,20 +294,20 @@ public class PeerInHandshake {
             /**
              * todo we have to use a encryption authentication algorithm for the stream
              * but currently bouncycastle AES/GCM only support block cipher!
-             * maybe we should go for the chacha20-poly
+             * maybe we should go for the chacha20-poly, but how to start a new round?
              */
 
             //let set up the send Cipher
-            cipherSend = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+            cipherSend = Cipher.getInstance(ALGORITHM);
             cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, ivSend);
 
 
             //let set up the receive Cipher
-            cipherReceive = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+            cipherReceive = Cipher.getInstance(ALGORITHM);
             cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, ivReceive);
 
 
-        } catch (NoSuchAlgorithmException | NoSuchProviderException
+        } catch (NoSuchAlgorithmException
                 | NoSuchPaddingException | InvalidKeyException
                 | InvalidAlgorithmParameterException e) {
             e.printStackTrace();

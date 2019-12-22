@@ -361,12 +361,12 @@ public class ConnectionHandler extends Thread {
 
                                         //lets read the random bytes from them
 
-                                        if (allocate.remaining() < 16) {
+                                        if (allocate.remaining() < PeerInHandshake.IVbytelen/2) {
                                             System.out.println("not enough bytes for encryption...");
                                             peerInHandshake.getSocketChannel().close();
                                         }
 
-                                        byte[] randomBytesFromThem = new byte[16];
+                                        byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen/2];
                                         allocate.get(randomBytesFromThem);
 
                                         peerInHandshake.setRandomFromThem(randomBytesFromThem);
@@ -379,7 +379,7 @@ public class ConnectionHandler extends Thread {
                                      * Lets check if we are ready to start the encryption for this handshaking peer
                                      */
                                     if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
-                                        ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + 16);
+                                        ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
                                         activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
 
                                         activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
