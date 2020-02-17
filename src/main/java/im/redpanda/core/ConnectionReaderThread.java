@@ -7,7 +7,7 @@ package im.redpanda.core;
 
 
 import com.google.flatbuffers.FlatBufferBuilder;
-import im.redpanda.commands.SendPublicKey;
+import im.redpanda.commands.FBPublicKey;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -303,7 +303,7 @@ public class ConnectionReaderThread extends Thread {
 
         FlatBufferBuilder builder = new FlatBufferBuilder(1024);
         int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-        int sendPublicKey = SendPublicKey.createSendPublicKey(builder, publicKeyBytes);
+        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
         builder.finish(sendPublicKey);
         ByteBuffer byteBuffer = builder.dataBuffer();
 
