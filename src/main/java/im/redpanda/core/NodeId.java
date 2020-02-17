@@ -13,8 +13,8 @@ import java.security.spec.X509EncodedKeySpec;
 
 /**
  * This class represents a NodeId for every Peer in the network. This is an ellipic curve diffie hellman key,
- * where the public key is required and the private key is optional. The KademliaId is computed from a SHA256 hash
- * of the public key. We use HashCash to make the computation of many valid keys costy.
+ * where the public key is required and the private key is optional. The associated KademliaId is computed from a SHA256
+ * hash of the public key. We use HashCash to make the computation of many valid keys costy.
  * <p>
  * The curve 'brainpoolp256r1' may change later
  * as well as the import and export methods.

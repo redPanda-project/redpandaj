@@ -210,7 +210,7 @@ public class ConnectionReaderThread extends Thread {
         int read = -2;
         try {
             read = peer.getSocketChannel().read(peer.readBufferCrypted);
-            System.out.println("!!read bytes: " + read);
+            Log.put("!!read bytes: " + read,200);
         } catch (IOException e) {
             e.printStackTrace();
             key.cancel();
@@ -231,12 +231,12 @@ public class ConnectionReaderThread extends Thread {
             peer.disconnect("dafuq 2332");
             return;
         } else if (read == -1) {
-            Log.put("closing connection " + peer.ip + ": not readable! " + readBuffer, 200);
+            Log.put("closing connection " + peer.ip + ": not readable! " + readBuffer, 100);
             peer.disconnect(" read == -1 ");
             key.cancel();
         } else {
 
-            System.out.println("received bytes!");
+            Log.put("received bytes!",200);
 
 
         }

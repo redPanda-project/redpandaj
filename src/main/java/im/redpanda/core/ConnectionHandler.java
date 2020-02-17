@@ -6,7 +6,7 @@
 package im.redpanda.core;
 
 
-import im.redpanda.commands.SendPublicKey;
+import im.redpanda.commands.FBPublicKey;
 import io.sentry.Sentry;
 
 import java.io.IOException;
@@ -303,7 +303,7 @@ public class ConnectionHandler extends Thread {
 
                             if (!peerInHandshake.isEncryptionActive()) {
 
-                                System.out.println("read: " + read + " " + key.interestOps());
+                                Log.put("read: " + read + " " + key.interestOps(),150);
                                 if (peerInHandshake.getStatus() == 0) {
                                     /**
                                      * The status indicates that no handshake was parsed before for this PeerInHandshake
@@ -327,7 +327,7 @@ public class ConnectionHandler extends Thread {
                                          * We got the public Peer, lets store it and check that this public key
                                          * indeed corresponds to the KademliaId.
                                          */
-                                        SendPublicKey rootAsSendPublicKey = SendPublicKey.getRootAsSendPublicKey(allocate);
+                                        FBPublicKey rootAsSendPublicKey = FBPublicKey.getRootAsFBPublicKey(allocate);
                                         ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
 
                                         byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
@@ -515,7 +515,7 @@ public class ConnectionHandler extends Thread {
                         } else if (interestOps == (SelectionKey.OP_READ)) {
                             key.interestOps(0);
                         } else {
-                            System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs");
+                            System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs " + interestOps);
                         }
 
                         if (!workingRead.contains(peer)) {

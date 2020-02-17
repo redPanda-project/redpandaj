@@ -274,7 +274,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         try {
             writeBufferLock.tryLock(2, TimeUnit.SECONDS);
 
-            Log.put("DISCONNECT: " + reason, 30);
+            Log.put("DISCONNECT: " + reason, 100);
 
             setConnected(false);
 
@@ -350,13 +350,13 @@ public class Peer implements Comparable<Peer>, Serializable {
         if (writeBufferLock.tryLock()) {
             if (writeBuffer.capacity() > 0) {
                 writeBuffer.put(Command.PING);
-                System.out.println("pinged...");
+                Log.put("pinged...",100);
             } else {
-                System.out.println("didnt ping, buffer has content...");
+                Log.put("didnt ping, buffer has content...",100);
             }
             writeBufferLock.unlock();
         } else {
-            System.out.println("Could not lock for ping!");
+            Log.put("Could not lock for ping!",50);
         }
 
         setWriteBufferFilled();
