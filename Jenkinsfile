@@ -21,9 +21,5 @@ pipeline {
                 }
             }
         }
-        stage('Deliver') {
-            steps {
-            }
-        }
     }
 }
