@@ -516,6 +516,7 @@ public class ConnectionHandler extends Thread {
                             key.interestOps(0);
                         } else {
                             System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs " + interestOps);
+                            key.cancel();
                         }
 
                         if (!workingRead.contains(peer)) {

@@ -350,13 +350,13 @@ public class Peer implements Comparable<Peer>, Serializable {
         if (writeBufferLock.tryLock()) {
             if (writeBuffer.capacity() > 0) {
                 writeBuffer.put(Command.PING);
-                Log.put("pinged...",100);
+                Log.put("pinged...", 100);
             } else {
-                Log.put("didnt ping, buffer has content...",100);
+                Log.put("didnt ping, buffer has content...", 100);
             }
             writeBufferLock.unlock();
         } else {
-            Log.put("Could not lock for ping!",50);
+            Log.put("Could not lock for ping!", 50);
         }
 
         setWriteBufferFilled();
@@ -707,6 +707,14 @@ public class Peer implements Comparable<Peer>, Serializable {
          * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
          */
         PeerList.add(this);
+
+        //lets request some peers form that peer
+        writeBufferLock.lock();
+        try {
+            writeBuffer.put(Command.REQUEST_PEERLIST);
+        } finally {
+            writeBufferLock.unlock();
+        }
 
     }
 

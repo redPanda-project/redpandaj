@@ -12,7 +12,7 @@ import java.util.List;
  */
 public class Log {
 
-    public static int LEVEL = 50;
+    public static int LEVEL = 400;
 
     static {
 //        System.out.println("is testing: " + isJUnitTest());

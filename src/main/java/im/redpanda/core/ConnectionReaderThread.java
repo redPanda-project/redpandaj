@@ -7,6 +7,8 @@ package im.redpanda.core;
 
 
 import com.google.flatbuffers.FlatBufferBuilder;
+import im.redpanda.commands.FBPeer;
+import im.redpanda.commands.FBPeerList;
 import im.redpanda.commands.FBPublicKey;
 
 import java.io.IOException;
@@ -210,7 +212,7 @@ public class ConnectionReaderThread extends Thread {
         int read = -2;
         try {
             read = peer.getSocketChannel().read(peer.readBufferCrypted);
-            Log.put("!!read bytes: " + read,200);
+            Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
             e.printStackTrace();
             key.cancel();
@@ -236,7 +238,7 @@ public class ConnectionReaderThread extends Thread {
             key.cancel();
         } else {
 
-            Log.put("received bytes!",200);
+            Log.put("received bytes!", 200);
 
 
         }
@@ -255,12 +257,78 @@ public class ConnectionReaderThread extends Thread {
             System.out.println("todo: parse data " + readBuffer.remaining());
             byte b = readBuffer.get();
             System.out.println("command: " + b);
-            peer.ping();
+//            peer.ping();
+
+            int parsedBytes = parseCommand(b, readBuffer, peer);
         }
 
 
         readBuffer.compact();
 
+    }
+
+    public static int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
+
+        System.out.println("cmd: " + command + " " + Command.PING + " " + (command == Command.PING));
+
+        if (command == Command.PING) {
+            Log.put("Received ping command", 200);
+            return 1;
+        } else if (command == Command.REQUEST_PEERLIST) {
+
+
+            PeerList.getReadWriteLock().readLock().lock();
+            try {
+
+                int[] peers = new int[PeerList.getPeerArrayList().size()];
+                int[] nodeIds = new int[PeerList.getPeerArrayList().size()];
+                int[] ips = new int[PeerList.getPeerArrayList().size()];
+                int[] ports = new int[PeerList.getPeerArrayList().size()];
+
+                FlatBufferBuilder builder = new FlatBufferBuilder(1024 * 200);
+
+                int cnt = 0;
+                for (Peer peerToWrite : PeerList.getPeerArrayList()) {
+
+//                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
+                    nodeIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+                    ips[cnt] = builder.createString(peerToWrite.ip);
+                    ports[cnt] = peerToWrite.getPort();
+                    peers[cnt] = FBPeer.createFBPeer(builder, nodeIds[cnt], ips[cnt], (short) ports[cnt]);
+                    cnt++;
+                }
+
+
+                int peersVector = FBPeerList.createPeersVector(builder, peers);
+
+
+                int fbPeerList = FBPeerList.createFBPeerList(builder, peersVector);
+
+//                FBPeerList.startFBPeerList(builder);
+//                FBPeerList.addPeers(builder, peersVector);
+//                int fbPeerList = FBPeerList.endFBPeerList(builder);
+                builder.finish(fbPeerList);
+
+                ByteBuffer byteBuffer = builder.dataBuffer();
+                System.out.println("peersoutbuffer: " + byteBuffer);
+
+                peer.getWriteBufferLock().lock();
+                try {
+                    peer.writeBuffer.put(byteBuffer);
+                    peer.setWriteBufferFilled();
+                } finally {
+                    peer.getWriteBufferLock().unlock();
+                }
+
+
+            } finally {
+                PeerList.getReadWriteLock().readLock().unlock();
+            }
+
+
+        }
+
+        return 0;
     }
 
 
