@@ -338,7 +338,7 @@ public class PeerInHandshake {
         try {
             byte[] outPlain;
 
-            System.out.println("len to decrypt: " + bytesToDecrypt.length);
+//            System.out.println("len to decrypt: " + bytesToDecrypt.length);
 
             outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
             int decryptLength = cipherReceive.update(bytesToDecrypt, 0,

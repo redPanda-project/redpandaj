@@ -21,16 +21,16 @@ public final class FBPeer extends Table {
   public String ip() { int o = __offset(6); return o != 0 ? __string(o + bb_pos) : null; }
   public ByteBuffer ipAsByteBuffer() { return __vector_as_bytebuffer(6, 1); }
   public ByteBuffer ipInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 6, 1); }
-  public short port() { int o = __offset(8); return o != 0 ? bb.getShort(o + bb_pos) : 0; }
+  public int port() { int o = __offset(8); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
 
   public static int createFBPeer(FlatBufferBuilder builder,
       int nodeIdOffset,
       int ipOffset,
-      short port) {
+      int port) {
     builder.startObject(3);
+    FBPeer.addPort(builder, port);
     FBPeer.addIp(builder, ipOffset);
     FBPeer.addNodeId(builder, nodeIdOffset);
-    FBPeer.addPort(builder, port);
     return FBPeer.endFBPeer(builder);
   }
 
@@ -39,7 +39,7 @@ public final class FBPeer extends Table {
   public static int createNodeIdVector(FlatBufferBuilder builder, byte[] data) { builder.startVector(1, data.length, 1); for (int i = data.length - 1; i >= 0; i--) builder.addByte(data[i]); return builder.endVector(); }
   public static void startNodeIdVector(FlatBufferBuilder builder, int numElems) { builder.startVector(1, numElems, 1); }
   public static void addIp(FlatBufferBuilder builder, int ipOffset) { builder.addOffset(1, ipOffset, 0); }
-  public static void addPort(FlatBufferBuilder builder, short port) { builder.addShort(2, port, 0); }
+  public static void addPort(FlatBufferBuilder builder, int port) { builder.addInt(2, port, 0); }
   public static int endFBPeer(FlatBufferBuilder builder) {
     int o = builder.endObject();
     return o;

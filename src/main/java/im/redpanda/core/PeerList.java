@@ -179,6 +179,15 @@ public class PeerList {
         return removedOnePeer;
     }
 
+    /**
+     * clears all underlying lists and Hashmaps. Does not acquire locks.
+     */
+    public static void clear() {
+        peerlist.clear();
+        peerArrayList.clear();
+        peerlistIpPort.clear();
+    }
+
     public static Peer get(KademliaId id) {
         try {
             readWriteLock.readLock().lock();

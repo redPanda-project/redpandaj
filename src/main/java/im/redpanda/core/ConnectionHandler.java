@@ -303,7 +303,7 @@ public class ConnectionHandler extends Thread {
 
                             if (!peerInHandshake.isEncryptionActive()) {
 
-                                Log.put("read: " + read + " " + key.interestOps(),150);
+                                Log.put("read: " + read + " " + key.interestOps(), 150);
                                 if (peerInHandshake.getStatus() == 0) {
                                     /**
                                      * The status indicates that no handshake was parsed before for this PeerInHandshake
@@ -361,12 +361,12 @@ public class ConnectionHandler extends Thread {
 
                                         //lets read the random bytes from them
 
-                                        if (allocate.remaining() < PeerInHandshake.IVbytelen/2) {
+                                        if (allocate.remaining() < PeerInHandshake.IVbytelen / 2) {
                                             System.out.println("not enough bytes for encryption...");
                                             peerInHandshake.getSocketChannel().close();
                                         }
 
-                                        byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen/2];
+                                        byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen / 2];
                                         allocate.get(randomBytesFromThem);
 
                                         peerInHandshake.setRandomFromThem(randomBytesFromThem);
@@ -412,6 +412,7 @@ public class ConnectionHandler extends Thread {
 
                                         byte[] bytesSendToPing = new byte[1];
                                         bytesSendToPing[0] = Command.PING;
+
 
                                         byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
                                         ByteBuffer wrap = ByteBuffer.wrap(encrypt);
@@ -516,6 +517,8 @@ public class ConnectionHandler extends Thread {
                             key.interestOps(0);
                         } else {
                             System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs " + interestOps);
+                            key.interestOps(0);
+//                            key.cancel();
                         }
 
                         if (!workingRead.contains(peer)) {
@@ -529,7 +532,7 @@ public class ConnectionHandler extends Thread {
 
                     } else if (key.isWritable()) {
 
-                        Log.putStd("key is writeAble");
+//                        Log.putStd("key is writeAble");
                         peer.writeBufferLock.lock();
 
                         try {
@@ -549,7 +552,7 @@ public class ConnectionHandler extends Thread {
                             remainingBytes = peer.writeBufferCrypted.hasRemaining();
                             peer.writeBufferCrypted.compact();
 
-                            Log.putStd("remainingBytes: " + remainingBytes);
+//                            Log.putStd("remainingBytes: " + remainingBytes);
 
                             //switch buffer for reading
                             if (!remainingBytes) {

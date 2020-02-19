@@ -53,9 +53,12 @@ public class PeerJobs extends Thread {
                         PeerList.remove(p);
                     }
 
-                    if (p.lastPinged - p.lastActionOnConnection > Settings.pingDelay * 2 + 30000
-                            || (p.isConnecting && p.getLastAnswered() > 10000)
-                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingDelay)) {
+//                    if (p.lastPinged - p.lastActionOnConnection > Settings.pingDelay * 2 + 30000
+//                            || (p.isConnecting && p.getLastAnswered() > 10000)
+//                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingDelay)) {
+
+                    if ((p.isConnecting && p.getLastAnswered() > 10000)
+                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingTimeout)) {
 
 
                         if (p.isConnected() || p.isConnecting) {

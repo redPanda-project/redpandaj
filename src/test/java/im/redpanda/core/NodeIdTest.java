@@ -10,7 +10,6 @@ import static org.junit.Assert.assertTrue;
 public class NodeIdTest {
 
     static {
-
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     }
 

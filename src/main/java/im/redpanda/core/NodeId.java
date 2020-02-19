@@ -30,6 +30,7 @@ public class NodeId {
 
     /**
      * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically computed when calling the get method.
+     *
      * @param keyPair
      */
     public NodeId(KeyPair keyPair) {
@@ -37,10 +38,21 @@ public class NodeId {
     }
 
     /**
+     * Obtains a NodeId object from a given KademliaId, the keypair is unknown.
+     *
+     * @param kademliaId
+     */
+    public NodeId(KademliaId kademliaId) {
+        this.kademliaId = kademliaId;
+    }
+
+    /**
      * Generates a new NodeId with a new random key.
      */
     public NodeId() {
-        System.out.println("generating new node id, this may take some time");
+        if (!Log.isJUnitTest()) {
+            System.out.println("generating new node id, this may take some time");
+        }
         while (true) {
 //            System.out.print(".");
             keyPair = generateECKeys();
@@ -48,6 +60,11 @@ public class NodeId {
             byte[] bytes = sha256Hash.getBytes();
 
 //            if (bytes[0] == 0 && bytes[1] == 0) {
+
+            if (Log.isJUnitTest()) {
+                break;
+            }
+
             if (bytes[0] == 0) {
                 //todo change later for prod to more 0's
                 /**
@@ -69,7 +86,6 @@ public class NodeId {
         byte[] bytes = sha256Hash.getBytes();
         return bytes[0] == 0;
     }
-
 
 
     public static KeyPair generateECKeys() {
@@ -126,6 +142,7 @@ public class NodeId {
 
     /**
      * The KademliaId is automatically computed upon the first call of this method.
+     *
      * @return
      */
     public KademliaId getKademliaId() {
@@ -183,6 +200,7 @@ public class NodeId {
 
     /**
      * Two NodeId are equal if their KademliaId is equal.
+     *
      * @param obj
      * @return
      */
@@ -202,5 +220,33 @@ public class NodeId {
 
     public KeyPair getKeyPair() {
         return keyPair;
+    }
+
+    /**
+     * Sets the keypair of this object if not already provided and will check against the KademliaId that this
+     * keypair fits to the already provided KademliaId.
+     *
+     * @param keyPair
+     */
+    public void setKeyPair(KeyPair keyPair) throws KeypairDoesNotMatchException {
+        if (keyPair != null) {
+            throw new RuntimeException("keypair has to be null if you want to set the keypair of a NodeId!");
+        }
+        if (kademliaId == null) {
+            throw new RuntimeException("To check the keypair there has to be already a known KademliaId!");
+        }
+
+        KademliaId kademliaId = fromPublicKey(keyPair.getPublic());
+
+        if (!kademliaId.equals(this.kademliaId)) {
+            throw new KeypairDoesNotMatchException();
+        } else {
+            this.keyPair = keyPair;
+        }
+
+    }
+
+    public static class KeypairDoesNotMatchException extends Exception {
+
     }
 }
