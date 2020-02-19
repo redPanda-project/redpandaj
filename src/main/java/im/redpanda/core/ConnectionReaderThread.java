@@ -314,6 +314,8 @@ public class ConnectionReaderThread extends Thread {
 
                 peer.getWriteBufferLock().lock();
                 try {
+                    peer.writeBuffer.put(Command.SEND_PEERLIST);
+                    peer.writeBuffer.putInt(byteBuffer.remaining());
                     peer.writeBuffer.put(byteBuffer);
                     peer.setWriteBufferFilled();
                 } finally {

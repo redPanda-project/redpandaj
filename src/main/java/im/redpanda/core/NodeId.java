@@ -30,6 +30,7 @@ public class NodeId {
 
     /**
      * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically computed when calling the get method.
+     *
      * @param keyPair
      */
     public NodeId(KeyPair keyPair) {
@@ -40,7 +41,9 @@ public class NodeId {
      * Generates a new NodeId with a new random key.
      */
     public NodeId() {
-        System.out.println("generating new node id, this may take some time");
+        if (!Log.isJUnitTest()) {
+            System.out.println("generating new node id, this may take some time");
+        }
         while (true) {
 //            System.out.print(".");
             keyPair = generateECKeys();
@@ -48,6 +51,11 @@ public class NodeId {
             byte[] bytes = sha256Hash.getBytes();
 
 //            if (bytes[0] == 0 && bytes[1] == 0) {
+
+            if (Log.isJUnitTest()) {
+                break;
+            }
+
             if (bytes[0] == 0) {
                 //todo change later for prod to more 0's
                 /**
@@ -69,7 +77,6 @@ public class NodeId {
         byte[] bytes = sha256Hash.getBytes();
         return bytes[0] == 0;
     }
-
 
 
     public static KeyPair generateECKeys() {
@@ -126,6 +133,7 @@ public class NodeId {
 
     /**
      * The KademliaId is automatically computed upon the first call of this method.
+     *
      * @return
      */
     public KademliaId getKademliaId() {
@@ -183,6 +191,7 @@ public class NodeId {
 
     /**
      * Two NodeId are equal if their KademliaId is equal.
+     *
      * @param obj
      * @return
      */

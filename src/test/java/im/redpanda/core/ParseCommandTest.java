@@ -24,7 +24,7 @@ public class ParseCommandTest {
     @Test
     public void testREQUEST_PEERLIST() {
 
-        int peersToTest = 50;
+        int peersToTest = 100;
 
         PeerList.getReadWriteLock().writeLock().lock();
         int i = 0;
@@ -46,7 +46,17 @@ public class ParseCommandTest {
 
         writeBuffer.flip();
 
-        FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(writeBuffer);
+        byte cmd = writeBuffer.get();
+
+        assertTrue(cmd == Command.SEND_PEERLIST);
+
+        int bytesforBuffer = writeBuffer.getInt();
+
+        byte[] bytesForFBPeerList = new byte[bytesforBuffer];
+
+        writeBuffer.get(bytesForFBPeerList);
+
+        FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForFBPeerList));
 
         assertTrue(rootAsFBPeerList.peersLength() == peersToTest);
 
@@ -57,6 +67,8 @@ public class ParseCommandTest {
         }
 
         assertTrue(foundPeer.ip().equals("testip" + (i-1)));
+
+        assertTrue(writeBuffer.remaining() == 0);
 
 
     }
