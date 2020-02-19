@@ -7,6 +7,7 @@ package im.redpanda.core;
 
 
 import com.google.flatbuffers.FlatBufferBuilder;
+import im.redpanda.App;
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
 import im.redpanda.commands.FBPublicKey;
@@ -30,49 +31,15 @@ import java.util.logging.Logger;
  */
 public class ConnectionReaderThread extends Thread {
 
-    public static final int MAX_ELO_VALUE = 12000 * 10;
     public static int MAX_THREADS = 30;
     public static int STD_TIMEOUT = 10;
-    public static int ROUNDS_TO_PLAY = 5;
     public static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
     public static final ReentrantLock threadLock = new ReentrantLock(false);
-    public SecureRandom secureRandom = new SecureRandom();
-    public Random random = new Random();
-    public static AtomicInteger searchCounter = new AtomicInteger(100);
-
-    public static final HashMap<Byte, Long> parseStats = new HashMap<>();
 
     private boolean run = true;
     private int timeout;
 
 
-    public static final boolean noBotsAllowed = false;
-
-    static {
-
-        new Thread() {
-            @Override
-            public void run() {
-
-                while (!Server.SHUTDOWN) {
-
-                    try {
-                        sleep(10000);
-                    } catch (InterruptedException ex) {
-                        Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-
-                    int addAndGet = searchCounter.addAndGet(-50);
-                    if (addAndGet < 0) {
-                        searchCounter.set(0);
-                    }
-                }
-
-            }
-
-        }.start();
-
-    }
 
     public ConnectionReaderThread(int timeout) {
         this.timeout = timeout;
@@ -250,29 +217,50 @@ public class ConnectionReaderThread extends Thread {
         peer.decryptInputdata();
 
 
+        loopCommands(peer, readBuffer);
+
+    }
+
+    public static void loopCommands(Peer peer, ByteBuffer readBuffer) {
         readBuffer.flip();
 
-        if (readBuffer.hasRemaining()) {
+        int parsedBytesLocally = -1;
+
+        while (readBuffer.hasRemaining() && parsedBytesLocally != 0) {
+
+            int newPosition = readBuffer.position(); // lets save the position before touching the buffer
+
             peer.setLastActionOnConnection(System.currentTimeMillis());
-            System.out.println("todo: parse data " + readBuffer.remaining());
+//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
-            System.out.println("command: " + b);
+//            Log.put("command: " + b, 200);
 //            peer.ping();
 
-            int parsedBytes = parseCommand(b, readBuffer, peer);
+
+            parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            newPosition += parsedBytesLocally;
+            readBuffer.position(newPosition);
         }
 
-
         readBuffer.compact();
-
     }
 
     public static int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
 
-        System.out.println("cmd: " + command + " " + Command.PING + " " + (command == Command.PING));
+        Log.put("cmd: " + command + " " + Command.PING + " " + (command == Command.PING), 200);
 
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
+            peer.getWriteBufferLock().lock();
+            try {
+                peer.writeBuffer.put(Command.PONG);
+            } finally {
+                peer.getWriteBufferLock().unlock();
+            }
+            return 1;
+        }
+        if (command == Command.PONG) {
+            Log.put("Received pong command", 200);
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
 
@@ -281,9 +269,8 @@ public class ConnectionReaderThread extends Thread {
             try {
 
                 int[] peers = new int[PeerList.getPeerArrayList().size()];
-                int[] nodeIds = new int[PeerList.getPeerArrayList().size()];
+                int[] kademliaIds = new int[PeerList.getPeerArrayList().size()];
                 int[] ips = new int[PeerList.getPeerArrayList().size()];
-                int[] ports = new int[PeerList.getPeerArrayList().size()];
 
                 FlatBufferBuilder builder = new FlatBufferBuilder(1024 * 200);
 
@@ -291,10 +278,9 @@ public class ConnectionReaderThread extends Thread {
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
-                    nodeIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+                    kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
                     ips[cnt] = builder.createString(peerToWrite.ip);
-                    ports[cnt] = peerToWrite.getPort();
-                    peers[cnt] = FBPeer.createFBPeer(builder, nodeIds[cnt], ips[cnt], (short) ports[cnt]);
+                    peers[cnt] = FBPeer.createFBPeer(builder, kademliaIds[cnt], ips[cnt], peerToWrite.getPort());
                     cnt++;
                 }
 
@@ -310,7 +296,7 @@ public class ConnectionReaderThread extends Thread {
                 builder.finish(fbPeerList);
 
                 ByteBuffer byteBuffer = builder.dataBuffer();
-                System.out.println("peersoutbuffer: " + byteBuffer);
+//                System.out.println("peersoutbuffer: " + byteBuffer);
 
                 peer.getWriteBufferLock().lock();
                 try {
@@ -327,7 +313,52 @@ public class ConnectionReaderThread extends Thread {
                 PeerList.getReadWriteLock().readLock().unlock();
             }
 
+            return 1;
 
+        } else if (command == Command.SEND_PEERLIST) {
+
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
+                return 0;
+            }
+
+            byte[] bytesForPeerList = new byte[toRead];
+            readBuffer.get(bytesForPeerList);
+
+            FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForPeerList));
+
+            Log.put("we obtained a peerlist with " + rootAsFBPeerList.peersLength() + " peers....", 20);
+
+            for (int i = 0; i < rootAsFBPeerList.peersLength(); i++) {
+
+                FBPeer fbPeer = rootAsFBPeerList.peers(i);
+
+                ByteBuffer nodeIdBuffer = fbPeer.nodeIdAsByteBuffer();
+                byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
+                nodeIdBuffer.get(nodeIdBytes);
+
+                KademliaId kademliaId = new KademliaId(nodeIdBytes);
+
+                if (kademliaId.equals(Server.NONCE)) {
+                    Log.put("found ourselves in the peerlist", 80);
+                    break;
+                }
+
+                NodeId nodeId = new NodeId(kademliaId);
+
+                Peer newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
+
+                Peer add = PeerList.add(newPeer);
+                if (add == null) {
+                    Log.put("new peer added: " + newPeer, 50);
+                } else {
+                    Log.put("peer was already in peerlist: " + newPeer, 50);
+                }
+
+
+            }
+
+            return 1 + 4 + toRead;
         }
 
         return 0;
@@ -487,7 +518,7 @@ public class ConnectionReaderThread extends Thread {
                  */
                 peerInHandshake.setPeer(peer);
 
-                if (peerInHandshake.getPeer().getNodeId() == null) {
+                if (peerInHandshake.getPeer().getNodeId() == null || peerInHandshake.getPeer().getNodeId().keyPair == null) {
                     peerInHandshake.setStatus(1);
                     requestPublicKey(peerInHandshake);
                 } else {
@@ -507,11 +538,18 @@ public class ConnectionReaderThread extends Thread {
                 requestPublicKey(peerInHandshake);
             }
         } else {
-            /**
-             * We set the status of the handshake to finished from our site since we are not expecting more data
-             * to complete the handshake, the other peer may still request our public key.
-             */
-            peerInHandshake.setStatus(-1);
+
+            //lets check if the NodeId has a keypair
+            if (peerInHandshake.getPeer().getNodeId().keyPair == null) {
+                peerInHandshake.setStatus(1);
+                requestPublicKey(peerInHandshake);
+            } else {
+                /**
+                 * We set the status of the handshake to finished from our site since we are not expecting more data
+                 * to complete the handshake, the other peer may still request our public key.
+                 */
+                peerInHandshake.setStatus(-1);
+            }
         }
 
 

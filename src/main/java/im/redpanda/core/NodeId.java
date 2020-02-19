@@ -38,6 +38,15 @@ public class NodeId {
     }
 
     /**
+     * Obtains a NodeId object from a given KademliaId, the keypair is unknown.
+     *
+     * @param kademliaId
+     */
+    public NodeId(KademliaId kademliaId) {
+        this.kademliaId = kademliaId;
+    }
+
+    /**
      * Generates a new NodeId with a new random key.
      */
     public NodeId() {
@@ -211,5 +220,33 @@ public class NodeId {
 
     public KeyPair getKeyPair() {
         return keyPair;
+    }
+
+    /**
+     * Sets the keypair of this object if not already provided and will check against the KademliaId that this
+     * keypair fits to the already provided KademliaId.
+     *
+     * @param keyPair
+     */
+    public void setKeyPair(KeyPair keyPair) throws KeypairDoesNotMatchException {
+        if (keyPair != null) {
+            throw new RuntimeException("keypair has to be null if you want to set the keypair of a NodeId!");
+        }
+        if (kademliaId == null) {
+            throw new RuntimeException("To check the keypair there has to be already a known KademliaId!");
+        }
+
+        KademliaId kademliaId = fromPublicKey(keyPair.getPublic());
+
+        if (!kademliaId.equals(this.kademliaId)) {
+            throw new KeypairDoesNotMatchException();
+        } else {
+            this.keyPair = keyPair;
+        }
+
+    }
+
+    public static class KeypairDoesNotMatchException extends Exception {
+
     }
 }

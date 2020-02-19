@@ -7,6 +7,7 @@ import org.junit.Test;
 import java.nio.ByteBuffer;
 import java.security.Security;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ParseCommandTest {
@@ -17,8 +18,58 @@ public class ParseCommandTest {
 
     public Peer getPeerForDebug() {
         Peer me = new Peer("me", 1);
-        me.writeBuffer = ByteBuffer.allocate(1024*1024*5);
+        me.writeBuffer = ByteBuffer.allocate(1024 * 1024 * 5);
         return me;
+    }
+
+
+    @Test
+    public void testLoopCommands() {
+
+        //lets check if it is able to parse 3 ping commands in one step
+        ByteBuffer allocate = ByteBuffer.allocate(1024);
+        allocate.put(Command.PING);
+        allocate.put(Command.PING);
+        allocate.put(Command.PING);
+
+        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+
+        //lets go to read mode and check for remaining bytes
+        allocate.flip();
+        assertFalse(allocate.hasRemaining());
+
+
+        //lets check a not complete SEND PEERLIST command
+        allocate = ByteBuffer.allocate(1024);
+        allocate.put(Command.SEND_PEERLIST);
+        allocate.putInt(1);
+
+        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+
+        //lets go to read mode and check for remaining bytes
+        allocate.flip();
+
+        assertTrue(allocate.get() == Command.SEND_PEERLIST);
+        assertTrue(allocate.getInt() == 1);
+
+
+        //lets combine both from above
+        allocate = ByteBuffer.allocate(1024);
+        allocate.put(Command.PING);
+        allocate.put(Command.PING);
+        allocate.put(Command.PING);
+        allocate.put(Command.PING);
+        allocate.put(Command.SEND_PEERLIST);
+        allocate.putInt(1);
+
+        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+
+        //lets go to read mode and check for remaining bytes
+        allocate.flip();
+
+        assertTrue(allocate.get() == Command.SEND_PEERLIST);
+        assertTrue(allocate.getInt() == 1);
+
     }
 
     @Test
@@ -33,7 +84,6 @@ public class ParseCommandTest {
             testpeer1.setNodeId(new NodeId());
             PeerList.add(testpeer1);
         }
-
         PeerList.getReadWriteLock().writeLock().unlock();
 
         Peer me = getPeerForDebug();
@@ -42,7 +92,7 @@ public class ParseCommandTest {
 
         ByteBuffer writeBuffer = me.getWriteBuffer();
 
-        System.out.println("" + writeBuffer);
+//        System.out.println("" + writeBuffer);
 
         writeBuffer.flip();
 
@@ -66,10 +116,47 @@ public class ParseCommandTest {
 //            System.out.println("" + foundPeer.ip());
         }
 
-        assertTrue(foundPeer.ip().equals("testip" + (i-1)));
+        assertTrue(foundPeer.ip().equals("testip" + (i - 1)));
 
         assertTrue(writeBuffer.remaining() == 0);
 
+
+    }
+
+    @Test
+    public void testSend_PEERLIST() {
+
+        int peersToTest = 100;
+
+        PeerList.getReadWriteLock().writeLock().lock();
+        int i = 0;
+        for (i = 0; i < peersToTest; i++) {
+            Peer testpeer1 = new Peer("testip" + i, i);
+            testpeer1.setNodeId(new NodeId());
+            PeerList.add(testpeer1);
+        }
+        PeerList.getReadWriteLock().writeLock().unlock();
+
+        Peer me = getPeerForDebug();
+
+        ConnectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
+
+        PeerList.getReadWriteLock().writeLock().lock();
+
+        PeerList.clear();
+
+
+        ByteBuffer writeBuffer = me.getWriteBuffer();
+
+        writeBuffer.flip();
+
+        ConnectionReaderThread.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
+
+        assertFalse(writeBuffer.hasRemaining());
+
+        assertTrue(PeerList.size() == peersToTest);
+
+        PeerList.getReadWriteLock().writeLock().unlock();
 
     }
 

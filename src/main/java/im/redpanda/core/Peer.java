@@ -83,6 +83,12 @@ public class Peer implements Comparable<Peer>, Serializable {
         this.port = port;
     }
 
+    public Peer(String ip, int port, NodeId id) {
+        this.ip = ip;
+        this.port = port;
+        this.nodeId = id;
+    }
+
     /**
      * Set the nodeId of this Peer, does not check the consitency with the KademliaId.
      *
@@ -431,7 +437,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
             writeBuffer.compact();
 
-            System.out.println("encrypted " + remaining + " bytes...");
+//            System.out.println("encrypted " + remaining + " bytes...");
 
             return remaining;
         } finally {
@@ -470,7 +476,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
             readBufferCrypted.compact();
 
-            System.out.println("decrypted  " + remaining + " bytes...");
+//            System.out.println("decrypted  " + remaining + " bytes...");
 
             return remaining;
         } finally {
@@ -649,7 +655,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         try {
             byte[] outPlain;
 
-            System.out.println("len to decrypt: " + bytesToDecrypt.length);
+//            System.out.println("len to decrypt: " + bytesToDecrypt.length);
 
             outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
             int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
@@ -708,10 +714,11 @@ public class Peer implements Comparable<Peer>, Serializable {
          */
         PeerList.add(this);
 
-        //lets request some peers form that peer
+//        lets request some peers form that peer
         writeBufferLock.lock();
         try {
             writeBuffer.put(Command.REQUEST_PEERLIST);
+            setWriteBufferFilled();
         } finally {
             writeBufferLock.unlock();
         }
