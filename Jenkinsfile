@@ -1,7 +1,7 @@
 pipeline {
     agent {
         docker {
-            image 'maven:3-alpine'
+            image 'maven:3.6.3-jdk-8-slim'
             args '-v /root/.m2:/root/.m2'
         }
     }
@@ -19,6 +19,17 @@ pipeline {
                 always {
                     junit 'target/surefire-reports/*.xml'
                 }
+            }
+        }
+        stage('Coverage') {
+            steps {
+                sh 'mvn jacoco:prepare-agent install jacoco:report'
+                jacoco(
+                  execPattern: 'target/*.exec',
+                  classPattern: 'target/classes',
+                  sourcePattern: 'src/main/java',
+                  exclusionPattern: 'src/test*'
+                )
             }
         }
     }
