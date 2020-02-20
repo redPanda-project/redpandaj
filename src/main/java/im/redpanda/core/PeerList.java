@@ -78,11 +78,18 @@ public class PeerList {
             }
         }
 
-        oldPeer = peerlistIpPort.get(getIpPortHash(peer));
-        if (oldPeer != null) {
-            // Peer with same Ip+Port exists already
-            System.out.println("Peer with same Ip+Port exists already");
-            return oldPeer;
+        /**
+         * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of data the new Node
+         * has the same (ip,port) but different Identity. The (ip,port) will then be removed from the old Peer.
+         * Since we allow Peers without (ip,port) in general we allow to add Peers without (ip,port) here.
+         */
+        if (peer.getIp() != null) {
+            oldPeer = peerlistIpPort.get(getIpPortHash(peer));
+            if (oldPeer != null) {
+                // Peer with same Ip+Port exists already
+                System.out.println("Peer with same Ip+Port exists already");
+                return oldPeer;
+            }
         }
 
         try {
@@ -145,15 +152,42 @@ public class PeerList {
         }
     }
 
+    /**
+     * Completely removes the Peer from all Lists by Ip and Port.
+     *
+     * @param ip
+     * @param port
+     * @return
+     */
     public static boolean removeIpPort(String ip, int port) {
         readWriteLock.writeLock().lock();
         try {
-            Peer peer = peerlistIpPort.get(getIpPortHash(ip, port));
+            Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
             if (peer == null) {
                 return false;
             }
             peerlist.remove(peer.getKademliaId());
             peerArrayList.remove(peer);
+            return true;
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Removes the Peer from the IpPortList, peer is still in the other lists. Use this only for ip,port changes.
+     *
+     * @param ip
+     * @param port
+     * @return
+     */
+    public static boolean removeIpPortOnly(String ip, int port) {
+        readWriteLock.writeLock().lock();
+        try {
+            Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
+            if (peer == null) {
+                return false;
+            }
             return true;
         } finally {
             readWriteLock.writeLock().unlock();
@@ -171,8 +205,13 @@ public class PeerList {
         try {
             readWriteLock.writeLock().lock();
             Peer remove = peerlist.remove(id);
+            if (remove == null) {
+                return false;
+            }
             removedOnePeer = peerArrayList.remove(remove);
-            peerlistIpPort.remove(getIpPortHash(remove));
+            if (remove.getIp() != null && remove.getPort() != 0) {
+                peerlistIpPort.remove(getIpPortHash(remove));
+            }
         } finally {
             readWriteLock.writeLock().unlock();
         }

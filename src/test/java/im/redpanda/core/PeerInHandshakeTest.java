@@ -29,7 +29,7 @@ public class PeerInHandshakeTest {
         SocketChannel open = SocketChannel.open();
         open.configureBlocking(false);
 
-        open.connect(new InetSocketAddress("127.0.0.1", Server.MY_PORT));
+        boolean alreadyConnected = open.connect(new InetSocketAddress("127.0.0.1", Server.MY_PORT));
 
         PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", open);
 
@@ -38,7 +38,8 @@ public class PeerInHandshakeTest {
         Server.connectionHandler.selector.wakeup();
 
 
-        peerInHandshake.addConnection();
+        //lets not read the data by the main thread by using the alreadyConnected value false....
+        peerInHandshake.addConnection(false);
 
         Server.connectionHandler.selector.select();
 

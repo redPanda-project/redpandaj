@@ -83,7 +83,7 @@ public class PeerInHandshake {
     }
 
 
-    public void addConnection() {
+    public void addConnection(boolean alreadyConnected) {
         try {
             socketChannel.configureBlocking(false);
 
@@ -94,12 +94,19 @@ public class PeerInHandshake {
 //                if (connectionPending) {
 //                    peer.isConnecting = true;
 //                    peer.setConnected(false);
-                key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ);
+//                key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT);
+//                key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ);
 //                } else {
 //                    peer.isConnecting = false;
 //                    peer.setConnected(true);
 //                    key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_READ);
 //                }
+
+                if (alreadyConnected) {
+                    key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_READ);
+                } else {
+                    key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT);
+                }
             } finally {
                 ConnectionHandler.selectorLock.unlock();
             }
