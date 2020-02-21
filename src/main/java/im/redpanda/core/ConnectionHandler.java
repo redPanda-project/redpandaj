@@ -168,6 +168,12 @@ public class ConnectionHandler extends Thread {
 
             //Log.putStd("1: " + df.format((double)(System.nanoTime() - time)/ 1000000.));
             Log.put("NEW KEY RUN - before select", 2000);
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
             int readyChannels = 0;
             try {
                 selectorLock.lock();
@@ -177,6 +183,7 @@ public class ConnectionHandler extends Thread {
                 e.printStackTrace();
                 try {
                     sleep(100);
+                    System.out.println("exception in selector");
                 } catch (InterruptedException ex) {
                     ex.printStackTrace();
                 }
@@ -196,6 +203,7 @@ public class ConnectionHandler extends Thread {
 //                } catch (InterruptedException ex) {
 //                    Logger.getLogger(ConnectionHandler.class.getName()).log(Level.SEVERE, null, ex);
 //                }
+//                System.out.println("no selected keys");
                 continue;
             }
 
@@ -280,6 +288,9 @@ public class ConnectionHandler extends Thread {
                                 continue;
                             }
 
+                            //we have to remove the OP_CONNECT interest or the selection key will be faulty
+                            key.interestOps(SelectionKey.OP_READ);
+
                             Log.putStd("Connection established...");
                             ConnectionReaderThread.sendHandshake(peerInHandshake);
                         }
@@ -340,6 +351,7 @@ public class ConnectionHandler extends Thread {
                                              * We obtained a public key which does not match the KademliaId of this Peer
                                              * and should cancel that connection here.
                                              */
+                                            Log.put("Wrong KademliaId/Public Key for that peer...", 20);
                                             peerInHandshake.setStatus(2);
                                             peerInHandshake.getSocketChannel().close();
                                         } else {
@@ -361,9 +373,10 @@ public class ConnectionHandler extends Thread {
 
                                         //lets read the random bytes from them
 
-                                        if (allocate.remaining() < PeerInHandshake.IVbytelen / 2) {
-                                            System.out.println("not enough bytes for encryption...");
+                                        if (allocate.remaining() < PeerInHandshake.IVbytelen / 2.) {
+                                            System.out.println("not enough bytes for encryption... " + allocate.remaining());
                                             peerInHandshake.getSocketChannel().close();
+                                            continue;
                                         }
 
                                         byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen / 2];

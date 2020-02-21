@@ -252,7 +252,7 @@ public class Peer implements Comparable<Peer>, Serializable {
             a -= 1000;
         }
 
-        if (ip.contains(":")) {
+        if (ip != null && ip.contains(":")) {
             a += 50;
         }
 
@@ -731,5 +731,12 @@ public class Peer implements Comparable<Peer>, Serializable {
                 "ip='" + ip + '\'' +
                 ", port=" + port +
                 '}';
+    }
+
+    public void clearConnectionDetails() {
+        Log.put("clearing peer: " + ip + ":" + port, 50);
+        PeerList.removeIpPortOnly(ip, port);
+        ip = null;
+        port = 0;
     }
 }

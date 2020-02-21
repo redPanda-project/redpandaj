@@ -12,7 +12,7 @@ import java.util.List;
  */
 public class Log {
 
-    public static int LEVEL = 20;
+    public static int LEVEL = 300;
 
     static {
 //        System.out.println("is testing: " + isJUnitTest());
@@ -33,7 +33,7 @@ public class Log {
         if (20 > LEVEL) {
             return;
         }
-        System.out.println("Log: "+msg);
+        System.out.println("Log: " + msg);
     }
 
     public static void putCritical(Throwable e) {

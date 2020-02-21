@@ -40,7 +40,6 @@ public class ConnectionReaderThread extends Thread {
     private int timeout;
 
 
-
     public ConnectionReaderThread(int timeout) {
         this.timeout = timeout;
         Log.putStd("########################## spawned new connectionReaderThread!!!!");
@@ -161,6 +160,7 @@ public class ConnectionReaderThread extends Thread {
 //                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
 //            }
             ConnectionHandler.doneRead.add(poll);
+//            System.out.println("wakeup selector from readerthread");
             Server.connectionHandler.selector.wakeup();
 
         }
@@ -278,7 +278,12 @@ public class ConnectionReaderThread extends Thread {
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
-                    kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+
+                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().getKademliaId() != null) {
+                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+                    } else {
+
+                    }
                     ips[cnt] = builder.createString(peerToWrite.ip);
                     peers[cnt] = FBPeer.createFBPeer(builder, kademliaIds[cnt], ips[cnt], peerToWrite.getPort());
                     cnt++;
@@ -500,6 +505,21 @@ public class ConnectionReaderThread extends Thread {
                 if (peerInHandshake.getPeer().getKademliaId() == null) {
                     //we can now update the Identity of the Peer since we had non, most likely we connect from a reseed list
                     PeerList.updateKademliaId(peerInHandshake.getPeer(), identity);
+                } else {
+                    Log.put("wrong identity for that peer, disconnecting....", 30);
+                    try {
+                        peerInHandshake.getSocketChannel().close();
+                        peerInHandshake.getKey().cancel();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    /**
+                     * Lets create a new Peer with the connection details but without any Identity so that this Peer
+                     * can be used, maybe the client wiped its data.
+                     */
+                    peerInHandshake.getPeer().clearConnectionDetails();
+                    PeerList.add(new Peer(peerInHandshake.ip, peerInHandshake.port));
+                    Log.put("we addded that connection details: " + peerInHandshake.ip + ":" + peerInHandshake.port, 30);
                 }
             }
         }

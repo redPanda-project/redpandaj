@@ -16,8 +16,7 @@ public class OutboundHandler extends Thread {
 
     public void init() {
         start();
-        final String orgName = Thread.currentThread().getName();
-        Thread.currentThread().setName(orgName + " - OutboundThread");
+
 
         if (Server.peerList == null || Server.NONCE == null) {
             throw new RuntimeException("Do not start the outbound thread if peers and nonce not loaded!");
@@ -37,9 +36,14 @@ public class OutboundHandler extends Thread {
     @Override
     public void run() {
 
+        final String orgName = Thread.currentThread().getName();
+        Thread.currentThread().setName(orgName + " - OutboundThread");
+
 
         ReadWriteLock peerListLock = Server.peerListLock;
         ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+
+        ArrayList<Peer> peersToRemove = new ArrayList<>();
 
         long loopCount = 0;
 
@@ -134,13 +138,13 @@ public class OutboundHandler extends Thread {
 
 
                     if (Settings.IPV6_ONLY && peer.ip.length() <= 15) {
-                        Server.removePeer(peer);
+                        peersToRemove.add(peer);
                         Log.put("removed peer from peerList, no ipv6 address: " + peer.ip + ":" + peer.port, 200);
                         continue;
                     }
 
                     if (Settings.IPV4_ONLY && peer.ip.length() > 15) {
-                        Server.removePeer(peer);
+                        peersToRemove.add(peer);
                         Log.put("removed peer from peerList, no ipv4 address: " + peer.ip + ":" + peer.port, 200);
                         continue;
                     }
@@ -175,7 +179,7 @@ public class OutboundHandler extends Thread {
                     //(System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 * 4)
                     if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
                         //peerList.remove(peer);
-                        Server.removePeer(peer);
+                        peersToRemove.add(peer);
 
                         if (peer.retries < 200) {
 
@@ -218,6 +222,10 @@ public class OutboundHandler extends Thread {
                 peerListLock.readLock().unlock();
             }
 
+
+            for (Peer toRemove : peersToRemove) {
+                Server.removePeer(toRemove);
+            }
 
             try {
                 allowInterrupt = true;
@@ -271,7 +279,7 @@ public class OutboundHandler extends Thread {
             SocketChannel open = SocketChannel.open();
             open.configureBlocking(false);
 
-            open.connect(new InetSocketAddress(peer.ip, peer.port));
+            boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
 
             PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
 
@@ -282,7 +290,7 @@ public class OutboundHandler extends Thread {
                 peerInHandshake.setNodeId(peer.getNodeId());
             }
 
-            peerInHandshake.addConnection();
+            peerInHandshake.addConnection(alreadyConnected);
 
 //            peer.setSocketChannel(open);
             System.out.println("C");
