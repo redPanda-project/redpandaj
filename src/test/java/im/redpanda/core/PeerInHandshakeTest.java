@@ -22,36 +22,42 @@ public class PeerInHandshakeTest {
         Log.LEVEL = 10000;
 
         ConnectionHandler connectionHandler = new ConnectionHandler();
-        connectionHandler.bind();
         connectionHandler.start();
+
+
+        //lets block the main selector worker
+        connectionHandler.selectorLock.lock();
+        connectionHandler.selector.wakeup();
 
 
         SocketChannel open = SocketChannel.open();
         open.configureBlocking(false);
 
+        Thread.sleep(100);
+
         boolean alreadyConnected = open.connect(new InetSocketAddress("127.0.0.1", Server.MY_PORT));
 
         PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", open);
-
-        //lets block the main selector worker
-        Server.connectionHandler.selectorLock.lock();
-        Server.connectionHandler.selector.wakeup();
 
 
         //lets not read the data by the main thread by using the alreadyConnected value false....
         peerInHandshake.addConnection(false);
 
-        Server.connectionHandler.selector.select();
+        int cnt = 0;
+        while (cnt < 100) {
+            cnt++;
+            int select = connectionHandler.selector.select();
+//            System.out.println("select: " + select);
+            if (select != 0) {
+                break;
+            }
+        }
 
-        Set<SelectionKey> selectionKeys = Server.connectionHandler.selector.selectedKeys();
+        Set<SelectionKey> selectionKeys = connectionHandler.selector.selectedKeys();
 
-        System.out.println("" + selectionKeys.size());
+        assertFalse(selectionKeys.isEmpty());
 
-//        assertFalse(selectionKeys.isEmpty()); // test not reliable enough
-
-        System.out.println("" + selectionKeys.size());
-
-//        assertTrue(selectionKeys.size() == 2); // test not reliable enough
+        assertTrue(selectionKeys.size() == 2);
 
         for (SelectionKey key : selectionKeys) {
             if (key.channel() instanceof ServerSocketChannel) {
@@ -65,17 +71,17 @@ public class PeerInHandshakeTest {
 
 
         peerInHandshake.getKey().interestOps(0);
-        Server.connectionHandler.selector.wakeup();
+        connectionHandler.selector.wakeup();
 
         //lets the main selector accept the connection
-        Server.connectionHandler.selectorLock.unlock();
+        connectionHandler.selectorLock.unlock();
 
-        Thread.sleep(100);
+        Thread.sleep(200);
         System.out.println("try lock");
 
-        while (!Server.connectionHandler.selectorLock.tryLock(1000, TimeUnit.MILLISECONDS)) {
+        while (!connectionHandler.selectorLock.tryLock(1000, TimeUnit.MILLISECONDS)) {
             System.out.println("try locka");
-            Server.connectionHandler.selector.wakeup();
+            connectionHandler.selector.wakeup();
             System.out.println("try lockb");
             Thread.sleep(1000);
             System.out.println("try lock");
@@ -83,13 +89,19 @@ public class PeerInHandshakeTest {
 
 
         peerInHandshake.getKey().interestOps(SelectionKey.OP_READ);
-        Server.connectionHandler.selector.wakeup();
+        connectionHandler.selector.wakeup();
 
-        Server.connectionHandler.selector.select(1000);
+        cnt = 0;
+        while (cnt < 100) {
+            cnt++;
+            int select = connectionHandler.selector.select();
+//            System.out.println("select: " + select);
+            if (select != 0) {
+                break;
+            }
+        }
 
-        selectionKeys = Server.connectionHandler.selector.selectedKeys();
-
-        assertTrue(selectionKeys.size() == 1);
+        selectionKeys = connectionHandler.selector.selectedKeys();
 
 
         for (SelectionKey key : selectionKeys) {
