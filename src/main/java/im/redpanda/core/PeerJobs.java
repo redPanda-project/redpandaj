@@ -34,7 +34,7 @@ public class PeerJobs extends Thread {
         while (!Server.SHUTDOWN) {
 
             try {
-                sleep(5000);
+                sleep(3000 + Server.secureRandom.nextInt(10000));
             } catch (InterruptedException ex) {
                 ex.printStackTrace();
             }
