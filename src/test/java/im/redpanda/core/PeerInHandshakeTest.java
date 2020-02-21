@@ -31,7 +31,9 @@ public class PeerInHandshakeTest {
         SocketChannel open = SocketChannel.open();
         open.configureBlocking(false);
 
-        Thread.sleep(100);
+        while (Server.MY_PORT == -1) {
+            Thread.sleep(10);
+        }
 
         boolean alreadyConnected = open.connect(new InetSocketAddress("127.0.0.1", Server.MY_PORT));
 
@@ -52,7 +54,6 @@ public class PeerInHandshakeTest {
         }
 
         Set<SelectionKey> selectionKeys = connectionHandler.selector.selectedKeys();
-
 
 
         assertFalse(selectionKeys.isEmpty());
