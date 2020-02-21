@@ -32,7 +32,7 @@ public class PeerInHandshakeTest {
         open.configureBlocking(false);
 
         while (Server.MY_PORT == -1) {
-            Thread.sleep(10);
+            Thread.sleep(200);
         }
 
         boolean alreadyConnected = open.connect(new InetSocketAddress("127.0.0.1", Server.MY_PORT));
@@ -48,7 +48,7 @@ public class PeerInHandshakeTest {
             cnt++;
             int select = connectionHandler.selector.select();
 //            System.out.println("select: " + select);
-            if (select != 0) {
+            if (select == 2) {
                 break;
             }
         }
