@@ -277,6 +277,9 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public void disconnect(String reason) {
 
+        isConnecting = false;
+        authed = false;
+
         try {
             writeBufferLock.tryLock(2, TimeUnit.SECONDS);
 
@@ -289,8 +292,6 @@ public class Peer implements Comparable<Peer>, Serializable {
                 connectinThread.interrupt();
             }
 
-            isConnecting = false;
-            authed = false;
 
             if (selectionKey != null) {
                 selectionKey.cancel();
@@ -677,6 +678,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         //disconnect old connection if present
         disconnect("new connection for this peer");
 
+        authed = true;
 
         /**
          * setup the buffers

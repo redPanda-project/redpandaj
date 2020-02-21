@@ -228,6 +228,10 @@ public class ConnectionHandler extends Thread {
 
 //                        Log.put("incoming connection...", 12);
 
+                        if (!Settings.NAT_OPEN) {
+                            Settings.NAT_OPEN = true;
+                        }
+
                         ServerSocketChannel s = (ServerSocketChannel) key.channel();
                         SocketChannel socketChannel = s.accept();
                         socketChannel.configureBlocking(false);

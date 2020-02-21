@@ -1,5 +1,6 @@
 package im.redpanda;
 
+import im.redpanda.core.ListenConsole;
 import im.redpanda.core.Server;
 import io.sentry.Sentry;
 import io.sentry.event.UserBuilder;
@@ -45,6 +46,8 @@ public class App {
 
 
         Server.start();
+
+        new ListenConsole().start();
 
     }
 
