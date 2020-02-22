@@ -277,7 +277,7 @@ public class PeerList {
                 // We have to remove the old id
                 peerlist.remove(oldId);
             }
-            peer.setKademliaId(newId);
+            peer.setNodeId(new NodeId(newId));
             peerlist.put(newId, peer);
         } finally {
             readWriteLock.writeLock().unlock();

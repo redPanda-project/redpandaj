@@ -44,9 +44,9 @@ public class PeerTest {
         assertNotNull(peer);
         assertNotNull(id1);
 
-        peer.setKademliaId(id1);
-        peer2.setKademliaId(id1);
-        peer3.setKademliaId(id2);
+        peer.setNodeId(new NodeId(id1));
+        peer2.setNodeId(new NodeId(id1));
+        peer3.setNodeId(new NodeId(id2));
 
         assertTrue(peer.equalsNonce(peer2));
         assertFalse(peer.equalsNonce(peer3));
@@ -68,14 +68,12 @@ public class PeerTest {
     public void setNodeId() {
         Peer peer = new Peer("1.1.1.1", 123);
         KademliaId id1 = new KademliaId();
-        peer.setKademliaId(id1);
+        peer.setNodeId(new NodeId(id1));
         assertTrue(peer.getKademliaId().equals(id1));
     }
 
     @Test
     public void peerIsHigher() {
-
-
 
 
         Peer peer = new Peer("1.1.1.1", 123);
@@ -87,9 +85,8 @@ public class PeerTest {
         byte[] bytes = Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000");
 
 
-
-        peer.setKademliaId(kademliaId);
-        peer2.setKademliaId(kademliaId2);
+        peer.setNodeId(new NodeId(kademliaId));
+        peer2.setNodeId(new NodeId(kademliaId2));
 
         assertFalse(peer.peerIsHigher());
         assertTrue(peer2.peerIsHigher());

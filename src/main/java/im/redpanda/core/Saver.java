@@ -64,15 +64,15 @@ public class Saver {
             fileInputStream.close();
 
             ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
-            HashMap<KademliaId, Peer> arrayList = new HashMap<KademliaId, Peer>();
+            HashMap<KademliaId, Peer> hashMap = new HashMap<KademliaId, Peer>();
 
 
             for (PeerSaveable p : pp) {
-                arrayList.put(p.nonce, p.toPeer());
+                hashMap.put(p.nodeId.getKademliaId(), p.toPeer());
             }
 
 
-            return arrayList;
+            return hashMap;
 
 
         } catch (ClassNotFoundException ex) {

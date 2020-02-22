@@ -493,7 +493,8 @@ public class ConnectionReaderThread extends Thread {
             if (peer == null) {
                 //No peer found with this identity, lets create a new Peer instance and add it to the list
                 peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
-                peer.setKademliaId(identity);
+                peer.setNodeId(new NodeId(identity));
+//                peer.setKademliaId(identity);
             }
             peerInHandshake.setPeer(peer);
         } else {
