@@ -180,7 +180,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
             Peer n2 = (Peer) obj;
 
-            if (getNodeId().getKademliaId() == null || n2.getNodeId().getKademliaId() == null) {
+            if (getNodeId() == null || getNodeId().getKademliaId() == null || n2.getNodeId() == null || n2.getNodeId().getKademliaId() == null) {
                 return false;
             }
 

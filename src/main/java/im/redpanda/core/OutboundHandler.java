@@ -150,20 +150,31 @@ public class OutboundHandler extends Thread {
                     }
 
 
-                    boolean alreadyConnectedToSameTrustedNode = false;
-                    String equalIp = null;
-                    //already connected to same trusted node?
-                    for (Peer p2 : peerList) {
+                    boolean alreadyConnectedToSameNodeId = false;
+                    if (peer.getKademliaId() != null) {
+                        //already connected to same trusted node?
+                        for (Peer p2 : peerList) {
 
-                        if (alreadyConnectedToSameTrustedNode) {
-                            break;
+                            if (alreadyConnectedToSameNodeId) {
+                                break;
+                            }
+
+                            if (!p2.isConnected() && !p2.isConnecting) {
+                                continue;
+                            }
+
+                            if (peer.equalsNonce(p2)) {
+                                alreadyConnectedToSameNodeId = true;
+                                break;
+                            }
+
                         }
-
-                        if (!p2.isConnected() && !p2.isConnecting) {
-                            continue;
-                        }
+                    }
 
 
+                    if (alreadyConnectedToSameNodeId) {
+                        Log.put("Do not connect to this peer, already connected to same KadId...", 70);
+                        continue;
                     }
 
 

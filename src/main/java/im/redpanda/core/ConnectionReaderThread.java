@@ -503,6 +503,9 @@ public class ConnectionReaderThread extends Thread {
                 peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
                 peer.setNodeId(new NodeId(identity));
 //                peer.setKademliaId(identity);
+            } else {
+                //lets transfer the NodeId from Peer to the handshake...
+                peerInHandshake.setNodeId(peer.getNodeId());
             }
             peerInHandshake.setPeer(peer);
         } else {
