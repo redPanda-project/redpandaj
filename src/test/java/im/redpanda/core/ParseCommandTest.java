@@ -80,7 +80,7 @@ public class ParseCommandTest {
         PeerList.getReadWriteLock().writeLock().lock();
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
-            Peer testpeer1 = new Peer("testip" + i, i);
+            Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
             PeerList.add(testpeer1);
         }
@@ -116,7 +116,7 @@ public class ParseCommandTest {
 //            System.out.println("" + foundPeer.ip());
         }
 
-        assertTrue(foundPeer.ip().equals("testip" + (i - 1)));
+        assertTrue(foundPeer.ip().equals("rand_rewrewR_testip" + (i - 1)));
 
         assertTrue(writeBuffer.remaining() == 0);
 
@@ -129,9 +129,12 @@ public class ParseCommandTest {
         int peersToTest = 100;
 
         PeerList.getReadWriteLock().writeLock().lock();
+
+        int initPeerListSize = PeerList.size();
+
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
-            Peer testpeer1 = new Peer("testip" + i, i);
+            Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
             PeerList.add(testpeer1);
         }
@@ -154,7 +157,7 @@ public class ParseCommandTest {
 
         assertFalse(writeBuffer.hasRemaining());
 
-        assertTrue(PeerList.size() == peersToTest);
+        assertTrue(PeerList.size() - initPeerListSize == peersToTest);
 
         PeerList.getReadWriteLock().writeLock().unlock();
 
