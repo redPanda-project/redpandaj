@@ -7,12 +7,17 @@ import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.security.Security;
 import java.util.Set;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class PeerInHandshakeTest {
+
+    static {
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    }
 
     @Test
     public void addConnection() throws IOException, InterruptedException {
@@ -115,6 +120,29 @@ public class PeerInHandshakeTest {
 //
 //
 //        Server.connectionHandler.selectorLock.unlock();
+
+    }
+
+    @Test
+    public void hasPublicKey() {
+        Peer peerWithPublicKey = new Peer("ip", 0);
+        peerWithPublicKey.setNodeId(new NodeId());
+        PeerInHandshake phWithPublicKey = new PeerInHandshake("ip", peerWithPublicKey, null);
+
+        assertTrue(phWithPublicKey.hasPublicKey());
+
+
+        Peer peerWithoutPublicKey = new Peer("ip", 0);
+        PeerInHandshake phWithoutPublicKey = new PeerInHandshake("ip", peerWithoutPublicKey, null);
+
+        assertFalse(phWithoutPublicKey.hasPublicKey());
+
+
+        Peer peerWithoutPublicKey2 = new Peer("ip", 0);
+        peerWithoutPublicKey2.setNodeId(new NodeId(new KademliaId()));
+        PeerInHandshake phWithoutPublicKey2 = new PeerInHandshake("ip", peerWithoutPublicKey2, null);
+
+        assertFalse(phWithoutPublicKey2.hasPublicKey());
 
     }
 }

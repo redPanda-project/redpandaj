@@ -287,7 +287,10 @@ public class PeerInHandshake {
     }
 
     public boolean hasPublicKey() {
-        return getPeer().getNodeId() != null;
+        if (getPeer().getNodeId() == null) {
+            return false;
+        }
+        return getPeer().getNodeId().getKeyPair() != null;
     }
 
     public boolean isEncryptionActive() {
