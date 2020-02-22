@@ -261,6 +261,8 @@ public class ConnectionReaderThread extends Thread {
         }
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
+            peer.ping = (9 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 10;
+
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
 

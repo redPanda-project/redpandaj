@@ -241,7 +241,7 @@ public class OutboundHandler extends Thread {
             try {
                 allowInterrupt = true;
 
-                sleep(5000 + random.nextInt(3000));
+                sleep(1000 + random.nextInt(3000));
 
             } catch (InterruptedException ex) {
             } finally {
@@ -253,7 +253,7 @@ public class OutboundHandler extends Thread {
 
     private void reseed() {
 
-        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000 * 60 * 10) {
+        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000 * 30 * 1) {
             return;
         }
 

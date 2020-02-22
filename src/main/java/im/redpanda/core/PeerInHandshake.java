@@ -239,9 +239,9 @@ public class PeerInHandshake {
 
             //todo: iv are just the way around for send/receive, is this a security risk?
             ivSend = new IvParameterSpec(bytesForIVsend.array());
-            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
+//            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
             ivReceive = new IvParameterSpec(bytesForIVreceive.array());
-            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+//            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
 
             //todo we have to change this here for the real crypto algo
 

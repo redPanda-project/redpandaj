@@ -348,7 +348,7 @@ public class ConnectionHandler extends Thread {
                                         byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
                                         byteBuffer.get(bytes);
                                         NodeId nodeId = NodeId.importPublic(bytes);
-                                        System.out.println("new nodeid from peer: " + nodeId.getKademliaId());
+                                        Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
                                         if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
                                             /**
@@ -404,14 +404,14 @@ public class ConnectionHandler extends Thread {
                                         activateEncryptionBuffer.flip();
 
                                         long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
-                                        System.out.println("written bytes for ACTIVATE_ENCRYPTION: " + write);
+                                        Log.put("written bytes for ACTIVATE_ENCRYPTION: " + write, 100);
                                         peerInHandshake.setWeSendOurRandom(true);
                                     }
 
                                     if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
                                         peerInHandshake.setAwaitingEncryption(false);
 
-                                        System.out.println("lets generate the shared secret");
+                                        Log.put("lets generate the shared secret", 80);
 
                                         peerInHandshake.calculateSharedSecret();
 
