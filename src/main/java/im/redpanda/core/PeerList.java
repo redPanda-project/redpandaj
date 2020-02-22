@@ -141,11 +141,13 @@ public class PeerList {
     private static boolean removeByObject(Peer peer) {
         readWriteLock.writeLock().lock();
         try {
-            Peer remove = peerlist.remove(peer);
-            if (remove == null) {
+            boolean removed = peerArrayList.remove(peer);
+            if (!removed) {
                 return false;
             }
-            peerlistIpPort.remove(getIpPortHash(remove));
+            if (peer.getIp() != null && peer.getPort() != 0) {
+                peerlistIpPort.remove(getIpPortHash(peer));
+            }
             return true;
         } finally {
             readWriteLock.writeLock().unlock();
@@ -275,7 +277,7 @@ public class PeerList {
                 // We have to remove the old id
                 peerlist.remove(oldId);
             }
-            peer.setKademliaId(newId);
+            peer.setNodeId(new NodeId(newId));
             peerlist.put(newId, peer);
         } finally {
             readWriteLock.writeLock().unlock();

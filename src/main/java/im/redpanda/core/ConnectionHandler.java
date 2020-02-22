@@ -168,11 +168,11 @@ public class ConnectionHandler extends Thread {
 
             //Log.putStd("1: " + df.format((double)(System.nanoTime() - time)/ 1000000.));
             Log.put("NEW KEY RUN - before select", 2000);
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+//            try {
+//                Thread.sleep(100);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
 
             int readyChannels = 0;
             try {
@@ -227,6 +227,10 @@ public class ConnectionHandler extends Thread {
                         // a connection was accepted by a ServerSocketChannel.
 
 //                        Log.put("incoming connection...", 12);
+
+                        if (!Settings.NAT_OPEN) {
+                            Settings.NAT_OPEN = true;
+                        }
 
                         ServerSocketChannel s = (ServerSocketChannel) key.channel();
                         SocketChannel socketChannel = s.accept();

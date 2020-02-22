@@ -338,20 +338,28 @@ public class ConnectionReaderThread extends Thread {
 
                 FBPeer fbPeer = rootAsFBPeerList.peers(i);
 
+
                 ByteBuffer nodeIdBuffer = fbPeer.nodeIdAsByteBuffer();
-                byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
-                nodeIdBuffer.get(nodeIdBytes);
 
-                KademliaId kademliaId = new KademliaId(nodeIdBytes);
+                Peer newPeer = null;
 
-                if (kademliaId.equals(Server.NONCE)) {
-                    Log.put("found ourselves in the peerlist", 80);
-                    break;
+                if (nodeIdBuffer != null) {
+                    byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
+                    nodeIdBuffer.get(nodeIdBytes);
+
+                    KademliaId kademliaId = new KademliaId(nodeIdBytes);
+
+                    if (kademliaId.equals(Server.NONCE)) {
+                        Log.put("found ourselves in the peerlist", 80);
+                        break;
+                    }
+
+                    NodeId nodeId = new NodeId(kademliaId);
+
+                    newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
+                } else {
+                    newPeer = new Peer(fbPeer.ip(), fbPeer.port());
                 }
-
-                NodeId nodeId = new NodeId(kademliaId);
-
-                Peer newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
 
                 Peer add = PeerList.add(newPeer);
                 if (add == null) {
@@ -493,7 +501,8 @@ public class ConnectionReaderThread extends Thread {
             if (peer == null) {
                 //No peer found with this identity, lets create a new Peer instance and add it to the list
                 peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
-                peer.setKademliaId(identity);
+                peer.setNodeId(new NodeId(identity));
+//                peer.setKademliaId(identity);
             }
             peerInHandshake.setPeer(peer);
         } else {
