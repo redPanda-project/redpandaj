@@ -78,6 +78,9 @@ public class ParseCommandTest {
         int peersToTest = 100;
 
         PeerList.getReadWriteLock().writeLock().lock();
+
+
+
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
@@ -108,7 +111,7 @@ public class ParseCommandTest {
 
         FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForFBPeerList));
 
-        assertTrue(rootAsFBPeerList.peersLength() == peersToTest);
+        assertTrue(rootAsFBPeerList.peersLength() == PeerList.size());
 
         FBPeer foundPeer = null;
         for (int j = 0; j < rootAsFBPeerList.peersLength(); j++) {
