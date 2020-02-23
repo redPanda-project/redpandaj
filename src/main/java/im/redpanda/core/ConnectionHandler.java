@@ -44,7 +44,12 @@ public class ConnectionHandler extends Thread {
     public static BlockingQueue<Peer> doneRead = new LinkedBlockingQueue<>(600);
     public static long time;
     public static DecimalFormat df = new DecimalFormat("#.000");
+    boolean startFurther;
 
+
+    public ConnectionHandler(boolean startFurther) {
+        this.startFurther = startFurther;
+    }
 
     static {
 
@@ -98,7 +103,9 @@ public class ConnectionHandler extends Thread {
 
 
             addServerSocketChannel(serverSocketChannel);
-//                startedUpSuccessful();
+            if (startFurther) {
+                Server.startedUpSuccessful();
+            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -281,7 +288,7 @@ public class ConnectionHandler extends Thread {
                             try {
                                 connected = peerInHandshake.getSocketChannel().finishConnect();
                             } catch (IOException | SecurityException e) {
-                                e.printStackTrace();
+//                                e.printStackTrace();
                             }
 //                            Log.putStd("finished!");
 

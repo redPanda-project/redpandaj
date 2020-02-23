@@ -70,6 +70,7 @@ public class ConnectionReaderThread extends Thread {
 
         setName("ReaderThread");
 
+        int peekedAndFound = 0;
 
         while (!Server.SHUTDOWN && run) {
 
@@ -103,20 +104,36 @@ public class ConnectionReaderThread extends Thread {
 
 //                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
-                    threadLock.lock();
-                    if (threads.size() < MAX_THREADS) {
 
-                        try {
-                            ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
-                            threads.add(connectionReaderThread);
-                            Log.put("threads now: " + threads.size(), -10);
-                        } catch (Throwable e) {
-                            MAX_THREADS = MAX_THREADS - 1;
-                            System.out.println("reducing max threads: " + MAX_THREADS);
+                    System.out.println("peekedAndFound: " + peekedAndFound);
+
+                    peekedAndFound++;
+
+                    if (peekedAndFound > 3) {
+
+                        threadLock.lock();
+                        if (threads.size() < MAX_THREADS) {
+
+                            try {
+                                ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
+                                threads.add(connectionReaderThread);
+                                Log.put("threads now: " + threads.size(), -10);
+                            } catch (Throwable e) {
+                                MAX_THREADS = MAX_THREADS - 1;
+                                System.out.println("reducing max threads: " + MAX_THREADS);
+                            }
+
                         }
+                        threadLock.unlock();
+
+                        peekedAndFound = 0;
 
                     }
-                    threadLock.unlock();
+                } else {
+                    peekedAndFound--;
+                    if (peekedAndFound < 0) {
+                        peekedAndFound = 0;
+                    }
                 }
 
             } catch (InterruptedException ex) {

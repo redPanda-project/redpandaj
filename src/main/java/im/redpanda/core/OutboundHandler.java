@@ -188,7 +188,7 @@ public class OutboundHandler extends Thread {
 
 //                    if (peerList.size() > 20) {
                     //(System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 * 4)
-                    if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
+                    if ((peer.retries > 30 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
                         //peerList.remove(peer);
                         peersToRemove.add(peer);
 

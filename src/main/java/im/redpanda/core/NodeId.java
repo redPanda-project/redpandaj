@@ -1,9 +1,12 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Sha256Hash;
+import im.redpanda.crypt.Utils;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 
+import java.io.Serializable;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
@@ -19,7 +22,7 @@ import java.security.spec.X509EncodedKeySpec;
  * The curve 'brainpoolp256r1' may change later
  * as well as the import and export methods.
  */
-public class NodeId {
+public class NodeId implements Serializable {
 
 
     public static final int PUBLIC_KEYLEN = 92;
@@ -247,6 +250,39 @@ public class NodeId {
     }
 
     public static class KeypairDoesNotMatchException extends Exception {
+
+    }
+
+    public byte[] sign(byte[] bytesToSign) {
+
+        if (getKeyPair() == null || getKeyPair().getPrivate() == null) {
+            return null;
+        }
+        /*
+         * Create a Signature object and initialize it with the private key
+         */
+        try {
+            Signature ecdsa = Signature.getInstance("SHA256withECDSA");
+
+            ecdsa.initSign(getKeyPair().getPrivate());
+
+            ecdsa.update(bytesToSign);
+
+            /*
+             * Now that all the data to be signed has been read in, generate a
+             * signature for it
+             */
+
+            byte[] realSig = ecdsa.sign();
+            System.out.println("Signature: " + Utils.bytesToHexString(realSig));
+
+            return realSig;
+
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            e.printStackTrace();
+        }
+
+        return null;
 
     }
 }

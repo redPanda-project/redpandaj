@@ -24,7 +24,7 @@ public class PeerInHandshakeTest {
 
         Log.LEVEL = 10000;
 
-        ConnectionHandler connectionHandler = new ConnectionHandler();
+        ConnectionHandler connectionHandler = new ConnectionHandler(false);
         connectionHandler.start();
 
 

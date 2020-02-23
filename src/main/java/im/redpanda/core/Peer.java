@@ -494,7 +494,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         int writtenBytes = getSocketChannel().write(writeBufferCrypted);
         writeBufferCrypted.compact();
 
-        Log.put("written bytes to node: " + writtenBytes,100);
+        Log.put("written bytes to node: " + writtenBytes, 100);
 
         return writtenBytes;
     }
@@ -681,6 +681,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         disconnect("new connection for this peer");
 
         authed = true;
+        retries = 0;
 
         /**
          * setup the buffers
