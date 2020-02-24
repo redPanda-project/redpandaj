@@ -465,8 +465,6 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
-        System.out.println(buffer);
-
         String magic = readString(buffer, 4);
         int version = (int) buffer.get();
 
@@ -603,7 +601,7 @@ public class ConnectionReaderThread extends Thread {
             }
         }
 
-
+        System.out.println("peer status for handshake: " + peerInHandshake.getStatus());
         return true;
     }
 

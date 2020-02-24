@@ -111,6 +111,16 @@ public class ListenConsole extends Thread {
                 Server.nodeStore.close();
                 Server.localSettings.save(Server.MY_PORT);
                 System.exit(0);
+            } else if (readLine.equals("c")) {
+                System.out.println("closing all connections...");
+
+                PeerList.getReadWriteLock().writeLock().lock();
+                for (Peer peer : PeerList.getPeerArrayList()) {
+                    peer.disconnect("disconnect by user");
+                }
+                PeerList.getReadWriteLock().writeLock().unlock();
+
+
             }
         }
     }

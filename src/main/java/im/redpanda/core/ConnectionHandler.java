@@ -399,59 +399,63 @@ public class ConnectionHandler extends Thread {
 
                                     }
 
-                                    /**
-                                     * Lets check if we are ready to start the encryption for this handshaking peer
-                                     */
-                                    if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
-                                        ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
-                                        activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
-
-                                        activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
-
-                                        activateEncryptionBuffer.flip();
-
-                                        long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
-                                        Log.put("written bytes for ACTIVATE_ENCRYPTION: " + write, 100);
-                                        peerInHandshake.setWeSendOurRandom(true);
-                                    }
-
-                                    if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
-                                        peerInHandshake.setAwaitingEncryption(false);
-
-                                        Log.put("lets generate the shared secret", 80);
-
-                                        peerInHandshake.calculateSharedSecret();
-
-                                        /**
-                                         * Shared Secret and IV calculated via ECDH and random bytes,
-                                         * lets activate the encryption
-                                         */
-
-                                        peerInHandshake.activateEncryption();
-
-
-                                        /**
-                                         * lets send the first ping
-                                         */
-
-                                        byte[] bytesSendToPing = new byte[1];
-                                        bytesSendToPing[0] = Command.PING;
-
-
-                                        byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
-                                        ByteBuffer wrap = ByteBuffer.wrap(encrypt);
-
-                                        try {
-                                            int write = peerInHandshake.getSocketChannel().write(wrap);
-                                            System.out.println("written bytes for PING: " + write);
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                        }
-
-
-                                    }
 
                                 }
+
+
+                                /**
+                                 * Lets check if we are ready to start the encryption for this handshaking peer
+                                 */
+                                if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
+                                    ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
+                                    activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
+
+                                    activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
+
+                                    activateEncryptionBuffer.flip();
+
+                                    long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
+                                    Log.put("written bytes for ACTIVATE_ENCRYPTION: " + write, 100);
+                                    peerInHandshake.setWeSendOurRandom(true);
+                                }
+
+                                if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
+                                    peerInHandshake.setAwaitingEncryption(false);
+
+                                    Log.put("lets generate the shared secret", 80);
+
+                                    peerInHandshake.calculateSharedSecret();
+
+                                    /**
+                                     * Shared Secret and IV calculated via ECDH and random bytes,
+                                     * lets activate the encryption
+                                     */
+
+                                    peerInHandshake.activateEncryption();
+
+
+                                    /**
+                                     * lets send the first ping
+                                     */
+
+                                    byte[] bytesSendToPing = new byte[1];
+                                    bytesSendToPing[0] = Command.PING;
+
+
+                                    byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
+                                    ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+
+                                    try {
+                                        int write = peerInHandshake.getSocketChannel().write(wrap);
+                                        System.out.println("written bytes for PING: " + write);
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                    }
+
+
+                                }
+
+
                             } else {
                                 /**
                                  * The encryption is active in this section, lets check that first ping

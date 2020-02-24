@@ -31,6 +31,7 @@ public class Node implements Serializable {
         return lastSeen;
     }
 
+    //ToDo run seen every once in a while to trigger seen for peers which are permanetly connected
     public void seen() {
         this.lastSeen = System.currentTimeMillis();
     }

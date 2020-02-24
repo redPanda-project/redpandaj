@@ -303,12 +303,6 @@ public class OutboundHandler extends Thread {
 
             peerInHandshake.addConnection(alreadyConnected);
 
-//            peer.setSocketChannel(open);
-            System.out.println("C");
-            System.out.println("CCCCCC");
-//            Server.connectionHandler.addConnection(peer, true);
-            System.out.println("d");
-
         } catch (UnknownHostException ex) {
             System.out.println("outgoing con failed, unknown host...");
         } catch (Exception ex) {
