@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
+import io.sentry.Sentry;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 
@@ -286,11 +287,27 @@ public class NodeId implements Serializable {
             return realSig;
 
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            Sentry.capture(e);
             e.printStackTrace();
         }
 
         return null;
 
+    }
+
+    public boolean verify(byte[] bytesToVerify, byte[] signature) {
+        try {
+            Signature ecdsa2 = Signature.getInstance("SHA256withECDSA");
+            ecdsa2.initVerify(getKeyPair().getPublic());
+
+            ecdsa2.update(bytesToVerify);
+
+            return ecdsa2.verify(signature);
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            Sentry.capture(e);
+            e.printStackTrace();
+        }
+        return false;
     }
 
     private void readObject(ObjectInputStream aInputStream) throws ClassNotFoundException, IOException {

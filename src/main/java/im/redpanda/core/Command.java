@@ -11,4 +11,8 @@ public class Command {
 
     public static final byte REQUEST_PEERLIST = (byte) 7;
     public static final byte SEND_PEERLIST = (byte) 8;
+    public static final byte UPDATE_REQUEST_TIMESTAMP = (byte) 9;
+    public static final byte UPDATE_ANSWER_TIMESTAMP = (byte) 10;
+    public static final byte UPDATE_REQUEST_CONTENT = (byte) 11;
+    public static final byte UPDATE_ANSWER_CONTENT = (byte) 12;
 }

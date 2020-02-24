@@ -14,11 +14,13 @@ public class LocalSettings implements Serializable {
     public NodeId myIdentity;
     public String myIp;
     public byte[] updateSignature;
+    public long updateTimestamp;
     public byte[] updateAndroidSignature;
 
     public LocalSettings() {
         myIdentity = new NodeId();
         myIp = "";
+        updateTimestamp = -1;
     }
 
     public void setUpdateSignature(byte[] updateSignature) {
@@ -101,5 +103,13 @@ public class LocalSettings implements Serializable {
         LocalSettings localSettings = new LocalSettings();
         localSettings.save(port);
         return localSettings;
+    }
+
+    public long getUpdateTimestamp() {
+        return updateTimestamp;
+    }
+
+    public void setUpdateTimestamp(long updateTimestamp) {
+        this.updateTimestamp = updateTimestamp;
     }
 }

@@ -31,6 +31,14 @@ public class Updater {
 
     public static void main(String[] args) {
         createNewKeys();
+
+        try {
+            insertNewUpdate();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (AddressFormatException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void createNewKeys() {
@@ -53,13 +61,13 @@ public class Updater {
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
 
-        File file = new File("out/artifacts/redPandaj_jar/redPandaj.jar");
+        File file = new File("target/redpanda.jar");
 
         long timestamp = file.lastModified();
 
         System.out.println("timestamp : " + timestamp);
 
-        Path path = Paths.get("out/artifacts/redPandaj_jar/redPandaj.jar");
+        Path path = Paths.get("target/redpanda.jar");
         byte[] data = Files.readAllBytes(path);
 
         int updateSize = data.length;
@@ -72,10 +80,15 @@ public class Updater {
 
         byte[] signature = nodeId.sign(toHash.array());
 
+        System.out.println("signature len: " + signature.length + " " + ((int) signature[1]+2));
 
         System.out.println("signature: " + Utils.bytesToHexString(signature));
-        Server.localSettings.setUpdateSignature(signature);
-        Server.localSettings.save(Server.MY_PORT);
+
+        LocalSettings localSettings = LocalSettings.load(59558);
+
+        localSettings.setUpdateSignature(signature);
+        localSettings.setUpdateTimestamp(timestamp);
+        localSettings.save(59558);
         System.out.println("saved in local settings!");
 
 

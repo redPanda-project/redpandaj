@@ -446,7 +446,7 @@ public class Peer implements Comparable<Peer>, Serializable {
                 return 0;
             }
 
-            byte[] bytesToEncrypt = new byte[remaining];
+            byte[] bytesToEncrypt = new byte[Math.min(remaining, writeBufferCrypted.remaining())];
             writeBuffer.get(bytesToEncrypt);
 
 
@@ -490,6 +490,13 @@ public class Peer implements Comparable<Peer>, Serializable {
 
 
             byte[] decrypt = decrypt(bytesToDecrypt);
+
+            if (readBuffer.remaining() < decrypt.length) {
+                ByteBuffer allocate = ByteBuffer.allocate(readBuffer.position() + readBuffer.remaining() + decrypt.length + 1024);
+                System.arraycopy(readBuffer.array(), 0, allocate.array(), 0, readBuffer.array().length);
+                allocate.position(readBuffer.position());
+                readBuffer = allocate;
+            }
 
             readBuffer.put(decrypt);
 
@@ -741,6 +748,8 @@ public class Peer implements Comparable<Peer>, Serializable {
         writeBufferLock.lock();
         try {
             writeBuffer.put(Command.REQUEST_PEERLIST);
+            //lets request an update
+            writeBuffer.put(Command.UPDATE_REQUEST_TIMESTAMP);
             setWriteBufferFilled();
         } finally {
             writeBufferLock.unlock();
@@ -757,6 +766,8 @@ public class Peer implements Comparable<Peer>, Serializable {
         }
         byKademliaId.seen();
         setNode(byKademliaId);
+
+
     }
 
 

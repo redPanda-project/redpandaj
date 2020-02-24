@@ -235,7 +235,7 @@ public class OutboundHandler extends Thread {
 
 
             for (Peer toRemove : peersToRemove) {
-                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
+//                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
                 Server.removePeer(toRemove);
             }
             peersToRemove.clear();

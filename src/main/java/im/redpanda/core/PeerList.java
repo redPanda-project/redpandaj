@@ -127,7 +127,7 @@ public class PeerList {
      * @param peer
      */
     public static boolean remove(Peer peer) {
-        System.out.println("remove peer: " + peer.getKademliaId());
+//        System.out.println("remove peer: " + peer.getKademliaId());
         readWriteLock.writeLock().lock();
         try {
             if (peer.getKademliaId() == null) {
