@@ -18,6 +18,8 @@ public class Node implements Serializable {
         this.nodeId = nodeId;
         lastSeen = System.currentTimeMillis();
         Server.nodeStore.put(nodeId.getKademliaId(), this);
+        //run the get command afterwards to trigger the eviction timer
+        Server.nodeStore.get(nodeId.getKademliaId());
     }
 
 
