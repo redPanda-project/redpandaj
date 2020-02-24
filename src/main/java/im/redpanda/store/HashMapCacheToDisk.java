@@ -167,7 +167,9 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
 
                 int cnt = evictionQueue.size();
 
-                System.out.println("sleeping " + NUMBER_OF_EVICTION_THREADS * (long) Math.ceil(MEAN_STORAGE_TIME / cnt) + " ms, ojects stored in on-heap: " + cnt + " off-heap: " + inMemory.size() + " on disk: " + onDisk.size());
+                if (cnt != 0) {
+                    System.out.println("sleeping " + NUMBER_OF_EVICTION_THREADS * (long) Math.ceil(MEAN_STORAGE_TIME / cnt) + " ms, ojects stored in on-heap: " + cnt + " off-heap: " + inMemory.size() + " on disk: " + onDisk.size());
+                }
 
                 if (cnt < START_EVICTION_NOT_BEFORE) {
                     try {
@@ -228,8 +230,8 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
         /**
          * writing onheap to disk
          */
-        for (Map.Entry<K,V> entry:entrySet()) {
-            onDisk.put(entry.getKey(),entry.getValue());
+        for (Map.Entry<K, V> entry : entrySet()) {
+            onDisk.put(entry.getKey(), entry.getValue());
         }
 
         /**
