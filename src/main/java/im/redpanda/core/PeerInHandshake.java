@@ -226,7 +226,7 @@ public class PeerInHandshake {
             sharedSecretSend = new SecretKeySpec(sha256HashSend.getBytes(), "AES");
             sharedSecretReceive = new SecretKeySpec(sha256HashReceive.getBytes(), "AES");
 
-            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
+//            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
 
 
             ByteBuffer bytesForIVsend = ByteBuffer.allocate(IVbytelen);

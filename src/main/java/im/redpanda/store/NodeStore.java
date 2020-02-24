@@ -2,6 +2,7 @@ package im.redpanda.store;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
+import im.redpanda.core.Server;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
@@ -41,7 +42,7 @@ public class NodeStore {
                 .make();
 
         dbDisk = DBMaker
-                .fileDB("data/nodeids.mapdb")
+                .fileDB("data/nodeids" + Server.MY_PORT + ".mapdb")
                 .fileMmapEnableIfSupported()
                 .closeOnJvmShutdown()
                 .checksumHeaderBypass()

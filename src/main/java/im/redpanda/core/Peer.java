@@ -16,6 +16,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -28,6 +31,7 @@ import java.util.logging.Logger;
  */
 public class Peer implements Comparable<Peer>, Serializable {
 
+    private Node node;
     public String ip;
     public int port;
     public int connectAble = 0;
@@ -99,6 +103,17 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public NodeId getNodeId() {
         return nodeId;
+    }
+
+    public void setNode(Node node) {
+        this.node = node;
+    }
+
+    public Node getNode() {
+        if (!isAuthed() || !connected) {
+            return null;
+        }
+        return node;
     }
 
     //    public void setNodeId(KademliaId nodeId) {
@@ -279,6 +294,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public void disconnect(String reason) {
 
+        setNode(null);
         isConnecting = false;
         authed = false;
 
@@ -728,7 +744,19 @@ public class Peer implements Comparable<Peer>, Serializable {
             writeBufferLock.unlock();
         }
 
+        /**
+         * Lets search for the Node object for that peer and load it.
+         */
+        Node byKademliaId = Node.getByKademliaId(peerInHandshake.getIdentity());
+        if (byKademliaId == null) {
+            byKademliaId = new Node(peerInHandshake.getNodeId());
+        } else {
+            System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+        }
+        byKademliaId.seen();
+        setNode(byKademliaId);
     }
+
 
     @Override
     public String toString() {

@@ -48,12 +48,8 @@ public class Server {
 
     public static void start() {
 
-        nodeStore = new NodeStore();
-
-
         connectionHandler = new ConnectionHandler(true);
         connectionHandler.start();
-
 
     }
 
@@ -120,6 +116,9 @@ public class Server {
 
     public static void startedUpSuccessful() {
         localSettings = LocalSettings.load(Server.MY_PORT);
+        nodeStore = new NodeStore();
+
+        System.out.println("NodeStore has entries: " + nodeStore.size());
 
         nodeId = localSettings.myIdentity;
         NONCE = nodeId.getKademliaId();

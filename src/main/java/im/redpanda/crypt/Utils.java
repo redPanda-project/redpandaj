@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.Date;
 
 /**
@@ -80,7 +81,7 @@ public class Utils {
      * what we often need: it appends a leading zero to indicate that the number
      * is positive and may need padding.
      *
-     * @param b the integer to format into a byte array
+     * @param b        the integer to format into a byte array
      * @param numBytes the desired size of the resulting byte array
      * @return numBytes byte long array.
      */
@@ -238,9 +239,9 @@ public class Utils {
      * Returns a copy of the given byte array with the bytes of each double-word
      * (4 bytes) reversed.
      *
-     * @param bytes length must be divisible by 4.
+     * @param bytes      length must be divisible by 4.
      * @param trimLength trim output to this length. If positive, must be
-     * divisible by 4.
+     *                   divisible by 4.
      */
     public static byte[] reverseDwordBytes(byte[] bytes, int trimLength) {
         checkArgument(bytes.length % 4 == 0);
@@ -337,7 +338,7 @@ public class Utils {
      * BTC </p>
      *
      * @param value The value in nanocoins to convert to a string (denominated
-     * in BTC)
+     *              in BTC)
      * @throws IllegalArgumentException If the input value is null
      */
     public static String bitcoinValueToPlainString(BigInteger value) {
@@ -356,7 +357,7 @@ public class Utils {
      * bit).
      *
      * @param hasLength can be set to false if the given array is missing the 4
-     * byte length field
+     *                  byte length field
      */
     static BigInteger decodeMPI(byte[] mpi, boolean hasLength) {
         byte[] buf;
@@ -385,7 +386,7 @@ public class Utils {
      * bit).
      *
      * @param includeLength indicates whether the 4 byte length field should be
-     * included
+     *                      included
      */
     static byte[] encodeMPI(BigInteger value, boolean includeLength) {
         if (value.equals(BigInteger.ZERO)) {
@@ -502,8 +503,8 @@ public class Utils {
     /**
      * <p>
      * Given a textual message, returns a byte buffer formatted as follows:</p>
-     *
-     *
+     * <p>
+     * <p>
      * [24] "Bitcoin Signed Message:\n" [message.length as a varint]
      * message
      */
@@ -544,5 +545,20 @@ public class Utils {
         if (!b) {
             throw new IllegalArgumentException();
         }
+    }
+
+    public static String formatDuration(long millis) {
+        return formatDuration(Duration.ofMillis(millis));
+    }
+
+    public static String formatDuration(Duration duration) {
+        long seconds = duration.getSeconds();
+        long absSeconds = Math.abs(seconds);
+        String positive = String.format(
+                "%d:%02d:%02d",
+                absSeconds / 3600,
+                (absSeconds % 3600) / 60,
+                absSeconds % 60);
+        return seconds < 0 ? "-" + positive : positive;
     }
 }

@@ -106,6 +106,11 @@ public class ListenConsole extends Thread {
                 } catch (NumberFormatException e) {
                     e.printStackTrace();
                 }
+            } else if (readLine.equals("e")) {
+                Server.SHUTDOWN = true;
+                Server.nodeStore.close();
+                Server.localSettings.save(Server.MY_PORT);
+                System.exit(0);
             }
         }
     }
