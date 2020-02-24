@@ -414,6 +414,7 @@ public class Peer implements Comparable<Peer>, Serializable {
             try {
                 getSelectionKey().selector().wakeup();
                 getSelectionKey().interestOps(getSelectionKey().interestOps() | SelectionKey.OP_WRITE);
+                return true;
             } catch (CancelledKeyException e) {
                 System.out.println("cancelled key exception");
             } finally {
@@ -696,6 +697,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         //disconnect old connection if present
         disconnect("new connection for this peer");
 
+        setConnected(true);
         authed = true;
         retries = 0;
 
@@ -718,7 +720,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
         //setup the peer with all data from the peerInHandshake
         setLastActionOnConnection(System.currentTimeMillis());
-        setConnected(true);
+
 
         setSocketChannel(peerInHandshake.getSocketChannel());
         setSelectionKey(peerInHandshake.getKey());

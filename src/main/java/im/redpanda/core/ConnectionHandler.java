@@ -155,6 +155,9 @@ public class ConnectionHandler extends Thread {
             while ((p = doneRead.poll()) != null) {
                 try {
 
+                    workingRead.remove(p);
+
+
                     //Log.putStd("current interests: " + p.getSelectionKey().interestOps());
 //ToDo: optimize
                     //if (p.writeBuffer != null && p.writeBuffer.hasRemaining()) {
@@ -167,7 +170,7 @@ public class ConnectionHandler extends Thread {
                     //}
 
                     p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
-                    workingRead.remove(p);
+
                 } catch (CancelledKeyException e) {
                     Log.putStd("key was canneled");
                 }
@@ -331,7 +334,7 @@ public class ConnectionHandler extends Thread {
                                      * The status indicates that no handshake was parsed before for this PeerInHandshake
                                      */
                                     boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
-                                    System.out.println("handshake okay?: " + b);
+//                                    System.out.println("handshake okay?: " + b);
                                 } else {
 
                                     /**
@@ -554,7 +557,14 @@ public class ConnectionHandler extends Thread {
                             peersToReadAndParse.add(peer);
                             //Log.putStd("4: " + df.format((double) (System.nanoTime() - time) / 1000000.));
                         } else {
-                            //Log.putStd("asde2fsdfcv546tv54bv6");
+
+
+                            ArrayList<Peer> workingRead = ConnectionHandler.workingRead;
+                            BlockingQueue<Peer> doneRead = ConnectionHandler.doneRead;
+                            BlockingQueue<Peer> peersToReadAndParse = ConnectionHandler.peersToReadAndParse;
+                            ArrayList<ConnectionReaderThread> threads = ConnectionReaderThread.threads;
+
+                            Log.putStd("asde2fsdfcv546tv54bv6 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size() + ConnectionReaderThread.threads.size());
                             //throw new RuntimeException("asde2fsdfcv546tv54bv6");
                         }
 
@@ -591,7 +601,9 @@ public class ConnectionHandler extends Thread {
 
                                 try {
                                     writtenBytes = peer.writeBytesToPeer(peer.writeBufferCrypted);
+                                    Log.put("written bytes: " + writtenBytes, 200);
                                 } catch (IOException e) {
+                                    e.printStackTrace();
                                     Log.putStd("could not write bytes to peer, peer disconnected?");
                                     peer.disconnect("could not write");
                                     continue; //finally unlocks the lock

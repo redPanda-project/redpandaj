@@ -49,7 +49,7 @@ public class OutboundHandler extends Thread {
 
         while (!Server.SHUTDOWN) {
 
-            System.out.println("Peers: " + PeerList.size());
+//            System.out.println("Peers: " + PeerList.size());
 
 
             if (Server.peerList.size() < 5) {
@@ -235,8 +235,10 @@ public class OutboundHandler extends Thread {
 
 
             for (Peer toRemove : peersToRemove) {
+                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
                 Server.removePeer(toRemove);
             }
+            peersToRemove.clear();
 
             try {
                 allowInterrupt = true;
@@ -253,7 +255,7 @@ public class OutboundHandler extends Thread {
 
     private void reseed() {
 
-        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000 * 30 * 1) {
+        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
             return;
         }
 

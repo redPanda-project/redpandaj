@@ -140,6 +140,9 @@ public class ConnectionReaderThread extends Thread {
                 Log.putStd("interrupted, finish thread...");
                 run = false;
                 continue;
+            } catch (Throwable e) {
+                System.out.println("ggzdazdndzgrztgr");
+                e.printStackTrace();
             }
 
             if (poll == null) {
@@ -177,6 +180,9 @@ public class ConnectionReaderThread extends Thread {
 //                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
 //            }
             ConnectionHandler.doneRead.add(poll);
+
+//            System.out.println("peer released again for read and write....");
+
 //            System.out.println("wakeup selector from readerthread");
             Server.connectionHandler.selector.wakeup();
 
