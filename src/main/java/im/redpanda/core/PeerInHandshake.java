@@ -226,7 +226,7 @@ public class PeerInHandshake {
             sharedSecretSend = new SecretKeySpec(sha256HashSend.getBytes(), "AES");
             sharedSecretReceive = new SecretKeySpec(sha256HashReceive.getBytes(), "AES");
 
-            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
+//            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
 
 
             ByteBuffer bytesForIVsend = ByteBuffer.allocate(IVbytelen);
@@ -239,9 +239,9 @@ public class PeerInHandshake {
 
             //todo: iv are just the way around for send/receive, is this a security risk?
             ivSend = new IvParameterSpec(bytesForIVsend.array());
-            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
+//            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
             ivReceive = new IvParameterSpec(bytesForIVreceive.array());
-            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+//            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
 
             //todo we have to change this here for the real crypto algo
 
@@ -287,7 +287,10 @@ public class PeerInHandshake {
     }
 
     public boolean hasPublicKey() {
-        return getPeer().getNodeId() != null;
+        if (getPeer().getNodeId() == null) {
+            return false;
+        }
+        return getPeer().getNodeId().getKeyPair() != null;
     }
 
     public boolean isEncryptionActive() {

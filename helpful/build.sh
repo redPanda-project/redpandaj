@@ -20,7 +20,7 @@ git pull
 
 
 echo "creating jar file"
-mvn package
+mvn -Dmaven.test.skip=true package
 
 echo "cp jar file into working directory..."
 cp ./target/redpanda.jar ../

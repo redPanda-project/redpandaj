@@ -47,11 +47,11 @@ public class PeerJobs extends Thread {
             try {
                 for (Peer p : PeerList.getPeerArrayList()) {
 
-                    System.out.println("running over peer: " + p);
+                    Log.put("running over peer: " + p, 70);
 
-                    if (p.getLastAnswered() > 1000 * 60 * 60 * 24 * 7 && PeerList.size() > 3 && p.lastActionOnConnection != 0) {
-                        PeerList.remove(p);
-                    }
+//                    if (p.getLastAnswered() > 1000 * 60 * 60 * 24 * 7 && PeerList.size() > 3 && p.lastActionOnConnection != 0) {
+//                        PeerList.remove(p);
+//                    }
 
 //                    if (p.lastPinged - p.lastActionOnConnection > Settings.pingDelay * 2 + 30000
 //                            || (p.isConnecting && p.getLastAnswered() > 10000)

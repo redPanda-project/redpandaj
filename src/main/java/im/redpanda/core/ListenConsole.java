@@ -37,7 +37,7 @@ public class ListenConsole extends Thread {
 
                 int actCons = 0;
 
-                PeerList.getReadWriteLock().readLock().lock();
+                PeerList.getReadWriteLock().writeLock().lock();
                 try {
 
                     ArrayList<Peer> peerArrayList = PeerList.getPeerArrayList();
@@ -53,7 +53,7 @@ public class ListenConsole extends Thread {
                     Collections.sort(list);
 
 //                    System.out.println("IP:PORT \t\t\t\t\t\t Nonce \t\t\t Last Answer \t Alive \t retries \t LoadedMsgs \t Ping \t Authed \t PMSG\n");
-                    System.out.format("%50s %22s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n", "[IP]:PORT", "nonce", "last answer", "conntected", "retries", "ping", "loaded Msg", "bytes out", "bytes in", "bad Msg", "ToSyncM", "RSM", "Rating");
+                    System.out.format("%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n", "[IP]:PORT", "nonce", "last answer", "conntected", "retries", "ping", "loaded Msg", "bytes out", "bytes in", "bad Msg", "ToSyncM", "RSM", "Rating");
                     for (Peer peer : list) {
 
                         if (peer.isConnected()) {
@@ -76,11 +76,11 @@ public class ListenConsole extends Thread {
                             nodeId = peer.getNodeId().getKademliaId().toString().substring(0, 10);
                         }
 
-                        while (c.length() < 15) {
-                            c += " \t";
-                        }
+//                        while (c.length() < 15) {
+//                            c += " \t";
+//                        }
 
-                        System.out.format("%50s %22s %12s %12s %7d %8s %10s %10d %10d %10d\n", "[" + peer.ip + "]:" + peer.port, nodeId, c, "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null), peer.retries, (Math.round(peer.ping * 100) / 100.), "-", peer.sendBytes, peer.receivedBytes, peer.removedSendMessages.size());
+                        System.out.format("%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n", "[" + peer.ip + "]:" + peer.port, nodeId, c, "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null), peer.retries, (Math.round(peer.ping * 100) / 100.), "-", peer.sendBytes, peer.receivedBytes, peer.removedSendMessages.size());
 
 
                     }
@@ -96,8 +96,31 @@ public class ListenConsole extends Thread {
 //                    System.out.println("Livetime socketio connections: " + Stats.getSocketioConnectionsLiveTime());
 
                 } finally {
-                    PeerList.getReadWriteLock().readLock().unlock();
+                    PeerList.getReadWriteLock().writeLock().unlock();
                 }
+            } else if (readLine.equals("ll")) {
+                System.out.println("New Log Level:");
+                String readLine2 = bufferedReader.readLine();
+                try {
+                    Log.LEVEL = Integer.parseInt(readLine2);
+                } catch (NumberFormatException e) {
+                    e.printStackTrace();
+                }
+            } else if (readLine.equals("e")) {
+                Server.SHUTDOWN = true;
+                Server.nodeStore.close();
+                Server.localSettings.save(Server.MY_PORT);
+                System.exit(0);
+            } else if (readLine.equals("c")) {
+                System.out.println("closing all connections...");
+
+                PeerList.getReadWriteLock().writeLock().lock();
+                for (Peer peer : PeerList.getPeerArrayList()) {
+                    peer.disconnect("disconnect by user");
+                }
+                PeerList.getReadWriteLock().writeLock().unlock();
+
+
             }
         }
     }

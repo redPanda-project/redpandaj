@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.store.NodeStore;
+
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
@@ -11,6 +13,7 @@ public class Server {
     public static final int VERSION = 21;
     public static int MY_PORT = -1;
     static String MAGIC = "k3gV";
+    public static LocalSettings localSettings;
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
@@ -22,6 +25,7 @@ public class Server {
     public static OutboundHandler outboundHandler;
     public static ArrayList<Peer>[] buckets = new ArrayList[KademliaId.ID_LENGTH];
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
+    public static NodeStore nodeStore;
 
     public static SecureRandom secureRandom = new SecureRandom();
 
@@ -34,10 +38,6 @@ public class Server {
         peerList = new PeerList();
         peerListLock = peerList.getReadWriteLock();
 
-        nodeId = new NodeId();
-        NONCE = nodeId.getKademliaId();
-        System.out.println("started node with KademliaId: " + NONCE.toString());
-
         //init all buckets!
         for (int i = 0; i < buckets.length; i++) {
             buckets[i] = new ArrayList<>(Settings.k);
@@ -48,15 +48,8 @@ public class Server {
 
     public static void start() {
 
-
-        connectionHandler = new ConnectionHandler();
+        connectionHandler = new ConnectionHandler(true);
         connectionHandler.start();
-
-
-        outboundHandler = new OutboundHandler();
-        outboundHandler.init();
-
-        PeerJobs.startUp();
 
     }
 
@@ -119,5 +112,21 @@ public class Server {
         peerList.remove(peer);
         peer.removeNodeId();
         peerListLock.writeLock().unlock();
+    }
+
+    public static void startedUpSuccessful() {
+        localSettings = LocalSettings.load(Server.MY_PORT);
+        nodeStore = new NodeStore();
+
+        System.out.println("NodeStore has entries: " + nodeStore.size());
+
+        nodeId = localSettings.myIdentity;
+        NONCE = nodeId.getKademliaId();
+        System.out.println("started node with KademliaId: " + NONCE.toString() + " port: " + Server.MY_PORT);
+
+        outboundHandler = new OutboundHandler();
+        outboundHandler.init();
+
+        PeerJobs.startUp();
     }
 }

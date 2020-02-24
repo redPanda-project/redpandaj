@@ -7,21 +7,24 @@ import org.mapdb.HTreeMap;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class HashMapCacheToDisk extends HashMap<Long, Object> {
+public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
 
-    public static final long MEAN_STORAGE_TIME = 1L * 60L * 1000L;
-    public static final int NUMBER_OF_EVICTION_THREADS = 2;
-    public static long TTL_ON_DISK = 24L * 60L * 60L * 1000L;
-    public static long TTL_IN_MEMORY_OFF_HEAP = 10L * 60L * 1000L;
+    public long MEAN_STORAGE_TIME = 1L * 60L * 1000L;
+    public long START_EVICTION_NOT_BEFORE = 100; //items
+    public final int NUMBER_OF_EVICTION_THREADS = 2;
+    public final long TTL_ON_DISK = 24L * 60L * 60L * 1000L;
+    public final long TTL_IN_MEMORY_OFF_HEAP = 10L * 60L * 1000L;
 
-    LinkedBlockingQueue<Long> evictionQueue = new LinkedBlockingQueue<Long>();
+    LinkedBlockingQueue<K> evictionQueue = new LinkedBlockingQueue<>();
     private final HTreeMap onDisk;
     private final HTreeMap inMemory;
 
@@ -60,7 +63,7 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
                 .expireExecutor(
                         Executors.newScheduledThreadPool(3)
                 )
-                .expireAfterCreate(TTL_IN_MEMORY_OFF_HEAP) // keep 10 mins in off-heap serialized
+                .expireAfterCreate(TTL_IN_MEMORY_OFF_HEAP) // keep TTL_IN_MEMORY_OFF_HEAP mins in off-heap serialized
                 .expireOverflow(onDisk)
                 .create();
 
@@ -97,8 +100,9 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
         return onDisk.size();
     }
 
+
     @Override
-    public Object get(Object key) {
+    public V get(Object key) {
 
         Object o = super.get(key);
 
@@ -108,11 +112,11 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
             o = inMemory.get(key);
         }
 
-        return o;
+        return (V) o;
     }
 
     @Override
-    public Object remove(Object key) {
+    public V remove(Object key) {
 
 
         Object remove = super.remove(key);
@@ -123,7 +127,7 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
         }
 
 
-        return remove;
+        return (V) remove;
     }
 
     public Object getNative(Object key) {
@@ -135,8 +139,9 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
         return super.remove(key);
     }
 
+
     @Override
-    public Object put(Long key, Object value) {
+    public V put(K key, V value) {
 
         try {
             evictionQueue.put(key);
@@ -162,9 +167,11 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
 
                 int cnt = evictionQueue.size();
 
-                System.out.println("sleeping " + NUMBER_OF_EVICTION_THREADS * (long) Math.ceil(MEAN_STORAGE_TIME / cnt) + " ms, ojects stored in on-heap: " + cnt + " off-heap: " + inMemory.size() + " on disk: " + onDisk.size());
+                if (cnt != 0) {
+                    System.out.println("sleeping " + NUMBER_OF_EVICTION_THREADS * (long) Math.ceil(MEAN_STORAGE_TIME / cnt) + " ms, ojects stored in on-heap: " + cnt + " off-heap: " + inMemory.size() + " on disk: " + onDisk.size());
+                }
 
-                if (cnt < 50) {
+                if (cnt < START_EVICTION_NOT_BEFORE) {
                     try {
                         Thread.sleep(10000L);
                     } catch (InterruptedException e) {
@@ -181,7 +188,7 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
                 }
 
                 try {
-                    Long take = evictionQueue.take();
+                    Object take = evictionQueue.take();
 
 //                        Object hasCreationTime = get(take);
 //                        if (hasCreationTime == null) {
@@ -201,11 +208,10 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
 //                            continue;
 //                        }
 
-                    Object o = getNative(take);
-
+                    // we now can remove that object and store it on mem/disk
+                    Object o = removeNative(take);
+                    ;
                     if (o != null) {
-                        // we now can remove that object and store it on mem/disk
-                        removeNative(take);
                         inMemory.put(take, o);
                     }
 
@@ -219,7 +225,24 @@ public class HashMapCacheToDisk extends HashMap<Long, Object> {
 
     }
 
-    public void shutdown() {
+    public void saveToDisk() {
+
+        /**
+         * writing onheap to disk
+         */
+        for (Map.Entry<K, V> entry : entrySet()) {
+            onDisk.put(entry.getKey(), entry.getValue());
+        }
+
+        /**
+         * writing offheap to disk
+         */
+
+        Set set = inMemory.entrySet();
+
+//        for (Map.Entry<K,V> entry:inMemory.entrySet()) {
+//            onDisk.put(entry.getKey(),entry.getValue());
+//        }
 
     }
 }

@@ -40,7 +40,7 @@ public class App {
 
         String gitRev = readGitProperties();
         if (gitRev != null) {
-            Sentry.getContext().addTag("release", gitRev);
+            Sentry.getContext().addTag("gitRev", gitRev);
             System.out.println("found git revision: " + gitRev);
         }
 

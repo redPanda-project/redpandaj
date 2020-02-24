@@ -70,6 +70,7 @@ public class ConnectionReaderThread extends Thread {
 
         setName("ReaderThread");
 
+        int peekedAndFound = 0;
 
         while (!Server.SHUTDOWN && run) {
 
@@ -103,26 +104,45 @@ public class ConnectionReaderThread extends Thread {
 
 //                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
-                    threadLock.lock();
-                    if (threads.size() < MAX_THREADS) {
 
-                        try {
-                            ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
-                            threads.add(connectionReaderThread);
-                            Log.put("threads now: " + threads.size(), -10);
-                        } catch (Throwable e) {
-                            MAX_THREADS = MAX_THREADS - 1;
-                            System.out.println("reducing max threads: " + MAX_THREADS);
+                    System.out.println("peekedAndFound: " + peekedAndFound);
+
+                    peekedAndFound++;
+
+                    if (peekedAndFound > 3) {
+
+                        threadLock.lock();
+                        if (threads.size() < MAX_THREADS) {
+
+                            try {
+                                ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
+                                threads.add(connectionReaderThread);
+                                Log.put("threads now: " + threads.size(), -10);
+                            } catch (Throwable e) {
+                                MAX_THREADS = MAX_THREADS - 1;
+                                System.out.println("reducing max threads: " + MAX_THREADS);
+                            }
+
                         }
+                        threadLock.unlock();
+
+                        peekedAndFound = 0;
 
                     }
-                    threadLock.unlock();
+                } else {
+                    peekedAndFound--;
+                    if (peekedAndFound < 0) {
+                        peekedAndFound = 0;
+                    }
                 }
 
             } catch (InterruptedException ex) {
                 Log.putStd("interrupted, finish thread...");
                 run = false;
                 continue;
+            } catch (Throwable e) {
+                System.out.println("ggzdazdndzgrztgr");
+                e.printStackTrace();
             }
 
             if (poll == null) {
@@ -160,6 +180,9 @@ public class ConnectionReaderThread extends Thread {
 //                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
 //            }
             ConnectionHandler.doneRead.add(poll);
+
+//            System.out.println("peer released again for read and write....");
+
 //            System.out.println("wakeup selector from readerthread");
             Server.connectionHandler.selector.wakeup();
 
@@ -261,6 +284,8 @@ public class ConnectionReaderThread extends Thread {
         }
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
+            peer.ping = (9 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 10;
+
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
 
@@ -446,8 +471,6 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
-        System.out.println(buffer);
-
         String magic = readString(buffer, 4);
         int version = (int) buffer.get();
 
@@ -503,6 +526,9 @@ public class ConnectionReaderThread extends Thread {
                 peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
                 peer.setNodeId(new NodeId(identity));
 //                peer.setKademliaId(identity);
+            } else {
+                //lets transfer the NodeId from Peer to the handshake...
+                peerInHandshake.setNodeId(peer.getNodeId());
             }
             peerInHandshake.setPeer(peer);
         } else {
@@ -581,7 +607,7 @@ public class ConnectionReaderThread extends Thread {
             }
         }
 
-
+        System.out.println("peer status for handshake: " + peerInHandshake.getStatus());
         return true;
     }
 

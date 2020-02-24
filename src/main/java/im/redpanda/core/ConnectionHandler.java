@@ -44,7 +44,12 @@ public class ConnectionHandler extends Thread {
     public static BlockingQueue<Peer> doneRead = new LinkedBlockingQueue<>(600);
     public static long time;
     public static DecimalFormat df = new DecimalFormat("#.000");
+    boolean startFurther;
 
+
+    public ConnectionHandler(boolean startFurther) {
+        this.startFurther = startFurther;
+    }
 
     static {
 
@@ -98,7 +103,9 @@ public class ConnectionHandler extends Thread {
 
 
             addServerSocketChannel(serverSocketChannel);
-//                startedUpSuccessful();
+            if (startFurther) {
+                Server.startedUpSuccessful();
+            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -148,6 +155,9 @@ public class ConnectionHandler extends Thread {
             while ((p = doneRead.poll()) != null) {
                 try {
 
+                    workingRead.remove(p);
+
+
                     //Log.putStd("current interests: " + p.getSelectionKey().interestOps());
 //ToDo: optimize
                     //if (p.writeBuffer != null && p.writeBuffer.hasRemaining()) {
@@ -160,7 +170,7 @@ public class ConnectionHandler extends Thread {
                     //}
 
                     p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
-                    workingRead.remove(p);
+
                 } catch (CancelledKeyException e) {
                     Log.putStd("key was canneled");
                 }
@@ -281,7 +291,7 @@ public class ConnectionHandler extends Thread {
                             try {
                                 connected = peerInHandshake.getSocketChannel().finishConnect();
                             } catch (IOException | SecurityException e) {
-                                e.printStackTrace();
+//                                e.printStackTrace();
                             }
 //                            Log.putStd("finished!");
 
@@ -324,7 +334,7 @@ public class ConnectionHandler extends Thread {
                                      * The status indicates that no handshake was parsed before for this PeerInHandshake
                                      */
                                     boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
-                                    System.out.println("handshake okay?: " + b);
+//                                    System.out.println("handshake okay?: " + b);
                                 } else {
 
                                     /**
@@ -348,7 +358,7 @@ public class ConnectionHandler extends Thread {
                                         byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
                                         byteBuffer.get(bytes);
                                         NodeId nodeId = NodeId.importPublic(bytes);
-                                        System.out.println("new nodeid from peer: " + nodeId.getKademliaId());
+                                        Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
                                         if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
                                             /**
@@ -392,59 +402,63 @@ public class ConnectionHandler extends Thread {
 
                                     }
 
-                                    /**
-                                     * Lets check if we are ready to start the encryption for this handshaking peer
-                                     */
-                                    if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
-                                        ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
-                                        activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
-
-                                        activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
-
-                                        activateEncryptionBuffer.flip();
-
-                                        long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
-                                        System.out.println("written bytes for ACTIVATE_ENCRYPTION: " + write);
-                                        peerInHandshake.setWeSendOurRandom(true);
-                                    }
-
-                                    if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
-                                        peerInHandshake.setAwaitingEncryption(false);
-
-                                        System.out.println("lets generate the shared secret");
-
-                                        peerInHandshake.calculateSharedSecret();
-
-                                        /**
-                                         * Shared Secret and IV calculated via ECDH and random bytes,
-                                         * lets activate the encryption
-                                         */
-
-                                        peerInHandshake.activateEncryption();
-
-
-                                        /**
-                                         * lets send the first ping
-                                         */
-
-                                        byte[] bytesSendToPing = new byte[1];
-                                        bytesSendToPing[0] = Command.PING;
-
-
-                                        byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
-                                        ByteBuffer wrap = ByteBuffer.wrap(encrypt);
-
-                                        try {
-                                            int write = peerInHandshake.getSocketChannel().write(wrap);
-                                            System.out.println("written bytes for PING: " + write);
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                        }
-
-
-                                    }
 
                                 }
+
+
+                                /**
+                                 * Lets check if we are ready to start the encryption for this handshaking peer
+                                 */
+                                if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
+                                    ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
+                                    activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
+
+                                    activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
+
+                                    activateEncryptionBuffer.flip();
+
+                                    long write = peerInHandshake.getSocketChannel().write(activateEncryptionBuffer);
+                                    Log.put("written bytes for ACTIVATE_ENCRYPTION: " + write, 100);
+                                    peerInHandshake.setWeSendOurRandom(true);
+                                }
+
+                                if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
+                                    peerInHandshake.setAwaitingEncryption(false);
+
+                                    Log.put("lets generate the shared secret", 80);
+
+                                    peerInHandshake.calculateSharedSecret();
+
+                                    /**
+                                     * Shared Secret and IV calculated via ECDH and random bytes,
+                                     * lets activate the encryption
+                                     */
+
+                                    peerInHandshake.activateEncryption();
+
+
+                                    /**
+                                     * lets send the first ping
+                                     */
+
+                                    byte[] bytesSendToPing = new byte[1];
+                                    bytesSendToPing[0] = Command.PING;
+
+
+                                    byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
+                                    ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+
+                                    try {
+                                        int write = peerInHandshake.getSocketChannel().write(wrap);
+                                        System.out.println("written bytes for PING: " + write);
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                    }
+
+
+                                }
+
+
                             } else {
                                 /**
                                  * The encryption is active in this section, lets check that first ping
@@ -543,7 +557,14 @@ public class ConnectionHandler extends Thread {
                             peersToReadAndParse.add(peer);
                             //Log.putStd("4: " + df.format((double) (System.nanoTime() - time) / 1000000.));
                         } else {
-                            //Log.putStd("asde2fsdfcv546tv54bv6");
+
+
+                            ArrayList<Peer> workingRead = ConnectionHandler.workingRead;
+                            BlockingQueue<Peer> doneRead = ConnectionHandler.doneRead;
+                            BlockingQueue<Peer> peersToReadAndParse = ConnectionHandler.peersToReadAndParse;
+                            ArrayList<ConnectionReaderThread> threads = ConnectionReaderThread.threads;
+
+                            Log.putStd("asde2fsdfcv546tv54bv6 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size() + ConnectionReaderThread.threads.size());
                             //throw new RuntimeException("asde2fsdfcv546tv54bv6");
                         }
 
@@ -580,7 +601,9 @@ public class ConnectionHandler extends Thread {
 
                                 try {
                                     writtenBytes = peer.writeBytesToPeer(peer.writeBufferCrypted);
+                                    Log.put("written bytes: " + writtenBytes, 200);
                                 } catch (IOException e) {
+                                    e.printStackTrace();
                                     Log.putStd("could not write bytes to peer, peer disconnected?");
                                     peer.disconnect("could not write");
                                     continue; //finally unlocks the lock

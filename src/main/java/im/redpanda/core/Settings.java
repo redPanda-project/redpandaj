@@ -11,6 +11,8 @@ public class Settings {
     public static int pingDelay = 3000; //time in msec
     public static int peerListRequestDelay = 60 * 60;//time in sec
 
+    public static final String SAVE_DIR = "data";
+
     public static final int k = 20; //k value from kademlia (nodes in one bucket)
 
     public static boolean IPV6_ONLY = false;
@@ -20,7 +22,7 @@ public class Settings {
 //    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558"};
 //    public static String[] knownNodes = {"127.0.0.1:59558"};
 //    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558"};
-    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558"};
+    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558", "redpanda.im:59559"};
 
     public static int getStartPort() {
         return STD_PORT;

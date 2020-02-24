@@ -49,7 +49,7 @@ public class OutboundHandler extends Thread {
 
         while (!Server.SHUTDOWN) {
 
-            System.out.println("Peers: " + PeerList.size());
+//            System.out.println("Peers: " + PeerList.size());
 
 
             if (Server.peerList.size() < 5) {
@@ -150,20 +150,31 @@ public class OutboundHandler extends Thread {
                     }
 
 
-                    boolean alreadyConnectedToSameTrustedNode = false;
-                    String equalIp = null;
-                    //already connected to same trusted node?
-                    for (Peer p2 : peerList) {
+                    boolean alreadyConnectedToSameNodeId = false;
+                    if (peer.getKademliaId() != null) {
+                        //already connected to same trusted node?
+                        for (Peer p2 : peerList) {
 
-                        if (alreadyConnectedToSameTrustedNode) {
-                            break;
+                            if (alreadyConnectedToSameNodeId) {
+                                break;
+                            }
+
+                            if (!p2.isConnected() && !p2.isConnecting) {
+                                continue;
+                            }
+
+                            if (peer.equalsNonce(p2)) {
+                                alreadyConnectedToSameNodeId = true;
+                                break;
+                            }
+
                         }
-
-                        if (!p2.isConnected() && !p2.isConnecting) {
-                            continue;
-                        }
+                    }
 
 
+                    if (alreadyConnectedToSameNodeId) {
+                        Log.put("Do not connect to this peer, already connected to same KadId...", 70);
+                        continue;
                     }
 
 
@@ -177,7 +188,7 @@ public class OutboundHandler extends Thread {
 
 //                    if (peerList.size() > 20) {
                     //(System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 * 4)
-                    if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
+                    if ((peer.retries > 30 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
                         //peerList.remove(peer);
                         peersToRemove.add(peer);
 
@@ -224,13 +235,15 @@ public class OutboundHandler extends Thread {
 
 
             for (Peer toRemove : peersToRemove) {
+                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
                 Server.removePeer(toRemove);
             }
+            peersToRemove.clear();
 
             try {
                 allowInterrupt = true;
 
-                sleep(5000 + random.nextInt(3000));
+                sleep(1000 + random.nextInt(3000));
 
             } catch (InterruptedException ex) {
             } finally {
@@ -242,7 +255,7 @@ public class OutboundHandler extends Thread {
 
     private void reseed() {
 
-        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000 * 60 * 10) {
+        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
             return;
         }
 
@@ -291,12 +304,6 @@ public class OutboundHandler extends Thread {
             }
 
             peerInHandshake.addConnection(alreadyConnected);
-
-//            peer.setSocketChannel(open);
-            System.out.println("C");
-            System.out.println("CCCCCC");
-//            Server.connectionHandler.addConnection(peer, true);
-            System.out.println("d");
 
         } catch (UnknownHostException ex) {
             System.out.println("outgoing con failed, unknown host...");

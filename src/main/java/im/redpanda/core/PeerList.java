@@ -127,6 +127,7 @@ public class PeerList {
      * @param peer
      */
     public static boolean remove(Peer peer) {
+        System.out.println("remove peer: " + peer.getKademliaId());
         readWriteLock.writeLock().lock();
         try {
             if (peer.getKademliaId() == null) {
@@ -162,6 +163,7 @@ public class PeerList {
      * @return
      */
     public static boolean removeIpPort(String ip, int port) {
+        System.out.println("remove ipport: " + ip + ":" + port);
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));

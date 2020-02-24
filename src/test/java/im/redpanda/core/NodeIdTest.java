@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import org.junit.Test;
 
+import java.io.Serializable;
 import java.security.Security;
 
 import static org.junit.Assert.assertNotNull;
