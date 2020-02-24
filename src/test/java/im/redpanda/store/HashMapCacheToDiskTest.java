@@ -6,6 +6,7 @@ import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
+import java.io.File;
 import java.io.Serializable;
 import java.sql.SQLOutput;
 import java.util.ArrayList;
@@ -38,6 +39,8 @@ public class HashMapCacheToDiskTest {
     public void test2() {
 
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(10);
+
+        new File("data").mkdirs();
 
         DB dbDisk = DBMaker
                 .fileDB("data/test2.mapdb")

@@ -3,6 +3,8 @@ package im.redpanda.core;
 import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
+import java.io.File;
+
 import static org.junit.Assert.*;
 
 public class NodeTest {
@@ -11,6 +13,8 @@ public class NodeTest {
     @Test
     public void getByKademliaId() {
 
+
+        new File("data").mkdirs();
 
         NodeStore nodeStore = new NodeStore();
         Server.nodeStore = nodeStore;
