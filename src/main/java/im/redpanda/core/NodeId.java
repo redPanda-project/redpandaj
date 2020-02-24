@@ -5,8 +5,7 @@ import im.redpanda.crypt.Utils;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 
-import java.io.Serializable;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
@@ -77,6 +76,14 @@ public class NodeId implements Serializable {
             }
         }
     }
+
+    public boolean hasPrivate() {
+        if (keyPair == null) {
+            return false;
+        }
+        return keyPair.getPrivate() != null;
+    }
+
 
     /**
      * Checks if this NodeId satisfies the required property
@@ -285,4 +292,29 @@ public class NodeId implements Serializable {
         return null;
 
     }
+
+    private void readObject(ObjectInputStream aInputStream) throws ClassNotFoundException, IOException {
+        boolean hasPrivate = aInputStream.readBoolean();
+
+        byte[] bytes = new byte[hasPrivate ? PRIVATE_KEYLEN : PUBLIC_KEYLEN];
+        aInputStream.read(bytes);
+
+        NodeId nodeId;
+        if (hasPrivate) {
+            nodeId = importWithPrivate(bytes);
+        } else {
+            nodeId = importPublic(bytes);
+        }
+        keyPair = nodeId.getKeyPair();
+    }
+
+    private void writeObject(ObjectOutputStream aOutputStream) throws IOException {
+        aOutputStream.writeBoolean(hasPrivate());
+        if (hasPrivate()) {
+            aOutputStream.write(exportWithPrivate());
+        } else {
+            aOutputStream.write(exportPublic());
+        }
+    }
 }
+

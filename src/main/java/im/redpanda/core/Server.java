@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.store.NodeStore;
+
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
@@ -23,6 +25,7 @@ public class Server {
     public static OutboundHandler outboundHandler;
     public static ArrayList<Peer>[] buckets = new ArrayList[KademliaId.ID_LENGTH];
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
+    public static NodeStore nodeStore;
 
     public static SecureRandom secureRandom = new SecureRandom();
 
@@ -44,6 +47,8 @@ public class Server {
     }
 
     public static void start() {
+
+        nodeStore = new NodeStore();
 
 
         connectionHandler = new ConnectionHandler(true);
