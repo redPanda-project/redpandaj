@@ -105,7 +105,7 @@ public class ConnectionReaderThread extends Thread {
 //                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
 
-                    System.out.println("peekedAndFound: " + peekedAndFound);
+//                    System.out.println("peekedAndFound: " + peekedAndFound);
 
                     peekedAndFound++;
 
