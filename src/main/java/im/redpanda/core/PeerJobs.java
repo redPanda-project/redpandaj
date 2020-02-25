@@ -60,6 +60,7 @@ public class PeerJobs extends Thread {
                     if ((p.isConnecting && p.getLastAnswered() > 10000)
                             || (!p.isConnected() && p.getLastAnswered() > Settings.pingTimeout)) {
 
+                        System.out.println("" + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
 
                         if (p.isConnected() || p.isConnecting) {
 

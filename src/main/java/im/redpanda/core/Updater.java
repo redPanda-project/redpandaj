@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.AddressFormatException;
 import im.redpanda.crypt.Base58;
+import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 
 import java.io.File;
@@ -82,6 +83,8 @@ public class Updater {
 
         System.out.println("signature len: " + signature.length + " " + ((int) signature[1]+2));
 
+        System.out.println("timestamp: " + timestamp);
+
         System.out.println("signature: " + Utils.bytesToHexString(signature));
 
         LocalSettings localSettings = LocalSettings.load(59558);
@@ -90,6 +93,10 @@ public class Updater {
         localSettings.setUpdateTimestamp(timestamp);
         localSettings.save(59558);
         System.out.println("saved in local settings!");
+
+        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(),signature));
+
+        System.out.println("hash data: " + Sha256Hash.create(data));
 
 
     }

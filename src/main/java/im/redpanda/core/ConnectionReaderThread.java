@@ -426,7 +426,7 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.UPDATE_ANSWER_TIMESTAMP) {
 
 
-            System.out.println("UPDATE_ANSWER_TIMESTAMP " );
+            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
 
             if (8 > readBuffer.remaining()) {
                 return 0;
@@ -512,12 +512,19 @@ public class ConnectionReaderThread extends Thread {
                             System.out.println("we send the update to a peer!");
                             byte[] data = Files.readAllBytes(path);
 
+                            System.out.println("hash data: " + Sha256Hash.create(data));
+
+                            System.out.println("timestamp: " + Server.localSettings.getUpdateTimestamp());
+
                             ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + Server.localSettings.getUpdateSignature().length + data.length);
                             a.put(Command.UPDATE_ANSWER_CONTENT);
                             a.putLong(Server.localSettings.getUpdateTimestamp());
                             a.putInt(data.length);
                             a.put(Server.localSettings.getUpdateSignature());
                             a.put(data);
+                            if (a.remaining() != 0) {
+                                throw new RuntimeException("not enough bytes for the update!!!");
+                            }
                             a.flip();
 
                             peer.writeBufferLock.lock();
@@ -645,10 +652,11 @@ public class ConnectionReaderThread extends Thread {
 
 
             if (othersTimestamp > Server.localSettings.getUpdateTimestamp() && !Settings.isSeedNode()) {
-                System.out.println("we got the update successfully, install it!");
+                System.out.println("we got the update successfully, install it! timestamp: " + othersTimestamp);
 
 
-                System.out.println("signature found: " + Utils.bytesToHexString(signature));
+                System.out.println("signature found: " + Utils.bytesToHexString(signature) + " len: " + signature.length);
+                System.out.println("hash data: " + Sha256Hash.create(data));
 
                 //lets check the signature chunk:
                 NodeId nodeId = Updater.getPublicUpdaterKey();
@@ -664,11 +672,11 @@ public class ConnectionReaderThread extends Thread {
 
                 System.out.println("update verified: " + verified);
 
-                File file = new File("redPandaj.jar");
+                File file = new File("redPanda.jar");
                 long myCurrentVersionTimestamp = file.lastModified();
                 if (!file.exists()) {
                     System.out.println("No jar to update found, exiting auto update!");
-                    return 1 + 8 + 4 +lenOfSignature + data.length;
+                    return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
                 if (myCurrentVersionTimestamp >= othersTimestamp) {

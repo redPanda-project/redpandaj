@@ -492,10 +492,14 @@ public class Peer implements Comparable<Peer>, Serializable {
             byte[] decrypt = decrypt(bytesToDecrypt);
 
             if (readBuffer.remaining() < decrypt.length) {
-                ByteBuffer allocate = ByteBuffer.allocate(readBuffer.position() + readBuffer.remaining() + decrypt.length + 1024);
+                int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 30);
+
+                ByteBuffer allocate = ByteBuffer.allocate(newSize);
                 System.arraycopy(readBuffer.array(), 0, allocate.array(), 0, readBuffer.array().length);
                 allocate.position(readBuffer.position());
+                System.out.println("new readbuffer... " + readBuffer + " " + allocate);
                 readBuffer = allocate;
+
             }
 
             readBuffer.put(decrypt);
@@ -705,6 +709,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         disconnect("new connection for this peer");
 
         setConnected(true);
+        isConnecting = false;
         authed = true;
         retries = 0;
 
@@ -713,10 +718,10 @@ public class Peer implements Comparable<Peer>, Serializable {
          */
         writeBufferLock.lock();
         try {
-            readBuffer = ByteBuffer.allocate(10 * 1024);
-            readBufferCrypted = ByteBuffer.allocate(10 * 1024);
-            writeBuffer = ByteBuffer.allocate(10 * 1024);
-            writeBufferCrypted = ByteBuffer.allocate(10 * 1024);
+            readBuffer = ByteBuffer.allocate(300 * 1024);
+            readBufferCrypted = ByteBuffer.allocate(300 * 1024);
+            writeBuffer = ByteBuffer.allocate(300 * 1024);
+            writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
         } catch (Throwable e) {
             Log.putStd("Speicher konnte nicht reserviert werden. Disconnect peer...");
             disconnect("Speicher konnte nicht reserviert werden.");

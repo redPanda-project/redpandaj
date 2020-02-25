@@ -85,9 +85,9 @@ public class OutboundHandler extends Thread {
                     actCons += connectingCons;
 
 
-                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 30000)) {
-                        peer.disconnect("timeout ...");
-                    }
+//                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 30000)) {
+//                        peer.disconnect("timeout ...");
+//                    }
 
                 }
 
