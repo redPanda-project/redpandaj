@@ -329,9 +329,14 @@ public class Peer implements Comparable<Peer>, Serializable {
                 if (socketChannel.isOpen()) {
                     try {
                         socketChannel.configureBlocking(false);//ToDo: hack
-                        socketChannel.close();
                     } catch (IOException ex) {
                     }
+                }
+
+                try {
+                    socketChannel.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
 
@@ -361,7 +366,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public void ping() {
 
-        if (System.currentTimeMillis() - lastPinged < 5000) {
+        if (System.currentTimeMillis() - lastPinged < 1000) {
             return;
         }
 

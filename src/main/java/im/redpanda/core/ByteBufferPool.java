@@ -4,10 +4,14 @@ import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
 import org.apache.commons.pool2.KeyedObjectPool;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
+import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class ByteBufferPool {
 
@@ -26,15 +30,25 @@ public class ByteBufferPool {
                 } else {
                     pool.setMaxTotalPerKey(20);
                 }
-                System.out.println("Free memory (MB): " +
-                        (Runtime.getRuntime().freeMemory() / 1024. / 1024.));
+                System.out.println("Generating new ByteBuffer for pool. Free memory (MB): " +
+                        (Runtime.getRuntime().freeMemory() / 1024. / 1024.) + " Idle: " + pool.getNumIdle() + " Active: " + pool.getNumActive() + " Waiters: " + pool.getNumWaiters());
+
+                Map<String, List<DefaultPooledObjectInfo>> stringListMap = pool.listAllObjects();
+
+                String out = "";
+
+                for (String s : stringListMap.keySet()) {
+                    out += "key: " + s + " size: " + stringListMap.get(s).size() + "\n";
+                }
+
+
+                System.out.println("\n\nList of Pool: \n" + out + "\n\n");
 
                 return allocate;
             }
 
             @Override
             public void activateObject(Integer key, PooledObject<ByteBuffer> p) throws Exception {
-//                System.out.println("act");
                 super.activateObject(key, p);
             }
 
@@ -46,7 +60,6 @@ public class ByteBufferPool {
                 byteBuffer.limit(byteBuffer.capacity());
 
 
-//                System.out.println("pass");
                 super.passivateObject(key, p);
             }
 
@@ -66,6 +79,9 @@ public class ByteBufferPool {
 
         pool = new GenericKeyedObjectPool<>(pooledObjectFactory);
         pool.setMinIdlePerKey(0);
+        pool.setMinEvictableIdleTimeMillis(1000 * 30); // 30 seconds...
+        pool.setTimeBetweenEvictionRunsMillis(5000); // will only test 3 items
+        pool.setNumTestsPerEvictionRun(3);
     }
 
     public static GenericKeyedObjectPool<Integer, ByteBuffer> getPool() {
@@ -74,9 +90,10 @@ public class ByteBufferPool {
 
     public static ByteBuffer borrowObject(Integer key) {
 
+
         key = keyToKey(key);
 
-        System.out.println("borrow ByteBuffer key: " + key);
+//        System.out.println("requested: " + key + " idle: " + pool.getNumIdle(key) + " used: " + pool.getNumActive(key));
 
         ByteBuffer byteBuffer = null;
         try {
@@ -101,7 +118,6 @@ public class ByteBufferPool {
 
         key = keyToKey(key);
 
-        System.out.println("return ByteBuffer key: " + key);
         pool.returnObject(key, byteBuffer);
     }
 

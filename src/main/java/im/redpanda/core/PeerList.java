@@ -73,7 +73,7 @@ public class PeerList {
             oldPeer = peerlist.get(peer.getKademliaId());
             if (oldPeer != null) {
                 // Peer with same KademliaId exists already
-                System.out.println("Peer with same KademliaId exists already");
+                Log.put("Peer with same KademliaId exists already", 100);
                 return oldPeer;
             }
         }

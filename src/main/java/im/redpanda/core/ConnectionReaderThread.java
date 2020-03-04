@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
+import java.sql.SQLOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
@@ -84,13 +85,15 @@ public class ConnectionReaderThread extends Thread {
         setName("ReaderThread");
 
         int peekedAndFound = 0;
+        int lastThreadSize = 1;
+        int threadSize = 1;
 
         while (!Server.SHUTDOWN && run) {
 
             threadLock.lock();
             try {
-
-                if (threads.size() > MAX_THREADS) {
+                threadSize = threads.size();
+                if (threadSize > MAX_THREADS) {
                     run = false;
                     threads.remove(this);
                     Log.put("threads now: " + threads.size(), -10);
@@ -99,6 +102,10 @@ public class ConnectionReaderThread extends Thread {
 
             } finally {
                 threadLock.unlock();
+            }
+
+            if (threadSize != lastThreadSize) {
+                peekedAndFound = 0;
             }
 
             Peer poll = null;
@@ -115,14 +122,19 @@ public class ConnectionReaderThread extends Thread {
                     System.out.println("too many peers waiting for read: " + size);
                 }
 
+//                System.out.println("peekedAndFound: " + peekedAndFound);
+
 //                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
 
-//                    System.out.println("peekedAndFound: " + peekedAndFound);
+                    if (peekedAndFound < 0) {
+                        peekedAndFound = 0;
+                    }
+
 
                     peekedAndFound++;
 
-                    if (peekedAndFound > 3) {
+                    if (peekedAndFound > 5) {
 
                         threadLock.lock();
                         if (threads.size() < MAX_THREADS) {
@@ -139,14 +151,28 @@ public class ConnectionReaderThread extends Thread {
                         }
                         threadLock.unlock();
 
-                        peekedAndFound = 0;
+                        if (peekedAndFound > 0) {
+                            peekedAndFound = 0;
+                        }
 
                     }
                 } else {
                     peekedAndFound--;
-                    if (peekedAndFound < 0) {
+                    if (peekedAndFound > 0) {
                         peekedAndFound = 0;
                     }
+                    if (peekedAndFound < -5) {
+                        peekedAndFound = -5;
+                    }
+
+                    if (timeout != -1 && peekedAndFound < -5) {
+                        threadLock.lock();
+                        run = false;
+                        threads.remove(this);
+                        threadLock.unlock();
+                        Log.put("last time this thead will run, threads afterwards: " + threads.size(), -10);
+                    }
+
                 }
 
             } catch (InterruptedException ex) {
@@ -157,6 +183,8 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("ggzdazdndzgrztgr");
                 e.printStackTrace();
             }
+
+            lastThreadSize = threadSize;
 
             if (poll == null) {
                 //this thread can be destroyed, a new one will be started if needed
@@ -172,7 +200,9 @@ public class ConnectionReaderThread extends Thread {
 //            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
             long a = System.currentTimeMillis();
 
+
             readConnection(poll);
+
 
             long diff = (System.currentTimeMillis() - a);
 
@@ -266,7 +296,7 @@ public class ConnectionReaderThread extends Thread {
 
         loopCommands(peer, readBuffer);
 
-        System.out.println("buffer after parse: " + readBuffer);
+//        System.out.println("buffer after parse: " + readBuffer);
 
         if (peer.readBuffer.position() == 0) {
             ByteBufferPool.returnObject(peer.readBuffer);
@@ -287,9 +317,7 @@ public class ConnectionReaderThread extends Thread {
             peer.setLastActionOnConnection(System.currentTimeMillis());
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
-            System.out.println("cmd: " + b);
-//            Log.put("command: " + b, 200);
-//            peer.ping();
+            Log.put("command: " + b, 200);
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);
@@ -316,7 +344,7 @@ public class ConnectionReaderThread extends Thread {
         }
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
-            peer.ping = (9 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 10;
+            peer.ping = (1 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 2;
 
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
@@ -432,7 +460,7 @@ public class ConnectionReaderThread extends Thread {
 
 
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
-            System.out.println("UPDATE_REQUEST_TIMESTAMP " + Server.localSettings.getUpdateTimestamp());
+//            System.out.println("UPDATE_REQUEST_TIMESTAMP " + Server.localSettings.getUpdateTimestamp());
             ByteBuffer writeBuffer = peer.getWriteBuffer();
             peer.writeBufferLock.lock();
             try {
@@ -446,7 +474,7 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.UPDATE_ANSWER_TIMESTAMP) {
 
 
-            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
+//            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
 
             if (8 > readBuffer.remaining()) {
                 return 0;
@@ -455,7 +483,7 @@ public class ConnectionReaderThread extends Thread {
             long othersTimestamp = readBuffer.getLong();
 
 
-            System.out.println("UPDATE_ANSWER_TIMESTAMP " + othersTimestamp);
+//            System.out.println("UPDATE_ANSWER_TIMESTAMP " + othersTimestamp);
 
 //            System.out.println("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Settings.getMyCurrentVersionTimestamp()));
 
@@ -662,6 +690,9 @@ public class ConnectionReaderThread extends Thread {
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
             if (toReadBytes > readBuffer.remaining()) {
+                if (Math.random() < 0.05) {
+                    System.out.println("Update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                }
                 return 0;
             }
 
@@ -692,7 +723,7 @@ public class ConnectionReaderThread extends Thread {
 
                 System.out.println("update verified: " + verified);
 
-                File file = new File("redPanda.jar");
+                File file = new File("redpanda.jar");
                 long myCurrentVersionTimestamp = file.lastModified();
                 if (!file.exists()) {
                     System.out.println("No jar to update found, exiting auto update!");
@@ -700,7 +731,12 @@ public class ConnectionReaderThread extends Thread {
                 }
 
                 if (myCurrentVersionTimestamp >= othersTimestamp) {
-                    System.out.println("update not required, aborting...");
+                    System.out.println("update not required our file is newer or equal, aborting...");
+                    return 1 + 8 + 4 + lenOfSignature + data.length;
+                }
+
+                if (Server.localSettings.getUpdateTimestamp() >= othersTimestamp) {
+                    System.out.println("update not required our update timestamp is newer or equal, aborting...");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
@@ -716,6 +752,7 @@ public class ConnectionReaderThread extends Thread {
                         f.setLastModified(othersTimestamp);
 
                         Server.localSettings.setUpdateSignature(signature);
+                        Server.localSettings.setUpdateTimestamp(othersTimestamp);
                         Server.localSettings.save(Server.MY_PORT);
 
                         try {
@@ -790,6 +827,11 @@ public class ConnectionReaderThread extends Thread {
 //            System.out.println("written bytes of handshake: " + write);
         } catch (IOException e) {
             e.printStackTrace();
+            try {
+                peerInHandshake.getSocketChannel().close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
         }
     }
 

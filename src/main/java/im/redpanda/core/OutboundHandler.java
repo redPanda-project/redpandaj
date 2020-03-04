@@ -84,16 +84,13 @@ public class OutboundHandler extends Thread {
                         connectingCons++;
                     }
 
-                    actCons += connectingCons;
-
-
 //                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 30000)) {
 //                        peer.disconnect("timeout ...");
 //                    }
 
                 }
 
-
+                actCons += connectingCons;
                 int cnt = 0;
                 for (Peer peer : peerList) {
 
@@ -190,7 +187,7 @@ public class OutboundHandler extends Thread {
 
 //                    if (peerList.size() > 20) {
                     //(System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 * 4)
-                    if ((peer.retries > 30 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
+                    if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
                         //peerList.remove(peer);
                         peersToRemove.add(peer);
 
@@ -216,7 +213,7 @@ public class OutboundHandler extends Thread {
 
                     if (peer.connectAble != -1) {
 
-                        Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 5);
+                        Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 50);
 
                         connectTo(peer);
                         actCons++;
