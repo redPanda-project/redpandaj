@@ -266,7 +266,7 @@ public class ConnectionReaderThread extends Thread {
 
         loopCommands(peer, readBuffer);
 
-        System.out.println("buffer after parse: " + readBuffer);
+//        System.out.println("buffer after parse: " + readBuffer);
 
         if (peer.readBuffer.position() == 0) {
             ByteBufferPool.returnObject(peer.readBuffer);
@@ -287,9 +287,7 @@ public class ConnectionReaderThread extends Thread {
             peer.setLastActionOnConnection(System.currentTimeMillis());
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
-            System.out.println("cmd: " + b);
-//            Log.put("command: " + b, 200);
-//            peer.ping();
+            Log.put("command: " + b, 200);
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);
@@ -446,7 +444,7 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.UPDATE_ANSWER_TIMESTAMP) {
 
 
-            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
+//            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
 
             if (8 > readBuffer.remaining()) {
                 return 0;
@@ -455,7 +453,7 @@ public class ConnectionReaderThread extends Thread {
             long othersTimestamp = readBuffer.getLong();
 
 
-            System.out.println("UPDATE_ANSWER_TIMESTAMP " + othersTimestamp);
+//            System.out.println("UPDATE_ANSWER_TIMESTAMP " + othersTimestamp);
 
 //            System.out.println("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Settings.getMyCurrentVersionTimestamp()));
 
@@ -692,7 +690,7 @@ public class ConnectionReaderThread extends Thread {
 
                 System.out.println("update verified: " + verified);
 
-                File file = new File("redPanda.jar");
+                File file = new File("redpanda.jar");
                 long myCurrentVersionTimestamp = file.lastModified();
                 if (!file.exists()) {
                     System.out.println("No jar to update found, exiting auto update!");
@@ -700,7 +698,12 @@ public class ConnectionReaderThread extends Thread {
                 }
 
                 if (myCurrentVersionTimestamp >= othersTimestamp) {
-                    System.out.println("update not required, aborting...");
+                    System.out.println("update not required our file is newer or equal, aborting...");
+                    return 1 + 8 + 4 + lenOfSignature + data.length;
+                }
+
+                if (Server.localSettings.getUpdateTimestamp() >= othersTimestamp) {
+                    System.out.println("update not required our update timestamp is newer or equal, aborting...");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
@@ -716,6 +719,7 @@ public class ConnectionReaderThread extends Thread {
                         f.setLastModified(othersTimestamp);
 
                         Server.localSettings.setUpdateSignature(signature);
+                        Server.localSettings.setUpdateTimestamp(othersTimestamp);
                         Server.localSettings.save(Server.MY_PORT);
 
                         try {

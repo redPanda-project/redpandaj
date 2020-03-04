@@ -1,11 +1,15 @@
 package im.redpanda.core;
 
+import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 public class ListenConsole extends Thread {
 
@@ -95,6 +99,17 @@ public class ListenConsole extends Thread {
 //                    System.out.println("Services last run: ConnectionHandler: " + (System.currentTimeMillis() - ConnectionHandler.lastRun) + " MessageDownloader: " + (System.currentTimeMillis() - MessageDownloader.lastRun) + " MessageVerifierHsqlDb: " + (System.currentTimeMillis() - MessageVerifierHsqlDb.lastRun));
 //                    System.out.println("Livetime socketio connections: " + Stats.getSocketioConnectionsLiveTime());
 
+                    Map<String, List<DefaultPooledObjectInfo>> stringListMap = ByteBufferPool.getPool().listAllObjects();
+
+                    String out = "";
+
+                    for (String s : stringListMap.keySet()) {
+                        out += "key: " + s + " size: " + stringListMap.get(s).size() + "\n";
+                    }
+
+
+                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
+
                 } finally {
                     PeerList.getReadWriteLock().writeLock().unlock();
                 }
@@ -119,6 +134,12 @@ public class ListenConsole extends Thread {
                     peer.disconnect("disconnect by user");
                 }
                 PeerList.getReadWriteLock().writeLock().unlock();
+
+
+            } else if (readLine.equals("alloc")) {
+                System.out.println("allocating buffers by pool");
+
+                ByteBufferPool.returnObject(ByteBufferPool.borrowObject(1024 * 1024 * 4));
 
 
             }

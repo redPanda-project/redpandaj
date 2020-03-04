@@ -491,6 +491,8 @@ public class ConnectionHandler extends Thread {
 
                                 byte decryptedCommand = outBuffer.get();
 
+                                ByteBufferPool.returnObject(outBuffer);
+
                                 if (decryptedCommand == Command.PING) {
                                     System.out.println("received first ping...");
 
