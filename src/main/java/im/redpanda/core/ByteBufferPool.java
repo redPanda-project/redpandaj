@@ -79,6 +79,9 @@ public class ByteBufferPool {
 
         pool = new GenericKeyedObjectPool<>(pooledObjectFactory);
         pool.setMinIdlePerKey(0);
+        pool.setMinEvictableIdleTimeMillis(1000 * 30); // 30 seconds...
+        pool.setTimeBetweenEvictionRunsMillis(5000); // will only test 3 items
+        pool.setNumTestsPerEvictionRun(3);
     }
 
     public static GenericKeyedObjectPool<Integer, ByteBuffer> getPool() {
@@ -90,7 +93,7 @@ public class ByteBufferPool {
 
         key = keyToKey(key);
 
-        System.out.println("requested: " + key + " idle: " + pool.getNumIdle(key) + " used: " + pool.getNumActive(key));
+//        System.out.println("requested: " + key + " idle: " + pool.getNumIdle(key) + " used: " + pool.getNumActive(key));
 
         ByteBuffer byteBuffer = null;
         try {

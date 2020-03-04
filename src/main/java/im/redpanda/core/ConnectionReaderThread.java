@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
+import java.sql.SQLOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
@@ -84,13 +85,15 @@ public class ConnectionReaderThread extends Thread {
         setName("ReaderThread");
 
         int peekedAndFound = 0;
+        int lastThreadSize = 1;
+        int threadSize = 1;
 
         while (!Server.SHUTDOWN && run) {
 
             threadLock.lock();
             try {
-
-                if (threads.size() > MAX_THREADS) {
+                threadSize = threads.size();
+                if (threadSize > MAX_THREADS) {
                     run = false;
                     threads.remove(this);
                     Log.put("threads now: " + threads.size(), -10);
@@ -99,6 +102,10 @@ public class ConnectionReaderThread extends Thread {
 
             } finally {
                 threadLock.unlock();
+            }
+
+            if (threadSize != lastThreadSize) {
+                peekedAndFound = 0;
             }
 
             Peer poll = null;
@@ -115,14 +122,19 @@ public class ConnectionReaderThread extends Thread {
                     System.out.println("too many peers waiting for read: " + size);
                 }
 
+//                System.out.println("peekedAndFound: " + peekedAndFound);
+
 //                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
 
-//                    System.out.println("peekedAndFound: " + peekedAndFound);
+                    if (peekedAndFound < 0) {
+                        peekedAndFound = 0;
+                    }
+
 
                     peekedAndFound++;
 
-                    if (peekedAndFound > 3) {
+                    if (peekedAndFound > 5) {
 
                         threadLock.lock();
                         if (threads.size() < MAX_THREADS) {
@@ -139,14 +151,28 @@ public class ConnectionReaderThread extends Thread {
                         }
                         threadLock.unlock();
 
-                        peekedAndFound = 0;
+                        if (peekedAndFound > 0) {
+                            peekedAndFound = 0;
+                        }
 
                     }
                 } else {
                     peekedAndFound--;
-                    if (peekedAndFound < 0) {
+                    if (peekedAndFound > 0) {
                         peekedAndFound = 0;
                     }
+                    if (peekedAndFound < -5) {
+                        peekedAndFound = -5;
+                    }
+
+                    if (timeout != -1 && peekedAndFound < -5) {
+                        threadLock.lock();
+                        run = false;
+                        threads.remove(this);
+                        threadLock.unlock();
+                        Log.put("last time this thead will run, threads afterwards: " + threads.size(), -10);
+                    }
+
                 }
 
             } catch (InterruptedException ex) {
@@ -157,6 +183,8 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("ggzdazdndzgrztgr");
                 e.printStackTrace();
             }
+
+            lastThreadSize = threadSize;
 
             if (poll == null) {
                 //this thread can be destroyed, a new one will be started if needed
@@ -172,7 +200,9 @@ public class ConnectionReaderThread extends Thread {
 //            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
             long a = System.currentTimeMillis();
 
+
             readConnection(poll);
+
 
             long diff = (System.currentTimeMillis() - a);
 
@@ -314,7 +344,7 @@ public class ConnectionReaderThread extends Thread {
         }
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
-            peer.ping = (9 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 10;
+            peer.ping = (1 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 2;
 
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
@@ -430,7 +460,7 @@ public class ConnectionReaderThread extends Thread {
 
 
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
-            System.out.println("UPDATE_REQUEST_TIMESTAMP " + Server.localSettings.getUpdateTimestamp());
+//            System.out.println("UPDATE_REQUEST_TIMESTAMP " + Server.localSettings.getUpdateTimestamp());
             ByteBuffer writeBuffer = peer.getWriteBuffer();
             peer.writeBufferLock.lock();
             try {
@@ -660,6 +690,9 @@ public class ConnectionReaderThread extends Thread {
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
             if (toReadBytes > readBuffer.remaining()) {
+                if (Math.random() < 0.05) {
+                    System.out.println("Update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                }
                 return 0;
             }
 
@@ -794,6 +827,11 @@ public class ConnectionReaderThread extends Thread {
 //            System.out.println("written bytes of handshake: " + write);
         } catch (IOException e) {
             e.printStackTrace();
+            try {
+                peerInHandshake.getSocketChannel().close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
         }
     }
 

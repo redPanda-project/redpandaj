@@ -34,7 +34,7 @@ public class PeerJobs extends Thread {
         while (!Server.SHUTDOWN) {
 
             try {
-                sleep(3000 + Server.secureRandom.nextInt(10000));
+                sleep(1000 + Server.secureRandom.nextInt(4000));
             } catch (InterruptedException ex) {
                 ex.printStackTrace();
             }
@@ -46,6 +46,12 @@ public class PeerJobs extends Thread {
             PeerList.getReadWriteLock().readLock().lock();
             try {
                 for (Peer p : PeerList.getPeerArrayList()) {
+
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
 
                     Log.put("running over peer: " + p, 70);
 
@@ -60,11 +66,11 @@ public class PeerJobs extends Thread {
                     if ((p.isConnecting && p.getLastAnswered() > 10000)
                             || (!p.isConnected() && p.getLastAnswered() > Settings.pingTimeout)) {
 
-                        System.out.println("" + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
+//                        System.out.println("reason: " + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
 
                         if (p.isConnected() || p.isConnecting) {
 
-                            Log.put(Settings.pingTimeout + " sec timeout reached! " + p.ip, 10);
+//                            Log.put(Settings.pingTimeout + " sec timeout reached! " + p.ip, 10);
 
                             p.disconnect("timeout");
                             if (p.getNodeId() == null) {

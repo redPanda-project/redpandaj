@@ -458,7 +458,7 @@ public class ConnectionHandler extends Thread {
 
                                     try {
                                         int write = peerInHandshake.getSocketChannel().write(byteBuffer);
-                                        System.out.println("written bytes for PING: " + write);
+                                        Log.put("written bytes for PING: " + write, 80);
                                     } catch (IOException e) {
                                         e.printStackTrace();
                                     }
@@ -650,6 +650,11 @@ public class ConnectionHandler extends Thread {
                     if (key.attachment() instanceof PeerInHandshake) {
                         PeerInHandshake peerInHandshake = ((PeerInHandshake) key.attachment());
                         Log.putStd("error! " + peerInHandshake.ip);
+                        try {
+                            peerInHandshake.getSocketChannel().close();
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
+                        }
 //                        peer.disconnect("IOException");
                     } else if (key.attachment() instanceof Peer) {
                         Peer peer = ((Peer) key.attachment());
