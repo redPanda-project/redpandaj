@@ -14,17 +14,20 @@ import java.util.Random;
 
 public class SmallChiperStreamTest {
 
-    public static final String ALGORITHM = "AES/GCM/NoPadding";
+    //        public static final String ALGORITHM = "AES/GCM/NoPadding";
+    public static final String ALGORITHM = "AES/CTR/NoPadding";
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     }
 
 
-    public static void main(final String[] args) {
+    public static void main(final String[] args) throws NoSuchProviderException, InvalidAlgorithmParameterException, NoSuchAlgorithmException, InvalidKeyException, NoSuchPaddingException, IOException {
 
         final SmallChiperStreamTest cip = new SmallChiperStreamTest();
-        cip.runExperiments();
+//        cip.runExperiments();
+
+        cip.runExperimentsTwo();
 
     }
 
@@ -57,8 +60,8 @@ public class SmallChiperStreamTest {
 //            fileInput = new FileInputStream("CipherOutput.txt");
 
 
-            PipedInputStream pipedInputStream = new PipedInputStream();
-            PipedOutputStream pipedOutputStream = new PipedOutputStream(pipedInputStream);
+//            PipedInputStream pipedInputStream = new PipedInputStream();
+//            PipedOutputStream pipedOutputStream = new PipedOutputStream(pipedInputStream);
 
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 
@@ -77,6 +80,7 @@ public class SmallChiperStreamTest {
 
 
             final PrintWriter pw = new PrintWriter(output);
+//            pw.println("Ci");
             pw.println("Cipher Streams are working correctly.1");
             pw.println("Cipher Streams are working correctly.2");
             pw.println("Cipher Streams are working correctly.3");
@@ -84,12 +88,13 @@ public class SmallChiperStreamTest {
             pw.println("Cipher Streams are working correctly.5");
             pw.println("Cipher Streams are working correctly.6");
             pw.flush();
-            pw.close();
+//            pw.close();
 
 
             System.out.println("" + byteArrayOutputStream.size());
 
             byte[] bytes1 = byteArrayOutputStream.toByteArray();
+            byteArrayOutputStream.reset();
 
 
 //            ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes1);
@@ -101,7 +106,6 @@ public class SmallChiperStreamTest {
             System.out.println("" + bytes1.length);
 
             ByteBuffer wrap = ByteBuffer.wrap(bytes1);
-
             myInputStream.appendBuffer(wrap);
 
 
@@ -122,10 +126,35 @@ public class SmallChiperStreamTest {
 
             System.out.println("" + input.available());
 
+//            int read = input.read();
+//            while (read != -1) {
+//                read = input.read();
+//                System.out.println("read: " + read);
+//                pw.println("Cipher Streams are working correctly.X");
+//                pw.flush();
+//                bytes1 = byteArrayOutputStream.toByteArray();
+//                System.out.println("" + bytes1.length);
+//                wrap = ByteBuffer.wrap(bytes1);
+//                myInputStream.appendBuffer(wrap);
+//            }
+
+
             String line = reader.readLine();
             while (line != null) {
                 System.out.println("Line: " + line);
                 line = reader.readLine();
+                pw.println("Cipher Streams are working correctly.X");
+                pw.flush();
+                bytes1 = byteArrayOutputStream.toByteArray();
+                byteArrayOutputStream.reset();
+                System.out.println("" + bytes1.length);
+                wrap = ByteBuffer.wrap(bytes1);
+                myInputStream.appendBuffer(wrap);
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
 
 //            int cnt = 0;
@@ -170,6 +199,89 @@ public class SmallChiperStreamTest {
         }
     }
 
+
+    public void runExperimentsTwo() throws NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException, IOException {
+
+        CipherOutputStreamByteBuffer output = null;
+        CipherInputStream input = null;
+//        FileOutputStream fileOutput = null;
+//        FileInputStream fileInput = null;
+
+        KeyPair keyPairA = generateECKeys();
+        KeyPair keyPairB = generateECKeys();
+
+
+        System.out.println("" + keyPairA.getPublic().getFormat());
+
+
+        // Create two AES secret keys to encrypt/decrypt the message
+        SecretKey secretKeyA = generateSharedSecret(keyPairA.getPrivate(),
+                keyPairB.getPublic());
+        SecretKey secretKeyB = generateSharedSecret(keyPairB.getPrivate(),
+                keyPairA.getPublic());
+
+        byte[] iv = new SecureRandom().generateSeed(16);
+        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+
+//            fileOutput = new FileOutputStream("CipherOutput.txt");
+//            fileInput = new FileInputStream("CipherOutput.txt");
+
+
+//            PipedInputStream pipedInputStream = new PipedInputStream();
+//            PipedOutputStream pipedOutputStream = new PipedOutputStream(pipedInputStream);
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+//            byte[] bytes = new byte[1024 * 1024];
+//            ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+
+
+//            final KeyGenerator kg = KeyGenerator.getInstance("AES");
+//            kg.init(new SecureRandom(new byte[]{1, 2, 3}));
+//            final SecretKey key = kg.generateKey();
+
+        final Cipher c = Cipher.getInstance(ALGORITHM, "SunJCE");
+        System.out.println(c.getProvider().getName());
+        c.init(Cipher.ENCRYPT_MODE, secretKeyA, ivSpec);
+//        output = new CipherOutputStream(byteArrayOutputStream, c);
+        output = new CipherOutputStreamByteBuffer(byteArrayOutputStream, c);
+
+
+        output.write(new byte[1]);
+        output.flush();
+
+        System.out.println("" + byteArrayOutputStream.size());
+
+        final PrintWriter pw = new PrintWriter(output);
+        pw.print("C");
+        pw.flush();
+//            pw.close();
+
+        System.out.println("" + byteArrayOutputStream.size());
+
+
+        while (byteArrayOutputStream.size() == 0) {
+            System.out.println("" + byteArrayOutputStream.size());
+            pw.println("i");
+            pw.flush();
+            output.flush();
+        }
+        System.out.println("" + byteArrayOutputStream.size());
+
+        byte[] bytes1 = byteArrayOutputStream.toByteArray();
+        byteArrayOutputStream.reset();
+
+    }
+
+
+    public static class MyOutputStream extends OutputStream {
+
+        @Override
+        public void write(int b) throws IOException {
+
+        }
+    }
 
     public static class MyInputStream extends InputStream {
 
@@ -221,14 +333,23 @@ public class SmallChiperStreamTest {
             ByteBuffer byteBuffer = buffers.get(0);
 
             if (!byteBuffer.hasRemaining()) {
-                return -1;
+                buffers.remove(0);
+
+                if (buffers.size() == 0) {
+                    return -1;
+                }
+
+                byteBuffer = buffers.get(0);
+                if (!byteBuffer.hasRemaining()) {
+                    return -1;
+                }
             }
 
             int i = new Random().nextInt(20);
 
-            if (i < 1) {
-                return (byte) 44;
-            }
+//            if (i < 1) {
+//                return (byte) 44;
+//            }
 
             int min = Math.min(byteBuffer.remaining(), b.length);
             min = Math.min(min, i);

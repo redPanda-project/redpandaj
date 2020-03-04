@@ -121,6 +121,7 @@ public class Server {
         nodeStore = new NodeStore();
 
         Settings.init();
+        ByteBufferPool.init();
 
         System.out.println("NodeStore has entries: " + nodeStore.size());
 

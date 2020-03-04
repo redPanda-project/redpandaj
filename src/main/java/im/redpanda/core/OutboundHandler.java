@@ -27,8 +27,10 @@ public class OutboundHandler extends Thread {
     boolean allowInterrupt = false;
 
     public void tryInterrupt() {
+//        System.out.println("try interrupt");
         if (allowInterrupt) {
-            interrupt();
+            //todo maybe reactivate later...
+//            interrupt();
         }
     }
 

@@ -74,8 +74,6 @@ public class PeerJobs extends Thread {
                             //todo: interrupt outbound thread?
                         } else if (p.getLastAnswered() > Settings.pingTimeout * 1000 * 2) {
                             p.writeBuffer = null;
-                            p.readBuffer = null;
-                            p.readBufferCrypted = null;
                             p.writeBufferCrypted = null;
                         }
 

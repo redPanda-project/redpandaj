@@ -50,6 +50,7 @@ public class ConnectionReaderThread extends Thread {
 
     private boolean run = true;
     private int timeout;
+    private ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
 
 
     public ConnectionReaderThread(int timeout) {
@@ -206,14 +207,18 @@ public class ConnectionReaderThread extends Thread {
 
     private void readConnection(Peer peer) {
 
-        ByteBuffer readBuffer = peer.readBuffer;
+
         ByteBuffer writeBuffer = peer.writeBuffer;
         SelectionKey key = peer.selectionKey;
 
 
+        if (myReaderBuffer.position() != 0) {
+            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
+        }
+
         int read = -2;
         try {
-            read = peer.getSocketChannel().read(peer.readBufferCrypted);
+            read = peer.getSocketChannel().read(myReaderBuffer);
             Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
             e.printStackTrace();
@@ -235,7 +240,7 @@ public class ConnectionReaderThread extends Thread {
             peer.disconnect("dafuq 2332");
             return;
         } else if (read == -1) {
-            Log.put("closing connection " + peer.ip + ": not readable! " + readBuffer, 100);
+            Log.put("closing connection " + peer.ip + ": not readable! ", 100);
             peer.disconnect(" read == -1 ");
             key.cancel();
         } else {
@@ -246,13 +251,27 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
+        if (peer.readBuffer == null) {
+            peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
+        }
+
+        ByteBuffer readBuffer = peer.readBuffer;
+
+
         /**
          * Decrypt all bytes from the readBufferCrypted to the readBuffer
          */
-        peer.decryptInputdata();
+        peer.decryptInputdata(myReaderBuffer);
 
 
         loopCommands(peer, readBuffer);
+
+        System.out.println("buffer after parse: " + readBuffer);
+
+        if (peer.readBuffer.position() == 0) {
+            ByteBufferPool.returnObject(peer.readBuffer);
+            peer.readBuffer = null;
+        }
 
     }
 
@@ -268,6 +287,7 @@ public class ConnectionReaderThread extends Thread {
             peer.setLastActionOnConnection(System.currentTimeMillis());
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
+            System.out.println("cmd: " + b);
 //            Log.put("command: " + b, 200);
 //            peer.ping();
 

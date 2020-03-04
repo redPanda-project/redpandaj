@@ -60,7 +60,7 @@ public class Peer implements Comparable<Peer>, Serializable {
     boolean requestedNewAuth;
     public boolean authed = false;
     public ByteBuffer writeBufferCrypted;
-    public ByteBuffer readBufferCrypted;
+    //    public ByteBuffer readBufferCrypted;
     public int trustRetries = 0;
     public final ReentrantLock writeBufferLock = new ReentrantLock();
     public Thread connectinThread;
@@ -78,8 +78,9 @@ public class Peer implements Comparable<Peer>, Serializable {
     private boolean isIntegrated = false;
 
     //new variables since redpanda2.0
-    Cipher cipherSend;
-    Cipher cipherReceive;
+//    Cipher cipherSend;
+//    Cipher cipherReceive;
+    private PeerChiperStreams peerChiperStreams;
 
     public Peer(String ip, int port) {
         this.ip = ip;
@@ -334,8 +335,13 @@ public class Peer implements Comparable<Peer>, Serializable {
                 }
             }
 
-            readBuffer = null;
-            readBufferCrypted = null;
+            if (readBuffer != null) {
+                ByteBufferPool.returnObject(readBuffer);
+                readBuffer = null;
+            }
+
+//            readBuffer = null;
+//            readBufferCrypted = null;
             writeBuffer = null;
             writeBufferCrypted = null;
 
@@ -467,26 +473,23 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     }
 
-    public int decryptInputdata() {
+    public int decryptInputdata(ByteBuffer byteBufferToDecrypt) {
 
         writeBufferLock.lock();
         try {
 
-            if (readBuffer == null) {
-                return 0;
-            }
 
-            readBufferCrypted.flip();
-            int remaining = readBufferCrypted.remaining();
+            byteBufferToDecrypt.flip();
+            int remaining = byteBufferToDecrypt.remaining();
 
 
             if (remaining == 0) {
-                readBufferCrypted.compact();
+                byteBufferToDecrypt.compact();
                 return 0;
             }
 
             byte[] bytesToDecrypt = new byte[remaining];
-            readBufferCrypted.get(bytesToDecrypt);
+            byteBufferToDecrypt.get(bytesToDecrypt);
 
 
             byte[] decrypt = decrypt(bytesToDecrypt);
@@ -494,18 +497,20 @@ public class Peer implements Comparable<Peer>, Serializable {
             if (readBuffer.remaining() < decrypt.length) {
                 int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 30);
 
-                ByteBuffer allocate = ByteBuffer.allocate(newSize);
-                System.arraycopy(readBuffer.array(), 0, allocate.array(), 0, readBuffer.array().length);
-                allocate.position(readBuffer.position());
-                System.out.println("new readbuffer... " + readBuffer + " " + allocate);
-                readBuffer = allocate;
+                ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
 
+//                ByteBuffer allocate = ByteBuffer.allocate(newSize);
+                System.arraycopy(readBuffer.array(), 0, newBuffer.array(), 0, readBuffer.array().length);
+                newBuffer.position(readBuffer.position());
+                System.out.println("new readbuffer... " + readBuffer + " " + newBuffer);
+                ByteBufferPool.returnObject(readBuffer);
+                readBuffer = newBuffer;
             }
 
             readBuffer.put(decrypt);
 
 
-            readBufferCrypted.compact();
+            byteBufferToDecrypt.compact();
 
 //            System.out.println("decrypted  " + remaining + " bytes...");
 
@@ -552,10 +557,6 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public boolean isAuthed() {
         return authed;
-    }
-
-    public boolean isCryptedConnection() {
-        return readBufferCrypted != null;
     }
 
     public ReentrantLock getWriteBufferLock() {
@@ -646,59 +647,52 @@ public class Peer implements Comparable<Peer>, Serializable {
         this.lastActionOnConnection = lastActionOnConnection;
     }
 
-    public Cipher getCipherSend() {
-        return cipherSend;
+    public void setPeerChiperStreams(PeerChiperStreams peerChiperStreams) {
+        this.peerChiperStreams = peerChiperStreams;
     }
 
-    public void setCipherSend(Cipher cipherSend) {
-        this.cipherSend = cipherSend;
-    }
-
-    public Cipher getCipherReceive() {
-        return cipherReceive;
-    }
-
-    public void setCipherReceive(Cipher cipherReceive) {
-        this.cipherReceive = cipherReceive;
+    public PeerChiperStreams getPeerChiperStreams() {
+        return peerChiperStreams;
     }
 
     public byte[] encrypt(byte[] toEncrypt) {
-
-        try {
-
-            byte[] outputEncryptedBytes;
-
-            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
-            int encryptLength = cipherSend.update(toEncrypt, 0,
-                    toEncrypt.length, outputEncryptedBytes, 0);
-            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
-
-
-            return outputEncryptedBytes;
-        } catch (ShortBufferException
-                | IllegalBlockSizeException | BadPaddingException e) {
-            e.printStackTrace();
-            return null;
-        }
+        return toEncrypt;
+//        try {
+//
+//            byte[] outputEncryptedBytes;
+//
+//            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
+//            int encryptLength = cipherSend.update(toEncrypt, 0,
+//                    toEncrypt.length, outputEncryptedBytes, 0);
+//            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
+//
+//
+//            return outputEncryptedBytes;
+//        } catch (ShortBufferException
+//                | IllegalBlockSizeException | BadPaddingException e) {
+//            e.printStackTrace();
+//            return null;
+//        }
     }
 
     public byte[] decrypt(byte[] bytesToDecrypt) {
-        try {
-            byte[] outPlain;
-
-//            System.out.println("len to decrypt: " + bytesToDecrypt.length);
-
-            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
-            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
-                    bytesToDecrypt.length, outPlain, 0);
-            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
-
-            return outPlain;
-        } catch (IllegalBlockSizeException | BadPaddingException
-                | ShortBufferException e) {
-            e.printStackTrace();
-            return null;
-        }
+        return bytesToDecrypt;
+//        try {
+//            byte[] outPlain;
+//
+////            System.out.println("len to decrypt: " + bytesToDecrypt.length);
+//
+//            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
+//            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
+//                    bytesToDecrypt.length, outPlain, 0);
+//            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
+//
+//            return outPlain;
+//        } catch (IllegalBlockSizeException | BadPaddingException
+//                | ShortBufferException e) {
+//            e.printStackTrace();
+//            return null;
+//        }
     }
 
 
@@ -718,8 +712,8 @@ public class Peer implements Comparable<Peer>, Serializable {
          */
         writeBufferLock.lock();
         try {
-            readBuffer = ByteBuffer.allocate(300 * 1024);
-            readBufferCrypted = ByteBuffer.allocate(300 * 1024);
+//            readBuffer = ByteBuffer.allocate(300 * 1024);
+//            readBufferCrypted = ByteBuffer.allocate(300 * 1024);
             writeBuffer = ByteBuffer.allocate(300 * 1024);
             writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
         } catch (Throwable e) {
@@ -737,8 +731,10 @@ public class Peer implements Comparable<Peer>, Serializable {
         setSocketChannel(peerInHandshake.getSocketChannel());
         setSelectionKey(peerInHandshake.getKey());
 
-        setCipherSend(peerInHandshake.getCipherSend());
-        setCipherReceive(peerInHandshake.getCipherReceive());
+//        setCipherSend(peerInHandshake.getCipherSend());
+//        setCipherReceive(peerInHandshake.getCipherReceive());
+
+        setPeerChiperStreams(peerInHandshake.getPeerChiperStreams());
 
 
         //update the selection key to the actual peer
