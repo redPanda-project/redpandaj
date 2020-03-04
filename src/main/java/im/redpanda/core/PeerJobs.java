@@ -60,6 +60,7 @@ public class PeerJobs extends Thread {
                     if ((p.isConnecting && p.getLastAnswered() > 10000)
                             || (!p.isConnected() && p.getLastAnswered() > Settings.pingTimeout)) {
 
+                        System.out.println("" + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
 
                         if (p.isConnected() || p.isConnecting) {
 
@@ -73,8 +74,6 @@ public class PeerJobs extends Thread {
                             //todo: interrupt outbound thread?
                         } else if (p.getLastAnswered() > Settings.pingTimeout * 1000 * 2) {
                             p.writeBuffer = null;
-                            p.readBuffer = null;
-                            p.readBufferCrypted = null;
                             p.writeBufferCrypted = null;
                         }
 

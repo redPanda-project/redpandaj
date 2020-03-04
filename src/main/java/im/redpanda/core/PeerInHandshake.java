@@ -15,8 +15,9 @@ import java.security.*;
 
 public class PeerInHandshake {
 
-    public static final int IVbytelen = 12;
+    public static final int IVbytelen = 16;
     public static final String ALGORITHM = "AES/CTR/NoPadding";
+    public static final String PROVIDER = "SunJCE";
 
 
     String ip;
@@ -39,8 +40,7 @@ public class PeerInHandshake {
     SecretKey sharedSecretReceive;
     IvParameterSpec ivSend;
     IvParameterSpec ivReceive;
-    Cipher cipherSend;
-    Cipher cipherReceive;
+    private PeerChiperStreams peerChiperStreams;
 
 
     public PeerInHandshake(String ip, SocketChannel socketChannel) {
@@ -307,67 +307,76 @@ public class PeerInHandshake {
              * maybe we should go for the chacha20-poly, but how to start a new round?
              */
 
-            //let set up the send Cipher
-            cipherSend = Cipher.getInstance(ALGORITHM);
+
+            //lets set up the send Cipher
+            PeerOutputStream peerOutputStream = new PeerOutputStream();
+            Cipher cipherSend = Cipher.getInstance(ALGORITHM, PROVIDER);
             cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, ivSend);
+            CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream, cipherSend);
 
 
-            //let set up the receive Cipher
-            cipherReceive = Cipher.getInstance(ALGORITHM);
+            //lets set up the receive Cipher
+            PeerInputStream peerInputStream = new PeerInputStream();
+            Cipher cipherReceive = Cipher.getInstance(ALGORITHM, PROVIDER);
             cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, ivReceive);
+            CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream, cipherReceive);
+
+            peerChiperStreams = new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream);
 
 
-        } catch (NoSuchAlgorithmException
-                | NoSuchPaddingException | InvalidKeyException
-                | InvalidAlgorithmParameterException e) {
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | NoSuchProviderException e) {
             e.printStackTrace();
         }
     }
 
-    public byte[] encrypt(byte[] toEncrypt) {
+//    public byte[] encrypt(byte[] toEncrypt) {
+//
+//        try {
+//
+//            byte[] outputEncryptedBytes;
+//
+//            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
+//            int encryptLength = cipherSend.update(toEncrypt, 0,
+//                    toEncrypt.length, outputEncryptedBytes, 0);
+//            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
+//
+//
+//            return outputEncryptedBytes;
+//        } catch (ShortBufferException
+//                | IllegalBlockSizeException | BadPaddingException e) {
+//            e.printStackTrace();
+//            return null;
+//        }
+//    }
+//
+//    public byte[] decrypt(byte[] bytesToDecrypt) {
+//        try {
+//            byte[] outPlain;
+//
+////            System.out.println("len to decrypt: " + bytesToDecrypt.length);
+//
+//            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
+//            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
+//                    bytesToDecrypt.length, outPlain, 0);
+//            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
+//
+//            return outPlain;
+//        } catch (IllegalBlockSizeException | BadPaddingException
+//                | ShortBufferException e) {
+//            e.printStackTrace();
+//            return null;
+//        }
+//    }
+//
+//    public Cipher getCipherSend() {
+//        return cipherSend;
+//    }
+//
+//    public Cipher getCipherReceive() {
+//        return cipherReceive;
+//    }
 
-        try {
-
-            byte[] outputEncryptedBytes;
-
-            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
-            int encryptLength = cipherSend.update(toEncrypt, 0,
-                    toEncrypt.length, outputEncryptedBytes, 0);
-            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
-
-
-            return outputEncryptedBytes;
-        } catch (ShortBufferException
-                | IllegalBlockSizeException | BadPaddingException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public byte[] decrypt(byte[] bytesToDecrypt) {
-        try {
-            byte[] outPlain;
-
-//            System.out.println("len to decrypt: " + bytesToDecrypt.length);
-
-            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
-            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
-                    bytesToDecrypt.length, outPlain, 0);
-            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
-
-            return outPlain;
-        } catch (IllegalBlockSizeException | BadPaddingException
-                | ShortBufferException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public Cipher getCipherSend() {
-        return cipherSend;
-    }
-
-    public Cipher getCipherReceive() {
-        return cipherReceive;
+    public PeerChiperStreams getPeerChiperStreams() {
+        return peerChiperStreams;
     }
 }

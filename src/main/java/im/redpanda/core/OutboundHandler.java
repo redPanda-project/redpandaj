@@ -27,8 +27,10 @@ public class OutboundHandler extends Thread {
     boolean allowInterrupt = false;
 
     public void tryInterrupt() {
+//        System.out.println("try interrupt");
         if (allowInterrupt) {
-            interrupt();
+            //todo maybe reactivate later...
+//            interrupt();
         }
     }
 
@@ -85,9 +87,9 @@ public class OutboundHandler extends Thread {
                     actCons += connectingCons;
 
 
-                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 30000)) {
-                        peer.disconnect("timeout ...");
-                    }
+//                    if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis() - peer.lastActionOnConnection > 30000)) {
+//                        peer.disconnect("timeout ...");
+//                    }
 
                 }
 
@@ -235,7 +237,7 @@ public class OutboundHandler extends Thread {
 
 
             for (Peer toRemove : peersToRemove) {
-                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
+//                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
                 Server.removePeer(toRemove);
             }
             peersToRemove.clear();

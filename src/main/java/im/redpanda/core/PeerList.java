@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * This "static" class stores all peers in two Hashmap for fast get operations using the {@link KademliaId} and Ip+Port.
+ * This "static" class stores all peers in two Hashmaps for fast get operations using the {@link KademliaId} and Ip+Port.
  * For the connections we establish, we need a sorted List with regard to specific parameters.
  * This class maintains an ArrayList with the same peers as in the Hashmap.
  * In addition, a peer can be optionally be stored in the DHT routing table, called the Buckets.
@@ -127,7 +127,7 @@ public class PeerList {
      * @param peer
      */
     public static boolean remove(Peer peer) {
-        System.out.println("remove peer: " + peer.getKademliaId());
+//        System.out.println("remove peer: " + peer.getKademliaId());
         readWriteLock.writeLock().lock();
         try {
             if (peer.getKademliaId() == null) {

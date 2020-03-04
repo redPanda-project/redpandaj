@@ -5,7 +5,8 @@ import im.redpanda.store.NodeStore;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
@@ -26,6 +27,7 @@ public class Server {
     public static ArrayList<Peer>[] buckets = new ArrayList[KademliaId.ID_LENGTH];
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     public static NodeStore nodeStore;
+    public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
 
     public static SecureRandom secureRandom = new SecureRandom();
 
@@ -117,6 +119,9 @@ public class Server {
     public static void startedUpSuccessful() {
         localSettings = LocalSettings.load(Server.MY_PORT);
         nodeStore = new NodeStore();
+
+        Settings.init();
+        ByteBufferPool.init();
 
         System.out.println("NodeStore has entries: " + nodeStore.size());
 

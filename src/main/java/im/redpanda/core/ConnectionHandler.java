@@ -441,19 +441,30 @@ public class ConnectionHandler extends Thread {
                                      * lets send the first ping
                                      */
 
-                                    byte[] bytesSendToPing = new byte[1];
-                                    bytesSendToPing[0] = Command.PING;
+                                    ByteBuffer bytesSendToPing = ByteBuffer.allocate(1);
+                                    bytesSendToPing.put(Command.PING);
+                                    bytesSendToPing.flip();
 
 
-                                    byte[] encrypt = peerInHandshake.encrypt(bytesSendToPing);
-                                    ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+                                    ByteBuffer byteBuffer = ByteBufferPool.borrowObject(16);
+
+
+                                    peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing, byteBuffer);
+
+//                                    byte[] encrypt = peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing);
+//                                    ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+
+                                    byteBuffer.flip();
 
                                     try {
-                                        int write = peerInHandshake.getSocketChannel().write(wrap);
+                                        int write = peerInHandshake.getSocketChannel().write(byteBuffer);
                                         System.out.println("written bytes for PING: " + write);
                                     } catch (IOException e) {
                                         e.printStackTrace();
                                     }
+
+
+                                    ByteBufferPool.returnObject(byteBuffer);
 
 
                                 }
@@ -465,13 +476,20 @@ public class ConnectionHandler extends Thread {
                                  */
                                 System.out.println("received first encrypted command...");
 
+
+                                ByteBuffer outBuffer = ByteBufferPool.borrowObject(16);
+
+                                peerInHandshake.getPeerChiperStreams().decrypt(allocate, outBuffer);
+
 //                                allocate.flip();
-                                byte[] bytesToDecrypt = new byte[allocate.remaining()];
-                                allocate.get(bytesToDecrypt);
+//                                byte[] bytesToDecrypt = new byte[allocate.remaining()];
+//                                allocate.get(bytesToDecrypt);
 
-                                ByteBuffer wrap = ByteBuffer.wrap(peerInHandshake.decrypt(bytesToDecrypt));
+//                                ByteBuffer wrap = ByteBuffer.wrap(peerInHandshake.decrypt(bytesToDecrypt));
 
-                                byte decryptedCommand = wrap.get();
+                                outBuffer.flip();
+
+                                byte decryptedCommand = outBuffer.get();
 
                                 if (decryptedCommand == Command.PING) {
                                     System.out.println("received first ping...");
@@ -669,8 +687,8 @@ public class ConnectionHandler extends Thread {
 
         peer.writeBufferLock.lock();
         try {
-            peer.readBuffer = ByteBuffer.allocate(10 * 1024);
-            peer.readBufferCrypted = ByteBuffer.allocate(10 * 1024);
+//            peer.readBuffer = ByteBuffer.allocate(10 * 1024);
+//            peer.readBufferCrypted = ByteBuffer.allocate(10 * 1024);
             peer.writeBuffer = ByteBuffer.allocate(10 * 1024);
             peer.writeBufferCrypted = ByteBuffer.allocate(10 * 1024);
         } catch (Throwable e) {
