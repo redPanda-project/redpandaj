@@ -287,6 +287,12 @@ public class OutboundHandler extends Thread {
         peer.isConnectionInitializedByMe = true;
         peer.lastActionOnConnection = System.currentTimeMillis();
 
+        Node byKademliaId = Node.getByKademliaId(peer.getKademliaId());
+
+        if (byKademliaId != null) {
+            byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+        }
+
         try {
             SocketChannel open = SocketChannel.open();
             open.configureBlocking(false);

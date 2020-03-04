@@ -770,7 +770,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         } else {
             System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
         }
-        byKademliaId.seen();
+        byKademliaId.seen(peerInHandshake.ip,peerInHandshake.getPort());
         setNode(byKademliaId);
 
 

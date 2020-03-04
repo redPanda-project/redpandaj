@@ -442,6 +442,12 @@ public class ConnectionReaderThread extends Thread {
                     NodeId nodeId = new NodeId(kademliaId);
 
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
+
+                    Node byKademliaId = Node.getByKademliaId(kademliaId);
+                    if (byKademliaId != null) {
+                        byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
+                    }
+
                 } else {
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port());
                 }
@@ -451,6 +457,9 @@ public class ConnectionReaderThread extends Thread {
                     Log.put("new peer added: " + newPeer, 50);
                 } else {
                     Log.put("peer was already in peerlist: " + newPeer, 50);
+
+
+                    System.out.println("added new ConnectionPoint...");
                 }
 
 

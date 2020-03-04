@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
+import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -14,6 +15,10 @@ public class ParseCommandTest {
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+
+        if (Server.nodeStore == null) {
+            Server.nodeStore = new NodeStore();
+        }
     }
 
     public Peer getPeerForDebug() {
@@ -80,7 +85,6 @@ public class ParseCommandTest {
         PeerList.getReadWriteLock().writeLock().lock();
 
 
-
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
@@ -128,6 +132,7 @@ public class ParseCommandTest {
 
     @Test
     public void testSend_PEERLIST() {
+
 
         int peersToTest = 100;
 
