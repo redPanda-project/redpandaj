@@ -362,6 +362,10 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
+                    if (peerToWrite.ip == null) {
+                        continue;
+                    }
+
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
 
                     if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().getKademliaId() != null) {

@@ -31,7 +31,9 @@ public class Updater {
     }
 
     public static void main(String[] args) {
-        createNewKeys();
+//        createNewKeys();
+
+        System.out.println("Starting update inserting process...");
 
         try {
             insertNewUpdate();
@@ -40,6 +42,7 @@ public class Updater {
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
+        System.out.println("Update was successfully signed and inserted in the defaul client for upload.");
     }
 
     public static void createNewKeys() {
@@ -81,7 +84,7 @@ public class Updater {
 
         byte[] signature = nodeId.sign(toHash.array());
 
-        System.out.println("signature len: " + signature.length + " " + ((int) signature[1]+2));
+        System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
 
         System.out.println("timestamp: " + timestamp);
 
@@ -94,7 +97,7 @@ public class Updater {
         localSettings.save(59558);
         System.out.println("saved in local settings!");
 
-        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(),signature));
+        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
 
         System.out.println("hash data: " + Sha256Hash.create(data));
 
