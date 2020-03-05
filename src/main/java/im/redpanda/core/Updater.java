@@ -60,7 +60,7 @@ public class Updater {
         //lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
-        System.out.println("privKey: '" + keyString + "'");
+//        System.out.println("privKey: '" + keyString + "'");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 

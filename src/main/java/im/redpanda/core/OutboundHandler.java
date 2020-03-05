@@ -300,6 +300,12 @@ public class OutboundHandler extends Thread {
             boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
 
             PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
 
             /**
              * Lets check if we have a nodeId and add it to the PeerInHandShake

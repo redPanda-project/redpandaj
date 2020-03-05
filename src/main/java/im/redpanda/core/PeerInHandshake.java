@@ -42,16 +42,20 @@ public class PeerInHandshake {
     IvParameterSpec ivReceive;
     private PeerChiperStreams peerChiperStreams;
 
+    private long createdAt;
+
 
     public PeerInHandshake(String ip, SocketChannel socketChannel) {
         this.ip = ip;
         this.socketChannel = socketChannel;
+        createdAt = System.currentTimeMillis();
     }
 
     public PeerInHandshake(String ip, Peer peer, SocketChannel socketChannel) {
         this.ip = ip;
         this.peer = peer;
         this.socketChannel = socketChannel;
+        createdAt = System.currentTimeMillis();
     }
 
     /**
@@ -378,5 +382,19 @@ public class PeerInHandshake {
 
     public PeerChiperStreams getPeerChiperStreams() {
         return peerChiperStreams;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public String getIp() {
+        return ip;
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        System.out.println("Peer in handshake will be gcd...");
+        super.finalize();
     }
 }

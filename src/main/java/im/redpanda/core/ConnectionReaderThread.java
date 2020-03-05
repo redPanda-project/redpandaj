@@ -891,6 +891,7 @@ public class ConnectionReaderThread extends Thread {
 
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
+
         if (buffer.remaining() < 29) {
             System.out.println("not enough bytes for handshake");
             return false;
@@ -898,14 +899,22 @@ public class ConnectionReaderThread extends Thread {
 
 
         String magic = readString(buffer, 4);
+//        System.out.println("magic: " + magic);
+
         int version = (int) buffer.get();
+
+//        System.out.println("version: " + version);
 
         byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
         buffer.get(nonceBytes);
 
         KademliaId identity = new KademliaId(nonceBytes);
 
+//        System.out.println("identity: " + identity.toString());
+
         int port = buffer.getInt();
+
+//        System.out.println("port: " + port);
 
         peerInHandshake.setIdentity(identity);
 
