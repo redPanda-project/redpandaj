@@ -7,6 +7,7 @@ package im.redpanda.core;
 
 
 import im.redpanda.commands.FBPublicKey;
+import im.redpanda.crypt.Utils;
 import io.sentry.Sentry;
 
 import java.io.IOException;
@@ -355,12 +356,11 @@ public class ConnectionHandler extends Thread {
                                          * We got the public Peer, lets store it and check that this public key
                                          * indeed corresponds to the KademliaId.
                                          */
-                                        FBPublicKey rootAsSendPublicKey = FBPublicKey.getRootAsFBPublicKey(allocate);
-                                        ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
+                                        byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
+                                        allocate.get(bytesPublicKey);
 
-                                        byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
-                                        byteBuffer.get(bytes);
-                                        NodeId nodeId = NodeId.importPublic(bytes);
+                                        NodeId nodeId = NodeId.importPublic(bytesPublicKey);
+
                                         Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
                                         if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
@@ -686,9 +686,6 @@ public class ConnectionHandler extends Thread {
                 "ConnectionHandler thread died...");
 
     }
-
-
-
 
 
 }

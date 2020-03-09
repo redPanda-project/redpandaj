@@ -868,23 +868,24 @@ public class ConnectionReaderThread extends Thread {
     public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
 
 
-        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
-        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
-        builder.finish(sendPublicKey);
-        ByteBuffer byteBuffer = builder.dataBuffer();
+//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
+//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
+//        builder.finish(sendPublicKey);
+//        ByteBuffer byteBuffer = builder.dataBuffer();
 
-        ByteBuffer commandBuffer = ByteBuffer.allocate(1);
+        ByteBuffer buffer = ByteBuffer.allocate(1+65);
 
-        commandBuffer.put(Command.SEND_PUBLIC_KEY);
-        commandBuffer.flip();
+        buffer.put(Command.SEND_PUBLIC_KEY);
+        buffer.put(Server.nodeId.exportPublic());
+        buffer.flip();
 
-        ByteBuffer[] buffers = new ByteBuffer[2];
-        buffers[0] = commandBuffer;
-        buffers[1] = byteBuffer;
+//        ByteBuffer[] buffers = new ByteBuffer[2];
+//        buffers[0] = buffer;
+//        buffers[1] = byteBuffer;
 
         try {
-            long write = peerInHandshake.getSocketChannel().write(buffers);
+            long write = peerInHandshake.getSocketChannel().write(buffer);
             System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
         } catch (IOException e) {
             e.printStackTrace();

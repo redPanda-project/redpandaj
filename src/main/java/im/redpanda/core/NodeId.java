@@ -166,8 +166,11 @@ public class NodeId implements Serializable {
     }
 
     public KademliaId fromPublicKey(PublicKey key) {
-        Sha256Hash sha256Hash = Sha256Hash.create(key.getEncoded());
-        return KademliaId.fromFirstBytes(sha256Hash.getBytes());
+        Sha256Hash sha256Hash = Sha256Hash.create(NodeId.exportPublic(key));
+
+        byte[] bytes = sha256Hash.getBytes();
+
+        return KademliaId.fromFirstBytes(bytes);
     }
 
     public byte[] exportWithPrivate() {
@@ -184,10 +187,14 @@ public class NodeId implements Serializable {
 
     public byte[] exportPublic() {
         //Todo: save the value after first creation... speeed!
-//        ByteBuffer buffer = ByteBuffer.allocate(PUBLIC_KEYLEN);
-        byte[] encoded = keyPair.getPublic().getEncoded();
-//        System.out.println("asd: " + Utils.bytesToHexString(encoded) + " " + encoded.length);
-//        achtung wir brauchen nur Q zu schicken, der rest ist dem anderen bekannt, das sind die letzten 65 bytes!
+        return exportPublic(this.keyPair.getPublic());
+    }
+
+
+    public static byte[] exportPublic(PublicKey publicKey) {
+        byte[] encoded = publicKey.getEncoded();
+
+        //we need only the last 65 bytes since the first bytes are already given by the curve!
 
         ByteBuffer buffer = ByteBuffer.wrap(encoded);
         byte[] bytes = new byte[PUBLIC_KEYLEN];

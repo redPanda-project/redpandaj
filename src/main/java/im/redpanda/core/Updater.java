@@ -23,7 +23,7 @@ public class Updater {
 
     public static NodeId getPublicUpdaterKey() {
         try {
-            return NodeId.importPublic(Base58.decode("3YdhcPz2PJZVKarxZAEsuX3YMCJK9FwJBzSpcW1KogypMRNEyLXHCbYXxSzDPA27mqHdpXZGJEqfjoxhtqFeLXj37J67HajEd2zaTwnbdjFjMKyBhLtor1fpAh4tgg"));
+            return NodeId.importPublic(Base58.decode("N3Zu35JfCBtt3d9AfoUqgkrLQa7y4t462ZBfF2bGrLM1bdhWu6WaieEKYjx93YeaWh66xSqmD7c3MTCMTzSHSe3J"));
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
@@ -64,6 +64,7 @@ public class Updater {
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
+        System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
         File file = new File("target/redpanda.jar");
 
