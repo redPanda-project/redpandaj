@@ -826,7 +826,7 @@ public class ConnectionReaderThread extends Thread {
 
     public static void sendHandshake(PeerInHandshake peerInHandshake) {
 
-        ByteBuffer writeBuffer = ByteBuffer.allocate(30);
+        ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
 
         writeBuffer.put(Server.MAGIC.getBytes());
         writeBuffer.put((byte) Server.VERSION);
@@ -846,6 +846,8 @@ public class ConnectionReaderThread extends Thread {
                 ex.printStackTrace();
             }
         }
+
+        ByteBufferPool.returnObject(writeBuffer);
     }
 
     private static void requestPublicKey(PeerInHandshake peerInHandshake) {

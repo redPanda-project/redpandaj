@@ -15,4 +15,5 @@ public class Command {
     public static final byte UPDATE_ANSWER_TIMESTAMP = (byte) 10;
     public static final byte UPDATE_REQUEST_CONTENT = (byte) 11;
     public static final byte UPDATE_ANSWER_CONTENT = (byte) 12;
+
 }
