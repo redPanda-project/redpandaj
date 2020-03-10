@@ -26,9 +26,11 @@ public class ListenConsole extends Thread {
 
     private static void listen() throws IOException {
 
+        InputStreamReader inputStreamReader = new InputStreamReader(System.in, "UTF-8");
+        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+
         while (!Server.SHUTDOWN) {
-            InputStreamReader inputStreamReader = new InputStreamReader(System.in, "UTF-8");
-            BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+
             String readLine = bufferedReader.readLine();
 
             if (PeerList.size() == 0) {

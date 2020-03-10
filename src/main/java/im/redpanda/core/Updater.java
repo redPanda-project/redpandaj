@@ -33,6 +33,11 @@ public class Updater {
     public static void main(String[] args) {
 //        createNewKeys();
 
+        if (!Paths.get("privateSigningKey.txt").toFile().exists()) {
+            System.out.println("No private key for signing found, skipping insert update into network.");
+            return;
+        }
+
         System.out.println("Starting update inserting process...");
 
         try {

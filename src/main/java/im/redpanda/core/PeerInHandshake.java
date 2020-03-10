@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
+import im.redpanda.crypt.Utils;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -203,6 +204,8 @@ public class PeerInHandshake {
             SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
 
             byte[] encoded = intermediateSharedSecret.getEncoded();
+
+            System.out.println("intermediateSharedSecret: " + Utils.bytesToHexString(encoded));
 
 
             ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
