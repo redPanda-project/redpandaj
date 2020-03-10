@@ -165,7 +165,7 @@ public class NodeId implements Serializable {
         return kademliaId;
     }
 
-    public KademliaId fromPublicKey(PublicKey key) {
+    public static KademliaId fromPublicKey(PublicKey key) {
         Sha256Hash sha256Hash = Sha256Hash.create(NodeId.exportPublic(key));
 
         byte[] bytes = sha256Hash.getBytes();

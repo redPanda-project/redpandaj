@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
+import im.redpanda.crypt.Utils;
 import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
@@ -144,6 +145,7 @@ public class ParseCommandTest {
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
+//            System.out.println("node id: " + testpeer1.getNodeId().getKademliaId().toString());
             PeerList.add(testpeer1);
         }
         PeerList.getReadWriteLock().writeLock().unlock();
@@ -159,7 +161,16 @@ public class ParseCommandTest {
 
         ByteBuffer writeBuffer = me.getWriteBuffer();
 
+
         writeBuffer.flip();
+
+        // prints bytes of flatbuffer object to console...
+        writeBuffer.get();
+        int toreadbytes = writeBuffer.getInt();
+        byte[] bytes = new byte[toreadbytes];
+        writeBuffer.get(bytes);
+//        System.out.println("" + Utils.bytesToHexString(bytes));
+        writeBuffer.position(0);
 
         ConnectionReaderThread.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
 

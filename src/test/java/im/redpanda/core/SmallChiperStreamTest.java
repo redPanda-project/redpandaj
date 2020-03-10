@@ -31,7 +31,7 @@ public class SmallChiperStreamTest {
 
 //        cip.runExperimentsTwo();
 
-        Sha256Hash sha256Hash = Sha256Hash.create("0437fb5ab1b9c42505c6fff4fd9a01e8aecf52fd51e3562c5769246587d36a179f95c2748f432c508f10a3a8edf6eb12d2c3367c147892e176c5c4e0bfd2b38c9a".getBytes());
+        Sha256Hash sha256Hash = Sha256Hash.create(Utils.parseAsHexOrBase58("0437fb5ab1b9c42505c6fff4fd9a01e8aecf52fd51e3562c5769246587d36a179f95c2748f432c508f10a3a8edf6eb12d2c3367c147892e176c5c4e0bfd2b38c9a"));
 
         byte[] bytes = sha256Hash.getBytes();
 
