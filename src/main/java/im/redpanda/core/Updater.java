@@ -23,7 +23,7 @@ public class Updater {
 
     public static NodeId getPublicUpdaterKey() {
         try {
-            return NodeId.importPublic(Base58.decode("3YdhcPz2PJZVKarxZAEsuX3YMCJK9FwJBzSpcW1KogypMRNEyLXHCbYXxSzDPA27mqHdpXZGJEqfjoxhtqFeLXj37J67HajEd2zaTwnbdjFjMKyBhLtor1fpAh4tgg"));
+            return NodeId.importPublic(Base58.decode("N3Zu35JfCBtt3d9AfoUqgkrLQa7y4t462ZBfF2bGrLM1bdhWu6WaieEKYjx93YeaWh66xSqmD7c3MTCMTzSHSe3J"));
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
@@ -31,7 +31,14 @@ public class Updater {
     }
 
     public static void main(String[] args) {
-        createNewKeys();
+//        createNewKeys();
+
+        if (!Paths.get("privateSigningKey.txt").toFile().exists()) {
+            System.out.println("No private key for signing found, skipping insert update into network.");
+            return;
+        }
+
+        System.out.println("Starting update inserting process...");
 
         try {
             insertNewUpdate();
@@ -40,6 +47,7 @@ public class Updater {
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
+        System.out.println("Update was successfully signed and inserted in the defaul client for upload.");
     }
 
     public static void createNewKeys() {
@@ -57,10 +65,11 @@ public class Updater {
         //lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
-        System.out.println("privKey: '" + keyString + "'");
+//        System.out.println("privKey: '" + keyString + "'");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
+        System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
         File file = new File("target/redpanda.jar");
 
@@ -81,7 +90,7 @@ public class Updater {
 
         byte[] signature = nodeId.sign(toHash.array());
 
-        System.out.println("signature len: " + signature.length + " " + ((int) signature[1]+2));
+        System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
 
         System.out.println("timestamp: " + timestamp);
 
@@ -94,7 +103,7 @@ public class Updater {
         localSettings.save(59558);
         System.out.println("saved in local settings!");
 
-        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(),signature));
+        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
 
         System.out.println("hash data: " + Sha256Hash.create(data));
 

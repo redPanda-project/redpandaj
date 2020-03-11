@@ -26,9 +26,11 @@ public class ListenConsole extends Thread {
 
     private static void listen() throws IOException {
 
+        InputStreamReader inputStreamReader = new InputStreamReader(System.in, "UTF-8");
+        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+
         while (!Server.SHUTDOWN) {
-            InputStreamReader inputStreamReader = new InputStreamReader(System.in, "UTF-8");
-            BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+
             String readLine = bufferedReader.readLine();
 
             if (PeerList.size() == 0) {
@@ -122,7 +124,6 @@ public class ListenConsole extends Thread {
                     System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
 
 
-
                 } finally {
                     PeerList.getReadWriteLock().writeLock().unlock();
                 }
@@ -154,6 +155,19 @@ public class ListenConsole extends Thread {
 
                 ByteBufferPool.returnObject(ByteBufferPool.borrowObject(1024 * 1024 * 4));
 
+
+            } else if (readLine.equals("a")) {
+                System.out.println("add ip:port");
+
+
+                String readLine2 = bufferedReader.readLine();
+                String[] split = readLine2.split(":");
+                try {
+                    int port = Integer.parseInt(split[1]);
+                    PeerList.add(new Peer(split[0], port));
+                } catch (NumberFormatException e) {
+                    e.printStackTrace();
+                }
 
             }
         }

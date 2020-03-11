@@ -80,7 +80,13 @@ public class NodeStore {
     }
 
     public Node get(KademliaId kademliaId) {
-        return (Node) onHeap.get(kademliaId);
+        try {
+            return (Node) onHeap.get(kademliaId);
+        } catch (Exception e) {
+            e.printStackTrace();
+            onDisk.clear();
+            return null;
+        }
     }
 
     public void saveToDisk() {

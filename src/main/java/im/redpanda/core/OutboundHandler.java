@@ -287,6 +287,12 @@ public class OutboundHandler extends Thread {
         peer.isConnectionInitializedByMe = true;
         peer.lastActionOnConnection = System.currentTimeMillis();
 
+        Node byKademliaId = Node.getByKademliaId(peer.getKademliaId());
+
+        if (byKademliaId != null) {
+            byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+        }
+
         try {
             SocketChannel open = SocketChannel.open();
             open.configureBlocking(false);
@@ -294,6 +300,12 @@ public class OutboundHandler extends Thread {
             boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
 
             PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
 
             /**
              * Lets check if we have a nodeId and add it to the PeerInHandShake

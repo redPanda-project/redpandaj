@@ -34,17 +34,12 @@ public class NodeTest {
 
         assertTrue(byKademliaId.getNodeId().hasPrivate());
 
-        byKademliaId.seen();
+//        byKademliaId.seen("test", -1);
 
         assertTrue(nodeStore.size() - size == 1);
 
-        nodeStore.close();
+//        nodeStore.close();
 
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
 
     }
 }

@@ -25,8 +25,10 @@ import java.security.spec.X509EncodedKeySpec;
 public class NodeId implements Serializable {
 
 
-    public static final int PUBLIC_KEYLEN = 92;
+    public static final int PUBLIC_KEYLEN_LONG = 92;
+    public static final int PUBLIC_KEYLEN = 65;
     public static final int PRIVATE_KEYLEN = 252;
+    public static byte[] curveParametersASN1;
 
     KeyPair keyPair;
     KademliaId kademliaId;
@@ -54,7 +56,7 @@ public class NodeId implements Serializable {
      */
     public NodeId() {
         if (!Log.isJUnitTest()) {
-            System.out.println("generating new node id, this may take some time");
+//            System.out.println("generating new node id, this may take some time");
         }
         while (true) {
 //            System.out.print(".");
@@ -163,9 +165,12 @@ public class NodeId implements Serializable {
         return kademliaId;
     }
 
-    public KademliaId fromPublicKey(PublicKey key) {
-        Sha256Hash sha256Hash = Sha256Hash.create(key.getEncoded());
-        return KademliaId.fromFirstBytes(sha256Hash.getBytes());
+    public static KademliaId fromPublicKey(PublicKey key) {
+        Sha256Hash sha256Hash = Sha256Hash.create(NodeId.exportPublic(key));
+
+        byte[] bytes = sha256Hash.getBytes();
+
+        return KademliaId.fromFirstBytes(bytes);
     }
 
     public byte[] exportWithPrivate() {
@@ -182,14 +187,32 @@ public class NodeId implements Serializable {
 
     public byte[] exportPublic() {
         //Todo: save the value after first creation... speeed!
-        ByteBuffer buffer = ByteBuffer.allocate(PUBLIC_KEYLEN);
-        byte[] encoded = keyPair.getPublic().getEncoded();
-        buffer.put(encoded);
-        return buffer.array();
+        return exportPublic(this.keyPair.getPublic());
+    }
+
+
+    public static byte[] exportPublic(PublicKey publicKey) {
+        byte[] encoded = publicKey.getEncoded();
+
+        //we need only the last 65 bytes since the first bytes are already given by the curve!
+
+        ByteBuffer buffer = ByteBuffer.wrap(encoded);
+        byte[] bytes = new byte[PUBLIC_KEYLEN];
+        buffer.position(PUBLIC_KEYLEN_LONG - PUBLIC_KEYLEN);
+        buffer.get(bytes);
+
+        return bytes;
     }
 
     public static NodeId importPublic(byte[] bytes) {
-        EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(bytes);
+
+        byte[] bytesFull = new byte[PUBLIC_KEYLEN_LONG];
+        ByteBuffer.wrap(bytesFull)
+                .put(getCurveParametersForASN1Format())
+                .put(bytes);
+
+
+        EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(bytesFull);
 
         KeyFactory keyFactory = null;
         try {
@@ -208,6 +231,19 @@ public class NodeId implements Serializable {
 
         return null;
     }
+
+    public static byte[] getCurveParametersForASN1Format() {
+        if (curveParametersASN1 == null) {
+            //generate the first bytes for the X209 ASN1 format
+            PublicKey aPublic = generateECKeys().getPublic();
+            ByteBuffer wrap = ByteBuffer.wrap(aPublic.getEncoded());
+            byte[] bytes = new byte[PUBLIC_KEYLEN_LONG - PUBLIC_KEYLEN];
+            wrap.get(bytes);
+            curveParametersASN1 = bytes;
+        }
+        return curveParametersASN1;
+    }
+
 
     /**
      * Two NodeId are equal if their KademliaId is equal.

@@ -362,6 +362,10 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
+                    if (peerToWrite.ip == null) {
+                        continue;
+                    }
+
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
 
                     if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().getKademliaId() != null) {
@@ -442,6 +446,12 @@ public class ConnectionReaderThread extends Thread {
                     NodeId nodeId = new NodeId(kademliaId);
 
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
+
+                    Node byKademliaId = Node.getByKademliaId(kademliaId);
+                    if (byKademliaId != null) {
+                        byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
+                    }
+
                 } else {
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port());
                 }
@@ -451,6 +461,9 @@ public class ConnectionReaderThread extends Thread {
                     Log.put("new peer added: " + newPeer, 50);
                 } else {
                     Log.put("peer was already in peerlist: " + newPeer, 50);
+
+
+                    System.out.println("added new ConnectionPoint...");
                 }
 
 
@@ -813,7 +826,7 @@ public class ConnectionReaderThread extends Thread {
 
     public static void sendHandshake(PeerInHandshake peerInHandshake) {
 
-        ByteBuffer writeBuffer = ByteBuffer.allocate(30);
+        ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
 
         writeBuffer.put(Server.MAGIC.getBytes());
         writeBuffer.put((byte) Server.VERSION);
@@ -833,6 +846,8 @@ public class ConnectionReaderThread extends Thread {
                 ex.printStackTrace();
             }
         }
+
+        ByteBufferPool.returnObject(writeBuffer);
     }
 
     private static void requestPublicKey(PeerInHandshake peerInHandshake) {
@@ -853,23 +868,24 @@ public class ConnectionReaderThread extends Thread {
     public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
 
 
-        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
-        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
-        builder.finish(sendPublicKey);
-        ByteBuffer byteBuffer = builder.dataBuffer();
+//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
+//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
+//        builder.finish(sendPublicKey);
+//        ByteBuffer byteBuffer = builder.dataBuffer();
 
-        ByteBuffer commandBuffer = ByteBuffer.allocate(1);
+        ByteBuffer buffer = ByteBuffer.allocate(1+65);
 
-        commandBuffer.put(Command.SEND_PUBLIC_KEY);
-        commandBuffer.flip();
+        buffer.put(Command.SEND_PUBLIC_KEY);
+        buffer.put(Server.nodeId.exportPublic());
+        buffer.flip();
 
-        ByteBuffer[] buffers = new ByteBuffer[2];
-        buffers[0] = commandBuffer;
-        buffers[1] = byteBuffer;
+//        ByteBuffer[] buffers = new ByteBuffer[2];
+//        buffers[0] = buffer;
+//        buffers[1] = byteBuffer;
 
         try {
-            long write = peerInHandshake.getSocketChannel().write(buffers);
+            long write = peerInHandshake.getSocketChannel().write(buffer);
             System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
         } catch (IOException e) {
             e.printStackTrace();
@@ -878,6 +894,7 @@ public class ConnectionReaderThread extends Thread {
 
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
+
         if (buffer.remaining() < 29) {
             System.out.println("not enough bytes for handshake");
             return false;
@@ -885,14 +902,22 @@ public class ConnectionReaderThread extends Thread {
 
 
         String magic = readString(buffer, 4);
+//        System.out.println("magic: " + magic);
+
         int version = (int) buffer.get();
+
+//        System.out.println("version: " + version);
 
         byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
         buffer.get(nonceBytes);
 
         KademliaId identity = new KademliaId(nonceBytes);
 
+//        System.out.println("identity: " + identity.toString());
+
         int port = buffer.getInt();
+
+//        System.out.println("port: " + port);
 
         peerInHandshake.setIdentity(identity);
 

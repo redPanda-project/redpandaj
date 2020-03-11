@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -42,6 +43,31 @@ public class PeerJobs extends Thread {
             if (PeerList.size() == 0) {
                 continue;
             }
+
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                long currentTimeMillis = System.currentTimeMillis();
+                ArrayList<PeerInHandshake> toRemove = new ArrayList<>();
+                for (PeerInHandshake peerInHandshake : ConnectionHandler.peerInHandshakes) {
+                    if (currentTimeMillis - peerInHandshake.getCreatedAt() > 1000L * 10L) {
+//                        if (peerInHandshake.getIdentity() != null) {
+//                            System.out.println("closing peer in handshake: " + peerInHandshake.getIdentity().toString());
+//                        } else {
+//                            System.out.println("closing peer in handshake: " + peerInHandshake.getIp());
+//                        }
+                        try {
+                            peerInHandshake.getSocketChannel().close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        toRemove.add(peerInHandshake);
+                    }
+                }
+                ConnectionHandler.peerInHandshakes.removeAll(toRemove);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
+
 
             PeerList.getReadWriteLock().readLock().lock();
             try {

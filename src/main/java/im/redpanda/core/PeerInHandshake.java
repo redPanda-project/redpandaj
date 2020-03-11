@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
+import im.redpanda.crypt.Utils;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -42,16 +43,20 @@ public class PeerInHandshake {
     IvParameterSpec ivReceive;
     private PeerChiperStreams peerChiperStreams;
 
+    private long createdAt;
+
 
     public PeerInHandshake(String ip, SocketChannel socketChannel) {
         this.ip = ip;
         this.socketChannel = socketChannel;
+        createdAt = System.currentTimeMillis();
     }
 
     public PeerInHandshake(String ip, Peer peer, SocketChannel socketChannel) {
         this.ip = ip;
         this.peer = peer;
         this.socketChannel = socketChannel;
+        createdAt = System.currentTimeMillis();
     }
 
     /**
@@ -199,6 +204,8 @@ public class PeerInHandshake {
             SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
 
             byte[] encoded = intermediateSharedSecret.getEncoded();
+
+            System.out.println("intermediateSharedSecret: " + Utils.bytesToHexString(encoded));
 
 
             ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
@@ -378,5 +385,19 @@ public class PeerInHandshake {
 
     public PeerChiperStreams getPeerChiperStreams() {
         return peerChiperStreams;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public String getIp() {
+        return ip;
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        System.out.println("Peer in handshake will be gcd...");
+        super.finalize();
     }
 }

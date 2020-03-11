@@ -704,6 +704,13 @@ public class Peer implements Comparable<Peer>, Serializable {
     public void setupConnection(PeerInHandshake peerInHandshake) {
 
 
+        ConnectionHandler.peerInHandshakesLock.lock();
+        try {
+            ConnectionHandler.peerInHandshakes.remove(peerInHandshake);
+        } finally {
+            ConnectionHandler.peerInHandshakesLock.unlock();
+        }
+
         //disconnect old connection if present
         disconnect("new connection for this peer");
 
@@ -770,7 +777,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         } else {
             System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
         }
-        byKademliaId.seen();
+        byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
         setNode(byKademliaId);
 
 

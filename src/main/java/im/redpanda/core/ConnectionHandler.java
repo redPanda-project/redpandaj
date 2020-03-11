@@ -7,19 +7,17 @@ package im.redpanda.core;
 
 
 import im.redpanda.commands.FBPublicKey;
+import im.redpanda.crypt.Utils;
 import io.sentry.Sentry;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
-import java.security.SecureRandom;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,8 +35,8 @@ public class ConnectionHandler extends Thread {
     public static Selector selector;
     public static final ReentrantLock selectorLock = new ReentrantLock();
 
-    public static ArrayList<Peer> peerList = new ArrayList<>();
-    public static ReentrantLock allSocketsLock = new ReentrantLock(false);
+    public static ArrayList<PeerInHandshake> peerInHandshakes = new ArrayList<>();
+    public static ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
     public static BlockingQueue<Peer> peersToReadAndParse = new LinkedBlockingQueue<>(600);
     public static ArrayList<Peer> workingRead = new ArrayList<>();
     public static BlockingQueue<Peer> doneRead = new LinkedBlockingQueue<>(600);
@@ -263,6 +261,12 @@ public class ConnectionHandler extends Thread {
                             SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
 
                             PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
+                            ConnectionHandler.peerInHandshakesLock.lock();
+                            try {
+                                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+                            } finally {
+                                ConnectionHandler.peerInHandshakesLock.unlock();
+                            }
 
                             ConnectionReaderThread.sendHandshake(peerInHandshake);
 
@@ -352,12 +356,11 @@ public class ConnectionHandler extends Thread {
                                          * We got the public Peer, lets store it and check that this public key
                                          * indeed corresponds to the KademliaId.
                                          */
-                                        FBPublicKey rootAsSendPublicKey = FBPublicKey.getRootAsFBPublicKey(allocate);
-                                        ByteBuffer byteBuffer = rootAsSendPublicKey.publicKeyAsByteBuffer();
+                                        byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
+                                        allocate.get(bytesPublicKey);
 
-                                        byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
-                                        byteBuffer.get(bytes);
-                                        NodeId nodeId = NodeId.importPublic(bytes);
+                                        NodeId nodeId = NodeId.importPublic(bytesPublicKey);
+
                                         Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
                                         if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
@@ -681,63 +684,6 @@ public class ConnectionHandler extends Thread {
 
         Log.putStd(
                 "ConnectionHandler thread died...");
-
-    }
-
-
-    public void addConnection(Peer peer, boolean connectionPending) {
-        peer.lastActionOnConnection = System.currentTimeMillis();
-
-        allSocketsLock.lock();
-        peerList.add(peer);
-        allSocketsLock.unlock();
-
-        peer.writeBufferLock.lock();
-        try {
-//            peer.readBuffer = ByteBuffer.allocate(10 * 1024);
-//            peer.readBufferCrypted = ByteBuffer.allocate(10 * 1024);
-            peer.writeBuffer = ByteBuffer.allocate(10 * 1024);
-            peer.writeBufferCrypted = ByteBuffer.allocate(10 * 1024);
-        } catch (Throwable e) {
-            Log.putStd("Speicher konnte nicht reserviert werden. Disconnect peer...");
-            peer.disconnect("Speicher konnte nicht reserviert werden.");
-        } finally {
-            peer.writeBufferLock.unlock();
-        }
-
-        try {
-            SocketChannel socketChannel = peer.getSocketChannel();
-            socketChannel.configureBlocking(false);
-
-            SelectionKey key = null;
-            selectorLock.lock();
-            try {
-                selector.wakeup();
-                if (connectionPending) {
-                    peer.isConnecting = true;
-                    peer.setConnected(false);
-                    key = socketChannel.register(selector, SelectionKey.OP_CONNECT);
-                } else {
-                    peer.isConnecting = false;
-                    peer.setConnected(true);
-                    key = socketChannel.register(selector, SelectionKey.OP_READ);
-                }
-            } finally {
-                selectorLock.unlock();
-            }
-
-
-            key.attach(peer);
-            peer.setSelectionKey(key);
-            selector.wakeup();
-            System.out.println("c");
-            //Log.putStd("added con");
-        } catch (IOException ex) {
-            ex.printStackTrace();
-            peer.disconnect("could not init connection....");
-            return;
-        }
-        Log.putStd("done add");
 
     }
 
