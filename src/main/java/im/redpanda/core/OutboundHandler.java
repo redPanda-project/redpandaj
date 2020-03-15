@@ -18,7 +18,7 @@ public class OutboundHandler extends Thread {
         start();
 
 
-        if (Server.peerList == null || Server.NONCE == null) {
+        if (PeerList.getPeerArrayList() == null || Server.NONCE == null) {
             throw new RuntimeException("Do not start the outbound thread if peers and nonce not loaded!");
         }
     }
@@ -54,7 +54,7 @@ public class OutboundHandler extends Thread {
 //            System.out.println("Peers: " + PeerList.size());
 
 
-            if (Server.peerList.size() < 5) {
+            if (PeerList.size() < 5) {
                 reseed();
             }
 

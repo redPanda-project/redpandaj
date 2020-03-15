@@ -18,7 +18,6 @@ public class Server {
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
-    public static PeerList peerList;
     public static ReentrantReadWriteLock peerListLock;
     public static int outBytes = 0;
     public static int inBytes = 0;
@@ -37,8 +36,7 @@ public class Server {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
 //        peerList = Saver.loadPeers();
-        peerList = new PeerList();
-        peerListLock = peerList.getReadWriteLock();
+        peerListLock = PeerList.getReadWriteLock();
 
         //init all buckets!
         for (int i = 0; i < buckets.length; i++) {
@@ -111,7 +109,7 @@ public class Server {
 
     public static void removePeer(Peer peer) {
         peerListLock.writeLock().lock();
-        peerList.remove(peer);
+        PeerList.remove(peer);
         peer.removeNodeId();
         peerListLock.writeLock().unlock();
     }
