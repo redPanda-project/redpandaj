@@ -29,7 +29,6 @@ public class PeerInputStream extends InputStream {
 //        byteBuffer.flip();
         int toReadBytes = Math.min(b.length, byteBuffer.remaining());
         byteBuffer.get(b, 0, toReadBytes);
-//        byteBuffer.compact();
 
         return toReadBytes;
     }

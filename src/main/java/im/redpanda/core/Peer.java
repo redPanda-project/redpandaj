@@ -523,7 +523,14 @@ public class Peer implements Comparable<Peer>, Serializable {
 //            readBuffer.put(decrypt);
 
             // byteBufferToDecrypt in read mode, readBuffer in write mode
+
+//            System.out.println("Adecrypt: " + byteBufferToDecrypt + " " + readBuffer);
+
             getPeerChiperStreams().decrypt(byteBufferToDecrypt, readBuffer);
+
+//            System.out.println("Bdecrypt: " + byteBufferToDecrypt + " " + readBuffer);
+
+//            System.out.println("decrypt: " + byteBufferToDecrypt + " " + readBuffer);
 
 
             byteBufferToDecrypt.compact();

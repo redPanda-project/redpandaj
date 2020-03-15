@@ -37,4 +37,16 @@ public class CipherOutputStreamByteBuffer extends CipherOutputStream {
         write(byteBuffer.array(), byteBuffer.position(), byteBuffer.limit());
         byteBuffer.position(byteBuffer.limit());
     }
+
+    /**
+     * ByteBuffer has to be in reading mode before calling this method.
+     *
+     * @param byteBuffer
+     * @throws IOException
+     */
+    public void write(ByteBuffer byteBuffer, int lenToWrite) throws IOException {
+        int newPos = byteBuffer.position() + lenToWrite;
+        write(byteBuffer.array(), byteBuffer.position(), newPos);
+        byteBuffer.position(newPos);
+    }
 }

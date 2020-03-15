@@ -242,9 +242,9 @@ public class ConnectionReaderThread extends Thread {
         SelectionKey key = peer.selectionKey;
 
 
-        if (myReaderBuffer.position() != 0) {
-            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
-        }
+//        if (myReaderBuffer.position() != 0) {
+//            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
+//        }
 
         int read = -2;
         try {

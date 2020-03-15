@@ -121,7 +121,7 @@ public class ListenConsole extends Thread {
                     }
 
 
-                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
+//                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
 
 
                 } finally {
