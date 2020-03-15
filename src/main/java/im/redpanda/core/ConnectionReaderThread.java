@@ -317,7 +317,7 @@ public class ConnectionReaderThread extends Thread {
             peer.setLastActionOnConnection(System.currentTimeMillis());
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
-            Log.put("command: " + b, 200);
+            Log.put("command: " + b + " " + readBuffer, 200);
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);

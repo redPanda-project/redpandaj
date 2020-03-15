@@ -79,7 +79,7 @@ public class PeerJobs extends Thread {
                         e.printStackTrace();
                     }
 
-                    Log.put("running over peer: " + p, 70);
+                    Log.put("running over peer: " + p, 120);
 
 //                    if (p.getLastAnswered() > 1000 * 60 * 60 * 24 * 7 && PeerList.size() > 3 && p.lastActionOnConnection != 0) {
 //                        PeerList.remove(p);
@@ -100,7 +100,7 @@ public class PeerJobs extends Thread {
 
                             p.disconnect("timeout");
                             if (p.getNodeId() == null) {
-                                Log.put("removed peer from peerList, tried once and peer never connected before: " + p.ip + ":" + p.port, 20);
+                                Log.put("removed peer from peerList, tried once and peer never connected before: " + p.ip + ":" + p.port, 120);
                             }
 
                             //todo: interrupt outbound thread?

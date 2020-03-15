@@ -213,7 +213,7 @@ public class OutboundHandler extends Thread {
 
                     if (peer.connectAble != -1) {
 
-                        Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 50);
+                        Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 150);
 
                         connectTo(peer);
                         actCons++;

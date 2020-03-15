@@ -122,7 +122,6 @@ public class PeerInHandshake {
 
 //            peer.setSelectionKey(key);
             ConnectionHandler.selector.wakeup();
-            Log.putStd("added con");
         } catch (IOException ex) {
             ex.printStackTrace();
             peer.disconnect("could not init connection....");

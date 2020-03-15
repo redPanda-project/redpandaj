@@ -403,6 +403,8 @@ public class ConnectionHandler extends Thread {
 
                                         peerInHandshake.setAwaitingEncryption(true);
 
+                                        System.out.println("parsed ACTIVATE_ENCRYPTION");
+
                                     }
 
 
