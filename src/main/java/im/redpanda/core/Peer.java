@@ -35,6 +35,9 @@ public class Peer implements Comparable<Peer>, Serializable {
     public String ip;
     public int port;
     public int connectAble = 0;
+
+    public boolean lightClient = false;
+
     public int retries = 0;
     public long lastBufferModified;
     long lastRetryAfter5 = 0;
@@ -809,5 +812,13 @@ public class Peer implements Comparable<Peer>, Serializable {
         PeerList.removeIpPortOnly(ip, port);
         ip = null;
         port = 0;
+    }
+
+    public void setLightClient(boolean lightClient) {
+        this.lightClient = lightClient;
+    }
+
+    public boolean isLightClient() {
+        return lightClient;
     }
 }

@@ -362,7 +362,7 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
                         continue;
                     }
 
@@ -830,6 +830,7 @@ public class ConnectionReaderThread extends Thread {
 
         writeBuffer.put(Server.MAGIC.getBytes());
         writeBuffer.put((byte) Server.VERSION);
+        writeBuffer.put((byte) 0); //we are no light client
         writeBuffer.put(Server.NONCE.getBytes());
         writeBuffer.putInt(Server.MY_PORT);
 
@@ -874,7 +875,7 @@ public class ConnectionReaderThread extends Thread {
 //        builder.finish(sendPublicKey);
 //        ByteBuffer byteBuffer = builder.dataBuffer();
 
-        ByteBuffer buffer = ByteBuffer.allocate(1+65);
+        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
 
         buffer.put(Command.SEND_PUBLIC_KEY);
         buffer.put(Server.nodeId.exportPublic());
@@ -895,7 +896,7 @@ public class ConnectionReaderThread extends Thread {
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
 
-        if (buffer.remaining() < 29) {
+        if (buffer.remaining() < 30) {
             System.out.println("not enough bytes for handshake");
             return false;
         }
@@ -905,6 +906,12 @@ public class ConnectionReaderThread extends Thread {
 //        System.out.println("magic: " + magic);
 
         int version = (int) buffer.get();
+
+        int clientType = (int) buffer.get();
+
+        if (clientType > 128) {
+            peerInHandshake.setLightClient(true);
+        }
 
 //        System.out.println("version: " + version);
 

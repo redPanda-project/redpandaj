@@ -57,6 +57,9 @@ public class PeerList {
         bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     }
 
+    private PeerList() {
+    }
+
     /**
      * Adds a Peer to the Peerlist by handling all Hashmaps and the Arraylist.
      * Acquires locks.

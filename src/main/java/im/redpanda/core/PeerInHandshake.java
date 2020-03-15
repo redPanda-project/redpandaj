@@ -399,4 +399,8 @@ public class PeerInHandshake {
         System.out.println("Peer in handshake will be gcd...");
         super.finalize();
     }
+
+    public void setLightClient(boolean lightClient) {
+        getPeer().setLightClient(lightClient);
+    }
 }
