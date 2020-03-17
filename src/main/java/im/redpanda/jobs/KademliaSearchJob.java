@@ -1,0 +1,189 @@
+package im.redpanda.jobs;
+
+
+
+import im.redpanda.core.Command;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.PeerList;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.kademlia.PeerComparator;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+
+public class KademliaSearchJob extends Job {
+
+    public static final int SEND_TO_NODES = 2;
+    private static final int NONE = 0;
+    private static final int ASKED = 2;
+    private static final int SUCCESS = 1;
+
+    private KademliaId id;
+    private TreeMap<Peer, Integer> peers = null;
+    private ArrayList<KadContent> contents = new ArrayList<>();
+
+    public KademliaSearchJob(KademliaId id) {
+        this.id = id;
+    }
+
+    @Override
+    public void init() {
+
+
+        //lets sort the peers by the destination key
+        peers = new TreeMap<>(new PeerComparator(id));
+
+        //insert all nodes
+        PeerList.getReadWriteLock().readLock().lock();
+        try {
+            ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+
+            if (peerList == null) {
+                initilized = false;
+                return;
+            }
+
+            for (Peer p : peerList) {
+
+                //do not add the peer if it the peer is not connected or the nodeId is unknown!
+                if (p.getNodeId() == null || !p.isConnected()) {
+                    continue;
+                }
+
+                peers.put(p, NONE);
+            }
+        } finally {
+            PeerList.getReadWriteLock().readLock().unlock();
+        }
+    }
+
+    @Override
+    public void work() {
+
+
+        /**
+         * check for timeout, maybe we already got an answer but not SEND_TO_NODES
+         */
+        if (getEstimatedRuntime() > 1000 * 5) {
+            System.out.println("5 second timeout reached for KadSearch... ");
+            success();
+            done();
+            return;
+        }
+
+        int askedPeers = 0;
+        int successfullPeers = 0;
+        for (Peer p : peers.keySet()) {
+
+
+            Integer status = peers.get(p);
+            if (status == SUCCESS) {
+                successfullPeers++;
+                askedPeers++;
+                continue;
+            } else if (status == ASKED) {
+                continue;
+            }
+
+
+            if (successfullPeers >= SEND_TO_NODES) {
+
+                success();
+
+                done();
+                break;
+            }
+
+
+            if (askedPeers >= SEND_TO_NODES) {
+                break;
+            }
+
+
+            if (p.isConnected() && p.isIntegrated()) {
+
+                try {
+                    //lets not wait too long for a lock, since this job may timeout otherwise
+                    boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
+                    if (lockedByMe) {
+                        try {
+
+                            ByteBuffer writeBuffer = p.getWriteBuffer();
+
+                            if (writeBuffer == null) {
+                                continue;
+                            }
+
+                            peers.put(p, ASKED);
+                            askedPeers++;
+
+
+                            System.out.println("seach KadId from peer: " + p.getNodeId().toString() + " size: " + peers.size() + " distance: " + id.getDistance(p.getKademliaId()) + " target: " + id);
+
+
+                            writeBuffer.put(Command.KADEMLIA_GET);
+                            writeBuffer.putInt(getJobId());
+                            writeBuffer.put(id.getBytes());
+
+                            p.setWriteBufferFilled();
+
+                        } finally {
+                            p.getWriteBufferLock().unlock();
+                        }
+                    } else {
+
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+
+            }
+
+
+        }
+
+
+        if (successfullPeers > SEND_TO_NODES) {
+            done();
+        }
+
+
+    }
+
+    protected KadContent success() {
+
+        System.out.println("sucess!!!222");
+
+        if (contents.isEmpty()) {
+            return null;
+        }
+
+        //lets get the newest one!
+        contents.sort(new Comparator<KadContent>() {
+            @Override
+            public int compare(KadContent o1, KadContent o2) {
+                return o1.getTimestamp() < o1.getTimestamp() ? -1 :
+                        o1.getTimestamp() > o1.getTimestamp() ? 1 : 0;
+            }
+        });
+
+        System.out.println("newst content found: " + contents.get(0).getTimestamp());
+
+        return contents.get(0);
+    }
+
+
+    public void ack(KadContent c, Peer p) {
+        //todo: concurrency?
+        contents.add(c);
+        peers.put(p, SUCCESS);
+        System.out.println("ack2!!");
+    }
+
+
+}
