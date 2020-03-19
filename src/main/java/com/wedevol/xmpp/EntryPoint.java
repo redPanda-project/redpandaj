@@ -37,18 +37,31 @@ public class EntryPoint extends CcsClient {
             logger.error("Error trying to connect. Error: {}", e.getMessage());
         }
 
-        String toRegId = "";
+//        String toRegId = "eJ7JgnPaR-m2ng_anT5Kty:APA91bH0q04VtYWhBzXd5N1GPvVFZ-5Op2mQkH8k38JtNFRmi5ibkA9nmjOQUWN9jf9fXcvpK6ZxwM7wAvwgZ5fdg3A0Q6ibv2V31WwAz_aadodFM9xBeCrGCBN0HP40xPDCB52Vpwd_";
+        String toRegId = "exYJbkeSRsmgDXPlfDne4f:APA91bEqPu4sth0fQ83-HtJtI7YzYE0Dbede33DfOiSwcxQUPVo_XnUCmw-0MIcLXzuZpl7_td43UyMRQ-t-6JMI-GMFgOEXf2ZNAvZ-Ho62VwmhLu305By4vUCoKZymbBO34yXatp4_";
 
 
         // Send a sample downstream message to a device
         int cnt = 0;
-        while (cnt < 2) {
+        while (cnt < 1) {
             cnt++;
             final String messageId = Util.getUniqueMessageId();
             final Map<String, String> dataPayload = new HashMap<String, String>();
+
+            final Map<String, String> notificationPayload = new HashMap<String, String>();
+            notificationPayload.put("title", "New Message");
+            notificationPayload.put("body", "Message could not be decrypted...");
+            notificationPayload.put("tag","default");
+
+
+
             dataPayload.put(Util.PAYLOAD_ATTRIBUTE_MESSAGE, "This is the simple sample message");
             dataPayload.put("data", new Random().nextInt(5000) + "");
             final CcsOutMessage message = new CcsOutMessage(toRegId, messageId, dataPayload);
+            message.setCollapseKey("default");
+
+            message.setPriority("10");
+            message.setNotificationPayload(notificationPayload);
             final String jsonRequest = MessageMapper.toJsonString(message);
             sendDownstreamMessage(messageId, jsonRequest);
 

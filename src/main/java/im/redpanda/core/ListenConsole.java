@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.kademlia.KadStoreManager;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
@@ -122,6 +123,10 @@ public class ListenConsole extends Thread {
 
 
 //                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
+
+
+                    System.out.println("KadStore entries: ");
+                    KadStoreManager.printStatus();
 
 
                 } finally {

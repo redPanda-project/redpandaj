@@ -17,9 +17,9 @@ public class Command {
     public static final byte UPDATE_ANSWER_CONTENT = (byte) 12;
 
     //kademlia cmds
-    public static final byte KADEMLIA_STORE = (byte) 120;// standalone command
-    public static final byte KADEMLIA_GET = (byte) 121;// standalone command
-    public static final byte KADEMLIA_GET_ANSWER = (byte) 122;// standalone command
-    public static final byte JOB_ACK = (byte) 130;// standalone command
+    public static final byte KADEMLIA_STORE = (byte) 120;
+    public static final byte KADEMLIA_GET = (byte) 121;
+    public static final byte KADEMLIA_GET_ANSWER = (byte) 122;
+    public static final byte JOB_ACK = (byte) 130;
 
 }

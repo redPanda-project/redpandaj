@@ -81,6 +81,8 @@ public class KademliaInsertJob extends Job {
             }
 
 
+
+
             if (successfullPeers >= SEND_TO_NODES) {
                 done();
                 break;
@@ -150,8 +152,8 @@ public class KademliaInsertJob extends Job {
 
         }
 
-
-        if (successfullPeers > SEND_TO_NODES) {
+        System.out.println("successfullPeers: " + successfullPeers + " askedPeers: " + askedPeers);
+        if (successfullPeers >= SEND_TO_NODES) {
             done();
         }
 

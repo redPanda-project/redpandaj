@@ -13,7 +13,7 @@ import com.wedevol.xmpp.bean.CcsOutMessage;
 /**
  * Mapper for the transformation of JSON messages to attribute maps and vice versa in the XMPP
  * Server
- * 
+ *
  * @author Charz++
  */
 
@@ -90,7 +90,12 @@ public class MessageMapper {
       map.put("collapse_key", msg.getCollapseKey());
     }
     if (msg.getPriority() != null) {
-      map.put("priority", msg.getPriority());
+      map.put("priority",10);
+
+      Map<String, String> stringStringMap = new HashMap<>();
+      stringStringMap.put("priority", "high");
+
+      map.put("android", stringStringMap);
     }
     if (msg.isContentAvailable() != null && msg.isContentAvailable()) {
       map.put("content_available", true);

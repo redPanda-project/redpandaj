@@ -11,8 +11,8 @@ import java.security.interfaces.ECKey;
 
 public class KadContent {
 
-    public static final int PUBKEY_LEN = 33;
-    public static final int SIGNATURE_LEN = 64;
+//    public static final int PUBKEY_LEN = 33;
+//    public static final int SIGNATURE_LEN = 64;
 
     private KademliaId id; //we store the ID duplicated because of performance reasons (new lookup in the hashmap costs more than a bit of memory)
     private long timestamp; //created at (or updated)

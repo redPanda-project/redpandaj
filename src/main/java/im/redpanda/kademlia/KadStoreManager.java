@@ -90,8 +90,8 @@ public class KadStoreManager {
                     keepTime = Math.min(keepTime, MAX_KEEP_TIME); // max time
 
                     System.out.println("keep time: " + formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
-                    System.out.println("id: " + Server.NONCE);
-                    System.out.println("id: " + c.getId());
+//                    System.out.println("id: " + Server.NONCE);
+//                    System.out.println("id: " + c.getId());
 
                     //todo: shorter times for key far away from our id
                     if (c.getTimestamp() < currTime - keepTime) {

@@ -31,6 +31,7 @@ public class PeerInHandshake {
     SelectionKey key;
     byte[] randomFromUs;
     byte[] randomFromThem;
+    boolean lightClient = false;
 
     boolean weSendOurRandom = false;
     boolean awaitingEncryption = false;
@@ -401,6 +402,6 @@ public class PeerInHandshake {
     }
 
     public void setLightClient(boolean lightClient) {
-        getPeer().setLightClient(lightClient);
+        this.lightClient = lightClient;
     }
 }

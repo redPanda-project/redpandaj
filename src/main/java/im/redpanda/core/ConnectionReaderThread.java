@@ -14,6 +14,10 @@ import im.redpanda.commands.FBPublicKey;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
+import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaInsertJob;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
 
 import java.io.File;
@@ -44,6 +48,7 @@ public class ConnectionReaderThread extends Thread {
 
     public static int MAX_THREADS = 30;
     public static int STD_TIMEOUT = 10;
+    public static int MIN_SIGNATURE_LEN = 70;
     public static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
     public static final ReentrantLock threadLock = new ReentrantLock(false);
 
@@ -353,9 +358,19 @@ public class ConnectionReaderThread extends Thread {
             PeerList.getReadWriteLock().readLock().lock();
             try {
 
-                int[] peers = new int[PeerList.getPeerArrayList().size()];
-                int[] kademliaIds = new int[PeerList.getPeerArrayList().size()];
-                int[] ips = new int[PeerList.getPeerArrayList().size()];
+                int size = 0;
+                for (Peer peerToWrite : PeerList.getPeerArrayList()) {
+
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                        continue;
+                    }
+                    size++;
+                }
+
+
+                int[] peers = new int[size];
+                int[] kademliaIds = new int[size];
+                int[] ips = new int[size];
 
                 FlatBufferBuilder builder = new FlatBufferBuilder(1024 * 200);
 
@@ -692,13 +707,8 @@ public class ConnectionReaderThread extends Thread {
             long othersTimestamp = readBuffer.getLong();
             int toReadBytes = readBuffer.getInt();
 
-            //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
-            readBuffer.get();
-            int lenOfSignature = ((int) readBuffer.get()) + 2;
-            readBuffer.position(readBuffer.position() - 2);
-
-            byte[] signature = new byte[lenOfSignature];
-            readBuffer.get(signature);
+            byte[] signature = readSignature(readBuffer);
+            int lenOfSignature = signature.length;
 
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
@@ -818,6 +828,96 @@ public class ConnectionReaderThread extends Thread {
 
             return 1 + 8 + 4 + lenOfSignature + data.length;
 
+        } else if (command == Command.KADEMLIA_STORE) {
+
+
+            if (4 + KademliaId.ID_LENGTH / 8 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+            int ackId = readBuffer.getInt();
+
+            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+            readBuffer.get(kadIdBytes);
+
+            long timestamp = readBuffer.getLong();
+
+            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+            readBuffer.get(publicKeyBytes);
+
+            int contentLen = readBuffer.getInt();
+
+            if (contentLen > readBuffer.remaining()) {
+                return 0;
+            }
+
+            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+                peer.disconnect("wrong contentLen for kadcontent");
+                return 0;
+            }
+
+            byte[] contentBytes = new byte[contentLen];
+            readBuffer.get(contentBytes);
+
+            if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+
+            byte[] signatureBytes = readSignature(readBuffer);
+            int lenOfSignature = signatureBytes.length;
+
+            System.out.println("got KadContent successfully");
+
+            KadContent kadContent = new KadContent(new KademliaId(kadIdBytes), timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+            /**
+             * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
+             */
+            if (peer.isLightClient()) {
+                System.out.println("peer is light client, start KadInserJob!");
+                KademliaInsertJob kademliaInsertJob = new KademliaInsertJob(kadContent);
+                kademliaInsertJob.start();
+            }
+
+            if (kadContent.verify()) {
+                boolean saved = KadStoreManager.put(kadContent);
+
+//                if (saved) {
+                peer.getWriteBufferLock().lock();
+                try {
+                    peer.getWriteBuffer().put(Command.JOB_ACK);
+                    peer.getWriteBuffer().putInt(ackId);
+                } finally {
+                    peer.getWriteBufferLock().unlock();
+                }
+
+//                }
+
+            } else {
+                //todo
+                System.out.println("kadContent verification failed!!!");
+            }
+
+
+            return 1 + 4 + (KademliaId.ID_LENGTH / 8) + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+
+        } else if (command == Command.JOB_ACK) {
+
+
+            int jobId = readBuffer.getInt();
+
+            Job runningJob = Job.getRunningJob(jobId);
+
+            if (runningJob instanceof KademliaInsertJob) {
+                KademliaInsertJob job = (KademliaInsertJob) runningJob;
+                job.ack(peer);
+                System.out.println("ACK from peer: " + peer.getNodeId().toString());
+            }
+
+
+            return 1 + 4;
+
         }
 
         return 0;
@@ -909,7 +1009,7 @@ public class ConnectionReaderThread extends Thread {
 
         int clientType = (int) buffer.get();
 
-        if (clientType > 128) {
+        if (clientType > 128 || clientType < 0) {
             peerInHandshake.setLightClient(true);
         }
 
@@ -1064,6 +1164,17 @@ public class ConnectionReaderThread extends Thread {
         }
         byteBuffer.position(byteBuffer.position() + length);
         return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
+    }
+
+    public static byte[] readSignature(ByteBuffer readBuffer) {
+        //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
+        readBuffer.get();
+        int lenOfSignature = ((int) readBuffer.get()) + 2;
+        readBuffer.position(readBuffer.position() - 2);
+
+        byte[] signature = new byte[lenOfSignature];
+        readBuffer.get(signature);
+        return signature;
     }
 
 }

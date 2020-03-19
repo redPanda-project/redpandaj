@@ -301,6 +301,8 @@ public class Peer implements Comparable<Peer>, Serializable {
         setNode(null);
         isConnecting = false;
         authed = false;
+        connectedSince = 0;
+        isIntegrated = false;
 
         try {
             writeBufferLock.tryLock(2, TimeUnit.SECONDS);
@@ -592,6 +594,10 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public boolean isIntegrated() {
 
+        if (lightClient) {
+            return false;
+        }
+
         if (isIntegrated) {
             return true;
         }
@@ -740,6 +746,8 @@ public class Peer implements Comparable<Peer>, Serializable {
         isConnecting = false;
         authed = true;
         retries = 0;
+        lightClient = peerInHandshake.lightClient;
+        connectedSince = System.currentTimeMillis();
 
         /**
          * setup the buffers
