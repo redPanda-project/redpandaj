@@ -1,21 +1,25 @@
 package im.redpanda.jobs;
 
 
-
-import im.redpanda.core.Command;
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
+import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class KademliaSearchJob extends Job {
+
+    private static HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
+    private static ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
+    private static long BLACKLIST_KEY_FOR = 1000L * 30L;
+    //todo: we need a housekeeper for this hashmap!
 
     public static final int SEND_TO_NODES = 2;
     private static final int NONE = 0;
@@ -34,7 +38,39 @@ public class KademliaSearchJob extends Job {
     public void init() {
 
 
-        //lets sort the peers by the destination key
+        /**
+         * Lets check if this KademliaId was already searched in the last seconds such that no search loops occur.
+         * Each Key is blacklisted for 5 seconds after a search and only direct searches will be returned for that key.
+         * TODO: Maybe we should create a list of "requesters" for each search such that we can send an answers to all "requesters".
+         */
+
+        long currentTimeMillis = System.currentTimeMillis();
+
+        kademliaIdSearchBlacklistLock.lock();
+        try {
+            Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
+            if (blacklistedTill != null)
+            System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
+            if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
+                kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
+            } else {
+                System.out.println("search is blacklisted....");
+                //todo: maybe we should inform the peer that he should retry a KadSearch in some seconds?
+                return;
+            }
+        } finally {
+            kademliaIdSearchBlacklistLock.unlock();
+        }
+
+
+        int myDistanceToKey = id.getDistance(Server.NONCE);
+
+//        BigInteger key = id.getInt();
+//        BigInteger me = Server.NONCE.getInt();
+//        BigInteger myDistanceToKey = me.xor(key).abs();
+
+
+        //key is not blacklisted, lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(id));
 
         //insert all nodes
@@ -49,16 +85,33 @@ public class KademliaSearchJob extends Job {
 
             for (Peer p : peerList) {
 
-                //do not add the peer if it the peer is not connected or the nodeId is unknown!
+                //do not add the peer if the peer is not connected or the nodeId is unknown!
                 if (p.getNodeId() == null || !p.isConnected()) {
                     continue;
                 }
+
+                //do not ask light clients for kad entries...
+                if (p.isLightClient()) {
+                    continue;
+                }
+
+                /**
+                 * do not add peers which are further or equally away from the key than us
+                 */
+                int peersDistanceToKey = id.getDistance(p.getKademliaId());
+                System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
+                if (myDistanceToKey >= peersDistanceToKey) {
+                    continue;
+                }
+
 
                 peers.put(p, NONE);
             }
         } finally {
             PeerList.getReadWriteLock().readLock().unlock();
         }
+
+        System.out.println("peers for search found: " + peers.size());
     }
 
     @Override
@@ -71,6 +124,12 @@ public class KademliaSearchJob extends Job {
         if (getEstimatedRuntime() > 1000 * 5) {
             System.out.println("5 second timeout reached for KadSearch... ");
             success();
+            done();
+            return;
+        }
+        if (peers == null) {
+            System.out.println("search blacklisted for KadSearch... ");
+            fail();
             done();
             return;
         }
@@ -91,15 +150,12 @@ public class KademliaSearchJob extends Job {
 
 
             if (successfullPeers >= SEND_TO_NODES) {
-
-                success();
-
-                done();
                 break;
             }
 
 
             if (askedPeers >= SEND_TO_NODES) {
+                //the check for done will be made below the loop
                 break;
             }
 
@@ -147,13 +203,22 @@ public class KademliaSearchJob extends Job {
 
         }
 
-
-        if (successfullPeers > SEND_TO_NODES) {
+        /**
+         * Lets check if already SEND_TO_NODES peers answered and check if all peers list answered,
+         * the peers list may be small if we are near the search key...
+         */
+        if (successfullPeers >= SEND_TO_NODES || successfullPeers == peers.size()) {
+            success();
             done();
         }
 
 
     }
+
+
+    protected void fail() {
+    }
+
 
     protected KadContent success() {
 
@@ -180,6 +245,7 @@ public class KademliaSearchJob extends Job {
 
     public void ack(KadContent c, Peer p) {
         //todo: concurrency?
+        //todo: save KadContent in our store?
         contents.add(c);
         peers.put(p, SUCCESS);
         System.out.println("ack2!!");

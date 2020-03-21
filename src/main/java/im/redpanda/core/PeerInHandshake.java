@@ -397,7 +397,7 @@ public class PeerInHandshake {
 
     @Override
     protected void finalize() throws Throwable {
-        System.out.println("Peer in handshake will be gcd...");
+//        System.out.println("Peer in handshake will be gcd...");
         super.finalize();
     }
 

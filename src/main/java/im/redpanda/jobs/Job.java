@@ -89,16 +89,17 @@ public abstract class Job implements Runnable {
         this.jobId = rand.nextInt();
 
 
-        //run immediately
-        JobScheduler.runNow(this);
-
         //run delayed recurrent
         future = JobScheduler.insert(this, reRunDelay);
         runningJobs.put(jobId, this);
+
+        //run immediately
+        JobScheduler.runNow(this);
     }
 
     /**
      * estimated time in ms
+     *
      * @return
      */
     public long getEstimatedRuntime() {

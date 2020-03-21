@@ -48,6 +48,7 @@ public class KadContent {
         return pubkey;
     }
 
+    //todo kadId has to be computed from the public key and time stamp, remove from send
     public KademliaId getId() {
         return id;
     }

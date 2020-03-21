@@ -141,9 +141,7 @@ public class ListenConsole extends Thread {
                     e.printStackTrace();
                 }
             } else if (readLine.equals("e")) {
-                Server.SHUTDOWN = true;
-                Server.nodeStore.close();
-                Server.localSettings.save(Server.MY_PORT);
+                Server.shutdown();
                 System.exit(0);
             } else if (readLine.equals("c")) {
                 System.out.println("closing all connections...");

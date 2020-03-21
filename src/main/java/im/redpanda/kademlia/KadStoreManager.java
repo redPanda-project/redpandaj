@@ -89,7 +89,7 @@ public class KadStoreManager {
                     keepTime = Math.max(keepTime, 1000L * 60L * 61L); //at least 61 mins such that the maintenance routine can spread the entry
                     keepTime = Math.min(keepTime, MAX_KEEP_TIME); // max time
 
-                    System.out.println("keep time: " + formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
+//                    System.out.println("keep time: " + formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
 //                    System.out.println("id: " + Server.NONCE);
 //                    System.out.println("id: " + c.getId());
 

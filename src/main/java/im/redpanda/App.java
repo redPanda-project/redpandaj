@@ -36,6 +36,19 @@ public class App {
 //        }
 
 
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+            @Override
+            public void run() {
+                final String orgName = Thread.currentThread().getName();
+                Thread.currentThread().setName(orgName + " - shutdownhook");
+                System.out.println("started shutdownhook...");
+                Server.shutdown();
+                System.out.println("shutdownhook done");
+            }
+        });
+
+
         Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
 
         String gitRev = readGitProperties();
