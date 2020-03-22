@@ -168,7 +168,7 @@ public class KadStoreManager {
         new Random().nextBytes(payload);
 
 
-        KadContent kadContent = new KadContent(kademliaId, nodeId.exportPublic(), payload);
+        KadContent kadContent = new KadContent(nodeId.exportPublic(), payload);
 
         kadContent.signWith(nodeId);
 

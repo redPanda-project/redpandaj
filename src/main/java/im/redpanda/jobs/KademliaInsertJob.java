@@ -127,7 +127,7 @@ public class KademliaInsertJob extends Job {
 
                             writeBuffer.put(Command.KADEMLIA_STORE);
                             writeBuffer.putInt(getJobId());
-                            writeBuffer.put(kadContent.getId().getBytes());
+//                            writeBuffer.put(kadContent.getId().getBytes());
                             writeBuffer.putLong(kadContent.getTimestamp());
                             writeBuffer.put(kadContent.getPubkey());
                             writeBuffer.putInt(kadContent.getContent().length);

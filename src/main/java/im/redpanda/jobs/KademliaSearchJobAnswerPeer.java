@@ -43,7 +43,7 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
         try {
             answerTo.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
             answerTo.getWriteBuffer().putInt(ackID);
-            answerTo.getWriteBuffer().put(kadContent.getId().getBytes());
+//            answerTo.getWriteBuffer().put(kadContent.getId().getBytes());
             answerTo.getWriteBuffer().putLong(kadContent.getTimestamp());
             answerTo.getWriteBuffer().put(kadContent.getPubkey());
             answerTo.getWriteBuffer().putInt(kadContent.getContent().length);

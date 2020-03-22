@@ -833,14 +833,14 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.KADEMLIA_STORE) {
 
 
-            if (4 + KademliaId.ID_LENGTH / 8 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+            if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
                 return 0;
             }
 
             int ackId = readBuffer.getInt();
 
-            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
-            readBuffer.get(kadIdBytes);
+//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+//            readBuffer.get(kadIdBytes);
 
             long timestamp = readBuffer.getLong();
 
@@ -869,9 +869,11 @@ public class ConnectionReaderThread extends Thread {
             byte[] signatureBytes = readSignature(readBuffer);
             int lenOfSignature = signatureBytes.length;
 
-            System.out.println("got KadContent successfully");
 
-            KadContent kadContent = new KadContent(new KademliaId(kadIdBytes), timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+            System.out.println("got KadContent successfully " + kadContent.getId());
 
             /**
              * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
@@ -901,7 +903,7 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("kadContent verification failed!!!");
             }
 
-            return 1 + 4 + (KademliaId.ID_LENGTH / 8) + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+            return 1 + 4  + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
 
         } else if (command == Command.JOB_ACK) {
 
@@ -942,7 +944,7 @@ public class ConnectionReaderThread extends Thread {
                 try {
                     peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
                     peer.getWriteBuffer().putInt(jobId);
-                    peer.getWriteBuffer().put(kadContent.getId().getBytes());
+//                    peer.getWriteBuffer().put(kadContent.getId().getBytes());
                     peer.getWriteBuffer().putLong(kadContent.getTimestamp());
                     peer.getWriteBuffer().put(kadContent.getPubkey());
                     peer.getWriteBuffer().putInt(kadContent.getContent().length);
@@ -962,14 +964,14 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.KADEMLIA_GET_ANSWER) {
 
 
-            if (4 + KademliaId.ID_LENGTH / 8 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+            if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
                 return 0;
             }
 
             int ackId = readBuffer.getInt();
 
-            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
-            readBuffer.get(kadIdBytes);
+//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+//            readBuffer.get(kadIdBytes);
 
             long timestamp = readBuffer.getLong();
 
@@ -997,7 +999,7 @@ public class ConnectionReaderThread extends Thread {
             byte[] signatureBytes = readSignature(readBuffer);
             int lenOfSignature = signatureBytes.length;
 
-            KadContent kadContent = new KadContent(new KademliaId(kadIdBytes), timestamp, publicKeyBytes, contentBytes, signatureBytes);
+            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
             if (kadContent.verify()) {
                 boolean saved = KadStoreManager.put(kadContent);
@@ -1017,7 +1019,7 @@ public class ConnectionReaderThread extends Thread {
             }
 
 
-            return 1 + 4 + (KademliaId.ID_LENGTH / 8) + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
 
         }
 

@@ -16,9 +16,15 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class KademliaSearchJob extends Job {
 
+    /**
+     * Here we use a blacklist to block search request for the same KademliaId in short time intervals.
+     * If a search is initialized from a node and the next nodes are also have to start a search request,
+     * it is possible that two nodes request the same search from use.
+     * This blacklist will block any duplicated request for the same search.
+     */
     private static HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
     private static ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
-    private static long BLACKLIST_KEY_FOR = 1000L * 30L;
+    private static long BLACKLIST_KEY_FOR = 1000L * 5L;
     //todo: we need a housekeeper for this hashmap!
 
     public static final int SEND_TO_NODES = 2;
@@ -252,4 +258,11 @@ public class KademliaSearchJob extends Job {
     }
 
 
+    public static HashMap<KademliaId, Long> getKademliaIdSearchBlacklist() {
+        return kademliaIdSearchBlacklist;
+    }
+
+    public static ReentrantLock getKademliaIdSearchBlacklistLock() {
+        return kademliaIdSearchBlacklistLock;
+    }
 }
