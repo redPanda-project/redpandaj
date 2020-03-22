@@ -1,5 +1,8 @@
 package im.redpanda.core;
 
+import im.redpanda.jobs.KadRefreshJob;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.store.NodeStore;
 
 import java.security.SecureRandom;
@@ -50,6 +53,9 @@ public class Server {
 
         connectionHandler = new ConnectionHandler(true);
         connectionHandler.start();
+
+        //this is a permanent job and will run every hour...
+        new KadRefreshJob().start();
 
     }
 
@@ -131,5 +137,20 @@ public class Server {
         outboundHandler.init();
 
         PeerJobs.startUp();
+    }
+
+    public static void shutdown() {
+        Server.SHUTDOWN = true;
+
+        KadStoreManager.maintain();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        Server.nodeStore.close();
+        Server.localSettings.save(Server.MY_PORT);
     }
 }

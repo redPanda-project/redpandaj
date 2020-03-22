@@ -31,6 +31,7 @@ public class PeerInHandshake {
     SelectionKey key;
     byte[] randomFromUs;
     byte[] randomFromThem;
+    boolean lightClient = false;
 
     boolean weSendOurRandom = false;
     boolean awaitingEncryption = false;
@@ -396,11 +397,11 @@ public class PeerInHandshake {
 
     @Override
     protected void finalize() throws Throwable {
-        System.out.println("Peer in handshake will be gcd...");
+//        System.out.println("Peer in handshake will be gcd...");
         super.finalize();
     }
 
     public void setLightClient(boolean lightClient) {
-        getPeer().setLightClient(lightClient);
+        this.lightClient = lightClient;
     }
 }
