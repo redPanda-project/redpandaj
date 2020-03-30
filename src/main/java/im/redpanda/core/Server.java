@@ -142,7 +142,9 @@ public class Server {
     public static void shutdown() {
         Server.SHUTDOWN = true;
 
-        KadStoreManager.maintain();
+        Server.nodeStore.saveToDisk();
+
+//        KadStoreManager.maintain();
 
         try {
             Thread.sleep(500);

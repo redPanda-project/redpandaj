@@ -42,6 +42,7 @@ public class App {
             public void run() {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
+                Server.nodeStore.saveToDisk();
                 System.out.println("started shutdownhook...");
                 Server.shutdown();
                 System.out.println("shutdownhook done");

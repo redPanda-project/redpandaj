@@ -226,7 +226,7 @@ public class KademliaSearchJob extends Job {
     }
 
 
-    protected KadContent success() {
+    protected ArrayList<KadContent> success() {
 
         System.out.println("sucess!!!222");
 
@@ -245,7 +245,7 @@ public class KademliaSearchJob extends Job {
 
         System.out.println("newst content found: " + contents.get(0).getTimestamp());
 
-        return contents.get(0);
+        return contents;
     }
 
 

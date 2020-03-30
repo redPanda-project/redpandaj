@@ -207,8 +207,11 @@ public class ConnectionReaderThread extends Thread {
 //            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
             long a = System.currentTimeMillis();
 
-
-            readConnection(poll);
+            try {
+                readConnection(poll);
+            } catch (Throwable e) {
+                Sentry.capture(e);
+            }
 
 
             long diff = (System.currentTimeMillis() - a);
@@ -328,6 +331,7 @@ public class ConnectionReaderThread extends Thread {
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            peer.lastCommand = b;
             newPosition += parsedBytesLocally;
             readBuffer.position(newPosition);
         }
@@ -870,7 +874,6 @@ public class ConnectionReaderThread extends Thread {
             int lenOfSignature = signatureBytes.length;
 
 
-
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
             System.out.println("got KadContent successfully " + kadContent.getId());
@@ -903,7 +906,7 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("kadContent verification failed!!!");
             }
 
-            return 1 + 4  + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
 
         } else if (command == Command.JOB_ACK) {
 
@@ -1024,7 +1027,7 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
-        throw new RuntimeException("Got unknown command from peer: " + command);
+        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand);
 
 //        return 0;
     }

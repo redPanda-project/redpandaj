@@ -347,7 +347,7 @@ public class NodeId implements Serializable {
 
             return ecdsa2.verify(signature);
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            Sentry.capture(e);
+//            Sentry.capture(e);
             e.printStackTrace();
         }
         return false;

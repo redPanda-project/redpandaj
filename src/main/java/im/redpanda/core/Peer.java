@@ -71,6 +71,7 @@ public class Peer implements Comparable<Peer>, Serializable {
     public long syncMessagesSince = 0;
     public ArrayList<Integer> removedSendMessages = new ArrayList<Integer>();
     public int maxSimultaneousRequests = 1;
+    public byte lastCommand;
 
 
     public long sendBytes = 0;

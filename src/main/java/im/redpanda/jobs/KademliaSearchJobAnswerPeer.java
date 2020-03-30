@@ -7,6 +7,7 @@ import im.redpanda.core.Peer;
 import im.redpanda.kademlia.KadContent;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
@@ -22,11 +23,11 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
 
     @Override
-    protected KadContent success() {
+    protected ArrayList<KadContent> success() {
 
-        KadContent kadContent = super.success();
+        ArrayList<KadContent> kadContents = super.success();
 
-        if (kadContent == null) {
+        if (kadContents == null || kadContents.get(0) == null) {
             System.out.println("job failed, did not found an entry in time...");
             fail();
             return null;
@@ -36,26 +37,34 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
         if (!answerTo.isConnected()) {
             System.out.println("peer not online, do not answer the KadSearch: " + answerTo.getKademliaId());
-            return kadContent;
+            return kadContents;
         }
 
-        answerTo.getWriteBufferLock().lock();
-        try {
-            answerTo.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
-            answerTo.getWriteBuffer().putInt(ackID);
+        /**
+         * write the least 3 newst entries...
+         */
+        for (int i = 0; i < 3; i++) {
+
+            KadContent kadContent = kadContents.get(i);
+
+            answerTo.getWriteBufferLock().lock();
+            try {
+                answerTo.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
+                answerTo.getWriteBuffer().putInt(ackID);
 //            answerTo.getWriteBuffer().put(kadContent.getId().getBytes());
-            answerTo.getWriteBuffer().putLong(kadContent.getTimestamp());
-            answerTo.getWriteBuffer().put(kadContent.getPubkey());
-            answerTo.getWriteBuffer().putInt(kadContent.getContent().length);
-            answerTo.getWriteBuffer().put(kadContent.getContent());
-            answerTo.getWriteBuffer().put(kadContent.getSignature());
-        } finally {
-            answerTo.getWriteBufferLock().unlock();
+                answerTo.getWriteBuffer().putLong(kadContent.getTimestamp());
+                answerTo.getWriteBuffer().put(kadContent.getPubkey());
+                answerTo.getWriteBuffer().putInt(kadContent.getContent().length);
+                answerTo.getWriteBuffer().put(kadContent.getContent());
+                answerTo.getWriteBuffer().put(kadContent.getSignature());
+            } finally {
+                answerTo.getWriteBufferLock().unlock();
+            }
         }
 
         System.out.println("wrote search answer to: " + answerTo.getKademliaId());
 
-        return kadContent;
+        return kadContents;
     }
 
 
