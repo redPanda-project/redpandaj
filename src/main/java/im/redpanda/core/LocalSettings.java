@@ -11,11 +11,13 @@ import java.util.Set;
 public class LocalSettings implements Serializable {
 
 
-    public NodeId myIdentity;
-    public String myIp;
-    public byte[] updateSignature;
-    public long updateTimestamp;
-    public byte[] updateAndroidSignature;
+    private NodeId myIdentity;
+    private String myIp;
+    private long updateTimestamp;
+    private byte[] updateSignature;
+
+    private long updateAndroidTimestamp;
+    private byte[] updateAndroidSignature;
 
     public LocalSettings() {
         myIdentity = new NodeId();
@@ -111,5 +113,17 @@ public class LocalSettings implements Serializable {
 
     public void setUpdateTimestamp(long updateTimestamp) {
         this.updateTimestamp = updateTimestamp;
+    }
+
+    public long getUpdateAndroidTimestamp() {
+        return updateAndroidTimestamp;
+    }
+
+    public void setUpdateAndroidTimestamp(long updateAndroidTimestamp) {
+        this.updateAndroidTimestamp = updateAndroidTimestamp;
+    }
+
+    public NodeId getMyIdentity() {
+        return myIdentity;
     }
 }

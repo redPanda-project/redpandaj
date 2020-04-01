@@ -794,6 +794,10 @@ public class Peer implements Comparable<Peer>, Serializable {
             writeBuffer.put(Command.REQUEST_PEERLIST);
             //lets request an update
             writeBuffer.put(Command.UPDATE_REQUEST_TIMESTAMP);
+            if (!peerInHandshake.lightClient) {
+                //lets request an android update
+                writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP);
+            }
             setWriteBufferFilled();
         } finally {
             writeBufferLock.unlock();

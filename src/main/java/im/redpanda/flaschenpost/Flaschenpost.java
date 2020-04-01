@@ -25,7 +25,7 @@ public class Flaschenpost {
         try {
             for (Peer p : PeerList.getPeerArrayList()) {
 
-                if (p.getNodeId() == null) {
+                if (p.getNodeId() == null || !p.isIntegrated()) {
                     continue;
                 }
 

@@ -129,7 +129,7 @@ public class Server {
 
         System.out.println("NodeStore has entries: " + nodeStore.size());
 
-        nodeId = localSettings.myIdentity;
+        nodeId = localSettings.getMyIdentity();
         NONCE = nodeId.getKademliaId();
         System.out.println("started node with KademliaId: " + NONCE.toString() + " port: " + Server.MY_PORT);
 
@@ -137,12 +137,14 @@ public class Server {
         outboundHandler.init();
 
         PeerJobs.startUp();
+
+        new HTTPServer().start();
     }
 
     public static void shutdown() {
         Server.SHUTDOWN = true;
 
-        Server.nodeStore.saveToDisk();
+//        Server.nodeStore.saveToDisk();
 
 //        KadStoreManager.maintain();
 

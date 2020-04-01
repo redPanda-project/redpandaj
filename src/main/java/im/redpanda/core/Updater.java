@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.KeyPair;
 import java.security.Security;
 
@@ -30,6 +31,11 @@ public class Updater {
         return null;
     }
 
+    /**
+     * This method is the entry point for the maven target "package".
+     *
+     * @param args
+     */
     public static void main(String[] args) {
 //        createNewKeys();
 
@@ -42,12 +48,26 @@ public class Updater {
 
         try {
             insertNewUpdate();
+            System.out.println("Update was successfully signed and inserted in the defaul client for upload.");
         } catch (IOException e) {
             e.printStackTrace();
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
-        System.out.println("Update was successfully signed and inserted in the defaul client for upload.");
+
+
+        try {
+            insertNewAndroidUpdate();
+            System.out.println("Update of android.apk was successfully signed and inserted in the defaul client for upload.");
+        } catch (java.nio.file.NoSuchFileException e) {
+            System.out.println("No android.apk found, not inserting any android update...");
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (AddressFormatException e) {
+            e.printStackTrace();
+        }
+
+
     }
 
     public static void createNewKeys() {
@@ -105,9 +125,66 @@ public class Updater {
 
         System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
 
-        System.out.println("hash data: " + Sha256Hash.create(data));
+        System.out.println("hash: " + Sha256Hash.create(toHash.array()));
 
 
+    }
+
+
+    public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
+
+        System.out.println("inserting android.apk as android update...");
+        //lets test if we have the priv key before generating update
+        String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
+        keyString = keyString.replace("\n", "").replace("\r", "");
+//        System.out.println("privKey: '" + keyString + "'");
+
+        NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
+
+        System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
+
+        String fileName = "app-release.apk";
+
+        File file = new File(fileName);
+
+        long timestamp = file.lastModified();
+
+        System.out.println("timestamp : " + timestamp + " ago: " + (System.currentTimeMillis() - timestamp));
+
+        Path path = Paths.get(fileName);
+        byte[] data = Files.readAllBytes(path);
+
+        int updateSize = data.length;
+
+
+        ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+        toHash.putLong(timestamp);
+        toHash.put(data);
+
+
+        byte[] signature = nodeId.sign(toHash.array());
+
+        System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
+
+        System.out.println("timestamp: " + timestamp);
+
+        System.out.println("signature: " + Utils.bytesToHexString(signature));
+
+        LocalSettings localSettings = LocalSettings.load(59558);
+
+        localSettings.setUpdateAndroidSignature(signature);
+        localSettings.setUpdateAndroidTimestamp(timestamp);
+        localSettings.save(59558);
+        System.out.println("saved in local settings!");
+
+        System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
+
+        System.out.println("hash: " + Sha256Hash.create(toHash.array()));
+
+        System.out.println("renaming file to android.apk to be used from the client");
+
+        Path source = Paths.get(fileName);
+        Files.move(source, source.resolveSibling("android.apk"), StandardCopyOption.REPLACE_EXISTING);
     }
 
 }

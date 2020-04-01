@@ -47,7 +47,7 @@ public class PeerChiperStreams {
             int r = output.remaining();
 
             if (r < input.remaining()) {
-                System.out.println("enc write buffer too small...");
+//                System.out.println("enc write buffer too small...");
                 peerOutputStream.setByteBuffer(output);
                 cipherOutputStream.write(input, r);
                 cipherOutputStream.flush();

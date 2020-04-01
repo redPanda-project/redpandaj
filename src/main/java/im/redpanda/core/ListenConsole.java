@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.store.NodeStore;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
@@ -141,6 +142,7 @@ public class ListenConsole extends Thread {
                     e.printStackTrace();
                 }
             } else if (readLine.equals("e")) {
+                Server.nodeStore.saveToDisk();
                 Server.shutdown();
                 System.exit(0);
             } else if (readLine.equals("c")) {

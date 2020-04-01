@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 
 import im.redpanda.core.Command;
+import im.redpanda.core.ConnectionReaderThread;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.kademlia.KadContent;
@@ -81,8 +82,6 @@ public class KademliaInsertJob extends Job {
             }
 
 
-
-
             if (successfullPeers >= SEND_TO_NODES) {
                 done();
                 break;
@@ -133,6 +132,17 @@ public class KademliaInsertJob extends Job {
                             writeBuffer.putInt(kadContent.getContent().length);
                             writeBuffer.put(kadContent.getContent());
                             writeBuffer.put(kadContent.getSignature());
+
+                            //for debug only
+                            ByteBuffer allocate = ByteBuffer.allocate(kadContent.getSignature().length);
+                            allocate.put(kadContent.getSignature());
+                            allocate.flip();
+                            byte[] bytes = ConnectionReaderThread.readSignature(allocate);
+                            if (bytes.length != kadContent.getSignature().length) {
+                                throw new RuntimeException("could not read own signature......" + bytes.length);
+                            }
+                            ////////
+
 
                             p.setWriteBufferFilled();
 

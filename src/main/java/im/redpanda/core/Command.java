@@ -15,6 +15,10 @@ public class Command {
     public static final byte UPDATE_ANSWER_TIMESTAMP = (byte) 10;
     public static final byte UPDATE_REQUEST_CONTENT = (byte) 11;
     public static final byte UPDATE_ANSWER_CONTENT = (byte) 12;
+    public static final byte ANDROID_UPDATE_REQUEST_TIMESTAMP = (byte) 13;// standalone command
+    public static final byte ANDROID_UPDATE_ANSWER_TIMESTAMP = (byte) 14;// update timestamp: 1 long
+    public static final byte ANDROID_UPDATE_REQUEST_CONTENT = (byte) 15;//
+    public static final byte ANDROID_UPDATE_ANSWER_CONTENT = (byte) 16;//
 
     //kademlia cmds
     public static final byte KADEMLIA_STORE = (byte) 120;

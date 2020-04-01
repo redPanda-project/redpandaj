@@ -101,7 +101,7 @@ public class NodeStore {
 
     public void close() {
 
-        saveToDisk();
+//        saveToDisk();
 
         onHeap.close();
         offHeap.close();

@@ -338,6 +338,14 @@ public class NodeId implements Serializable {
 
     }
 
+    /**
+     * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes should ne be
+     * hashed by sha256 before using this method!
+     *
+     * @param bytesToVerify
+     * @param signature
+     * @return
+     */
     public boolean verify(byte[] bytesToVerify, byte[] signature) {
         try {
             Signature ecdsa2 = Signature.getInstance("SHA256withECDSA");
