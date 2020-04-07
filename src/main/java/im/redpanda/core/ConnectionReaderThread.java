@@ -734,7 +734,7 @@ public class ConnectionReaderThread extends Thread {
 
             if (toReadBytes > readBuffer.remaining()) {
                 if (Math.random() < 0.05) {
-                    System.out.println("android.apk update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                    System.out.println("update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
                 }
                 return 0;
             }
@@ -1049,7 +1049,7 @@ public class ConnectionReaderThread extends Thread {
 
             if (toReadBytes > readBuffer.remaining()) {
                 if (Math.random() < 0.01) {
-                    System.out.println("Update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                    System.out.println("android.apk update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
                 }
                 return 0;
             }
@@ -1182,7 +1182,7 @@ public class ConnectionReaderThread extends Thread {
 
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
-            System.out.println("got KadContent successfully " + kadContent.getId() + " len of signature: " + lenOfSignature);
+//            System.out.println("got KadContent successfully " + kadContent.getId() + " len of signature: " + lenOfSignature);
 
             /**
              * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
@@ -1232,10 +1232,13 @@ public class ConnectionReaderThread extends Thread {
 
         } else if (command == Command.KADEMLIA_GET) {
 
+            if (readBuffer.remaining() < 4 + KademliaId.ID_LENGTH_BYTES) {
+                return 0;
+            }
 
             int jobId = readBuffer.getInt();
 
-            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
             readBuffer.get(kadIdBytes);
 
 
@@ -1268,7 +1271,7 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("content not found, lets ask another peer for it...");
                 new KademliaSearchJobAnswerPeer(searchedId, peer, jobId).start();
             }
-            return 1 + 4 + kadIdBytes.length;
+            return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
 
         } else if (command == Command.KADEMLIA_GET_ANSWER) {
 
@@ -1333,7 +1336,7 @@ public class ConnectionReaderThread extends Thread {
         }
 
 
-        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand);
+        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
 
 //        return 0;
     }

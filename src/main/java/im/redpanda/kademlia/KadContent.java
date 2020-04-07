@@ -89,7 +89,7 @@ public class KadContent {
             //todo lets check if this is the corret time zone for the dart code as well...
             String date = simpleDateFormat.format(new Date(timestamp));
 
-            System.out.println("kadcontent date: " + date);
+//            System.out.println("kadcontent date: " + date);
 
             byte[] dateBytes = date.getBytes("UTF-8");
 

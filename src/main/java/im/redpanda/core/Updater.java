@@ -143,7 +143,7 @@ public class Updater {
 
         System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
-        String fileName = "app-release.apk";
+        String fileName = "..\\app\\build\\app\\outputs\\apk\\release\\app-release.apk";
 
         File file = new File(fileName);
 
@@ -184,7 +184,8 @@ public class Updater {
         System.out.println("renaming file to android.apk to be used from the client");
 
         Path source = Paths.get(fileName);
-        Files.move(source, source.resolveSibling("android.apk"), StandardCopyOption.REPLACE_EXISTING);
+//        Files.move(source, source.resolveSibling("android.apk"), StandardCopyOption.REPLACE_EXISTING);
+        Files.move(source, Paths.get("android.apk"), StandardCopyOption.REPLACE_EXISTING);
     }
 
 }

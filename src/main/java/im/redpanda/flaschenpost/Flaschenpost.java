@@ -6,9 +6,39 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.Server;
 
+/**
+ * This class represents the basic information for a Flaschenpost and will be extended by a GarlicMessage.
+ * A Flaschenpost contains a KademliaId as destination, a random Integer as FP_ID and a timestamp for eviction process.
+ */
+public abstract class Flaschenpost extends GMContent {
 
-public class Flaschenpost {
+    /**
+     * KademliaId will only be used at each Peer and will not be transmitted, since the id can should be calculated
+     * from the public key of the GarlicMessage.
+     */
+    private KademliaId destination;
+    /**
+     * This is the FP_ID and should be a random Interger.
+     */
+    private int id;
+    /**
+     * The timestamp represents the time where this message was created locally and will only be used for the eviction
+     * process of the FPStoreManager.
+     */
+    private long timestamp;
+    /**
+     * Byte representation of the encrypted content. This should be created after the encryption process and is used
+     * to transmit the Flaschenpost over the wire.
+     */
+    protected byte[] content;
 
+    public int getId() {
+        return id;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
 
     public static void put(KademliaId destination, byte[] content) {
 

@@ -3,6 +3,8 @@ package im.redpanda;
 import im.redpanda.core.ListenConsole;
 import im.redpanda.core.Server;
 import io.sentry.Sentry;
+import io.sentry.SentryClient;
+import io.sentry.SentryOptions;
 import io.sentry.event.UserBuilder;
 
 import java.io.BufferedReader;
@@ -50,11 +52,13 @@ public class App {
         });
 
 
-        Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+        SentryClient sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+
 
         String gitRev = readGitProperties();
         if (gitRev != null) {
             Sentry.getContext().addTag("gitRev", gitRev);
+            sentryClient.setRelease(gitRev);
             System.out.println("found git revision: " + gitRev);
         }
 

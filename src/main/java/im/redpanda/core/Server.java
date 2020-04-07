@@ -8,6 +8,7 @@ import im.redpanda.store.NodeStore;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -32,6 +33,7 @@ public class Server {
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
 
     public static SecureRandom secureRandom = new SecureRandom();
+    public static Random random = new Random();
 
 
     static {

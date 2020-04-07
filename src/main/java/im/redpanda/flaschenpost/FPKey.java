@@ -4,7 +4,7 @@ import im.redpanda.core.KademliaId;
 
 import java.util.Objects;
 
-
+@Deprecated
 public class FPKey {
 
 

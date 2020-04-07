@@ -5,6 +5,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.sentry.Sentry;
 
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -29,11 +30,12 @@ public class HTTPServer extends Thread {
     public void run() {
         try {
             System.out.println("starting HTTP server...");
-            HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 2);
-            server.createContext("/android.apk", new HHandler());
+            HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 10);
+            server.createContext("/android.apk.signed", new HHandler());
             //server.setExecutor(null); // creates a default executor
             server.start();
         } catch (IOException e) {
+            Sentry.capture(e);
             e.printStackTrace();
         }
     }

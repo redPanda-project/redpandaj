@@ -66,7 +66,7 @@ public class KadStoreManager {
                 if (foundContent != null) {
                     size -= foundContent.getContent().length;
                 }
-                System.out.println("stored");
+//                System.out.println("stored");
                 saved = true;
             }
 
