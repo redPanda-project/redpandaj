@@ -728,6 +728,9 @@ public class ConnectionReaderThread extends Thread {
             int toReadBytes = readBuffer.getInt();
 
             byte[] signature = readSignature(readBuffer);
+            if (signature == null) {
+                return 0;
+            }
             int lenOfSignature = signature.length;
 
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
@@ -767,7 +770,7 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("update verified: " + verified);
 
                 File file = new File("redpanda.jar");
-                long myCurrentVersionTimestamp = file.lastModified();
+                long myCurrentVersionTimestamp = Server.localSettings.getUpdateTimestamp();
                 if (!file.exists()) {
                     System.out.println("No jar to update found, exiting auto update!");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
@@ -1042,6 +1045,9 @@ public class ConnectionReaderThread extends Thread {
 
 
             byte[] signature = readSignature(readBuffer);
+            if (signature == null) {
+                return 0;
+            }
             int signatureLen = signature.length;
 
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
@@ -1177,6 +1183,9 @@ public class ConnectionReaderThread extends Thread {
 
 
             byte[] signatureBytes = readSignature(readBuffer);
+            if (signatureBytes == null) {
+                return 0;
+            }
             int lenOfSignature = signatureBytes.length;
 
 
@@ -1210,6 +1219,7 @@ public class ConnectionReaderThread extends Thread {
             } else {
                 //todo
                 System.out.println("kadContent verification failed!!!");
+                Log.sentry("kadContent verification failed, lightClient: " + peer.isLightClient());
             }
 
             return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
@@ -1309,6 +1319,9 @@ public class ConnectionReaderThread extends Thread {
             }
 
             byte[] signatureBytes = readSignature(readBuffer);
+            if (signatureBytes == null) {
+                return 0;
+            }
             int lenOfSignature = signatureBytes.length;
 
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
@@ -1591,6 +1604,9 @@ public class ConnectionReaderThread extends Thread {
         readBuffer.position(readBuffer.position() - 2);
 
         byte[] signature = new byte[lenOfSignature];
+        if (readBuffer.remaining() < lenOfSignature) {
+            return null;
+        }
         readBuffer.get(signature);
         return signature;
     }

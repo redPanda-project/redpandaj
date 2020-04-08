@@ -72,6 +72,13 @@ public class Log {
         }
     }
 
+    public static void sentry(String msg) {
+        int currentRating = rating.getAndIncrement();
+        if (currentRating < 10) {
+            Sentry.capture(msg);
+        }
+    }
+
     public static boolean isJUnitTest() {
         StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
         List<StackTraceElement> list = Arrays.asList(stackTrace);
