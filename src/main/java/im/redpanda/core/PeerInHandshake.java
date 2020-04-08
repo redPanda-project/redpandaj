@@ -31,6 +31,7 @@ public class PeerInHandshake {
     SelectionKey key;
     byte[] randomFromUs;
     byte[] randomFromThem;
+    boolean lightClient = false;
 
     boolean weSendOurRandom = false;
     boolean awaitingEncryption = false;
@@ -122,7 +123,6 @@ public class PeerInHandshake {
 
 //            peer.setSelectionKey(key);
             ConnectionHandler.selector.wakeup();
-            Log.putStd("added con");
         } catch (IOException ex) {
             ex.printStackTrace();
             peer.disconnect("could not init connection....");
@@ -397,7 +397,11 @@ public class PeerInHandshake {
 
     @Override
     protected void finalize() throws Throwable {
-        System.out.println("Peer in handshake will be gcd...");
+//        System.out.println("Peer in handshake will be gcd...");
         super.finalize();
+    }
+
+    public void setLightClient(boolean lightClient) {
+        this.lightClient = lightClient;
     }
 }

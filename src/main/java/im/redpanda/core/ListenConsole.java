@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.store.NodeStore;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
@@ -121,7 +123,11 @@ public class ListenConsole extends Thread {
                     }
 
 
-                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
+//                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
+
+
+                    System.out.println("KadStore entries: ");
+                    KadStoreManager.printStatus();
 
 
                 } finally {
@@ -136,9 +142,8 @@ public class ListenConsole extends Thread {
                     e.printStackTrace();
                 }
             } else if (readLine.equals("e")) {
-                Server.SHUTDOWN = true;
-                Server.nodeStore.close();
-                Server.localSettings.save(Server.MY_PORT);
+                Server.nodeStore.saveToDisk();
+                Server.shutdown();
                 System.exit(0);
             } else if (readLine.equals("c")) {
                 System.out.println("closing all connections...");

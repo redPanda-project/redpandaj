@@ -43,9 +43,19 @@ public class PeerChiperStreams {
          */
 
         try {
-            peerOutputStream.setByteBuffer(output);
-            cipherOutputStream.write(input);
-            cipherOutputStream.flush();
+
+            int r = output.remaining();
+
+            if (r < input.remaining()) {
+//                System.out.println("enc write buffer too small...");
+                peerOutputStream.setByteBuffer(output);
+                cipherOutputStream.write(input, r);
+                cipherOutputStream.flush();
+            } else {
+                peerOutputStream.setByteBuffer(output);
+                cipherOutputStream.write(input);
+                cipherOutputStream.flush();
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -68,7 +78,9 @@ public class PeerChiperStreams {
 
         try {
             peerInputStream.setByteBuffer(input);
-            cipherInputStream.read(output);
+            while (input.hasRemaining()) {
+                cipherInputStream.read(output);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }

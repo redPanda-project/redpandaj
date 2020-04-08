@@ -297,6 +297,13 @@ public class NodeId implements Serializable {
 
     }
 
+    /**
+     * Hashes the bytes with SHA256 and computes the signature in ASN.1 format, for more info see:
+     * https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
+     *
+     * @param bytesToSign
+     * @return
+     */
     public byte[] sign(byte[] bytesToSign) {
 
         if (getKeyPair() == null || getKeyPair().getPrivate() == null) {
@@ -323,7 +330,7 @@ public class NodeId implements Serializable {
             return realSig;
 
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            Sentry.capture(e);
+            Log.sentry(e);
             e.printStackTrace();
         }
 
@@ -331,6 +338,14 @@ public class NodeId implements Serializable {
 
     }
 
+    /**
+     * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes should ne be
+     * hashed by sha256 before using this method!
+     *
+     * @param bytesToVerify
+     * @param signature
+     * @return
+     */
     public boolean verify(byte[] bytesToVerify, byte[] signature) {
         try {
             Signature ecdsa2 = Signature.getInstance("SHA256withECDSA");
@@ -340,7 +355,7 @@ public class NodeId implements Serializable {
 
             return ecdsa2.verify(signature);
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            Sentry.capture(e);
+            Log.sentry(e);
             e.printStackTrace();
         }
         return false;
@@ -368,6 +383,11 @@ public class NodeId implements Serializable {
         } else {
             aOutputStream.write(exportPublic());
         }
+    }
+
+    @Override
+    public String toString() {
+        return kademliaId.toString();
     }
 }
 

@@ -16,8 +16,11 @@ public class NodeTest {
 
         new File("data").mkdirs();
 
-        NodeStore nodeStore = new NodeStore();
-        Server.nodeStore = nodeStore;
+        NodeStore nodeStore = Server.nodeStore;
+        if (nodeStore == null) {
+            nodeStore = new NodeStore();
+            Server.nodeStore = nodeStore;
+        }
 
         int size = nodeStore.size();
         System.out.println("Size of NodeStore: " + size);

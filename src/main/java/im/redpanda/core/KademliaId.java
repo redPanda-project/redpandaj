@@ -19,6 +19,7 @@ import java.util.BitSet;
 public class KademliaId implements Serializable {
 
     public final transient static int ID_LENGTH = 160;
+    public final transient static int ID_LENGTH_BYTES = (ID_LENGTH / 8);
     private byte[] keyBytes;
     private int nodeDistance = -1;
 //    private BigInteger bigInt;

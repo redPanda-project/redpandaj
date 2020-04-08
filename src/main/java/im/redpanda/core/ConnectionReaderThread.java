@@ -14,6 +14,12 @@ import im.redpanda.commands.FBPublicKey;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
+import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaInsertJob;
+import im.redpanda.jobs.KademliaSearchJob;
+import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
 
 import java.io.File;
@@ -28,8 +34,12 @@ import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.sql.SQLOutput;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -44,10 +54,16 @@ public class ConnectionReaderThread extends Thread {
 
     public static int MAX_THREADS = 30;
     public static int STD_TIMEOUT = 10;
+    public static int MIN_SIGNATURE_LEN = 70;
     public static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
     public static final ReentrantLock threadLock = new ReentrantLock(false);
+    public static ExecutorService threadPool = Executors.newFixedThreadPool(4);
 
-    private static ReentrantLock updateUploadLock = new ReentrantLock();
+    /**
+     * Here we can set the max simultaneously uploads.
+     */
+    private static Semaphore updateUploadLock = new Semaphore(1);
+    private static ReentrantLock updateDownloadLock = new ReentrantLock();
 
     private boolean run = true;
     private int timeout;
@@ -200,8 +216,11 @@ public class ConnectionReaderThread extends Thread {
 //            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
             long a = System.currentTimeMillis();
 
-
-            readConnection(poll);
+            try {
+                readConnection(poll);
+            } catch (Throwable e) {
+                Log.sentry(e);
+            }
 
 
             long diff = (System.currentTimeMillis() - a);
@@ -242,9 +261,9 @@ public class ConnectionReaderThread extends Thread {
         SelectionKey key = peer.selectionKey;
 
 
-        if (myReaderBuffer.position() != 0) {
-            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
-        }
+//        if (myReaderBuffer.position() != 0) {
+//            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
+//        }
 
         int read = -2;
         try {
@@ -317,10 +336,11 @@ public class ConnectionReaderThread extends Thread {
             peer.setLastActionOnConnection(System.currentTimeMillis());
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
-            Log.put("command: " + b, 200);
+            Log.put("command: " + b + " " + readBuffer, 200);
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            peer.lastCommand = b;
             newPosition += parsedBytesLocally;
             readBuffer.position(newPosition);
         }
@@ -353,16 +373,26 @@ public class ConnectionReaderThread extends Thread {
             PeerList.getReadWriteLock().readLock().lock();
             try {
 
-                int[] peers = new int[PeerList.getPeerArrayList().size()];
-                int[] kademliaIds = new int[PeerList.getPeerArrayList().size()];
-                int[] ips = new int[PeerList.getPeerArrayList().size()];
+                int size = 0;
+                for (Peer peerToWrite : PeerList.getPeerArrayList()) {
+
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                        continue;
+                    }
+                    size++;
+                }
+
+
+                int[] peers = new int[size];
+                int[] kademliaIds = new int[size];
+                int[] ips = new int[size];
 
                 FlatBufferBuilder builder = new FlatBufferBuilder(1024 * 200);
 
                 int cnt = 0;
                 for (Peer peerToWrite : PeerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
                         continue;
                     }
 
@@ -447,6 +477,11 @@ public class ConnectionReaderThread extends Thread {
 
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
 
+                    if (fbPeer.ip() == null) {
+                        System.out.println("found a peer with ip null...");
+                        continue;
+                    }
+
                     Node byKademliaId = Node.getByKademliaId(kademliaId);
                     if (byKademliaId != null) {
                         byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
@@ -508,7 +543,7 @@ public class ConnectionReaderThread extends Thread {
                 Runnable runnable = new Runnable() {
                     @Override
                     public void run() {
-                        updateUploadLock.lock();
+                        updateDownloadLock.lock();
                         try {
                             System.out.println("our version is outdated, we try to download it from this peer!");
                             peer.writeBufferLock.lock();
@@ -525,7 +560,7 @@ public class ConnectionReaderThread extends Thread {
                             }
                         } finally {
                             System.out.println("we can now download it from another peer...");
-                            updateUploadLock.unlock();
+                            updateDownloadLock.unlock();
                         }
 
                     }
@@ -552,7 +587,7 @@ public class ConnectionReaderThread extends Thread {
                 @Override
                 public void run() {
 
-                    updateUploadLock.lock();
+                    updateUploadLock.acquireUninterruptibly();
 
                     try {
 
@@ -669,7 +704,7 @@ public class ConnectionReaderThread extends Thread {
                             e.printStackTrace();
                         }
                     } finally {
-                        updateUploadLock.unlock();
+                        updateUploadLock.release();
                     }
 
 
@@ -692,19 +727,14 @@ public class ConnectionReaderThread extends Thread {
             long othersTimestamp = readBuffer.getLong();
             int toReadBytes = readBuffer.getInt();
 
-            //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
-            readBuffer.get();
-            int lenOfSignature = ((int) readBuffer.get()) + 2;
-            readBuffer.position(readBuffer.position() - 2);
-
-            byte[] signature = new byte[lenOfSignature];
-            readBuffer.get(signature);
+            byte[] signature = readSignature(readBuffer);
+            int lenOfSignature = signature.length;
 
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
             if (toReadBytes > readBuffer.remaining()) {
                 if (Math.random() < 0.05) {
-                    System.out.println("Update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                    System.out.println("update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
                 }
                 return 0;
             }
@@ -775,11 +805,11 @@ public class ConnectionReaderThread extends Thread {
                         }
                         System.exit(0);
                     } catch (FileNotFoundException e) {
-                        Sentry.capture(e);
+                        Log.sentry(e);
                         e.printStackTrace();
                     } catch (IOException e) {
-                        Sentry.capture(e);
-                        e.printStackTrace();
+                        Log.sentry(e);
+                        Log.sentry(e);
                     }
 
                 }
@@ -818,9 +848,497 @@ public class ConnectionReaderThread extends Thread {
 
             return 1 + 8 + 4 + lenOfSignature + data.length;
 
+        } else if (command == Command.ANDROID_UPDATE_REQUEST_TIMESTAMP) {
+            peer.writeBufferLock.lock();
+            peer.getWriteBuffer().put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
+            peer.getWriteBuffer().putLong(Server.localSettings.getUpdateAndroidTimestamp());
+            peer.writeBufferLock.unlock();
+            peer.setWriteBufferFilled();
+            return 1;
+        } else if (command == Command.ANDROID_UPDATE_ANSWER_TIMESTAMP) {
+
+
+            if (8 > readBuffer.remaining()) {
+                return 0;
+            }
+
+            long othersTimestamp = readBuffer.getLong();
+
+            Log.put("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Server.localSettings.getUpdateAndroidTimestamp()), 70);
+
+            if (othersTimestamp < Server.localSettings.getUpdateAndroidTimestamp()) {
+                System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
+            }
+
+            /**
+             * We can use the exact same timestamp since we now store the timestamp in the local settings
+             * and do not count on the reported timestamp of the system.
+             */
+            if (othersTimestamp > Server.localSettings.getUpdateAndroidTimestamp()) {
+                Runnable runnable = new Runnable() {
+                    @Override
+                    public void run() {
+                        updateUploadLock.acquireUninterruptibly();
+                        try {
+
+                            if (othersTimestamp <= Server.localSettings.getUpdateAndroidTimestamp()) {
+                                //maybe we downloaded the update while waiting for lock!
+                                System.out.println("already downloaded, skipping...");
+                                return;
+                            }
+
+                            System.out.println("our android.apk version is outdated, we try to download it from this peer!");
+                            peer.writeBufferLock.lock();
+                            peer.writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_CONTENT);
+                            peer.writeBufferLock.unlock();
+                            peer.setWriteBufferFilled();
+
+
+                            //lets not download another version in the next x seconds, otherwise our RAM may explode!
+                            try {
+                                Thread.sleep(60000);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        } finally {
+                            System.out.println("we can now download it from another peer...");
+                            updateUploadLock.release();
+                        }
+
+                    }
+                };
+
+                threadPool.submit(runnable);
+            }
+
+
+            return 1 + 8;
+        } else if (command == Command.ANDROID_UPDATE_REQUEST_CONTENT) {
+
+
+            if (Server.localSettings.getUpdateAndroidSignature() == null) {
+                System.out.println("we dont have an official signature to upload that android.apk update to other peers!");
+                return 1;
+            }
+
+
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+
+                    updateUploadLock.acquireUninterruptibly();
+
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    Path path = Paths.get("android.apk");
+
+
+                    try {
+                        System.out.println("we send the android.apk update to a peer!");
+                        byte[] data = Files.readAllBytes(path);
+
+
+                        //lets first check our signature!
+                        NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+
+
+                        ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
+
+                        bytesToHash.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                        bytesToHash.put(data);
+
+
+                        System.out.println("timestamp: " + Server.localSettings.getUpdateAndroidTimestamp());
+
+                        System.out.println("signature: " + Utils.bytesToHexString(Server.localSettings.getUpdateAndroidSignature()));
+
+                        System.out.println("ver: " + Updater.getPublicUpdaterKey().verify(bytesToHash.array(), Server.localSettings.getUpdateAndroidSignature()));
+
+                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(), Server.localSettings.getUpdateAndroidSignature());
+                        System.out.println("update verified: " + verify);
+
+
+                        if (!verify) {
+                            System.out.println("################################ update not verified " + Server.localSettings.getUpdateAndroidTimestamp());
+                            return;
+                        }
+
+                        byte[] androidSignature = Server.localSettings.getUpdateAndroidSignature();
+
+                        ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
+                        a.put(Command.ANDROID_UPDATE_ANSWER_CONTENT);
+                        a.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                        a.putInt(data.length);
+                        a.put(androidSignature);
+                        a.put(data);
+                        a.flip();
+
+                        peer.writeBufferLock.lock();
+                        try {
+                            if (peer.writeBuffer.remaining() < a.remaining()) {
+                                ByteBuffer allocate = ByteBuffer.allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
+                                peer.writeBuffer.flip();
+                                allocate.put(peer.writeBuffer);
+                                peer.writeBuffer = allocate;
+                            }
+
+                            peer.writeBuffer.put(a.array());
+                            peer.setWriteBufferFilled();
+                        } finally {
+                            peer.writeBufferLock.unlock();
+                        }
+
+
+                        // we check every 10 seconds if the upload is already finished
+                        int cnt = 0;
+                        while (cnt < 6) {
+                            cnt++;
+                            try {
+                                Thread.sleep(10000);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+
+                            peer.writeBufferLock.lock();
+                            try {
+                                if (!peer.isConnected() || (peer.writeBuffer.position() == 0 && peer.writeBufferCrypted.position() == 0)) {
+                                    break;
+                                }
+                            } finally {
+                                peer.writeBufferLock.unlock();
+                            }
+                            System.out.println("peer still downloading...");
+                        }
+
+
+                        updateUploadLock.release();
+
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            };
+
+            threadPool.submit(runnable);
+
+            return 1;
+        } else if (command == Command.ANDROID_UPDATE_ANSWER_CONTENT) {
+
+//            System.out.println("we get an update from node!");
+
+            if (8 + 4 + 65 > readBuffer.remaining()) {
+                return 0;
+            }
+
+
+//            System.out.println("we get a update from node 2");
+            long othersTimestamp = readBuffer.getLong();
+            int toReadBytes = readBuffer.getInt();
+
+
+            byte[] signature = readSignature(readBuffer);
+            int signatureLen = signature.length;
+
+//            System.out.println("download in pipe: " + new Date(othersTimestamp));
+
+
+            if (toReadBytes > readBuffer.remaining()) {
+                if (Math.random() < 0.01) {
+                    System.out.println("android.apk update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
+                }
+                return 0;
+            }
+            System.out.println("update completely in buffer!");
+
+            byte[] data = new byte[toReadBytes];
+            readBuffer.get(data);
+
+
+            if (othersTimestamp > Server.localSettings.getUpdateAndroidTimestamp()) {
+                System.out.println("we got the update successfully, lets copy it to hard drive if signature is correct");
+
+
+                System.out.println("signature found: " + Utils.bytesToHexString(signature));
+
+                //lets check the signature chunk:
+                NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+
+
+                ByteBuffer bytesToHash = ByteBuffer.allocate(8 + toReadBytes);
+
+                bytesToHash.putLong(othersTimestamp);
+                bytesToHash.put(data);
+
+
+//                Sha256Hash hash = Sha256Hash.create(bytesToHash.array());
+//                System.out.println("hash: " + Utils.bytesToHexString(hash.getBytes()));
+
+                boolean verify = publicUpdaterKey.verify(bytesToHash.array(), signature);
+
+                System.out.println("update verified: " + verify);
+
+                File file = new File("android.apk");
+                long myCurrentVersionTimestamp = file.lastModified();
+
+                if (myCurrentVersionTimestamp >= othersTimestamp) {
+                    System.out.println("update not required, aborting...");
+                    return 1 + 8 + 4 + signatureLen + data.length;
+                }
+
+
+                if (verify) {
+
+                    try (FileOutputStream fos = new FileOutputStream("android.apk")) {
+                        fos.write(data);
+                        //fos.close(); There is no more need for this line since you had created the instance of "fos" inside the try. And this will automatically close the OutputStream
+                        System.out.println("update stored in android.apk file");
+
+                        File f = new File("android.apk");
+                        f.setLastModified(othersTimestamp);
+
+                        Server.localSettings.setUpdateAndroidTimestamp(othersTimestamp);
+                        Server.localSettings.setUpdateAndroidSignature(signature);
+                        Server.localSettings.save(Server.MY_PORT);
+
+
+                        PeerList.getReadWriteLock().readLock().lock();
+                        try {
+                            for (Peer p : PeerList.getPeerArrayList()) {
+                                if (!p.isConnected()) {
+                                    continue;
+                                }
+                                p.writeBufferLock.lock();
+                                try {
+                                    p.writeBuffer.put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
+                                    p.writeBuffer.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                                } finally {
+                                    p.writeBufferLock.unlock();
+                                }
+                                p.setWriteBufferFilled();
+                            }
+                        } finally {
+                            PeerList.getReadWriteLock().readLock().unlock();
+                        }
+
+
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+
+
+            }
+
+
+            return 1 + 8 + 4 + signatureLen + data.length;
+
+        } else if (command == Command.KADEMLIA_STORE) {
+
+
+            if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+            int ackId = readBuffer.getInt();
+
+//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+//            readBuffer.get(kadIdBytes);
+
+            long timestamp = readBuffer.getLong();
+
+            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+            readBuffer.get(publicKeyBytes);
+
+            int contentLen = readBuffer.getInt();
+
+            if (contentLen > readBuffer.remaining()) {
+                return 0;
+            }
+
+            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+                peer.disconnect("wrong contentLen for kadcontent");
+                return 0;
+            }
+
+            byte[] contentBytes = new byte[contentLen];
+            readBuffer.get(contentBytes);
+
+            if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+
+            byte[] signatureBytes = readSignature(readBuffer);
+            int lenOfSignature = signatureBytes.length;
+
+
+            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+//            System.out.println("got KadContent successfully " + kadContent.getId() + " len of signature: " + lenOfSignature);
+
+            /**
+             * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
+             */
+            if (peer.isLightClient()) {
+                System.out.println("peer is light client, start KadInserJob!");
+                KademliaInsertJob kademliaInsertJob = new KademliaInsertJob(kadContent);
+                kademliaInsertJob.start();
+            }
+
+            if (kadContent.verify()) {
+                boolean saved = KadStoreManager.put(kadContent);
+
+//                if (saved) {
+                peer.getWriteBufferLock().lock();
+                try {
+                    peer.getWriteBuffer().put(Command.JOB_ACK);
+                    peer.getWriteBuffer().putInt(ackId);
+                } finally {
+                    peer.getWriteBufferLock().unlock();
+                }
+
+//                }
+
+            } else {
+                //todo
+                System.out.println("kadContent verification failed!!!");
+            }
+
+            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+
+        } else if (command == Command.JOB_ACK) {
+
+
+            int jobId = readBuffer.getInt();
+
+            Job runningJob = Job.getRunningJob(jobId);
+
+            if (runningJob instanceof KademliaInsertJob) {
+                KademliaInsertJob job = (KademliaInsertJob) runningJob;
+                job.ack(peer);
+                System.out.println("ACK from peer: " + peer.getNodeId().toString());
+            }
+
+
+            return 1 + 4;
+
+        } else if (command == Command.KADEMLIA_GET) {
+
+            if (readBuffer.remaining() < 4 + KademliaId.ID_LENGTH_BYTES) {
+                return 0;
+            }
+
+            int jobId = readBuffer.getInt();
+
+            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+            readBuffer.get(kadIdBytes);
+
+
+            KademliaId searchedId = new KademliaId(kadIdBytes);
+
+
+            KadContent kadContent = KadStoreManager.get(searchedId);
+
+            if (kadContent != null) {
+
+                System.out.println("found content, send back to node: " + kadContent.getId() + " jobid: " + jobId);
+
+
+                peer.getWriteBufferLock().lock();
+                try {
+                    peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
+                    peer.getWriteBuffer().putInt(jobId);
+//                    peer.getWriteBuffer().put(kadContent.getId().getBytes());
+                    peer.getWriteBuffer().putLong(kadContent.getTimestamp());
+                    peer.getWriteBuffer().put(kadContent.getPubkey());
+                    peer.getWriteBuffer().putInt(kadContent.getContent().length);
+                    peer.getWriteBuffer().put(kadContent.getContent());
+                    peer.getWriteBuffer().put(kadContent.getSignature());
+                } finally {
+                    peer.getWriteBufferLock().unlock();
+                }
+
+
+            } else {
+                System.out.println("content not found, lets ask another peer for it...");
+                new KademliaSearchJobAnswerPeer(searchedId, peer, jobId).start();
+            }
+            return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
+
+        } else if (command == Command.KADEMLIA_GET_ANSWER) {
+
+
+            if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+            int ackId = readBuffer.getInt();
+
+//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
+//            readBuffer.get(kadIdBytes);
+
+            long timestamp = readBuffer.getLong();
+
+            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+            readBuffer.get(publicKeyBytes);
+
+            int contentLen = readBuffer.getInt();
+
+            if (contentLen > readBuffer.remaining()) {
+                return 0;
+            }
+
+            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+                peer.disconnect("wrong contentLen for kadcontent");
+                return 0;
+            }
+
+            byte[] contentBytes = new byte[contentLen];
+            readBuffer.get(contentBytes);
+
+            if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+            byte[] signatureBytes = readSignature(readBuffer);
+            int lenOfSignature = signatureBytes.length;
+
+            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+            if (kadContent.verify()) {
+                boolean saved = KadStoreManager.put(kadContent);
+
+                System.out.println("got KadContent successfully from search!");
+
+                KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
+                if (runningJob != null) {
+                    runningJob.ack(kadContent, peer);
+                }
+
+                //ack to JOB!
+
+            } else {
+                //todo
+                System.out.println("kadContent verification failed!!!");
+            }
+
+
+            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+
         }
 
-        return 0;
+
+        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
+
+//        return 0;
     }
 
 
@@ -830,6 +1348,7 @@ public class ConnectionReaderThread extends Thread {
 
         writeBuffer.put(Server.MAGIC.getBytes());
         writeBuffer.put((byte) Server.VERSION);
+        writeBuffer.put((byte) 0); //we are no light client
         writeBuffer.put(Server.NONCE.getBytes());
         writeBuffer.putInt(Server.MY_PORT);
 
@@ -874,7 +1393,7 @@ public class ConnectionReaderThread extends Thread {
 //        builder.finish(sendPublicKey);
 //        ByteBuffer byteBuffer = builder.dataBuffer();
 
-        ByteBuffer buffer = ByteBuffer.allocate(1+65);
+        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
 
         buffer.put(Command.SEND_PUBLIC_KEY);
         buffer.put(Server.nodeId.exportPublic());
@@ -895,7 +1414,7 @@ public class ConnectionReaderThread extends Thread {
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
 
-        if (buffer.remaining() < 29) {
+        if (buffer.remaining() < 30) {
             System.out.println("not enough bytes for handshake");
             return false;
         }
@@ -905,6 +1424,12 @@ public class ConnectionReaderThread extends Thread {
 //        System.out.println("magic: " + magic);
 
         int version = (int) buffer.get();
+
+        int clientType = (int) buffer.get();
+
+        if (clientType > 128 || clientType < 0) {
+            peerInHandshake.setLightClient(true);
+        }
 
 //        System.out.println("version: " + version);
 
@@ -1057,6 +1582,17 @@ public class ConnectionReaderThread extends Thread {
         }
         byteBuffer.position(byteBuffer.position() + length);
         return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
+    }
+
+    public static byte[] readSignature(ByteBuffer readBuffer) {
+        //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
+        readBuffer.get();
+        int lenOfSignature = ((int) readBuffer.get()) + 2;
+        readBuffer.position(readBuffer.position() - 2);
+
+        byte[] signature = new byte[lenOfSignature];
+        readBuffer.get(signature);
+        return signature;
     }
 
 }

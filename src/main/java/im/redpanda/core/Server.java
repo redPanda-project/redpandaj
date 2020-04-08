@@ -1,10 +1,14 @@
 package im.redpanda.core;
 
+import im.redpanda.jobs.KadRefreshJob;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.store.NodeStore;
 
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -18,7 +22,6 @@ public class Server {
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
-    public static PeerList peerList;
     public static ReentrantReadWriteLock peerListLock;
     public static int outBytes = 0;
     public static int inBytes = 0;
@@ -30,6 +33,7 @@ public class Server {
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
 
     public static SecureRandom secureRandom = new SecureRandom();
+    public static Random random = new Random();
 
 
     static {
@@ -37,8 +41,7 @@ public class Server {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
 //        peerList = Saver.loadPeers();
-        peerList = new PeerList();
-        peerListLock = peerList.getReadWriteLock();
+        peerListLock = PeerList.getReadWriteLock();
 
         //init all buckets!
         for (int i = 0; i < buckets.length; i++) {
@@ -52,6 +55,9 @@ public class Server {
 
         connectionHandler = new ConnectionHandler(true);
         connectionHandler.start();
+
+        //this is a permanent job and will run every hour...
+        new KadRefreshJob().start();
 
     }
 
@@ -111,7 +117,7 @@ public class Server {
 
     public static void removePeer(Peer peer) {
         peerListLock.writeLock().lock();
-        peerList.remove(peer);
+        PeerList.remove(peer);
         peer.removeNodeId();
         peerListLock.writeLock().unlock();
     }
@@ -125,7 +131,7 @@ public class Server {
 
         System.out.println("NodeStore has entries: " + nodeStore.size());
 
-        nodeId = localSettings.myIdentity;
+        nodeId = localSettings.getMyIdentity();
         NONCE = nodeId.getKademliaId();
         System.out.println("started node with KademliaId: " + NONCE.toString() + " port: " + Server.MY_PORT);
 
@@ -133,5 +139,24 @@ public class Server {
         outboundHandler.init();
 
         PeerJobs.startUp();
+
+        new HTTPServer().start();
+    }
+
+    public static void shutdown() {
+        Server.SHUTDOWN = true;
+
+//        Server.nodeStore.saveToDisk();
+
+//        KadStoreManager.maintain();
+
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        Server.nodeStore.close();
+        Server.localSettings.save(Server.MY_PORT);
     }
 }

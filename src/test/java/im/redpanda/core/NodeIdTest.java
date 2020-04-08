@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.crypt.Utils;
 import org.junit.Test;
 
 import java.security.Security;
@@ -65,5 +66,24 @@ public class NodeIdTest {
 
         assertTrue(nodeId1.equals(nodeId));
 
+    }
+
+    @Test
+    public void testSignatures() {
+        for (int i = 0; i < 1; i++) {
+
+            byte[] bytes = "Test Message".getBytes();
+
+            NodeId nodeId = new NodeId();
+            byte[] signature = nodeId.sign(bytes);
+
+            System.out.println("messagebytes: " + Utils.bytesToHexString(bytes));
+            System.out.println("pubkey: " + Utils.bytesToHexString(nodeId.exportPublic()));
+            System.out.println("signature: " + Utils.bytesToHexString(signature));
+            System.out.println("");
+
+
+            assertTrue(nodeId.verify(bytes, signature));
+        }
     }
 }

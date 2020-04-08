@@ -33,18 +33,18 @@ public class NodeStore {
     public NodeStore() {
         dbonHeap = DBMaker
                 .heapDB()
-                .closeOnJvmShutdown()
+//                .closeOnJvmShutdown()
                 .make();
 
         dboffHeap = DBMaker
                 .memoryDirectDB()
-                .closeOnJvmShutdown()
+//                .closeOnJvmShutdown()
                 .make();
 
         dbDisk = DBMaker
                 .fileDB("data/nodeids" + Server.MY_PORT + ".mapdb")
                 .fileMmapEnableIfSupported()
-                .closeOnJvmShutdown()
+//                .closeOnJvmShutdown()
                 .checksumHeaderBypass()
                 .make();
 
@@ -101,7 +101,7 @@ public class NodeStore {
 
     public void close() {
 
-        saveToDisk();
+//        saveToDisk();
 
         onHeap.close();
         offHeap.close();
