@@ -2,10 +2,10 @@ package im.redpanda.core;
 
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
-import im.redpanda.crypt.Utils;
 import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.Security;
 
@@ -18,6 +18,7 @@ public class ParseCommandTest {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
         if (Server.nodeStore == null) {
+            new File("data").mkdirs();
             Server.nodeStore = new NodeStore();
         }
     }
