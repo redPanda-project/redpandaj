@@ -2,6 +2,7 @@ package im.redpanda.kademlia;
 
 
 import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
@@ -101,7 +102,7 @@ public class KadContent {
             return KademliaId.fromFirstBytes(sha256);
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
-            Sentry.capture(e);
+            Log.sentry(e);
         }
         return null;
     }

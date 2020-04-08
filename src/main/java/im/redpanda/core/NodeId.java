@@ -330,7 +330,7 @@ public class NodeId implements Serializable {
             return realSig;
 
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            Sentry.capture(e);
+            Log.sentry(e);
             e.printStackTrace();
         }
 
@@ -355,7 +355,7 @@ public class NodeId implements Serializable {
 
             return ecdsa2.verify(signature);
         } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-//            Sentry.capture(e);
+            Log.sentry(e);
             e.printStackTrace();
         }
         return false;

@@ -23,6 +23,14 @@ public abstract class Job implements Runnable {
     protected boolean initilized = false;
 
 
+    public Job() {
+    }
+
+    public Job(long reRunDelay, boolean permanent) {
+        this.reRunDelay = reRunDelay;
+        this.permanent = permanent;
+    }
+
     @Override
     public void run() {
 

@@ -219,7 +219,7 @@ public class ConnectionReaderThread extends Thread {
             try {
                 readConnection(poll);
             } catch (Throwable e) {
-                Sentry.capture(e);
+                Log.sentry(e);
             }
 
 
@@ -805,11 +805,11 @@ public class ConnectionReaderThread extends Thread {
                         }
                         System.exit(0);
                     } catch (FileNotFoundException e) {
-                        Sentry.capture(e);
+                        Log.sentry(e);
                         e.printStackTrace();
                     } catch (IOException e) {
-                        Sentry.capture(e);
-                        e.printStackTrace();
+                        Log.sentry(e);
+                        Log.sentry(e);
                     }
 
                 }

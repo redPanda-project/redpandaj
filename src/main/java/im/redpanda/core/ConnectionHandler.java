@@ -527,11 +527,11 @@ public class ConnectionHandler extends Thread {
 
 
                         } catch (IOException e) {
-                            Log.put("catched io exception in handshake...", 20);
+                            Log.put("caught io exception in handshake...", 20);
                             key.cancel();
                         } catch (Throwable e) {
                             Log.put("Handshake failed with throwable...", 5);
-                            Sentry.capture(e);
+                            Log.sentry(e);
                             key.cancel();
 
                         }
@@ -690,7 +690,7 @@ public class ConnectionHandler extends Thread {
 //                    Peer peer = ((Peer) key.attachment());
 //                    Log.putStd("Catched fatal exception! " + peer.ip);
                     e.printStackTrace();
-                    Sentry.capture(e);
+                    Log.sentry(e);
                     //peer.disconnect(" IOException 4827f3fj");
 //                    peer.disconnect("Fatal exception");
 //                    Log.putCritical(e);

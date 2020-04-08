@@ -35,7 +35,7 @@ public class HTTPServer extends Thread {
             //server.setExecutor(null); // creates a default executor
             server.start();
         } catch (IOException e) {
-            Sentry.capture(e);
+            Log.sentry(e);
             e.printStackTrace();
         }
     }
