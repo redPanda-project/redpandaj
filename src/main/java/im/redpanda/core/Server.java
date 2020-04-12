@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
 
-    public static final int VERSION = 21;
+    public static final int VERSION = 22;
     public static int MY_PORT = -1;
     static String MAGIC = "k3gV";
     public static LocalSettings localSettings;

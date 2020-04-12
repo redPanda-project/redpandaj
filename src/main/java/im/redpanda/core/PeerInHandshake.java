@@ -32,6 +32,7 @@ public class PeerInHandshake {
     byte[] randomFromUs;
     byte[] randomFromThem;
     boolean lightClient = false;
+    int protocolVersion;
 
     boolean weSendOurRandom = false;
     boolean awaitingEncryption = false;
@@ -195,6 +196,14 @@ public class PeerInHandshake {
     }
 
     public void calculateSharedSecret() {
+
+        if (nodeId == null) {
+            throw new RuntimeException("calculateSharedSecret: nodeId was null");
+        }
+
+        if (nodeId.getKeyPair() == null) {
+            throw new RuntimeException("calculateSharedSecret: nodeId.getKeyPair() was null");
+        }
 
         try {
             KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
@@ -403,5 +412,9 @@ public class PeerInHandshake {
 
     public void setLightClient(boolean lightClient) {
         this.lightClient = lightClient;
+    }
+
+    public void setProtocolVersion(int protocolVersion) {
+        this.protocolVersion = protocolVersion;
     }
 }

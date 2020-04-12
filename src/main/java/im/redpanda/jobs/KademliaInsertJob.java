@@ -1,10 +1,7 @@
 package im.redpanda.jobs;
 
 
-import im.redpanda.core.Command;
-import im.redpanda.core.ConnectionReaderThread;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
+import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.kademlia.PeerComparator;
@@ -125,12 +122,19 @@ public class KademliaInsertJob extends Job {
 
 
                             writeBuffer.put(Command.KADEMLIA_STORE);
+
+                            writeBuffer.putInt(4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + kadContent.getContent().length + 4 + kadContent.getSignature().length);
+
                             writeBuffer.putInt(getJobId());
 //                            writeBuffer.put(kadContent.getId().getBytes());
                             writeBuffer.putLong(kadContent.getTimestamp());
                             writeBuffer.put(kadContent.getPubkey());
+
                             writeBuffer.putInt(kadContent.getContent().length);
                             writeBuffer.put(kadContent.getContent());
+
+
+                            writeBuffer.putInt(kadContent.getSignature().length);
                             writeBuffer.put(kadContent.getSignature());
 
                             //for debug only

@@ -21,11 +21,13 @@ import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
+import io.sentry.event.EventBuilder;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.file.Files;
@@ -266,10 +268,18 @@ public class ConnectionReaderThread extends Thread {
 //        }
 
         int read = -2;
+        String debugStringRead = myReaderBuffer.toString();
         try {
             read = peer.getSocketChannel().read(myReaderBuffer);
             Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
+            e.printStackTrace();
+            key.cancel();
+            peer.disconnect("could not read...");
+            return;
+        } catch (Throwable e) {
+            Log.sentry(e);
+            Log.sentry("Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
             e.printStackTrace();
             key.cancel();
             peer.disconnect("could not read...");
@@ -317,9 +327,17 @@ public class ConnectionReaderThread extends Thread {
 
 //        System.out.println("buffer after parse: " + readBuffer);
 
-        if (peer.readBuffer.position() == 0) {
+        /**
+         * The readBuffer might be null if the peer is disconnected while parsing a command, the disconnect method handles the
+         * return of the readBuffer...
+         */
+        if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
             ByteBufferPool.returnObject(peer.readBuffer);
             peer.readBuffer = null;
+        }
+
+        if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {
+            throw new RuntimeException("myReaderBuffer was not ready for the next read: " + myReaderBuffer);
         }
 
     }
@@ -329,7 +347,7 @@ public class ConnectionReaderThread extends Thread {
 
         int parsedBytesLocally = -1;
 
-        while (readBuffer.hasRemaining() && parsedBytesLocally != 0) {
+        while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
 
             int newPosition = readBuffer.position(); // lets save the position before touching the buffer
 
@@ -340,6 +358,13 @@ public class ConnectionReaderThread extends Thread {
 
 
             parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            if (!peer.isConnected()) {
+                /**
+                 * the readBuffer was already returned to the pool by the disconnect method and we are not allowed
+                 * to use the readBuffer anymore
+                 */
+                return;
+            }
             peer.lastCommand = b;
             newPosition += parsedBytesLocally;
             readBuffer.position(newPosition);
@@ -736,7 +761,7 @@ public class ConnectionReaderThread extends Thread {
 //            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
             if (toReadBytes > readBuffer.remaining()) {
-                if (Math.random() < 0.05) {
+                if (Math.random() < 0.01) {
                     System.out.println("update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
                 }
                 return 0;
@@ -852,6 +877,10 @@ public class ConnectionReaderThread extends Thread {
             return 1 + 8 + 4 + lenOfSignature + data.length;
 
         } else if (command == Command.ANDROID_UPDATE_REQUEST_TIMESTAMP) {
+            File file = new File("android.apk");
+            if (!file.exists()) {
+                return 1;
+            }
             peer.writeBufferLock.lock();
             peer.getWriteBuffer().put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
             peer.getWriteBuffer().putLong(Server.localSettings.getUpdateAndroidTimestamp());
@@ -1148,8 +1177,21 @@ public class ConnectionReaderThread extends Thread {
 
         } else if (command == Command.KADEMLIA_STORE) {
 
+//            System.out.println("peer.protocolVersion: " + peer.protocolVersion);
+
+            //todo can be removed later
+            if (peer.protocolVersion < 22) {
+                peer.disconnect("wrong protocol version for this command!");
+                return 0;
+            }
 
             if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+                return 0;
+            }
+
+            int commandLen = readBuffer.getInt();
+
+            if (commandLen > readBuffer.remaining()) {
                 return 0;
             }
 
@@ -1169,7 +1211,7 @@ public class ConnectionReaderThread extends Thread {
                 return 0;
             }
 
-            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+            if (contentLen <= 0 && contentLen > 1024 * 1024 * 10) {
                 peer.disconnect("wrong contentLen for kadcontent");
                 return 0;
             }
@@ -1181,6 +1223,7 @@ public class ConnectionReaderThread extends Thread {
                 return 0;
             }
 
+            int signatureLenInBuffer = readBuffer.getInt();
 
             byte[] signatureBytes = readSignature(readBuffer);
             if (signatureBytes == null) {
@@ -1188,19 +1231,15 @@ public class ConnectionReaderThread extends Thread {
             }
             int lenOfSignature = signatureBytes.length;
 
+            if (signatureLenInBuffer != lenOfSignature) {
+                throw new RuntimeException("failure in len of signature: expected " + signatureLenInBuffer + " found in the signature itself: " + lenOfSignature + " lightClient: " + peer.isLightClient());
+            }
+
 
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
 //            System.out.println("got KadContent successfully " + kadContent.getId() + " len of signature: " + lenOfSignature);
 
-            /**
-             * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
-             */
-            if (peer.isLightClient()) {
-                System.out.println("peer is light client, start KadInserJob!");
-                KademliaInsertJob kademliaInsertJob = new KademliaInsertJob(kadContent);
-                kademliaInsertJob.start();
-            }
 
             if (kadContent.verify()) {
                 boolean saved = KadStoreManager.put(kadContent);
@@ -1214,6 +1253,15 @@ public class ConnectionReaderThread extends Thread {
                     peer.getWriteBufferLock().unlock();
                 }
 
+                /**
+                 * Light clients do not look up the dht tables such that we have to insert the KadContent by ourselves.
+                 */
+                if (peer.isLightClient()) {
+                    System.out.println("peer is light client, start KadInserJob!");
+                    KademliaInsertJob kademliaInsertJob = new KademliaInsertJob(kadContent);
+                    kademliaInsertJob.start();
+                }
+
 //                }
 
             } else {
@@ -1222,7 +1270,8 @@ public class ConnectionReaderThread extends Thread {
                 Log.sentry("kadContent verification failed, lightClient: " + peer.isLightClient());
             }
 
-            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+//            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
+            return 1 + 4 + commandLen;
 
         } else if (command == Command.JOB_ACK) {
 
@@ -1358,18 +1407,27 @@ public class ConnectionReaderThread extends Thread {
     public static void sendHandshake(PeerInHandshake peerInHandshake) {
 
         ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
+        String bufferBeforeWriting = writeBuffer.toString();
 
-        writeBuffer.put(Server.MAGIC.getBytes());
-        writeBuffer.put((byte) Server.VERSION);
-        writeBuffer.put((byte) 0); //we are no light client
-        writeBuffer.put(Server.NONCE.getBytes());
-        writeBuffer.putInt(Server.MY_PORT);
+
+        try {
+            writeBuffer.put(Server.MAGIC.getBytes());
+            writeBuffer.put((byte) Server.VERSION);
+            writeBuffer.put((byte) 0); //we are no light client
+            writeBuffer.put(Server.NONCE.getBytes());
+            writeBuffer.putInt(Server.MY_PORT);
+        } catch (BufferOverflowException e) {
+            Log.sentry("bufferoverflow in put magic, buffer before: " + bufferBeforeWriting);
+        }
 
         writeBuffer.flip();
 
         try {
             int write = peerInHandshake.getSocketChannel().write(writeBuffer);
 //            System.out.println("written bytes of handshake: " + write);
+            if (write != 30) {
+                throw new RuntimeException("could not write all data for handshake...");
+            }
         } catch (IOException e) {
             e.printStackTrace();
             try {
@@ -1379,6 +1437,8 @@ public class ConnectionReaderThread extends Thread {
             }
         }
 
+
+        writeBuffer.compact();
         ByteBufferPool.returnObject(writeBuffer);
     }
 
@@ -1437,6 +1497,7 @@ public class ConnectionReaderThread extends Thread {
 //        System.out.println("magic: " + magic);
 
         int version = (int) buffer.get();
+        peerInHandshake.setProtocolVersion(version);
 
         int clientType = (int) buffer.get();
 

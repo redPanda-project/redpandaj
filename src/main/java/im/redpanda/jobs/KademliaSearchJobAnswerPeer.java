@@ -43,7 +43,7 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
         /**
          * write the least 3 newst entries...
          */
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Math.min(3, kadContents.size()); i++) {
 
             KadContent kadContent = kadContents.get(i);
 

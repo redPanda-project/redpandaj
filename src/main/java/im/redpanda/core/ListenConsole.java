@@ -8,6 +8,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -140,6 +143,20 @@ public class ListenConsole extends Thread {
                     Log.LEVEL = Integer.parseInt(readLine2);
                 } catch (NumberFormatException e) {
                     e.printStackTrace();
+                }
+            } else if (readLine.equals("t")) {
+                ThreadMXBean bean = ManagementFactory.getThreadMXBean();
+                ThreadInfo[] ti = bean.getThreadInfo(bean.getAllThreadIds(), true, true);
+
+                for (ThreadInfo i : ti) {
+                    if (i.getLockInfo() == null) {
+                        continue;
+                    }
+
+                    for (StackTraceElement e : i.getStackTrace()) {
+                        System.out.println(e);
+                    }
+
                 }
             } else if (readLine.equals("e")) {
                 Server.nodeStore.saveToDisk();

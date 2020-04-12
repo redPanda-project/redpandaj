@@ -282,16 +282,21 @@ public class OutboundHandler extends Thread {
 
     private static void connectTo(final Peer peer) {
 
-        peer.retries++;
+//        peer.retries++;
         peer.isConnecting = true;
         peer.isConnectionInitializedByMe = true;
         peer.lastActionOnConnection = System.currentTimeMillis();
 
         Node byKademliaId = Node.getByKademliaId(peer.getKademliaId());
 
+        int retries = 0;
         if (byKademliaId != null) {
-            byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+            retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
         }
+
+        //todo if retries to high disconnect?
+        peer.retries = retries;
+
 
         try {
             SocketChannel open = SocketChannel.open();

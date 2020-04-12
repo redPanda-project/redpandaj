@@ -39,7 +39,9 @@ public class ParseCommandTest {
         allocate.put(Command.PING);
         allocate.put(Command.PING);
 
-        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+        Peer peerForDebug = getPeerForDebug();
+        peerForDebug.setConnected(true);
+        ConnectionReaderThread.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -69,7 +71,9 @@ public class ParseCommandTest {
         allocate.put(Command.SEND_PEERLIST);
         allocate.putInt(1);
 
-        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+        peerForDebug = getPeerForDebug();
+        peerForDebug.setConnected(true);
+        ConnectionReaderThread.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();

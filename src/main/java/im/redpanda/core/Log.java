@@ -26,7 +26,7 @@ public class Log {
 //            LEVEL = 0;
         }
 
-        new Job(60000, true) {
+        new Job(20000, true) {
             @Override
             public void init() {
                 rating = new AtomicInteger();
@@ -68,14 +68,28 @@ public class Log {
     public static void sentry(Throwable e) {
         int currentRating = rating.getAndIncrement();
         if (currentRating < 10) {
-            Sentry.capture(e);
+            try {
+                System.out.println("send to Sentry: " + e);
+                Sentry.capture(e);
+            } catch (Throwable e2) {
+                e2.printStackTrace();
+            }
+        } else {
+            rating.decrementAndGet();
         }
     }
 
     public static void sentry(String msg) {
         int currentRating = rating.getAndIncrement();
         if (currentRating < 10) {
-            Sentry.capture(msg);
+            try {
+                System.out.println("send to Sentry: " + msg);
+                Sentry.capture(msg);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        } else {
+            rating.decrementAndGet();
         }
     }
 

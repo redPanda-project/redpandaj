@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import io.sentry.Sentry;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
 import org.apache.commons.pool2.KeyedObjectPool;
 import org.apache.commons.pool2.PooledObject;
@@ -9,14 +10,13 @@ import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class ByteBufferPool {
 
 
     private static GenericKeyedObjectPool<Integer, ByteBuffer> pool;
+    private static Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
 
     public static void init() {
         BaseKeyedPooledObjectFactory<Integer, ByteBuffer> pooledObjectFactory = new BaseKeyedPooledObjectFactory<Integer, ByteBuffer>() {
@@ -26,9 +26,9 @@ public class ByteBufferPool {
                 ByteBuffer allocate = ByteBuffer.allocate(size);
 
                 if (Runtime.getRuntime().freeMemory() < 1024 * 1024 * 200) {
-                    pool.setMaxTotalPerKey(2);
+                    pool.setMaxTotalPerKey(200);
                 } else {
-                    pool.setMaxTotalPerKey(20);
+                    pool.setMaxTotalPerKey(200);
                 }
                 System.out.println("Generating new ByteBuffer for pool. Free memory (MB): " +
                         (Runtime.getRuntime().freeMemory() / 1024. / 1024.) + " Idle: " + pool.getNumIdle() + " Active: " + pool.getNumActive() + " Waiters: " + pool.getNumWaiters());
@@ -102,6 +102,17 @@ public class ByteBufferPool {
             e.printStackTrace();
         }
 
+        while (byteBuffer.position() != 0 || byteBuffer.limit() != byteBuffer.capacity()) {
+            String stack = byteBufferToStacktrace.get(byteBuffer);
+            Log.sentry("borrowObject found an invalid ByteBuffer: " + byteBuffer + " stack: " + stack);
+            try {
+                pool.invalidateObject(key, byteBuffer);
+                byteBuffer = pool.borrowObject(key);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
 
         return byteBuffer;
     }
@@ -114,11 +125,32 @@ public class ByteBufferPool {
      */
     public static void returnObject(ByteBuffer byteBuffer) {
 
+
         int key = byteBuffer.capacity();
 
         key = keyToKey(key);
 
-        pool.returnObject(key, byteBuffer);
+        if (byteBuffer.position() != 0 || byteBuffer.limit() != byteBuffer.capacity()) {
+            try {
+                pool.invalidateObject(key, byteBuffer);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            String out = "";
+            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+                out += e.toString() + "\n";
+            }
+
+            Log.sentry("had to invalidate ByteBuffer: " + byteBuffer + " " + out);
+        } else {
+            String out = "";
+            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+                out += e.toString() + "\n";
+            }
+            byteBufferToStacktrace.put(byteBuffer, out);
+            pool.returnObject(key, byteBuffer);
+        }
     }
 
     public static int keyToKey(int key) {

@@ -79,19 +79,19 @@ public class Node implements Serializable {
         return true;
     }
 
-    public void incrRetry(String ip, int port) {
+    public int incrRetry(String ip, int port) {
         ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
         for (ConnectionPoint point : connectionPoints) {
             if (point.equals(connectionPoint)) {
                 point.IncrRetries();
-                break;
+                return point.getRetries();
             }
         }
 
-        for (ConnectionPoint point : connectionPoints) {
-            System.out.println("ip list for node: " + point.getIp() + ":" + point.getPort() + " reties: " + point.getRetries());
-        }
-
+//        for (ConnectionPoint point : connectionPoints) {
+//            System.out.println("ip list for node: " + point.getIp() + ":" + point.getPort() + " reties: " + point.getRetries());
+//        }
+        return 0;
     }
 
     public static class ConnectionPoint implements Serializable {
