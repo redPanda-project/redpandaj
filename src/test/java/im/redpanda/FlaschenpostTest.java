@@ -7,10 +7,15 @@ import im.redpanda.flaschenpost.GarlicMessage;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.security.Security;
+
 import static org.hamcrest.CoreMatchers.is;
 
 public class FlaschenpostTest {
 
+    static {
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    }
 
     @Test
     public void createGMEchoTest() {
@@ -31,8 +36,6 @@ public class FlaschenpostTest {
         GarlicMessage garlicMessage = new GarlicMessage(nodeId);
 
         byte[] content = garlicMessage.getContent();
-
-
 
 
     }
