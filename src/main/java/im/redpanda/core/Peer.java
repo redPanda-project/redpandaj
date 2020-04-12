@@ -37,6 +37,7 @@ public class Peer implements Comparable<Peer>, Serializable {
     public int connectAble = 0;
 
     public boolean lightClient = false;
+    public int protocolVersion;
 
     public int retries = 0;
     public long lastBufferModified;
@@ -347,8 +348,11 @@ public class Peer implements Comparable<Peer>, Serializable {
             }
 
             if (readBuffer != null) {
-                ByteBufferPool.returnObject(readBuffer);
+                ByteBuffer buff = readBuffer;
                 readBuffer = null;
+                buff.position(0);
+                buff.limit(buff.capacity());
+                ByteBufferPool.returnObject(buff);
             }
 
 //            readBuffer = null;
@@ -519,6 +523,8 @@ public class Peer implements Comparable<Peer>, Serializable {
                 System.arraycopy(readBuffer.array(), 0, newBuffer.array(), 0, readBuffer.array().length);
                 newBuffer.position(readBuffer.position());
                 System.out.println("new readbuffer... " + readBuffer + " " + newBuffer);
+                readBuffer.compact();
+                readBuffer.position(0);
                 ByteBufferPool.returnObject(readBuffer);
                 readBuffer = newBuffer;
             }
@@ -748,6 +754,7 @@ public class Peer implements Comparable<Peer>, Serializable {
         authed = true;
         retries = 0;
         lightClient = peerInHandshake.lightClient;
+        protocolVersion = peerInHandshake.protocolVersion;
         connectedSince = System.currentTimeMillis();
 
         /**

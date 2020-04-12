@@ -1,5 +1,7 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.Log;
+
 import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.ScheduledFuture;
@@ -48,6 +50,7 @@ public abstract class Job implements Runnable {
                 init();
             } catch (Throwable e) {
                 e.printStackTrace();
+                Log.sentry(e);
                 done();
                 return;
             }
@@ -63,6 +66,7 @@ public abstract class Job implements Runnable {
             work();
         } catch (Throwable e) {
             e.printStackTrace();
+            Log.sentry(e);
             done();
             return;
         }
@@ -120,26 +124,30 @@ public abstract class Job implements Runnable {
      */
     public void done() {
 
-        if (done) {
-            return;
-        }
-
-        done = true;
-
-        //remove this job from the runningJobs
-        runningJobsLock.lock();
         try {
-            Job remove = runningJobs.remove(jobId);
-            if (remove != null) {
-                future.cancel(false);
-            } else {
-                //job already done, but we should never be in this case, run exception to debug this case
-                throw new RuntimeException("CODE 17dh6");
+            if (done) {
+                return;
             }
-        } finally {
-            runningJobsLock.unlock();
+
+            done = true;
+
+            //remove this job from the runningJobs
+            runningJobsLock.lock();
+            try {
+                Job remove = runningJobs.remove(jobId);
+                if (remove != null) {
+                    future.cancel(false);
+                } else {
+                    //job already done, but we should never be in this case, run exception to debug this case
+                    throw new RuntimeException("CODE 17dh6");
+                }
+            } finally {
+                runningJobsLock.unlock();
+            }
+            System.out.println("job finished: " + jobId);
+        } catch (Throwable e) {
+            Log.sentry(e);
         }
-        System.out.println("job finished: " + jobId);
     }
 
 

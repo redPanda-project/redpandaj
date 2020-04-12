@@ -21,6 +21,16 @@ import java.util.jar.Manifest;
  */
 public class App {
     public static void main(String[] args) throws IOException {
+
+        System.out.println("               _ _____                _       \n" +
+                "              | |  __ \\              | |      \n" +
+                "  _ __ ___  __| | |__) |_ _ _ __   __| | __ _ \n" +
+                " | '__/ _ \\/ _` |  ___/ _` | '_ \\ / _` |/ _` |\n" +
+                " | | |  __/ (_| | |  | (_| | | | | (_| | (_| |\n" +
+                " |_|  \\___|\\__,_|_|   \\__,_|_| |_|\\__,_|\\__,_|               - p2p chat, https://github.com/redPanda-project/redpandaj\n" +
+                "                                              \n" +
+                "                                              ");
+
         System.out.print("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
 
 //        Enumeration<URL> resources = new App().getClass().getClassLoader()

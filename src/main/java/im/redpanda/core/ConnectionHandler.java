@@ -474,7 +474,7 @@ public class ConnectionHandler extends Thread {
                                             e.printStackTrace();
                                         }
 
-
+                                        byteBuffer.compact();
                                         ByteBufferPool.returnObject(byteBuffer);
 
 
@@ -502,6 +502,7 @@ public class ConnectionHandler extends Thread {
 
                                     byte decryptedCommand = outBuffer.get();
 
+                                    outBuffer.compact();
                                     ByteBufferPool.returnObject(outBuffer);
 
                                     if (decryptedCommand == Command.PING) {
