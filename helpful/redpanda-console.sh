@@ -23,7 +23,7 @@ done < bin/settings
 
 
 cmd=$JAVA_HOME
-cmd+="java -Xmx256m"
+cmd+="java -Xmx1024m"
 
 
 

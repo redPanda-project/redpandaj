@@ -282,7 +282,7 @@ public class OutboundHandler extends Thread {
 
     private static void connectTo(final Peer peer) {
 
-//        peer.retries++;
+        peer.retries++;
         peer.isConnecting = true;
         peer.isConnectionInitializedByMe = true;
         peer.lastActionOnConnection = System.currentTimeMillis();

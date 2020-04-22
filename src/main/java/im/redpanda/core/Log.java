@@ -6,6 +6,9 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.Job;
 import io.sentry.Sentry;
+import io.sentry.event.Event;
+import io.sentry.event.EventBuilder;
+import io.sentry.event.helper.EventBuilderHelper;
 
 import java.util.Arrays;
 import java.util.List;

@@ -21,6 +21,7 @@ import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
+import io.sentry.event.BreadcrumbBuilder;
 import io.sentry.event.EventBuilder;
 
 import java.io.File;
@@ -297,6 +298,10 @@ public class ConnectionReaderThread extends Thread {
         if (read == 0) {
             Log.putStd("dafuq 2332");
             peer.disconnect("dafuq 2332");
+            Sentry.getContext().recordBreadcrumb(
+                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
+            );
+            Log.sentry("read 0 bytes...");
             return;
         } else if (read == -1) {
             Log.put("closing connection " + peer.ip + ": not readable! ", 100);

@@ -9,8 +9,8 @@ public class Settings {
     public static int STD_PORT = 59558;
     public static int MIN_CONNECTIONS = 20;
     public static int MAX_CONNECTIONS = 50;
-    public static int pingTimeout = 65; //time in sec
-    public static int pingDelay = 1000; //time in msec
+    public static long pingTimeout = 65L* 1000L; //time in ms
+    public static int pingDelay = 1000; //time in ms
     public static int peerListRequestDelay = 60 * 60;//time in sec
     public static boolean seedNode;
     public static boolean loadUpdates;
