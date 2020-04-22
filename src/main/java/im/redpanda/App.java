@@ -20,6 +20,9 @@ import java.util.jar.Manifest;
  * Hello world!
  */
 public class App {
+
+    public static boolean SENTRY_ALLOWED = false;
+
     public static void main(String[] args) throws IOException {
 
         System.out.println("               _ _____                _       \n" +
@@ -62,16 +65,36 @@ public class App {
         });
 
 
-        SentryClient sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-
-
-        String gitRev = readGitProperties();
-        if (gitRev != null) {
-            Sentry.getContext().addTag("gitRev", gitRev);
-            sentryClient.setRelease(gitRev);
-            System.out.println("found git revision: " + gitRev);
+        boolean activateSentry = false;
+        if (args.length > 0) {
+            String sentryExtras = args[0];
+            String[] split = sentryExtras.split("=");
+            if (split[1].equals("yes")) {
+                activateSentry = true;
+            }
         }
 
+
+        System.out.println("Activate Sentry: " + activateSentry);
+
+        String gitRev = readGitProperties();
+
+        SentryClient sentryClient;
+        if (activateSentry) {
+            sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+            SENTRY_ALLOWED = true;
+
+            if (gitRev != null) {
+                Sentry.getContext().addTag("gitRev", gitRev);
+                sentryClient.setRelease(gitRev);
+            }
+        }
+
+        if (gitRev != null) {
+            System.out.println("found git revision: " + gitRev);
+        } else {
+            System.out.println("Warning, no git revision found...");
+        }
 
         Server.start();
 

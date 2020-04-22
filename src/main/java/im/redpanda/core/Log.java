@@ -4,6 +4,7 @@
  */
 package im.redpanda.core;
 
+import im.redpanda.App;
 import im.redpanda.jobs.Job;
 import io.sentry.Sentry;
 import io.sentry.event.Event;
@@ -69,6 +70,9 @@ public class Log {
     }
 
     public static void sentry(Throwable e) {
+        if (!App.SENTRY_ALLOWED) {
+            return;
+        }
         int currentRating = rating.getAndIncrement();
         if (currentRating < 10) {
             try {
@@ -83,6 +87,9 @@ public class Log {
     }
 
     public static void sentry(String msg) {
+        if (!App.SENTRY_ALLOWED) {
+            return;
+        }
         int currentRating = rating.getAndIncrement();
         if (currentRating < 10) {
             try {
