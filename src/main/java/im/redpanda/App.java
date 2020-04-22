@@ -34,7 +34,7 @@ public class App {
                 "                                              \n" +
                 "                                              ");
 
-        System.out.print("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
+        System.out.println("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
 
 //        Enumeration<URL> resources = new App().getClass().getClassLoader()
 //                .getResources("META-INF/MANIFEST.MF");
@@ -91,7 +91,7 @@ public class App {
         }
 
         if (gitRev != null) {
-            System.out.println("found git revision: " + gitRev);
+            System.out.println("found git revision: " + gitRev + " Sentry: " + activateSentry);
         } else {
             System.out.println("Warning, no git revision found...");
         }
