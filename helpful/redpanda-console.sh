@@ -3,8 +3,8 @@
 # redpanda start script with auto restart and update installing...
 
 FILE=update
-errorReportFileAllowed=errorReports.allowed
-errorReportFileDisallowed=errorReports.disallowed
+errorReportFileAllowed=.errorReports.allowed
+errorReportFileDisallowed=.errorReports.disallowed
 SETTINGS_FILE=bin/settings
 
 #touch $FILE
