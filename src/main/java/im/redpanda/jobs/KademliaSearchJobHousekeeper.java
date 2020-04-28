@@ -2,11 +2,14 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.kademlia.KadStoreManager;
+import org.apache.logging.log4j.LogManager;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class KademliaSearchJobHousekeeper extends Job {
+
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
 
     /**
      * This Job maintains the kademliaIdSearchBlacklist from the KademliaSearchJob class.
@@ -23,7 +26,7 @@ public class KademliaSearchJobHousekeeper extends Job {
     @Override
     public void work() {
 
-        System.out.println("refresh the KadContent");
+        logger.info("refresh the KadContent");
 
         KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
         try {

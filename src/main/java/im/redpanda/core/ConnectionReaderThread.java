@@ -7,11 +7,8 @@ package im.redpanda.core;
 
 
 import com.google.flatbuffers.FlatBufferBuilder;
-import im.redpanda.App;
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
-import im.redpanda.commands.FBPublicKey;
-import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 import im.redpanda.jobs.Job;
@@ -22,7 +19,6 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
-import io.sentry.event.EventBuilder;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -34,20 +30,13 @@ import java.nio.channels.SelectionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.SecureRandom;
-import java.sql.SQLOutput;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 
 /**

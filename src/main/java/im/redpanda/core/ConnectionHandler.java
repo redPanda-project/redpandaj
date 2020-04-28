@@ -6,9 +6,11 @@
 package im.redpanda.core;
 
 
+import im.redpanda.App;
 import im.redpanda.commands.FBPublicKey;
 import im.redpanda.crypt.Utils;
 import io.sentry.Sentry;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -29,6 +31,8 @@ import java.util.logging.Logger;
  * @author robin
  */
 public class ConnectionHandler extends Thread {
+
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
 
     public static final boolean ENCRYPTION_ENABLED = false;
 
@@ -75,7 +79,7 @@ public class ConnectionHandler extends Thread {
             ServerSocket serverSocket = null;
 
 
-            System.out.println("searching port to bind to...");
+            logger.info("searching port to bind to...");
 
 
             while (!bound) {
@@ -128,7 +132,7 @@ public class ConnectionHandler extends Thread {
 
         final String orgName = Thread.currentThread().getName();
         if (!orgName.contains(" ")) {
-            Thread.currentThread().setName(orgName + " - IncomingHandler - Main");
+            Thread.currentThread().setName("IncomingHandler");
         }
 
         Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {

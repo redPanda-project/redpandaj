@@ -12,14 +12,26 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Enumeration;
+import java.util.GregorianCalendar;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Hello world!
  */
 public class App {
+
+
+    private static final Logger logger = LogManager.getLogger(App.class);
+
 
     public static boolean SENTRY_ALLOWED = false;
 
@@ -35,6 +47,9 @@ public class App {
                 "                                              ");
 
         System.out.println("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
+
+
+        initLogger();
 
 //        Enumeration<URL> resources = new App().getClass().getClassLoader()
 //                .getResources("META-INF/MANIFEST.MF");
@@ -58,9 +73,9 @@ public class App {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
 //                Server.nodeStore.saveToDisk();
-                System.out.println("started shutdownhook...");
+                logger.info("started shutdownhook...");
                 Server.shutdown();
-                System.out.println("shutdownhook done");
+                logger.info("shutdownhook done");
             }
         });
 
@@ -75,7 +90,7 @@ public class App {
         }
 
 
-        System.out.println("Activate Sentry: " + activateSentry);
+        logger.info("Activate Sentry: " + activateSentry);
 
         String gitRev = readGitProperties();
 
@@ -91,9 +106,9 @@ public class App {
         }
 
         if (gitRev != null) {
-            System.out.println("found git revision: " + gitRev + " Sentry: " + activateSentry);
+            logger.info("found git revision: " + gitRev + " Sentry: " + activateSentry);
         } else {
-            System.out.println("Warning, no git revision found...");
+            logger.warn("Warning, no git revision found...");
         }
 
         Server.start();
@@ -102,14 +117,17 @@ public class App {
 
     }
 
-
-    public String getHelloWorld() {
-        return "Hello World!";
+    private static void initLogger() {
+        logger.info("redPanda started.");
     }
+
 
     public static String readGitProperties() throws IOException {
         String gitRev = null;
         InputStream is = new App().getClass().getResourceAsStream("/git.properties");
+        if (is == null) {
+            return null;
+        }
         InputStreamReader isr = new InputStreamReader(is);
         BufferedReader br = new BufferedReader(isr);
         String line;

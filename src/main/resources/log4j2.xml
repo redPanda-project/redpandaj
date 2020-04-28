@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration status="info">
+    <Properties>
+        <Property name="logdir">data</Property>
+        <Property name="layout">%d [%t] %-5level %logger - %m%n</Property>
+    </Properties>
+
+    <Appenders>
+
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${layout}"/>
+        </Console>
+
+
+        <RollingFile name="FileAppenderRolling" fileName="${logdir}/redpanda.log"
+                     filePattern="${logdir}/redpanda.%d{yyyy-MM-dd}-%i.log">
+            <PatternLayout pattern="${layout}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="24" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="5 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+    </Appenders>
+
+    <Loggers>
+
+        <Logger name="im.redpanda" level="info" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <Logger name="im.redpanda" level="info" additivity="false">
+            <AppenderRef ref="FileAppenderRolling"/>
+        </Logger>
+
+        <Root level="error">
+            <AppenderRef ref="Console"/>
+        </Root>
+
+    </Loggers>
+</Configuration>
