@@ -10,6 +10,8 @@ import io.sentry.Sentry;
 import io.sentry.event.Event;
 import io.sentry.event.EventBuilder;
 import io.sentry.event.helper.EventBuilderHelper;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.Arrays;
 import java.util.List;
@@ -19,6 +21,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author robin
  */
 public class Log {
+
+    private static final Logger logger = LogManager.getLogger();
 
     public static int LEVEL = 10;
     private static AtomicInteger rating;
@@ -42,7 +46,7 @@ public class Log {
                 if (i < 0) {
                     rating.set(0);
                 }
-                System.out.println("current rating for sentry logging: " + i);
+//                logger.trace("current rating for sentry logging: " + i);
             }
         }.start();
 
@@ -71,6 +75,7 @@ public class Log {
 
     public static void sentry(Throwable e) {
         if (!App.SENTRY_ALLOWED) {
+            logger.warn(e);
             return;
         }
         int currentRating = rating.getAndIncrement();
@@ -80,9 +85,11 @@ public class Log {
                 Sentry.capture(e);
             } catch (Throwable e2) {
                 e2.printStackTrace();
+                logger.error(e2);
             }
         } else {
-            rating.decrementAndGet();
+            int i = rating.decrementAndGet();
+            logger.warn("could not log to sentry because of throttling... " + i);
         }
     }
 

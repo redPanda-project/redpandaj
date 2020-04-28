@@ -3,6 +3,8 @@ package im.redpanda.core;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -15,6 +17,8 @@ import java.nio.channels.SocketChannel;
 import java.security.*;
 
 public class PeerInHandshake {
+
+    private static final Logger logger = LogManager.getLogger();
 
     public static final int IVbytelen = 16;
     public static final String ALGORITHM = "AES/CTR/NoPadding";
@@ -214,7 +218,7 @@ public class PeerInHandshake {
 
             byte[] encoded = intermediateSharedSecret.getEncoded();
 
-            System.out.println("intermediateSharedSecret: " + Utils.bytesToHexString(encoded));
+//            System.out.println("intermediateSharedSecret: " + Utils.bytesToHexString(encoded));
 
 
             ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);

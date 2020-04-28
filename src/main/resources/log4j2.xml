@@ -26,11 +26,8 @@
 
     <Loggers>
 
-        <Logger name="im.redpanda" level="info" additivity="false">
+        <Logger name="im.redpanda" level="all" additivity="false">
             <AppenderRef ref="Console"/>
-        </Logger>
-
-        <Logger name="im.redpanda" level="info" additivity="false">
             <AppenderRef ref="FileAppenderRolling"/>
         </Logger>
 

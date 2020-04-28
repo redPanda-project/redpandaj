@@ -4,6 +4,8 @@ import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.store.NodeStore;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.security.SecureRandom;
 import java.security.Security;
@@ -14,6 +16,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
+
+    private static final Logger logger = LogManager.getLogger();
 
     public static final int VERSION = 22;
     public static int MY_PORT = -1;
@@ -129,11 +133,11 @@ public class Server {
         Settings.init();
         ByteBufferPool.init();
 
-        System.out.println("NodeStore has entries: " + nodeStore.size());
+        logger.debug("NodeStore has entries: " + nodeStore.size());
 
         nodeId = localSettings.getMyIdentity();
         NONCE = nodeId.getKademliaId();
-        System.out.println("started node with KademliaId: " + NONCE.toString() + " port: " + Server.MY_PORT);
+        logger.info("started node with KademliaId: " + NONCE.toString() + " port: " + Server.MY_PORT);
 
         outboundHandler = new OutboundHandler();
         outboundHandler.init();

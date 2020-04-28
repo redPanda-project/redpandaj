@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 public class JobScheduler extends ScheduledThreadPoolExecutor {
@@ -12,8 +13,8 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
     private static JobScheduler jobScheduler;
 
     static {
-        jobScheduler = new JobScheduler(10);
-        jobScheduler.setKeepAliveTime(60, TimeUnit.SECONDS);
+        jobScheduler = new JobScheduler(10, new SimpleNamingThreadFactory());
+        jobScheduler.setKeepAliveTime(2, TimeUnit.MINUTES);
         jobScheduler.allowCoreThreadTimeOut(true);
     }
 
@@ -21,6 +22,9 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
         super(corePoolSize);
     }
 
+    public JobScheduler(int corePoolSize, ThreadFactory threadFactory) {
+        super(corePoolSize, threadFactory);
+    }
 
     public static ScheduledFuture insert(Runnable runnable, long delayInMS) {
         return jobScheduler.scheduleWithFixedDelay(runnable, delayInMS, delayInMS, TimeUnit.MILLISECONDS);
@@ -39,4 +43,17 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
     public static void runNow(Runnable command) {
         jobScheduler.execute(command);
     }
+
+    static class SimpleNamingThreadFactory implements ThreadFactory {
+        int number = 0;
+
+        public Thread newThread(Runnable r) {
+            Thread thread = new Thread(r);
+            thread.setName("Jobs-" + number);
+            number++;
+            return thread;
+        }
+    }
 }
+
+
