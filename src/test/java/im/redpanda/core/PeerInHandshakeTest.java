@@ -3,6 +3,7 @@ package im.redpanda.core;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
@@ -73,7 +74,11 @@ public class PeerInHandshakeTest {
         }
 
 
-        open.finishConnect();
+        try {
+            open.finishConnect();
+        } catch (ConnectException e) {
+            e.printStackTrace();
+        }
 
 
 //        peerInHandshake.getKey().interestOps(0);
