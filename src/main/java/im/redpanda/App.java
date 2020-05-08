@@ -12,14 +12,29 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Enumeration;
+import java.util.GregorianCalendar;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 
 /**
  * Hello world!
  */
 public class App {
+
+
+    private static final Logger logger = LogManager.getLogger();
+
+
+    public static boolean SENTRY_ALLOWED = false;
+
     public static void main(String[] args) throws IOException {
 
         System.out.println("               _ _____                _       \n" +
@@ -31,7 +46,10 @@ public class App {
                 "                                              \n" +
                 "                                              ");
 
-        System.out.print("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
+        System.out.println("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
+
+
+        initLogger();
 
 //        Enumeration<URL> resources = new App().getClass().getClassLoader()
 //                .getResources("META-INF/MANIFEST.MF");
@@ -55,23 +73,43 @@ public class App {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
 //                Server.nodeStore.saveToDisk();
-                System.out.println("started shutdownhook...");
+                logger.info("started shutdownhook...");
                 Server.shutdown();
-                System.out.println("shutdownhook done");
+                logger.info("shutdownhook done");
             }
         });
 
 
-        SentryClient sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-
-
-        String gitRev = readGitProperties();
-        if (gitRev != null) {
-            Sentry.getContext().addTag("gitRev", gitRev);
-            sentryClient.setRelease(gitRev);
-            System.out.println("found git revision: " + gitRev);
+        boolean activateSentry = false;
+        if (args.length > 0) {
+            String sentryExtras = args[0];
+            String[] split = sentryExtras.split("=");
+            if (split[1].equals("yes")) {
+                activateSentry = true;
+            }
         }
 
+
+        logger.info("Activate Sentry: " + activateSentry);
+
+        String gitRev = readGitProperties();
+
+        SentryClient sentryClient;
+        if (activateSentry) {
+            sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+            SENTRY_ALLOWED = true;
+
+            if (gitRev != null) {
+                Sentry.getContext().addTag("gitRev", gitRev);
+                sentryClient.setRelease(gitRev);
+            }
+        }
+
+        if (gitRev != null) {
+            logger.info("found git revision: " + gitRev + " Sentry: " + activateSentry);
+        } else {
+            logger.warn("Warning, no git revision found...");
+        }
 
         Server.start();
 
@@ -79,14 +117,17 @@ public class App {
 
     }
 
-
-    public String getHelloWorld() {
-        return "Hello World!";
+    private static void initLogger() {
+        logger.info("redPanda started.");
     }
+
 
     public static String readGitProperties() throws IOException {
         String gitRev = null;
         InputStream is = new App().getClass().getResourceAsStream("/git.properties");
+        if (is == null) {
+            return null;
+        }
         InputStreamReader isr = new InputStreamReader(is);
         BufferedReader br = new BufferedReader(isr);
         String line;

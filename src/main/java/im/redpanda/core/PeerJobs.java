@@ -90,7 +90,7 @@ public class PeerJobs extends Thread {
 //                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingDelay)) {
 
                     if ((p.isConnecting && p.getLastAnswered() > 10000)
-                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingTimeout)) {
+                            || (!p.isConnecting && p.getLastAnswered() > Settings.pingTimeout)) {
 
 //                        System.out.println("reason: " + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
 
@@ -104,7 +104,7 @@ public class PeerJobs extends Thread {
                             }
 
                             //todo: interrupt outbound thread?
-                        } else if (p.getLastAnswered() > Settings.pingTimeout * 1000 * 2) {
+                        } else if (p.getLastAnswered() > Settings.pingTimeout * 2) {
                             p.writeBuffer = null;
                             p.writeBufferCrypted = null;
                         }

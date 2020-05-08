@@ -5,6 +5,9 @@ pipeline {
             args '-v /root/.m2:/root/.m2'
         }
     }
+    triggers {
+        cron('@midnight')
+    }
     stages {
         stage('Build') {
             steps {

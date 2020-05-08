@@ -4,17 +4,22 @@ public abstract class GMContent {
 
     protected byte TYPE;
 
-    protected byte[] content;
+    private byte[] content;
+
 
     protected abstract void computeContent();
 
     public abstract GMType getGMType();
 
 
+    protected void setContent(byte[] content) {
+        this.content = content;
+    }
+
     public byte[] getContent() {
-        if (content == null) {
+        if (this.content == null) {
             computeContent();
         }
-        return content;
+        return this.content;
     }
 }

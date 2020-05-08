@@ -7,11 +7,8 @@ package im.redpanda.core;
 
 
 import com.google.flatbuffers.FlatBufferBuilder;
-import im.redpanda.App;
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
-import im.redpanda.commands.FBPublicKey;
-import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 import im.redpanda.jobs.Job;
@@ -21,7 +18,9 @@ import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
-import io.sentry.event.EventBuilder;
+import io.sentry.event.BreadcrumbBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -33,26 +32,21 @@ import java.nio.channels.SelectionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.SecureRandom;
-import java.sql.SQLOutput;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 
 /**
  * @author robin
  */
 public class ConnectionReaderThread extends Thread {
+
+    private static final Logger logger = LogManager.getLogger();
 
     public static int MAX_THREADS = 30;
     public static int STD_TIMEOUT = 10;
@@ -297,6 +291,10 @@ public class ConnectionReaderThread extends Thread {
         if (read == 0) {
             Log.putStd("dafuq 2332");
             peer.disconnect("dafuq 2332");
+            Sentry.getContext().recordBreadcrumb(
+                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
+            );
+            Log.sentry("read 0 bytes...");
             return;
         } else if (read == -1) {
             Log.put("closing connection " + peer.ip + ": not readable! ", 100);
@@ -776,9 +774,11 @@ public class ConnectionReaderThread extends Thread {
             if (othersTimestamp > Server.localSettings.getUpdateTimestamp() && !Settings.isSeedNode()) {
                 System.out.println("we got the update successfully, install it! timestamp: " + othersTimestamp);
 
+                logger.debug("obtained redpandaj update successfully");
 
-                System.out.println("signature found: " + Utils.bytesToHexString(signature) + " len: " + signature.length);
-                System.out.println("hash data: " + Sha256Hash.create(data));
+
+                logger.debug("signature found: " + Utils.bytesToHexString(signature) + " len: " + signature.length);
+                logger.debug("hash data: " + Sha256Hash.create(data));
 
                 //lets check the signature chunk:
                 NodeId nodeId = Updater.getPublicUpdaterKey();
@@ -792,22 +792,22 @@ public class ConnectionReaderThread extends Thread {
                 boolean verified = nodeId.verify(bytesToHash.array(), signature);
 
 
-                System.out.println("update verified: " + verified);
+                logger.debug("update verified: " + verified);
 
                 File file = new File("redpanda.jar");
                 long myCurrentVersionTimestamp = Server.localSettings.getUpdateTimestamp();
                 if (!file.exists()) {
-                    System.out.println("No jar to update found, exiting auto update!");
+                    logger.debug("No jar to update found, exiting auto update!");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
                 if (myCurrentVersionTimestamp >= othersTimestamp) {
-                    System.out.println("update not required our file is newer or equal, aborting...");
+                    logger.debug("update not required our file is newer or equal, aborting...");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
                 if (Server.localSettings.getUpdateTimestamp() >= othersTimestamp) {
-                    System.out.println("update not required our update timestamp is newer or equal, aborting...");
+                    logger.debug("update not required our update timestamp is newer or equal, aborting...");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
@@ -817,7 +817,7 @@ public class ConnectionReaderThread extends Thread {
                     try (FileOutputStream fos = new FileOutputStream("update")) {
                         fos.write(data);
                         //fos.close(); There is no more need for this line since you had created the instance of "fos" inside the try. And this will automatically close the OutputStream
-                        System.out.println("update store in update file");
+                        logger.debug("update store in update file");
 
                         File f = new File("update");
                         f.setLastModified(othersTimestamp);
