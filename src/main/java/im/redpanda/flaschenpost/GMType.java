@@ -2,7 +2,9 @@ package im.redpanda.flaschenpost;
 
 public enum GMType {
     GARLIC_MESSAGE(1),
-    CLIENT_MESSAGE(2),
+    FLASCHEN_POST(2),
+    CLIENT_MESSAGE(3),
+    ACK(4),
     ECHO(7),
     TEST(6);
 

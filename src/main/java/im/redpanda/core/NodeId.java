@@ -339,7 +339,7 @@ public class NodeId implements Serializable {
     }
 
     /**
-     * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes should ne be
+     * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes should not be
      * hashed by sha256 before using this method!
      *
      * @param bytesToVerify
@@ -387,7 +387,7 @@ public class NodeId implements Serializable {
 
     @Override
     public String toString() {
-        return kademliaId.toString();
+        return getKademliaId().toString();
     }
 }
 

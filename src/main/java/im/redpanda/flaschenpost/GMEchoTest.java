@@ -4,15 +4,13 @@ import java.nio.ByteBuffer;
 
 public class GMEchoTest extends GMContent {
 
-    protected byte TYPE = 1;
-
     @Override
     protected void computeContent() {
         String text = "test";
         ByteBuffer allocate = ByteBuffer.allocate(1 + text.length());
         allocate.put(getGMType().getId());
         allocate.put(text.getBytes());
-        content = allocate.array();
+        setContent(allocate.array());
     }
 
     @Override
