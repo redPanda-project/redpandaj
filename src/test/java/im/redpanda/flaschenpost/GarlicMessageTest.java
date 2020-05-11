@@ -1,9 +1,12 @@
 package im.redpanda.flaschenpost;
 
 import im.redpanda.core.NodeId;
+import im.redpanda.core.Server;
 import im.redpanda.crypt.Utils;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.nio.ByteBuffer;
 import java.security.Security;
 
 import static org.junit.Assert.*;
@@ -12,12 +15,14 @@ public class GarlicMessageTest {
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+        Server.nodeId = new NodeId();
     }
 
     @Test
     public void simpleCreationTest() {
 
-        NodeId targetId = new NodeId();
+        //lets target to ourselves without the private key!
+        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
 
         GMAck gmAck = new GMAck(123);
 
@@ -30,7 +35,11 @@ public class GarlicMessageTest {
 
         System.out.println("GM: " + Utils.bytesToHexString(content));
 
-        GMParser.parse(content);
+        GMContent parse = GMParser.parse(ByteBuffer.wrap(content));
+
+        assertNotNull(parse);
+
+        assertEquals(parse.getClass(), GarlicMessage.class);
 
 
     }

@@ -252,4 +252,10 @@ public class KademliaId implements Serializable {
         nodeDistance = getDistance(Server.NONCE);
         return nodeDistance;
     }
+
+    public static KademliaId fromBuffer(ByteBuffer buffer) {
+        byte[] bytes = new byte[ID_LENGTH_BYTES];
+        buffer.get(bytes);
+        return new KademliaId(bytes);
+    }
 }

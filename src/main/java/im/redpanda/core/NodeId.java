@@ -307,7 +307,7 @@ public class NodeId implements Serializable {
     public byte[] sign(byte[] bytesToSign) {
 
         if (getKeyPair() == null || getKeyPair().getPrivate() == null) {
-            return null;
+            throw new RuntimeException("this NodeId can not be used for signing since there is no private key!");
         }
         /*
          * Create a Signature object and initialize it with the private key
@@ -389,5 +389,14 @@ public class NodeId implements Serializable {
     public String toString() {
         return getKademliaId().toString();
     }
+
+
+    public static NodeId fromBufferGetPublic(ByteBuffer buffer) {
+        byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+        buffer.get(publicKeyBytes);
+
+        return NodeId.importPublic(publicKeyBytes);
+    }
+
 }
 

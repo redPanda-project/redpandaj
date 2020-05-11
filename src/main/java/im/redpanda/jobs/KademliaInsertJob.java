@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 
 import im.redpanda.core.*;
+import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.kademlia.PeerComparator;
@@ -141,7 +142,7 @@ public class KademliaInsertJob extends Job {
                             ByteBuffer allocate = ByteBuffer.allocate(kadContent.getSignature().length);
                             allocate.put(kadContent.getSignature());
                             allocate.flip();
-                            byte[] bytes = ConnectionReaderThread.readSignature(allocate);
+                            byte[] bytes = Utils.readSignature(allocate);
                             if (bytes.length != kadContent.getSignature().length) {
                                 throw new RuntimeException("could not read own signature......" + bytes.length);
                             }

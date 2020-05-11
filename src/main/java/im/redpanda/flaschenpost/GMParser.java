@@ -1,26 +1,44 @@
 package im.redpanda.flaschenpost;
 
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.NodeId;
+
 import java.nio.ByteBuffer;
 
 public class GMParser {
 
-    public static void parse(byte[] bytes) {
+    public static GMContent parse(ByteBuffer content) {
 
-        ByteBuffer wrap = ByteBuffer.wrap(bytes);
 
-        byte type = (byte) wrap.get();
+        byte type = (byte) content.get();
 
 
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
+            KademliaId kademliaId = new KademliaId();
+
+
+            GarlicMessage garlicMessage = new GarlicMessage(kademliaId, content);
+            garlicMessage.parseContent();
+
+            return garlicMessage;
 
         } else if (type == GMType.ACK.getId()) {
+
+            GMAck gmAck = new GMAck(content);
+            gmAck.parseContent();
+
+            System.out.println("obtained ack id: " + gmAck.getAckid());
+
+
+
             //            GMAck.
 //
 //            System.out.println("obtained GM ack for id: " + );
+            return gmAck;
         }
 
-
+        throw new RuntimeException("Unknown GMType at parsing: " + type);
     }
 
 }

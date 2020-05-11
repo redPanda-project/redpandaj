@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -560,5 +561,19 @@ public class Utils {
                 (absSeconds % 3600) / 60,
                 absSeconds % 60);
         return seconds < 0 ? "-" + positive : positive;
+    }
+
+    public static byte[] readSignature(ByteBuffer readBuffer) {
+        //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
+        readBuffer.get();
+        int lenOfSignature = ((int) readBuffer.get()) + 2;
+        readBuffer.position(readBuffer.position() - 2);
+
+        byte[] signature = new byte[lenOfSignature];
+        if (readBuffer.remaining() < lenOfSignature) {
+            return null;
+        }
+        readBuffer.get(signature);
+        return signature;
     }
 }

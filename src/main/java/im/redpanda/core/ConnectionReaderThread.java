@@ -750,7 +750,7 @@ public class ConnectionReaderThread extends Thread {
             long othersTimestamp = readBuffer.getLong();
             int toReadBytes = readBuffer.getInt();
 
-            byte[] signature = readSignature(readBuffer);
+            byte[] signature = Utils.readSignature(readBuffer);
             if (signature == null) {
                 return 0;
             }
@@ -1073,7 +1073,7 @@ public class ConnectionReaderThread extends Thread {
             int toReadBytes = readBuffer.getInt();
 
 
-            byte[] signature = readSignature(readBuffer);
+            byte[] signature = Utils.readSignature(readBuffer);
             if (signature == null) {
                 return 0;
             }
@@ -1225,7 +1225,7 @@ public class ConnectionReaderThread extends Thread {
 
             int signatureLenInBuffer = readBuffer.getInt();
 
-            byte[] signatureBytes = readSignature(readBuffer);
+            byte[] signatureBytes = Utils.readSignature(readBuffer);
             if (signatureBytes == null) {
                 return 0;
             }
@@ -1367,7 +1367,7 @@ public class ConnectionReaderThread extends Thread {
                 return 0;
             }
 
-            byte[] signatureBytes = readSignature(readBuffer);
+            byte[] signatureBytes = Utils.readSignature(readBuffer);
             if (signatureBytes == null) {
                 return 0;
             }
@@ -1656,20 +1656,6 @@ public class ConnectionReaderThread extends Thread {
         }
         byteBuffer.position(byteBuffer.position() + length);
         return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
-    }
-
-    public static byte[] readSignature(ByteBuffer readBuffer) {
-        //second byte of encoding gives the remaining bytes of the signature, cf. eg. https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
-        readBuffer.get();
-        int lenOfSignature = ((int) readBuffer.get()) + 2;
-        readBuffer.position(readBuffer.position() - 2);
-
-        byte[] signature = new byte[lenOfSignature];
-        if (readBuffer.remaining() < lenOfSignature) {
-            return null;
-        }
-        readBuffer.get(signature);
-        return signature;
     }
 
 }

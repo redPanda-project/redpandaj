@@ -4,10 +4,19 @@ import java.nio.ByteBuffer;
 
 public class GMAck extends GMContent {
 
-    final int ackid;
+    int ackid;
 
     public GMAck(int ackid) {
         this.ackid = ackid;
+    }
+
+    public GMAck(ByteBuffer buffer) {
+
+        byte[] content = new byte[4];
+
+        buffer.get(content);
+
+        setContent(content);
     }
 
     @Override
@@ -16,7 +25,13 @@ public class GMAck extends GMContent {
         allocate.put(getGMType().getId());
         allocate.putInt(ackid);
 
+        System.out.println("ack gm type: " + getGMType().getId());
+
         setContent(allocate.array());
+    }
+
+    protected void parseContent() {
+        ackid = ByteBuffer.wrap(getContent()).getInt();
     }
 
     @Override
@@ -31,5 +46,9 @@ public class GMAck extends GMContent {
 //        return new GMAck(ackId);
 //    }
 
+
+    public int getAckid() {
+        return ackid;
+    }
 }
 
