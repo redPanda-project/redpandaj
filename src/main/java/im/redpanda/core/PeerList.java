@@ -320,6 +320,12 @@ public class PeerList {
             System.out.println("last successful lock of peerlist: " + stack);
         }
 
+        @Override
+        public void unlock() {
+            super.unlock();
+            System.out.println("unlock successfully!");
+        }
+
         public String getStack() {
             return stack;
         }
