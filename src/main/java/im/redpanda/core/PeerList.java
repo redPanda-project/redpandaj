@@ -41,7 +41,7 @@ public class PeerList {
     /**
      * ReadWriteLock for peerlist peerArrayList and Buckets
      */
-    private static MyReentrantReadWriteLock readWriteLock;
+    private static ReadWriteLock readWriteLock;
 
     /**
      * Buckets for the Kademlia routing
@@ -54,7 +54,7 @@ public class PeerList {
         peerlistIpPort = new HashMap<>();
         blacklistIp = new HashMap<>();
         peerArrayList = new ArrayList<>();
-        readWriteLock = new MyReentrantReadWriteLock();
+        readWriteLock = new ReentrantReadWriteLock();
         buckets = new ArrayList[KademliaId.ID_LENGTH];
         bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     }
@@ -245,7 +245,7 @@ public class PeerList {
         }
     }
 
-    public static MyReentrantReadWriteLock getReadWriteLock() {
+    public static ReadWriteLock getReadWriteLock() {
         return readWriteLock;
     }
 
@@ -292,43 +292,43 @@ public class PeerList {
 
     }
 
-    public static class MyReentrantReadWriteLock implements ReadWriteLock {
-
-        private MyReentrantLock lock = new MyReentrantLock();
-
-        public ReentrantLock writeLock() {
-            return lock;
-        }
-
-
-        public ReentrantLock readLock() {
-            return lock;
-        }
-    }
-
-    public static class MyReentrantLock extends ReentrantLock {
-
-        private String stack = "";
-
-        @Override
-        public void lock() {
-            String stack = "";
-            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-                stack += e.toString() + "\n";
-            }
-            super.lock();
-            System.out.println("last successful lock of peerlist: " + stack);
-        }
-
-        @Override
-        public void unlock() {
-            super.unlock();
-            System.out.println("unlock successfully!");
-        }
-
-        public String getStack() {
-            return stack;
-        }
-    }
+//    public static class MyReentrantReadWriteLock implements ReadWriteLock {
+//
+//        private MyReentrantLock lock = new MyReentrantLock();
+//
+//        public ReentrantLock writeLock() {
+//            return lock;
+//        }
+//
+//
+//        public ReentrantLock readLock() {
+//            return lock;
+//        }
+//    }
+//
+//    public static class MyReentrantLock extends ReentrantLock {
+//
+//        private String stack = "";
+//
+//        @Override
+//        public void lock() {
+//            String stack = "";
+//            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+//                stack += e.toString() + "\n";
+//            }
+//            super.lock();
+//            System.out.println("last successful lock of peerlist: " + stack);
+//        }
+//
+//        @Override
+//        public void unlock() {
+//            super.unlock();
+//            System.out.println("unlock successfully!");
+//        }
+//
+//        public String getStack() {
+//            return stack;
+//        }
+//    }
 
 }
