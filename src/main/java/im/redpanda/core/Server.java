@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
@@ -26,7 +27,7 @@ public class Server {
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
-    public static ReentrantReadWriteLock peerListLock;
+    public static ReadWriteLock peerListLock;
     public static int outBytes = 0;
     public static int inBytes = 0;
     public static ConnectionHandler connectionHandler;

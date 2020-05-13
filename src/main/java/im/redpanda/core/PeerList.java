@@ -2,6 +2,8 @@ package im.redpanda.core;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -39,7 +41,7 @@ public class PeerList {
     /**
      * ReadWriteLock for peerlist peerArrayList and Buckets
      */
-    private static ReentrantReadWriteLock readWriteLock;
+    private static MyReentrantReadWriteLock readWriteLock;
 
     /**
      * Buckets for the Kademlia routing
@@ -52,7 +54,7 @@ public class PeerList {
         peerlistIpPort = new HashMap<>();
         blacklistIp = new HashMap<>();
         peerArrayList = new ArrayList<>();
-        readWriteLock = new ReentrantReadWriteLock();
+        readWriteLock = new MyReentrantReadWriteLock();
         buckets = new ArrayList[KademliaId.ID_LENGTH];
         bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     }
@@ -243,7 +245,7 @@ public class PeerList {
         }
     }
 
-    public static ReentrantReadWriteLock getReadWriteLock() {
+    public static MyReentrantReadWriteLock getReadWriteLock() {
         return readWriteLock;
     }
 
@@ -289,4 +291,38 @@ public class PeerList {
         }
 
     }
+
+    public static class MyReentrantReadWriteLock implements ReadWriteLock {
+
+        private MyReentrantLock lock = new MyReentrantLock();
+
+        public ReentrantLock writeLock() {
+            return lock;
+        }
+
+
+        public ReentrantLock readLock() {
+            return lock;
+        }
+    }
+
+    public static class MyReentrantLock extends ReentrantLock {
+
+        private String stack = "";
+
+        @Override
+        public void lock() {
+            String stack = "";
+            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+                stack += e.toString() + "\n";
+            }
+            System.out.println("last lock of peerlist: " + stack);
+            super.lock();
+        }
+
+        public String getStack() {
+            return stack;
+        }
+    }
+
 }
