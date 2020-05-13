@@ -316,8 +316,8 @@ public class PeerList {
             for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
                 stack += e.toString() + "\n";
             }
-            System.out.println("last lock of peerlist: " + stack);
             super.lock();
+            System.out.println("last successful lock of peerlist: " + stack);
         }
 
         public String getStack() {
