@@ -131,7 +131,7 @@ public class PeerInHandshakeTest {
 //
 //        Server.connectionHandler.selectorLock.unlock();
         } finally {
-            connectionHandler.selectorLock.lock();
+            connectionHandler.selectorLock.unlock();
         }
 
 
