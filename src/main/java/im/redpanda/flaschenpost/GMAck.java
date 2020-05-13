@@ -25,8 +25,6 @@ public class GMAck extends GMContent {
         allocate.put(getGMType().getId());
         allocate.putInt(ackid);
 
-        System.out.println("ack gm type: " + getGMType().getId());
-
         setContent(allocate.array());
     }
 

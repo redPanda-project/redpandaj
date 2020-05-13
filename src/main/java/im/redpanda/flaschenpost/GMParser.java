@@ -28,7 +28,7 @@ public class GMParser {
             GMAck gmAck = new GMAck(content);
             gmAck.parseContent();
 
-            System.out.println("obtained ack id: " + gmAck.getAckid());
+//            System.out.println("obtained ack id: " + gmAck.getAckid());
 
 
 

@@ -325,7 +325,7 @@ public class NodeId implements Serializable {
              */
 
             byte[] realSig = ecdsa.sign();
-            System.out.println("Signature: " + Utils.bytesToHexString(realSig));
+//            System.out.println("Signature: " + Utils.bytesToHexString(realSig));
 
             return realSig;
 

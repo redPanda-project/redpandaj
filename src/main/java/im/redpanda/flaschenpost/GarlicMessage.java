@@ -14,6 +14,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.util.ArrayList;
+import java.util.List;
 
 public class GarlicMessage extends Flaschenpost {
 
@@ -91,6 +92,11 @@ public class GarlicMessage extends Flaschenpost {
         nestedMessages.add(gmContent);
     }
 
+    public List<GMContent> getGMContent() {
+        return nestedMessages;
+    }
+
+
     @Override
     protected void computeContent() {
 
@@ -143,8 +149,6 @@ public class GarlicMessage extends Flaschenpost {
 
             setContent(encryptedAndSignedBytes.array());
 
-
-            System.out.println("set content!");
 
         } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             Log.sentry(e);
@@ -206,7 +210,7 @@ public class GarlicMessage extends Flaschenpost {
 
             SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
 
-            System.out.println("shared secret: " + Utils.bytesToHexString(intermediateSharedSecret.getEncoded()));
+//            System.out.println("shared secret: " + Utils.bytesToHexString(intermediateSharedSecret.getEncoded()));
 
             return intermediateSharedSecret;
         } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException e) {
