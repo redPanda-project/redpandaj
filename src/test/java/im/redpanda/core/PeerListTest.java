@@ -9,11 +9,16 @@ import static org.junit.Assert.*;
 public class PeerListTest {
 
     @Test
-    public void add() {
+    public void add() throws InterruptedException {
 
         Peer mtestip = new Peer("mtestip", 5);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+        boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
+
+        if (!b) {
+            System.out.println("lock no possible for add test");
+            return;
+        }
 
         int initSize = PeerList.size();
         PeerList.add(mtestip);
@@ -39,6 +44,7 @@ public class PeerListTest {
         boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
 
         if (!b) {
+            System.out.println("lock no possible for addWithSameKadId test");
             return;
         }
 
@@ -60,6 +66,7 @@ public class PeerListTest {
         boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
 
         if (!b) {
+            System.out.println("lock no possible for remove test");
             return;
         }
 
