@@ -2,6 +2,8 @@ package im.redpanda.core;
 
 import org.junit.Test;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
@@ -16,7 +18,12 @@ public class PeerListTest {
         boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
 
         if (!b) {
-            System.out.println("lock no possible for add test");
+            ThreadInfo[] threads = ManagementFactory.getThreadMXBean()
+                    .dumpAllThreads(true, true);
+            for (ThreadInfo info : threads) {
+                System.out.print(info);
+            }
+            System.out.println("lock not possible for add test");
             return;
         }
 
