@@ -67,8 +67,8 @@ public class PoolTest {
             byteBuffer.putInt(1);
             pool.returnObject(1, byteBuffer);
 
-            System.out.println("Free memory (bytes): " +
-                    (Runtime.getRuntime().freeMemory() /1024./1024.));
+//            System.out.println("Free memory (bytes): " +
+//                    (Runtime.getRuntime().freeMemory() /1024./1024.));
 
         }
 

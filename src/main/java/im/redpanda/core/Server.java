@@ -35,6 +35,7 @@ public class Server {
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     public static NodeStore nodeStore;
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
+    public static boolean startedUpSuccessful = false;
 
     public static SecureRandom secureRandom = new SecureRandom();
     public static Random random = new Random();
@@ -145,6 +146,8 @@ public class Server {
         PeerJobs.startUp();
 
         new HTTPServer().start();
+
+        startedUpSuccessful = true;
     }
 
     public static void shutdown() {
