@@ -153,13 +153,13 @@ public class ParseCommandTest {
 //            System.out.println("node id: " + testpeer1.getNodeId().getKademliaId().toString());
             PeerList.add(testpeer1);
         }
-        PeerList.getReadWriteLock().writeLock().unlock();
+//        PeerList.getReadWriteLock().writeLock().unlock();
 
         Peer me = getPeerForDebug();
 
         ConnectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+//        PeerList.getReadWriteLock().writeLock().lock();
 
         PeerList.clear();
 
