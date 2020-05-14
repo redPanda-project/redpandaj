@@ -77,6 +77,7 @@ public class OutboundHandler extends Thread {
             try {
                 int actCons = 0;
                 int connectingCons = 0;
+                int newConnections = 0;
                 for (Peer peer : peerList) {
                     if (peer.isConnected()) {
                         actCons++;
@@ -96,6 +97,10 @@ public class OutboundHandler extends Thread {
 
 
                     cnt++;
+
+                    if (newConnections >= 10) {
+                        break;
+                    }
 
                     if (actCons >= Settings.MIN_CONNECTIONS) {
 
@@ -215,12 +220,18 @@ public class OutboundHandler extends Thread {
 
                         Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 150);
 
-                        connectTo(peer);
+                        boolean success = connectTo(peer);
                         actCons++;
-                        try {
-                            sleep(200);
-                        } catch (InterruptedException ex) {
+                        newConnections++;
+                        if (!success) {
+                            //if the connect method was not successful we had to wait longer than normally,
+                            // thus we should release the peerlist lock sooner...
+                            newConnections += 5;
                         }
+//                        try {
+//                            sleep(200);
+//                        } catch (InterruptedException ex) {
+//                        }
 
                     } else {
                         System.out.println("connect state: " + peer.connectAble + " -- " + peer.ip + ":" + peer.port);
@@ -280,7 +291,7 @@ public class OutboundHandler extends Thread {
     }
 
 
-    private static void connectTo(final Peer peer) {
+    private static boolean connectTo(final Peer peer) {
 
         peer.retries++;
         peer.isConnecting = true;
@@ -292,10 +303,9 @@ public class OutboundHandler extends Thread {
         int retries = 0;
         if (byKademliaId != null) {
             retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+            peer.retries = retries;
+            //todo if retries to high disconnect?
         }
-
-        //todo if retries to high disconnect?
-        peer.retries = retries;
 
 
         try {
@@ -321,12 +331,14 @@ public class OutboundHandler extends Thread {
 
             peerInHandshake.addConnection(alreadyConnected);
 
+            return true;
         } catch (UnknownHostException ex) {
             System.out.println("outgoing con failed, unknown host...");
         } catch (Exception ex) {
             ex.printStackTrace();
-            Log.put("outgoing con failed...", 0);
+            Log.put("outgoing con failed... " + peer.ip, 0);
         }
+        return false;
     }
 
 

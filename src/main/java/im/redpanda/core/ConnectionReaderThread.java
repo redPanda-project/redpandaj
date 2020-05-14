@@ -1117,15 +1117,6 @@ public class ConnectionReaderThread extends Thread {
 
                 System.out.println("update verified: " + verify);
 
-                File file = new File("android.apk");
-                long myCurrentVersionTimestamp = file.lastModified();
-
-                if (myCurrentVersionTimestamp >= othersTimestamp) {
-                    System.out.println("update not required, aborting...");
-                    return 1 + 8 + 4 + signatureLen + data.length;
-                }
-
-
                 if (verify) {
 
                     try (FileOutputStream fos = new FileOutputStream("android.apk")) {

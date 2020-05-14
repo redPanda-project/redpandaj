@@ -282,6 +282,13 @@ public class Peer implements Comparable<Peer>, Serializable {
 
         a += -retries * 200;
 
+        if (node != null) {
+            a += 5000;
+
+            a -= node.getGmTestsFailed() * 3;
+            a += node.getGmTestsSuccessful() * 5;
+        }
+
         return a;
     }
 

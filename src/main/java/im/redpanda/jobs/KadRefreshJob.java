@@ -6,8 +6,7 @@ public class KadRefreshJob extends Job {
 
 
     public KadRefreshJob() {
-        permanent = true;
-        reRunDelay = 1000L * 60L * 60L * 1L; // 1 hr
+        super(1000L * 60L * 60L * 1L, true);
     }
 
     @Override

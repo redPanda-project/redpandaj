@@ -8,9 +8,7 @@ import static org.junit.Assert.*;
 public class PeerTest {
 
     static {
-
         Server.NONCE = new KademliaId();
-
     }
 
     @Test

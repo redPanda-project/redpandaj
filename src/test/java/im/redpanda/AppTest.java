@@ -30,10 +30,10 @@ public class AppTest {
         assertTrue(true);
     }
 
-    @Test
-    public void testSentry() {
-        Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-    }
+//    @Test
+//    public void testSentry() {
+//        Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+//    }
 
 //    @Test
 //    public void testMapDB() throws InterruptedException {

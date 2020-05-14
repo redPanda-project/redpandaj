@@ -124,7 +124,18 @@
                     <version>2.22.1</version>
                     <configuration>
                         <trimStackTrace>false</trimStackTrace>
+                        <properties>
+                            <property>
+                                <name>listener</name>
+                                <value>im.redpanda.core.TestListener</value>
+                            </property>
+                        </properties>
+
+                        <reuseForks>false</reuseForks>
+                        <forkCount>1</forkCount>
+
                     </configuration>
+
                 </plugin>
 
                 <plugin>

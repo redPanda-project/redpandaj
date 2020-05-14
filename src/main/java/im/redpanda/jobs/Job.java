@@ -15,8 +15,8 @@ public abstract class Job implements Runnable {
     public static final Random rand = new Random();
 
 
-    protected long reRunDelay = 500L; //default value
-    protected boolean permanent = false;
+    private long reRunDelay = 500L; //default value
+    private boolean permanent = false;
 
     private int jobId = -1;
     private int runCounter = 0;
