@@ -193,6 +193,8 @@ public class ParseCommandTest {
 
         assertTrue(PeerList.size() - initPeerListSize == peersToTest);
 
+        PeerList.clear();
+
         PeerList.getReadWriteLock().writeLock().unlock();
 
     }

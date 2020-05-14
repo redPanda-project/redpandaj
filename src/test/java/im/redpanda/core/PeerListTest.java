@@ -1,7 +1,9 @@
 package im.redpanda.core;
 
+import org.junit.After;
 import org.junit.Test;
 
+import javax.annotation.concurrent.NotThreadSafe;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;
@@ -109,5 +111,16 @@ public class PeerListTest {
 
     @Test
     public void size() {
+    }
+
+
+    @Test
+    public void getGoodPeerInstanceTest() {
+        TestHelper.startInstance();
+
+        Peer goodPeer = PeerList.getGoodPeer();
+        assertNotNull(goodPeer);
+
+        TestHelper.stopInstance();
     }
 }

@@ -130,6 +130,10 @@
                                 <value>im.redpanda.core.TestListener</value>
                             </property>
                         </properties>
+
+                        <reuseForks>false</reuseForks>
+                        <forkCount>1</forkCount>
+
                     </configuration>
 
                 </plugin>
