@@ -1,8 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
-import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.jobs.PeerCheckGarlicMesssageScheldulerJob;
 import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -14,7 +13,6 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Server {
 
@@ -149,6 +147,9 @@ public class Server {
         new HTTPServer().start();
 
         startedUpSuccessful = true;
+
+        new PeerCheckGarlicMesssageScheldulerJob().start();
+
     }
 
     public static void shutdown() {

@@ -7,11 +7,9 @@ import static org.junit.Assert.*;
 
 public class PeerTest {
 
-//    static {
-//
-//        Server.NONCE = new KademliaId();
-//
-//    }
+    static {
+        Server.NONCE = new KademliaId();
+    }
 
     @Test
     public void getNodeId() {

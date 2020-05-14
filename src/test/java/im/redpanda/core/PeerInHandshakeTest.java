@@ -27,10 +27,10 @@ public class PeerInHandshakeTest {
 
         Log.LEVEL = 10000;
 
-//        ConnectionHandler connectionHandler = new ConnectionHandler(false);
-//        connectionHandler.start();
+        ConnectionHandler connectionHandler = new ConnectionHandler(false);
+        connectionHandler.start();
 
-        ConnectionHandler connectionHandler = Server.connectionHandler;
+//        ConnectionHandler connectionHandler = Server.connectionHandler;
 
 
         //lets block the main selector worker
@@ -131,7 +131,7 @@ public class PeerInHandshakeTest {
 //
 //        Server.connectionHandler.selectorLock.unlock();
         } finally {
-            connectionHandler.selectorLock.unlock();
+//            connectionHandler.selectorLock.unlock();
         }
 
 

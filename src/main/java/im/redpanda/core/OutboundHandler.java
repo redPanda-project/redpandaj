@@ -292,10 +292,9 @@ public class OutboundHandler extends Thread {
         int retries = 0;
         if (byKademliaId != null) {
             retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+            peer.retries = retries;
+            //todo if retries to high disconnect?
         }
-
-        //todo if retries to high disconnect?
-        peer.retries = retries;
 
 
         try {
@@ -325,7 +324,7 @@ public class OutboundHandler extends Thread {
             System.out.println("outgoing con failed, unknown host...");
         } catch (Exception ex) {
             ex.printStackTrace();
-            Log.put("outgoing con failed...", 0);
+            Log.put("outgoing con failed... " + peer.ip, 0);
         }
     }
 
