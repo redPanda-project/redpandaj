@@ -1,7 +1,6 @@
 package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
-import im.redpanda.jobs.PeerCheckGarlicMesssageScheldulerJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
@@ -149,8 +148,6 @@ public class Server {
         new HTTPServer().start();
 
         startedUpSuccessful = true;
-
-        new PeerCheckGarlicMesssageScheldulerJob().start();
 
     }
 

@@ -1,6 +1,5 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.Command;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.Server;
@@ -22,7 +21,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
     @Override
     public void init() {
 
-        System.out.println("we are creating a falschenpost to monitor other peers...");
+        System.out.println("we are creating a Flaschenpost to monitor other peers...");
 
 
         //lets target to ourselves without the private key!

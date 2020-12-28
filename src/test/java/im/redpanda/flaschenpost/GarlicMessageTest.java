@@ -2,8 +2,6 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Server;
-import im.redpanda.crypt.Utils;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
