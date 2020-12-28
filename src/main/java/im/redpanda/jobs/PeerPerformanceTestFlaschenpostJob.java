@@ -1,18 +1,13 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Peer;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
-import im.redpanda.flaschenpost.GMContent;
-import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.GarlicMessage;
-
-import java.nio.ByteBuffer;
 
 public class PeerPerformanceTestFlaschenpostJob extends Job {
 
     Peer peer;
+    boolean success = false;
 
     public PeerPerformanceTestFlaschenpostJob(Peer peer) {
         this.peer = peer;
@@ -20,6 +15,8 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
     @Override
     public void init() {
+
+        cleanPeerChecks();
 
         System.out.println("we are creating a Flaschenpost to monitor other peers...");
 
@@ -34,18 +31,16 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
         byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(ByteBuffer.wrap(content));
+        if (!peer.isConnected() || peer.getNode() == null) {
+            return;
+        }
 
         peer.getWriteBufferLock().lock();
         try {
-//            peer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-//            peer.getWriteBuffer().putInt(garlicMessage.);
-////            peer.getWriteBuffer().put(kadContent.getId().getBytes());
-//            peer.getWriteBuffer().putLong(kadContent.getTimestamp());
-//            peer.getWriteBuffer().put(kadContent.getPubkey());
-//            peer.getWriteBuffer().putInt(kadContent.getContent().length);
-//            peer.getWriteBuffer().put(kadContent.getContent());
-//            peer.getWriteBuffer().put(kadContent.getSignature());
+            peer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
+            peer.getWriteBuffer().putInt(content.length);
+            peer.getWriteBuffer().put(content);
+            peer.setWriteBufferFilled();
         } finally {
             peer.getWriteBufferLock().unlock();
         }
@@ -53,9 +48,41 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
     }
 
+    private void cleanPeerChecks() {
+        Node node = peer.getNode();
+        if (node != null) {
+            if (node.getGmTestsFailed() > 200) {
+                node.setGmTestsFailed(200);
+            }
+
+            if (node.getGmTestsSuccessful() > 200) {
+                node.setGmTestsSuccessful(200);
+                if (node.getGmTestsFailed() > 0) {
+                    node.setGmTestsFailed(node.getGmTestsFailed() - 1);
+                    node.setGmTestsSuccessful(100);
+                }
+            }
+
+        }
+    }
+
     @Override
     public void work() {
+    }
 
+    @Override
+    public void done() {
+        super.done();
+        if (success) {
+            peer.getNode().increaseGmTestsSuccessful();
+        } else {
+            peer.getNode().increaseGmTestsFailed();
+        }
 
+    }
+
+    public void success() {
+        success = true;
+        done();
     }
 }

@@ -11,7 +11,7 @@ public class Node implements Serializable {
     private static final Logger logger = LogManager.getLogger();
 
     private static final long serialVersionUID = 43L;
-    private NodeId nodeId;
+    private final NodeId nodeId;
     private long lastSeen;
     private ArrayList<ConnectionPoint> connectionPoints;
     private int gmTestsSuccessful = 0;
@@ -192,6 +192,14 @@ public class Node implements Serializable {
 
     public void setGmTestsFailed(int gmTestsFailed) {
         this.gmTestsFailed = gmTestsFailed;
+    }
+
+    public void increaseGmTestsFailed() {
+        this.gmTestsFailed++;
+    }
+
+    public void increaseGmTestsSuccessful() {
+        this.gmTestsSuccessful++;
     }
 }
 

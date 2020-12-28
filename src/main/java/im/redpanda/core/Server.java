@@ -62,7 +62,7 @@ public class Server {
 
         //this is a permanent job and will run every hour...
         new KadRefreshJob().start();
-        new PeerPerformanceTestSchedulerJob().start();
+
 
     }
 
@@ -148,6 +148,8 @@ public class Server {
         new HTTPServer().start();
 
         startedUpSuccessful = true;
+
+        new PeerPerformanceTestSchedulerJob().start();
 
     }
 
