@@ -184,7 +184,7 @@ public class KademliaSearchJob extends Job {
                             askedPeers++;
 
 
-                            System.out.println("seach KadId from peer: " + p.getNodeId().toString() + " size: " + peers.size() + " distance: " + id.getDistance(p.getKademliaId()) + " target: " + id);
+                            System.out.println("search KadId from peer: " + p.getNodeId().toString() + " size: " + peers.size() + " distance: " + id.getDistance(p.getKademliaId()) + " target: " + id);
 
 
                             writeBuffer.put(Command.KADEMLIA_GET);

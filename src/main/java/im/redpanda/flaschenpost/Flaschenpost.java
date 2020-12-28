@@ -26,12 +26,12 @@ public abstract class Flaschenpost extends GMContent {
      * process of the FPStoreManager.
      */
     protected long timestamp;
+
     /**
      * Byte representation of the encrypted content. This should be created after the encryption process and is used
      * to transmit the Flaschenpost over the wire.
      */
     //protected byte[] content;
-
     public int getId() {
         return id;
     }
@@ -50,6 +50,9 @@ public abstract class Flaschenpost extends GMContent {
         this.destination = destination;
         this.id = Server.random.nextInt();
         this.timestamp = System.currentTimeMillis();
+    }
+
+    public Flaschenpost() {
     }
 
     public static void put(KademliaId destination, byte[] content) {
@@ -97,6 +100,10 @@ public abstract class Flaschenpost extends GMContent {
 
     @Override
     protected void computeContent() {
-        
+
+    }
+
+    public boolean isTargetedToUs() {
+        return (destination.equals(Server.nodeId.getKademliaId()));
     }
 }

@@ -19,7 +19,7 @@ public class FlaschenpostTest {
     public void simpleTargetTest() {
         NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
 
-        GMAck gmAck = new GMAck(123);
+        GMAck gmAck = new GMAck();
 
         GarlicMessage garlicMessage = new GarlicMessage(targetId);
 

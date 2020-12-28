@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.PeerCheckGarlicMesssageScheldulerJob;
+import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -62,6 +63,7 @@ public class Server {
 
         //this is a permanent job and will run every hour...
         new KadRefreshJob().start();
+        new PeerPerformanceTestSchedulerJob().start();
 
     }
 

@@ -15,11 +15,8 @@ public class GMParser {
 
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
-            KademliaId kademliaId = new KademliaId();
-
-
-            GarlicMessage garlicMessage = new GarlicMessage(kademliaId, content);
-            garlicMessage.parseContent();
+            GarlicMessage garlicMessage = new GarlicMessage(content);
+            garlicMessage.tryParseContent();
 
             return garlicMessage;
 
@@ -29,7 +26,6 @@ public class GMParser {
             gmAck.parseContent();
 
 //            System.out.println("obtained ack id: " + gmAck.getAckid());
-
 
 
             //            GMAck.

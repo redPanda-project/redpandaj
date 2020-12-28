@@ -1,5 +1,7 @@
 package im.redpanda.flaschenpost;
 
+import im.redpanda.core.Server;
+
 import java.nio.ByteBuffer;
 
 public class GMAck extends GMContent {
@@ -8,6 +10,10 @@ public class GMAck extends GMContent {
 
     public GMAck(int ackid) {
         this.ackid = ackid;
+    }
+
+    public GMAck() {
+        this.ackid = Server.random.nextInt();
     }
 
     public GMAck(ByteBuffer buffer) {
