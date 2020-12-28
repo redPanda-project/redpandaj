@@ -1,17 +1,33 @@
 package im.redpanda.core;
 
+import org.junit.After;
 import org.junit.Test;
+
+import javax.annotation.concurrent.NotThreadSafe;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
 
 public class PeerListTest {
 
     @Test
-    public void add() {
+    public void add() throws InterruptedException {
 
         Peer mtestip = new Peer("mtestip", 5);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+        boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
+
+        if (!b) {
+            ThreadInfo[] threads = ManagementFactory.getThreadMXBean()
+                    .dumpAllThreads(true, true);
+            for (ThreadInfo info : threads) {
+                System.out.print(info);
+            }
+            System.out.println("lock not possible for add test");
+            return;
+        }
 
         int initSize = PeerList.size();
         PeerList.add(mtestip);
@@ -26,7 +42,7 @@ public class PeerListTest {
     }
 
     @Test
-    public void addWithSameKadId() {
+    public void addWithSameKadId() throws InterruptedException {
         //different Ips but same KadId
         KademliaId kademliaId = new KademliaId();
         NodeId nodeId = new NodeId(kademliaId);
@@ -34,7 +50,12 @@ public class PeerListTest {
         Peer peerWithKadId1 = new Peer("mtestip1", 5, nodeId);
         Peer peerWithKadId2 = new Peer("mtestip2", 6, nodeId);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+        boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
+
+        if (!b) {
+            System.out.println("lock no possible for addWithSameKadId test");
+            return;
+        }
 
         int initSize = PeerList.size();
         PeerList.add(peerWithKadId1);
@@ -47,11 +68,16 @@ public class PeerListTest {
     }
 
     @Test
-    public void remove() {
+    public void remove() throws InterruptedException {
 
         Peer toRemovePeerIp = new Peer("toRemovePeerIp", 5);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+        boolean b = PeerList.getReadWriteLock().writeLock().tryLock(5, TimeUnit.SECONDS);
+
+        if (!b) {
+            System.out.println("lock no possible for remove test");
+            return;
+        }
 
         int initSize = PeerList.size();
         PeerList.add(toRemovePeerIp);
@@ -85,5 +111,16 @@ public class PeerListTest {
 
     @Test
     public void size() {
+    }
+
+
+    @Test
+    public void getGoodPeerInstanceTest() {
+        TestHelper.startInstance();
+
+        Peer goodPeer = PeerList.getGoodPeer();
+        assertNotNull(goodPeer);
+
+        TestHelper.stopInstance();
     }
 }

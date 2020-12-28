@@ -26,4 +26,8 @@ public class Command {
     public static final byte KADEMLIA_GET_ANSWER = (byte) 122;
     public static final byte JOB_ACK = (byte) 130;
 
+    //flaschenpost
+    public static final byte FLASCHENPOST_PUT = (byte) 141;
+
+
 }

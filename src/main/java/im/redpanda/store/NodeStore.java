@@ -7,6 +7,7 @@ import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
+import java.io.File;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -91,9 +92,18 @@ public class NodeStore {
 
     public void saveToDisk() {
 
-        offHeap.clearWithExpire();
-        onHeap.clearWithExpire();
-        offHeap.clearWithExpire();
+        try {
+            offHeap.clearWithExpire();
+            onHeap.clearWithExpire();
+            offHeap.clearWithExpire();
+        } catch (Throwable e) {
+            System.out.println("NodeStore may be broken here we have to close and reopen the store...");
+
+            close();
+            new File("data/nodeids" + Server.MY_PORT + ".mapdb").delete();
+            Server.nodeStore = new NodeStore();
+
+        }
 
 //        System.out.println("save to disk: " + onHeap.size() + " " + offHeap.size() + " " + onDisk.size());
 

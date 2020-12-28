@@ -15,8 +15,7 @@ public class KademliaSearchJobHousekeeper extends Job {
      * This Job maintains the kademliaIdSearchBlacklist from the KademliaSearchJob class.
      */
     public KademliaSearchJobHousekeeper() {
-        permanent = true;
-        reRunDelay = 1000L * 60L * 10L; // 10 mins
+        super(1000L * 60L * 10L, true);
     }
 
     @Override

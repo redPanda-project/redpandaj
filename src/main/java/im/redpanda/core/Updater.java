@@ -24,7 +24,7 @@ public class Updater {
 
     public static NodeId getPublicUpdaterKey() {
         try {
-            return NodeId.importPublic(Base58.decode("N3Zu35JfCBtt3d9AfoUqgkrLQa7y4t462ZBfF2bGrLM1bdhWu6WaieEKYjx93YeaWh66xSqmD7c3MTCMTzSHSe3J"));
+            return NodeId.importPublic(Base58.decode("NUVqGoHFTGYRfP1TRHvCji3QkqonrA4fFJpDSbghDwJoBVV3VLNpqzS7nxMeMBfbELknyGvn2JLrNY67tbZqqLw3"));
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }

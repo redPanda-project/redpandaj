@@ -179,7 +179,7 @@ public class ConnectionHandler extends Thread {
             }
 
             //Log.putStd("1: " + df.format((double)(System.nanoTime() - time)/ 1000000.));
-            Log.put("NEW KEY RUN - before select", 2000);
+//            Log.put("NEW KEY RUN - before select", 2000);
 //            try {
 //                Thread.sleep(100);
 //            } catch (InterruptedException e) {

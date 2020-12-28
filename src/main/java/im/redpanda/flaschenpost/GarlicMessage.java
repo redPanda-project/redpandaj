@@ -14,6 +14,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.util.ArrayList;
+import java.util.List;
 
 public class GarlicMessage extends Flaschenpost {
 
@@ -61,10 +62,8 @@ public class GarlicMessage extends Flaschenpost {
     }
 
 
-    public GarlicMessage(KademliaId destination, ByteBuffer buffer) {
-        //KademliaId kademliaId = KademliaId.fromBuffer(buffer);
-
-        super(destination);
+    public GarlicMessage(ByteBuffer buffer) {
+        destination = KademliaId.fromBuffer(buffer);
 
 
         byte[] ivBytes = new byte[IV_LEN];
@@ -90,6 +89,11 @@ public class GarlicMessage extends Flaschenpost {
     public void addGMContent(GMContent gmContent) {
         nestedMessages.add(gmContent);
     }
+
+    public List<GMContent> getGMContent() {
+        return nestedMessages;
+    }
+
 
     @Override
     protected void computeContent() {
@@ -129,8 +133,9 @@ public class GarlicMessage extends Flaschenpost {
 
             byte[] signature = encryptionNodeId.sign(encryptedBytes);
 
-            ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(1 + IV_LEN + NodeId.PUBLIC_KEYLEN + 4 + encryptedBytes.length + signature.length);
+            ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + IV_LEN + NodeId.PUBLIC_KEYLEN + 4 + encryptedBytes.length + signature.length);
             encryptedAndSignedBytes.put(getGMType().getId());
+            encryptedAndSignedBytes.put(destination.getBytes());
             encryptedAndSignedBytes.put(iv);
             encryptedAndSignedBytes.put(encryptionNodeId.exportPublic());
             encryptedAndSignedBytes.putInt(encryptedBytes.length);
@@ -144,11 +149,15 @@ public class GarlicMessage extends Flaschenpost {
             setContent(encryptedAndSignedBytes.array());
 
 
-            System.out.println("set content!");
-
         } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             Log.sentry(e);
             e.printStackTrace();
+        }
+    }
+
+    protected void tryParseContent() {
+        if (isTargetedToUs()) {
+            parseContent();
         }
     }
 
@@ -162,6 +171,9 @@ public class GarlicMessage extends Flaschenpost {
             return;
         }
 
+        if (!isTargetedToUs()) {
+            throw new RuntimeException("We can not decrypt this garlic message since it is not targeted to us!");
+        }
 
         //lets decrypt the content
         SecretKey sharedSecret = getSharedSecret(Server.nodeId, encryptionNodeId);
@@ -206,7 +218,7 @@ public class GarlicMessage extends Flaschenpost {
 
             SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
 
-            System.out.println("shared secret: " + Utils.bytesToHexString(intermediateSharedSecret.getEncoded()));
+//            System.out.println("shared secret: " + Utils.bytesToHexString(intermediateSharedSecret.getEncoded()));
 
             return intermediateSharedSecret;
         } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException e) {

@@ -9,8 +9,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.Security;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class ParseCommandTest {
 
@@ -91,13 +90,15 @@ public class ParseCommandTest {
         PeerList.getReadWriteLock().writeLock().lock();
 
 
+        int startingPeerListSize = PeerList.size();
+
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
             PeerList.add(testpeer1);
         }
-        PeerList.getReadWriteLock().writeLock().unlock();
+
 
         Peer me = getPeerForDebug();
 
@@ -134,6 +135,15 @@ public class ParseCommandTest {
         assertTrue(writeBuffer.remaining() == 0);
 
 
+        //cleanup
+        for (i = 0; i < peersToTest; i++) {
+            PeerList.removeIpPort("rand_rewrewR_testip" + i, i);
+        }
+
+        assertEquals(startingPeerListSize, PeerList.size());
+
+        PeerList.getReadWriteLock().writeLock().unlock();
+
     }
 
     @Test
@@ -153,13 +163,13 @@ public class ParseCommandTest {
 //            System.out.println("node id: " + testpeer1.getNodeId().getKademliaId().toString());
             PeerList.add(testpeer1);
         }
-        PeerList.getReadWriteLock().writeLock().unlock();
+//        PeerList.getReadWriteLock().writeLock().unlock();
 
         Peer me = getPeerForDebug();
 
         ConnectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
-        PeerList.getReadWriteLock().writeLock().lock();
+//        PeerList.getReadWriteLock().writeLock().lock();
 
         PeerList.clear();
 
@@ -182,6 +192,8 @@ public class ParseCommandTest {
         assertFalse(writeBuffer.hasRemaining());
 
         assertTrue(PeerList.size() - initPeerListSize == peersToTest);
+
+        PeerList.clear();
 
         PeerList.getReadWriteLock().writeLock().unlock();
 

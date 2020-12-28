@@ -11,10 +11,11 @@ import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
-import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaInsertJob;
-import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
+import im.redpanda.flaschenpost.GMAck;
+import im.redpanda.flaschenpost.GMContent;
+import im.redpanda.flaschenpost.GMParser;
+import im.redpanda.flaschenpost.GarlicMessage;
+import im.redpanda.jobs.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
@@ -58,12 +59,12 @@ public class ConnectionReaderThread extends Thread {
     /**
      * Here we can set the max simultaneously uploads.
      */
-    private static Semaphore updateUploadLock = new Semaphore(1);
-    private static ReentrantLock updateDownloadLock = new ReentrantLock();
+    private static final Semaphore updateUploadLock = new Semaphore(1);
+    private static final ReentrantLock updateDownloadLock = new ReentrantLock();
 
     private boolean run = true;
-    private int timeout;
-    private ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
+    private final int timeout;
+    private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
 
 
     public ConnectionReaderThread(int timeout) {
@@ -89,286 +90,6 @@ public class ConnectionReaderThread extends Thread {
         });
 
 
-    }
-
-    @Override
-    public void run() {
-
-        setName("ReaderThread");
-
-        int peekedAndFound = 0;
-        int lastThreadSize = 1;
-        int threadSize = 1;
-
-        while (!Server.SHUTDOWN && run) {
-
-            threadLock.lock();
-            try {
-                threadSize = threads.size();
-                if (threadSize > MAX_THREADS) {
-                    run = false;
-                    threads.remove(this);
-                    Log.put("threads now: " + threads.size(), -10);
-                    continue;
-                }
-
-            } finally {
-                threadLock.unlock();
-            }
-
-            if (threadSize != lastThreadSize) {
-                peekedAndFound = 0;
-            }
-
-            Peer poll = null;
-            try {
-
-                if (timeout == -1) {
-                    poll = ConnectionHandler.peersToReadAndParse.take(); // will never return null element, needed for main thread. Dann ist immer einer am Leben.
-                } else {
-                    poll = ConnectionHandler.peersToReadAndParse.poll(timeout, TimeUnit.SECONDS);
-                }
-
-                int size = ConnectionHandler.peersToReadAndParse.size();
-                if (size > 20) {
-                    System.out.println("too many peers waiting for read: " + size);
-                }
-
-//                System.out.println("peekedAndFound: " + peekedAndFound);
-
-//                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
-                if (ConnectionHandler.peersToReadAndParse.peek() != null) {
-
-                    if (peekedAndFound < 0) {
-                        peekedAndFound = 0;
-                    }
-
-
-                    peekedAndFound++;
-
-                    if (peekedAndFound > 5) {
-
-                        threadLock.lock();
-                        if (threads.size() < MAX_THREADS) {
-
-                            try {
-                                ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
-                                threads.add(connectionReaderThread);
-                                Log.put("threads now: " + threads.size(), -10);
-                            } catch (Throwable e) {
-                                MAX_THREADS = MAX_THREADS - 1;
-                                System.out.println("reducing max threads: " + MAX_THREADS);
-                            }
-
-                        }
-                        threadLock.unlock();
-
-                        if (peekedAndFound > 0) {
-                            peekedAndFound = 0;
-                        }
-
-                    }
-                } else {
-                    peekedAndFound--;
-                    if (peekedAndFound > 0) {
-                        peekedAndFound = 0;
-                    }
-                    if (peekedAndFound < -5) {
-                        peekedAndFound = -5;
-                    }
-
-                    if (timeout != -1 && peekedAndFound < -5) {
-                        threadLock.lock();
-                        run = false;
-                        threads.remove(this);
-                        threadLock.unlock();
-                        Log.put("last time this thead will run, threads afterwards: " + threads.size(), -10);
-                    }
-
-                }
-
-            } catch (InterruptedException ex) {
-                Log.putStd("interrupted, finish thread...");
-                run = false;
-                continue;
-            } catch (Throwable e) {
-                System.out.println("ggzdazdndzgrztgr");
-                e.printStackTrace();
-            }
-
-            lastThreadSize = threadSize;
-
-            if (poll == null) {
-                //this thread can be destroyed, a new one will be started if needed
-                //Log.putStd("thread timeout!! " + getName());
-                run = false;
-                threadLock.lock();
-                threads.remove(this);
-                Log.put("threads now: " + threads.size(), -10);
-                threadLock.unlock();
-                continue;
-            }
-
-//            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
-            long a = System.currentTimeMillis();
-
-            try {
-                readConnection(poll);
-            } catch (Throwable e) {
-                Log.sentry(e);
-            }
-
-
-            long diff = (System.currentTimeMillis() - a);
-
-            if (diff > 5000L) {
-                System.out.println("time: " + diff);
-            }
-
-//            Log.putStd("simulate long query");
-//            try {
-//                sleep(500);
-//            } catch (InterruptedException ex) {
-//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-////            Log.put("done read and parsing", 20);
-//            try {
-//                sleep(500);
-//            } catch (InterruptedException ex) {
-//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-            ConnectionHandler.doneRead.add(poll);
-
-//            System.out.println("peer released again for read and write....");
-
-//            System.out.println("wakeup selector from readerthread");
-            Server.connectionHandler.selector.wakeup();
-
-        }
-
-
-    }
-
-
-    private void readConnection(Peer peer) {
-
-
-        ByteBuffer writeBuffer = peer.writeBuffer;
-        SelectionKey key = peer.selectionKey;
-
-
-//        if (myReaderBuffer.position() != 0) {
-//            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
-//        }
-
-        int read = -2;
-        String debugStringRead = myReaderBuffer.toString();
-        try {
-            read = peer.getSocketChannel().read(myReaderBuffer);
-            Log.put("!!read bytes: " + read, 200);
-        } catch (IOException e) {
-            e.printStackTrace();
-            key.cancel();
-            peer.disconnect("could not read...");
-            return;
-        } catch (Throwable e) {
-            Log.sentry(e);
-            Log.sentry("Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
-            e.printStackTrace();
-            key.cancel();
-            peer.disconnect("could not read...");
-            return;
-        }
-
-        if (read == -2) {
-            Log.putStd("hgdjawhgdzawdtgzaud");
-        }
-
-        if (read > 0) {
-            Server.inBytes += read;
-            peer.receivedBytes += read;
-        }
-        if (read == 0) {
-            Log.putStd("dafuq 2332");
-            peer.disconnect("dafuq 2332");
-            Sentry.getContext().recordBreadcrumb(
-                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
-            );
-            Log.sentry("read 0 bytes...");
-            return;
-        } else if (read == -1) {
-            Log.put("closing connection " + peer.ip + ": not readable! ", 100);
-            peer.disconnect(" read == -1 ");
-            key.cancel();
-        } else {
-
-            Log.put("received bytes!", 200);
-
-
-        }
-
-
-        if (peer.readBuffer == null) {
-            peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
-        }
-
-        ByteBuffer readBuffer = peer.readBuffer;
-
-
-        /**
-         * Decrypt all bytes from the readBufferCrypted to the readBuffer
-         */
-        peer.decryptInputdata(myReaderBuffer);
-
-
-        loopCommands(peer, readBuffer);
-
-//        System.out.println("buffer after parse: " + readBuffer);
-
-        /**
-         * The readBuffer might be null if the peer is disconnected while parsing a command, the disconnect method handles the
-         * return of the readBuffer...
-         */
-        if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
-            ByteBufferPool.returnObject(peer.readBuffer);
-            peer.readBuffer = null;
-        }
-
-        if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {
-            throw new RuntimeException("myReaderBuffer was not ready for the next read: " + myReaderBuffer);
-        }
-
-    }
-
-    public static void loopCommands(Peer peer, ByteBuffer readBuffer) {
-        readBuffer.flip();
-
-        int parsedBytesLocally = -1;
-
-        while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
-
-            int newPosition = readBuffer.position(); // lets save the position before touching the buffer
-
-            peer.setLastActionOnConnection(System.currentTimeMillis());
-//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
-            byte b = readBuffer.get();
-            Log.put("command: " + b + " " + readBuffer, 200);
-
-
-            parsedBytesLocally = parseCommand(b, readBuffer, peer);
-            if (!peer.isConnected()) {
-                /**
-                 * the readBuffer was already returned to the pool by the disconnect method and we are not allowed
-                 * to use the readBuffer anymore
-                 */
-                return;
-            }
-            peer.lastCommand = b;
-            newPosition += parsedBytesLocally;
-            readBuffer.position(newPosition);
-        }
-
-        readBuffer.compact();
     }
 
     public static int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
@@ -1117,15 +838,6 @@ public class ConnectionReaderThread extends Thread {
 
                 System.out.println("update verified: " + verify);
 
-                File file = new File("android.apk");
-                long myCurrentVersionTimestamp = file.lastModified();
-
-                if (myCurrentVersionTimestamp >= othersTimestamp) {
-                    System.out.println("update not required, aborting...");
-                    return 1 + 8 + 4 + signatureLen + data.length;
-                }
-
-
                 if (verify) {
 
                     try (FileOutputStream fos = new FileOutputStream("android.apk")) {
@@ -1395,6 +1107,71 @@ public class ConnectionReaderThread extends Thread {
 
             return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
 
+        } else if (command == Command.FLASCHENPOST_PUT) {
+
+
+            int contentLen = readBuffer.getInt();
+
+            if (readBuffer.remaining() < contentLen) {
+                return 0;
+            }
+
+            byte[] content = new byte[contentLen];
+            readBuffer.get(content);
+
+            GMContent gmContent = GMParser.parse(ByteBuffer.wrap(content));
+
+            if (gmContent instanceof GarlicMessage) {
+
+                GarlicMessage gm = (GarlicMessage) gmContent;
+
+                if (gm.isTargetedToUs()) {
+                    System.out.println("gm for us!!");
+
+                    for (GMContent innerContent : gm.getGMContent()) {
+                        if (innerContent instanceof GMAck) {
+
+                            GMAck gmAck = (GMAck) innerContent;
+
+                            Job runningJob = Job.getRunningJob(gmAck.getAckid());
+
+                            if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
+                                PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
+                                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
+                                perfJob.success();
+                            }
+
+
+                        }
+                    }
+
+
+                } else {
+                    System.out.println("gm for other lets route the message to destination...");
+
+                    Peer peerToSendFP = PeerList.get(gm.getDestination());
+
+                    if (peerToSendFP != null) {
+
+                        peerToSendFP.getWriteBufferLock().lock();
+                        try {
+                            peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
+                            peerToSendFP.writeBuffer.putInt(contentLen);
+                            peerToSendFP.writeBuffer.put(content);
+                            peerToSendFP.setWriteBufferFilled();
+                        } finally {
+                            peerToSendFP.getWriteBufferLock().unlock();
+                        }
+                    } else {
+                        //todo
+                    }
+
+                }
+            }
+
+
+            return 1 + 4 + contentLen;
+
         }
 
 
@@ -1404,84 +1181,125 @@ public class ConnectionReaderThread extends Thread {
     }
 
 
-    public static void sendHandshake(PeerInHandshake peerInHandshake) {
-
-        ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
-        String bufferBeforeWriting = writeBuffer.toString();
+    private void readConnection(Peer peer) {
 
 
+        ByteBuffer writeBuffer = peer.writeBuffer;
+        SelectionKey key = peer.selectionKey;
+
+
+//        if (myReaderBuffer.position() != 0) {
+//            throw new RuntimeException("buffer has to be at position 0, otherwise we would parse data from a different peer.");
+//        }
+
+        int read = -2;
+        String debugStringRead = myReaderBuffer.toString();
         try {
-            writeBuffer.put(Server.MAGIC.getBytes());
-            writeBuffer.put((byte) Server.VERSION);
-            writeBuffer.put((byte) 0); //we are no light client
-            writeBuffer.put(Server.NONCE.getBytes());
-            writeBuffer.putInt(Server.MY_PORT);
-        } catch (BufferOverflowException e) {
-            Log.sentry("bufferoverflow in put magic, buffer before: " + bufferBeforeWriting);
-        }
-
-        writeBuffer.flip();
-
-        try {
-            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
-//            System.out.println("written bytes of handshake: " + write);
-            if (write != 30) {
-                throw new RuntimeException("could not write all data for handshake...");
-            }
+            read = peer.getSocketChannel().read(myReaderBuffer);
+            Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
             e.printStackTrace();
-            try {
-                peerInHandshake.getSocketChannel().close();
-            } catch (IOException ex) {
-                ex.printStackTrace();
-            }
+            key.cancel();
+            peer.disconnect("could not read...");
+            return;
+        } catch (Throwable e) {
+            Log.sentry(e);
+            Log.sentry("Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
+            e.printStackTrace();
+            key.cancel();
+            peer.disconnect("could not read...");
+            return;
+        }
+
+        if (read == -2) {
+            Log.putStd("hgdjawhgdzawdtgzaud");
+        }
+
+        if (read > 0) {
+            Server.inBytes += read;
+            peer.receivedBytes += read;
+        }
+        if (read == 0) {
+            Log.putStd("dafuq 2332");
+            peer.disconnect("dafuq 2332");
+            Sentry.getContext().recordBreadcrumb(
+                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
+            );
+            Log.sentry("read 0 bytes...");
+            return;
+        } else if (read == -1) {
+            Log.put("closing connection " + peer.ip + ": not readable! ", 100);
+            peer.disconnect(" read == -1 ");
+            key.cancel();
+        } else {
+
+            Log.put("received bytes!", 200);
+
+
         }
 
 
-        writeBuffer.compact();
-        ByteBufferPool.returnObject(writeBuffer);
+        if (peer.readBuffer == null) {
+            peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
+        }
+
+        ByteBuffer readBuffer = peer.readBuffer;
+
+
+        /**
+         * Decrypt all bytes from the readBufferCrypted to the readBuffer
+         */
+        peer.decryptInputdata(myReaderBuffer);
+
+
+        loopCommands(peer, readBuffer);
+
+//        System.out.println("buffer after parse: " + readBuffer);
+
+        /**
+         * The readBuffer might be null if the peer is disconnected while parsing a command, the disconnect method handles the
+         * return of the readBuffer...
+         */
+        if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
+            ByteBufferPool.returnObject(peer.readBuffer);
+            peer.readBuffer = null;
+        }
+
+        if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {
+            throw new RuntimeException("myReaderBuffer was not ready for the next read: " + myReaderBuffer);
+        }
+
     }
 
-    private static void requestPublicKey(PeerInHandshake peerInHandshake) {
-        peerInHandshake.setStatus(1);
-        ByteBuffer writeBuffer = ByteBuffer.allocate(1);
+    public static void loopCommands(Peer peer, ByteBuffer readBuffer) {
+        readBuffer.flip();
 
-        writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
-        writeBuffer.flip();
+        int parsedBytesLocally = -1;
 
-        try {
-            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
-            System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
-        } catch (IOException e) {
-            e.printStackTrace();
+        while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
+
+            int newPosition = readBuffer.position(); // lets save the position before touching the buffer
+
+            peer.setLastActionOnConnection(System.currentTimeMillis());
+//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
+            byte b = readBuffer.get();
+            Log.put("command: " + b + " " + readBuffer, 200);
+
+
+            parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            if (!peer.isConnected()) {
+                /**
+                 * the readBuffer was already returned to the pool by the disconnect method and we are not allowed
+                 * to use the readBuffer anymore
+                 */
+                return;
+            }
+            peer.lastCommand = b;
+            newPosition += parsedBytesLocally;
+            readBuffer.position(newPosition);
         }
-    }
 
-    public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
-
-
-//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
-//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
-//        builder.finish(sendPublicKey);
-//        ByteBuffer byteBuffer = builder.dataBuffer();
-
-        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
-
-        buffer.put(Command.SEND_PUBLIC_KEY);
-        buffer.put(Server.nodeId.exportPublic());
-        buffer.flip();
-
-//        ByteBuffer[] buffers = new ByteBuffer[2];
-//        buffers[0] = buffer;
-//        buffers[1] = byteBuffer;
-
-        try {
-            long write = peerInHandshake.getSocketChannel().write(buffer);
-            System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        readBuffer.compact();
     }
 
     public static boolean parseHandshake(PeerInHandshake peerInHandshake, ByteBuffer buffer) {
@@ -1496,10 +1314,10 @@ public class ConnectionReaderThread extends Thread {
         String magic = readString(buffer, 4);
 //        System.out.println("magic: " + magic);
 
-        int version = (int) buffer.get();
+        int version = buffer.get();
         peerInHandshake.setProtocolVersion(version);
 
-        int clientType = (int) buffer.get();
+        int clientType = buffer.get();
 
         if (clientType > 128 || clientType < 0) {
             peerInHandshake.setLightClient(true);
@@ -1646,6 +1464,245 @@ public class ConnectionReaderThread extends Thread {
 
         System.out.println("peer status for handshake: " + peerInHandshake.getStatus());
         return true;
+    }
+
+
+    public static void sendHandshake(PeerInHandshake peerInHandshake) {
+
+        ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
+        String bufferBeforeWriting = writeBuffer.toString();
+
+
+        try {
+            writeBuffer.put(Server.MAGIC.getBytes());
+            writeBuffer.put((byte) Server.VERSION);
+            writeBuffer.put((byte) 0); //we are no light client
+            writeBuffer.put(Server.NONCE.getBytes());
+            writeBuffer.putInt(Server.MY_PORT);
+        } catch (BufferOverflowException e) {
+            Log.sentry("bufferoverflow in put magic, buffer before: " + bufferBeforeWriting);
+        }
+
+        writeBuffer.flip();
+
+        try {
+            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
+//            System.out.println("written bytes of handshake: " + write);
+            if (write != 30) {
+                throw new RuntimeException("could not write all data for handshake...");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            try {
+                peerInHandshake.getSocketChannel().close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+
+
+        writeBuffer.compact();
+        ByteBufferPool.returnObject(writeBuffer);
+    }
+
+    private static void requestPublicKey(PeerInHandshake peerInHandshake) {
+        peerInHandshake.setStatus(1);
+        ByteBuffer writeBuffer = ByteBuffer.allocate(1);
+
+        writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
+        writeBuffer.flip();
+
+        try {
+            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
+            System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
+
+
+//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
+//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
+//        builder.finish(sendPublicKey);
+//        ByteBuffer byteBuffer = builder.dataBuffer();
+
+        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
+
+        buffer.put(Command.SEND_PUBLIC_KEY);
+        buffer.put(Server.nodeId.exportPublic());
+        buffer.flip();
+
+//        ByteBuffer[] buffers = new ByteBuffer[2];
+//        buffers[0] = buffer;
+//        buffers[1] = byteBuffer;
+
+        try {
+            long write = peerInHandshake.getSocketChannel().write(buffer);
+            System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void run() {
+
+        setName("ReaderThread");
+
+        int peekedAndFound = 0;
+        int lastThreadSize = 1;
+        int threadSize = 1;
+
+        while (!Server.SHUTDOWN && run) {
+
+            threadLock.lock();
+            try {
+                threadSize = threads.size();
+                if (threadSize > MAX_THREADS) {
+                    run = false;
+                    threads.remove(this);
+                    Log.put("threads now: " + threads.size(), -10);
+                    continue;
+                }
+
+            } finally {
+                threadLock.unlock();
+            }
+
+            if (threadSize != lastThreadSize) {
+                peekedAndFound = 0;
+            }
+
+            Peer poll = null;
+            try {
+
+                if (timeout == -1) {
+                    poll = ConnectionHandler.peersToReadAndParse.take(); // will never return null element, needed for main thread. Dann ist immer einer am Leben.
+                } else {
+                    poll = ConnectionHandler.peersToReadAndParse.poll(timeout, TimeUnit.SECONDS);
+                }
+
+                int size = ConnectionHandler.peersToReadAndParse.size();
+                if (size > 20) {
+                    System.out.println("too many peers waiting for read: " + size);
+                }
+
+//                System.out.println("peekedAndFound: " + peekedAndFound);
+
+//                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
+                if (ConnectionHandler.peersToReadAndParse.peek() != null) {
+
+                    if (peekedAndFound < 0) {
+                        peekedAndFound = 0;
+                    }
+
+
+                    peekedAndFound++;
+
+                    if (peekedAndFound > 5) {
+
+                        threadLock.lock();
+                        if (threads.size() < MAX_THREADS) {
+
+                            try {
+                                ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(STD_TIMEOUT);
+                                threads.add(connectionReaderThread);
+                                Log.put("threads now: " + threads.size(), -10);
+                            } catch (Throwable e) {
+                                MAX_THREADS = MAX_THREADS - 1;
+                                System.out.println("reducing max threads: " + MAX_THREADS);
+                            }
+
+                        }
+                        threadLock.unlock();
+
+                        if (peekedAndFound > 0) {
+                            peekedAndFound = 0;
+                        }
+
+                    }
+                } else {
+                    peekedAndFound--;
+                    if (peekedAndFound > 0) {
+                        peekedAndFound = 0;
+                    }
+                    if (peekedAndFound < -5) {
+                        peekedAndFound = -5;
+                    }
+
+                    if (timeout != -1 && peekedAndFound < -5) {
+                        threadLock.lock();
+                        run = false;
+                        threads.remove(this);
+                        threadLock.unlock();
+                        Log.put("last time this thead will run, threads afterwards: " + threads.size(), -10);
+                    }
+
+                }
+
+            } catch (InterruptedException ex) {
+                Log.putStd("interrupted, finish thread...");
+                run = false;
+                continue;
+            } catch (Throwable e) {
+                System.out.println("ggzdazdndzgrztgr");
+                e.printStackTrace();
+            }
+
+            lastThreadSize = threadSize;
+
+            if (poll == null) {
+                //this thread can be destroyed, a new one will be started if needed
+                //Log.putStd("thread timeout!! " + getName());
+                run = false;
+                threadLock.lock();
+                threads.remove(this);
+                Log.put("threads now: " + threads.size(), -10);
+                threadLock.unlock();
+                continue;
+            }
+
+//            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
+            long a = System.currentTimeMillis();
+
+            try {
+                readConnection(poll);
+            } catch (Throwable e) {
+                Log.sentry(e);
+            }
+
+
+            long diff = (System.currentTimeMillis() - a);
+
+            if (diff > 5000L) {
+                System.out.println("time: " + diff);
+            }
+
+//            Log.putStd("simulate long query");
+//            try {
+//                sleep(500);
+//            } catch (InterruptedException ex) {
+//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
+//            }
+////            Log.put("done read and parsing", 20);
+//            try {
+//                sleep(500);
+//            } catch (InterruptedException ex) {
+//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
+//            }
+            ConnectionHandler.doneRead.add(poll);
+
+//            System.out.println("peer released again for read and write....");
+
+//            System.out.println("wakeup selector from readerthread");
+            ConnectionHandler.selector.wakeup();
+
+        }
+
+
     }
 
 

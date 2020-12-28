@@ -86,10 +86,10 @@ public class KademliaId implements Serializable {
     }
 
     /**
-     * Compares a NodeId to this NodeId
+     * Compares a KademliaId to this KademliaId
      *
-     * @param o The NodeId to compare to this NodeId
-     * @return boolean Whether the 2 NodeIds are equal
+     * @param o The KademliaId to compare to this KademliaId
+     * @return boolean Whether the 2 KademliaIds are equal
      */
     @Override
     public boolean equals(Object o) {

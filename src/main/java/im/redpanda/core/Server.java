@@ -1,8 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
-import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -13,7 +12,7 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReadWriteLock;
 
 public class Server {
 
@@ -26,7 +25,7 @@ public class Server {
     public static NodeId nodeId;
     public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
-    public static ReentrantReadWriteLock peerListLock;
+    public static ReadWriteLock peerListLock;
     public static int outBytes = 0;
     public static int inBytes = 0;
     public static ConnectionHandler connectionHandler;
@@ -35,6 +34,7 @@ public class Server {
     public static ArrayList<Peer>[] bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
     public static NodeStore nodeStore;
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
+    public static boolean startedUpSuccessful = false;
 
     public static SecureRandom secureRandom = new SecureRandom();
     public static Random random = new Random();
@@ -62,6 +62,7 @@ public class Server {
 
         //this is a permanent job and will run every hour...
         new KadRefreshJob().start();
+
 
     }
 
@@ -145,6 +146,11 @@ public class Server {
         PeerJobs.startUp();
 
         new HTTPServer().start();
+
+        startedUpSuccessful = true;
+
+        new PeerPerformanceTestSchedulerJob().start();
+
     }
 
     public static void shutdown() {

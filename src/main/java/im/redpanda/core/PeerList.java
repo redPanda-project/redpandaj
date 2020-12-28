@@ -1,7 +1,14 @@
 package im.redpanda.core;
 
+import org.apache.logging.log4j.LogManager;
+import org.mapdb.elsa.ElsaSerializerBase;
+
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -15,6 +22,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * it is present in the Peerlist without updating the corresponding List/HashMap.
  */
 public class PeerList {
+
+    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
 
     /**
      * We store each Peer in a hashmap for fast get operations via KademliaId
@@ -39,7 +48,7 @@ public class PeerList {
     /**
      * ReadWriteLock for peerlist peerArrayList and Buckets
      */
-    private static ReentrantReadWriteLock readWriteLock;
+    private static ReadWriteLock readWriteLock;
 
     /**
      * Buckets for the Kademlia routing
@@ -166,7 +175,7 @@ public class PeerList {
      * @return
      */
     public static boolean removeIpPort(String ip, int port) {
-        System.out.println("remove ipport: " + ip + ":" + port);
+        logger.info("remove ipport: " + ip + ":" + port);
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
@@ -243,7 +252,7 @@ public class PeerList {
         }
     }
 
-    public static ReentrantReadWriteLock getReadWriteLock() {
+    public static ReadWriteLock getReadWriteLock() {
         return readWriteLock;
     }
 
@@ -289,4 +298,68 @@ public class PeerList {
         }
 
     }
+
+    public static Peer getGoodPeer() {
+        readWriteLock.writeLock().lock();
+        try {
+            Collections.sort(peerArrayList);
+
+            int size = peerArrayList.size();
+
+            for (Peer p : peerArrayList) {
+                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
+            }
+
+            //lets get a random x percent peer
+
+            int max = (int) Math.ceil(size * 0.4f);
+            System.out.println("max to get a good peer: " + max);
+
+            int i = Server.random.nextInt(max);
+
+            return peerArrayList.get(i);
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
+
+//    public static class MyReentrantReadWriteLock implements ReadWriteLock {
+//
+//        private MyReentrantLock lock = new MyReentrantLock();
+//
+//        public ReentrantLock writeLock() {
+//            return lock;
+//        }
+//
+//
+//        public ReentrantLock readLock() {
+//            return lock;
+//        }
+//    }
+//
+//    public static class MyReentrantLock extends ReentrantLock {
+//
+//        private String stack = "";
+//
+//        @Override
+//        public void lock() {
+//            String stack = "";
+//            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+//                stack += e.toString() + "\n";
+//            }
+//            super.lock();
+//            System.out.println("last successful lock of peerlist: " + stack);
+//        }
+//
+//        @Override
+//        public void unlock() {
+//            super.unlock();
+//            System.out.println("unlock successfully!");
+//        }
+//
+//        public String getStack() {
+//            return stack;
+//        }
+//    }
+
 }
