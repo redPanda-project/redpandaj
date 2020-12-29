@@ -151,7 +151,7 @@ public class NodeStore {
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
             for (Map.Entry<KademliaId, Node> o : entries) {
-                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore());
+                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore() + " " + o.getValue().getGmTestsSuccessful() + " " + o.getValue().getGmTestsFailed());
                 if (!fastNodes.containsKey(o.getKey())) {
                     fastNodes.put(o.getKey(), o.getValue());
                     toInsert--;

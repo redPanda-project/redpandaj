@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
+import im.redpanda.flaschenpost.FPStoreManager;
 
 public class PeerPerformanceTestSchedulerJob extends Job {
 
@@ -18,8 +19,6 @@ public class PeerPerformanceTestSchedulerJob extends Job {
     @Override
     public void work() {
 
-        System.out.println("fhsjfsdf");
-
         Peer goodPeer = PeerList.getGoodPeer(1.0f); //todo change later if network is big enough
 
         if (goodPeer == null) {
@@ -28,6 +27,8 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 
 //        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
         new PeerPerformanceTestGarlicMessageJob().start();
+
+        FPStoreManager.cleanUp();
 
     }
 }

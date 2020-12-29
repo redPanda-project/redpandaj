@@ -304,6 +304,10 @@ public class PeerList {
 
             int size = peerArrayList.size();
 
+            if (size == 0) {
+                return null;
+            }
+
             for (Peer p : peerArrayList) {
                 System.out.println("peer: " + p.ip + " score: " + p.getPriority());
             }

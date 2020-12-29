@@ -59,7 +59,7 @@ public class GarlicMessage extends Flaschenpost {
         this.iv = new byte[16];
         Server.secureRandom.nextBytes(this.iv);
 
-        this.encryptionNodeId = new NodeId();
+        this.encryptionNodeId = NodeId.generateWithSimpleKey();
     }
 
 

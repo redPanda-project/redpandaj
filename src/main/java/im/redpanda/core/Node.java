@@ -222,7 +222,7 @@ public class Node implements Serializable {
             setGmTestsSuccessful(200);
             if (getGmTestsFailed() > 0) {
                 gmTestsFailed--;
-                setGmTestsSuccessful(150);
+                setGmTestsSuccessful(190);
             }
         }
     }

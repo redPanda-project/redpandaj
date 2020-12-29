@@ -1,11 +1,9 @@
 package im.redpanda.flaschenpost;
 
 
-import im.redpanda.core.Log;
-
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 
@@ -28,7 +26,7 @@ public class FPStoreManager {
      * @param fp {@link Flaschenpost} to be stored.
      * @return true if the object was already stored.
      */
-    public boolean put(Flaschenpost fp) {
+    public static boolean put(Flaschenpost fp) {
         lock.lock();
         try {
             Flaschenpost put = entries.put(fp.getId(), fp);
@@ -38,6 +36,16 @@ public class FPStoreManager {
         }
     }
 
-    //todo, we have to create a job for eviction of old entries...
+    public static void cleanUp() {
+        long currentTimeMillis = System.currentTimeMillis();
+
+        for (Map.Entry<Integer, Flaschenpost> integerFlaschenpostEntry : entries.entrySet()) {
+            if (currentTimeMillis - integerFlaschenpostEntry.getValue().timestamp > 1000L * 60L * 5L) {
+                entries.remove(integerFlaschenpostEntry.getKey());
+                System.out.println("removed old falschenpost");
+            }
+        }
+
+    }
 
 }
