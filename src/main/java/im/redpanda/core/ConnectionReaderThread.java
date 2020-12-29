@@ -11,11 +11,13 @@ import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.GarlicMessage;
-import im.redpanda.jobs.*;
+import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaInsertJob;
+import im.redpanda.jobs.KademliaSearchJob;
+import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
@@ -1119,55 +1121,55 @@ public class ConnectionReaderThread extends Thread {
             byte[] content = new byte[contentLen];
             readBuffer.get(content);
 
-            GMContent gmContent = GMParser.parse(ByteBuffer.wrap(content));
+            System.out.println("got new fp!!");
 
-            if (gmContent instanceof GarlicMessage) {
+            GMContent gmContent = GMParser.parse(content);
 
-                GarlicMessage gm = (GarlicMessage) gmContent;
-
-                if (gm.isTargetedToUs()) {
-                    System.out.println("gm for us!!");
-
-                    for (GMContent innerContent : gm.getGMContent()) {
-                        if (innerContent instanceof GMAck) {
-
-                            GMAck gmAck = (GMAck) innerContent;
-
-                            Job runningJob = Job.getRunningJob(gmAck.getAckid());
-
-                            if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
-                                PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
-                                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
-                                perfJob.success();
-                            }
-
-
-                        }
-                    }
-
-
-                } else {
-                    System.out.println("gm for other lets route the message to destination...");
-
-                    Peer peerToSendFP = PeerList.get(gm.getDestination());
-
-                    if (peerToSendFP != null) {
-
-                        peerToSendFP.getWriteBufferLock().lock();
-                        try {
-                            peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
-                            peerToSendFP.writeBuffer.putInt(contentLen);
-                            peerToSendFP.writeBuffer.put(content);
-                            peerToSendFP.setWriteBufferFilled();
-                        } finally {
-                            peerToSendFP.getWriteBufferLock().unlock();
-                        }
-                    } else {
-                        //todo
-                    }
-
-                }
-            }
+//            if (gmContent instanceof GarlicMessage) {
+//
+//                GarlicMessage gm = (GarlicMessage) gmContent;
+//
+//                if (gm.isTargetedToUs()) {
+//                    System.out.println("gm for us!!");
+//
+//                    for (GMContent innerContent : gm.getGMContent()) {
+//                        if (innerContent instanceof GMAck) {
+//
+//                            GMAck gmAck = (GMAck) innerContent;
+//
+//                            Job runningJob = Job.getRunningJob(gmAck.getAckid());
+//
+//                            if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
+//                                PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
+//                                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
+//                                perfJob.success();
+//                            }
+//
+//
+//                        } else if (innerContent instanceof GarlicMessage) {
+//                            GarlicMessage innerGarlicMessage = (GarlicMessage) innerContent;
+//                            System.out.println("inner message is garlic message");
+//
+////                            innerGarlicMessage.
+//
+//                            sendGarlicMessageToPeer(gm.getContent().length, gm.getContent(), gm);
+//
+//
+//                        } else {
+//
+//                            System.out.println("unknown garlic message content");
+//
+//                        }
+//                    }
+//
+//
+//                } else {
+//                    System.out.println("gm for other lets route the message to destination...");
+//
+//                    sendGarlicMessageToPeer(contentLen, content, gm);
+//
+//                }
+//            }
 
 
             return 1 + 4 + contentLen;
@@ -1178,6 +1180,25 @@ public class ConnectionReaderThread extends Thread {
         throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
 
 //        return 0;
+    }
+
+    private static void sendGarlicMessageToPeer(int contentLen, byte[] content, GarlicMessage gm) {
+        Peer peerToSendFP = PeerList.get(gm.getDestination());
+
+        if (peerToSendFP != null) {
+
+            peerToSendFP.getWriteBufferLock().lock();
+            try {
+                peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
+                peerToSendFP.writeBuffer.putInt(contentLen);
+                peerToSendFP.writeBuffer.put(content);
+                peerToSendFP.setWriteBufferFilled();
+            } finally {
+                peerToSendFP.getWriteBufferLock().unlock();
+            }
+        } else {
+            //todo
+        }
     }
 
 

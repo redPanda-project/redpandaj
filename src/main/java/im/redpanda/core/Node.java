@@ -201,6 +201,31 @@ public class Node implements Serializable {
     public void increaseGmTestsSuccessful() {
         this.gmTestsSuccessful++;
     }
+
+    public int getScore() {
+        int score = gmTestsSuccessful * 3 - gmTestsFailed * 5;
+
+        if (System.currentTimeMillis() - lastSeen > 1000L * 60L * 60) {
+            score -= 50;
+        }
+
+        return score;
+    }
+
+    public void cleanChecks() {
+        //todo: make threadsafe?
+        if (getGmTestsFailed() > 200) {
+            setGmTestsFailed(200);
+        }
+
+        if (getGmTestsSuccessful() > 200) {
+            setGmTestsSuccessful(200);
+            if (getGmTestsFailed() > 0) {
+                gmTestsFailed--;
+                setGmTestsSuccessful(150);
+            }
+        }
+    }
 }
 
 

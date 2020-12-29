@@ -8,6 +8,7 @@ import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
 import java.io.File;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +31,8 @@ public class NodeStore {
     private final DB dbonHeap;
     private final DB dboffHeap;
     private final DB dbDisk;
+
+    private final HashMap<KademliaId, Node> fastNodes;
 
     public NodeStore() {
         dbonHeap = DBMaker
@@ -74,6 +77,8 @@ public class NodeStore {
                 .expireAfterCreate()
                 .expireAfterGet(15, TimeUnit.MINUTES)
                 .create();
+
+        fastNodes = new HashMap<>();
     }
 
     public void put(KademliaId kademliaId, Node node) {
@@ -132,6 +137,34 @@ public class NodeStore {
     public int size() {
         saveToDisk();
         return onDisk.size();
+    }
+
+    public HashMap<KademliaId, Node> getFastNodes() {
+
+        if (fastNodes.size() < 10) {
+            int toInsert = 10 - fastNodes.size();
+
+            Set<Map.Entry<KademliaId, Node>> entriesSet = onHeap.entrySet();
+
+            ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(entriesSet);
+
+            Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
+
+            for (Map.Entry<KademliaId, Node> o : entries) {
+                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore());
+                if (!fastNodes.containsKey(o.getKey())) {
+                    fastNodes.put(o.getKey(), o.getValue());
+                    toInsert--;
+
+                }
+                if (toInsert == 0) {
+                    break;
+                }
+
+            }
+
+        }
+        return fastNodes;
     }
 
 //    put

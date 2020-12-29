@@ -20,13 +20,14 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 
         System.out.println("fhsjfsdf");
 
-        Peer goodPeer = PeerList.getGoodPeer();
+        Peer goodPeer = PeerList.getGoodPeer(1.0f); //todo change later if network is big enough
 
         if (goodPeer == null) {
             return;
         }
 
-        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
+//        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
+        new PeerPerformanceTestGarlicMessageJob().start();
 
     }
 }

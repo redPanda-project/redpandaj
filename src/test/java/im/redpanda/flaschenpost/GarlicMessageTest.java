@@ -4,7 +4,6 @@ import im.redpanda.core.NodeId;
 import im.redpanda.core.Server;
 import org.junit.Test;
 
-import java.nio.ByteBuffer;
 import java.security.Security;
 
 import static org.junit.Assert.*;
@@ -29,7 +28,7 @@ public class GarlicMessageTest {
 
         byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(ByteBuffer.wrap(content));
+        GMContent parse = GMParser.parse(content);
 
         assertNotNull(parse);
 
@@ -51,7 +50,7 @@ public class GarlicMessageTest {
 
         byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(ByteBuffer.wrap(content));
+        GMContent parse = GMParser.parse(content);
 
         assertNotNull(parse);
 
@@ -90,11 +89,11 @@ public class GarlicMessageTest {
 
         assertEquals(GMType.GARLIC_MESSAGE.getId(), content[0]);
 
-        GMContent parse = GMParser.parse(ByteBuffer.wrap(content));
+        GMContent parse = GMParser.parse(content);
 
         assertEquals(GarlicMessage.class, parse.getClass());
 
-        GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(ByteBuffer.wrap(content));
+        GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(content);
 
         assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
