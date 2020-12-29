@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
+import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -150,6 +151,7 @@ public class Server {
         startedUpSuccessful = true;
 
         new PeerPerformanceTestSchedulerJob().start();
+        new RequestPeerListJob().start();
 
     }
 
