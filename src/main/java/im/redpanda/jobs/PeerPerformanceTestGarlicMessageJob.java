@@ -57,7 +57,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         HashMap<KademliaId, Node> fastNodes = Server.nodeStore.getFastNodes();
         if (fastNodes.size() < garlicSequenceLenght) {
-            System.out.println("not enough nodes");
             return;
         }
 
@@ -66,6 +65,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         Collections.shuffle(values);
 
         for (Node node : values) {
+            if (node.getScore() < 0 && Math.random() < 0.8f) {
+                // if a node is bad we should only test it rarely
+                continue;
+            }
+
             if (nodes.size() == garlicSequenceLenght) {
                 break;
             }
@@ -75,8 +79,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
 
         byte[] content = calculateNestedGarlicMessages(nodes, getJobId());
-
-        System.out.println("gm bytes computed with " + nodes.size() + " nodes.");
 
         flaschenPostInsertPeer.getWriteBufferLock().lock();
         try {

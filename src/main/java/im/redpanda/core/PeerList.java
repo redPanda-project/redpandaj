@@ -308,14 +308,14 @@ public class PeerList {
                 return null;
             }
 
-            for (Peer p : peerArrayList) {
-                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
-            }
+//            for (Peer p : peerArrayList) {
+//                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
+//            }
 
             //lets get a random x percent peer
 
             int max = (int) Math.ceil(size * upperPercent);
-            System.out.println("max to get a good peer: " + max);
+//            System.out.println("max to get a good peer: " + max);
 
             int i = Server.random.nextInt(max);
 

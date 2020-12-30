@@ -27,37 +27,11 @@ public class GMParser {
             GarlicMessage garlicMessage = new GarlicMessage(content);
             garlicMessage.tryParseContent();
 
-            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());
+//            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());
 
+            // if the gm is targeted to us the content will be handled by the parseContent routine of the gm
             if (!garlicMessage.isTargetedToUs()) {
                 sendGarlicMessageToPeer(garlicMessage);
-            } else {
-//                for (GMContent innerContent : garlicMessage.getGMContent()) {
-//
-//                    if (innerContent instanceof GMAck) {
-//                        GMAck gmAck = (GMAck) innerContent;
-//
-//                        Job runningJob = Job.getRunningJob(gmAck.getAckid());
-//
-//                        if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
-//                            PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
-//                            System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
-//                            perfJob.success();
-//                        }
-//                    } else if (innerContent instanceof GarlicMessage) {
-//
-//                        GarlicMessage innerGarlicMessage = (GarlicMessage) innerContent;
-//
-//                        if (innerGarlicMessage.isTargetedToUs()) {
-//                            GMParser.parse(innerGarlicMessage.getContent());
-//                        } else {
-//                            sendGarlicMessageToPeer(innerGarlicMessage);
-//                        }
-//
-//                    }
-//
-//                }
-
             }
 
 
@@ -69,19 +43,19 @@ public class GMParser {
             GMAck gmAck = new GMAck(content);
             gmAck.parseContent();
 
-            System.out.println("got ack: " + gmAck.getAckid());
+//            System.out.println("got ack: " + gmAck.getAckid());
 
             Job runningJob = Job.getRunningJob(gmAck.getAckid());
 
             if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
                 PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
-                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
+//                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
                 perfJob.success();
             }
 
             if (runningJob != null && runningJob instanceof PeerPerformanceTestGarlicMessageJob) {
                 PeerPerformanceTestGarlicMessageJob perfJob = (PeerPerformanceTestGarlicMessageJob) runningJob;
-                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
+//                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
                 perfJob.success();
             }
 
@@ -93,12 +67,14 @@ public class GMParser {
 
     private static void sendGarlicMessageToPeer(GarlicMessage garlicMessage) {
 
-        boolean put = FPStoreManager.put(garlicMessage);
-
-        if (put) {
-            System.out.println("message already handled, do not send again");
-            return;
-        }
+//        boolean put = FPStoreManager.put(garlicMessage);
+//
+//        if (put) {
+//            System.out.println("message already handled, do not send again, destination " + garlicMessage.getDestination() + " id " + garlicMessage.getId());
+//            return;
+//        } else {
+//            System.out.println("handle fp with destination " + garlicMessage.getDestination() + " id " + garlicMessage.getId());
+//        }
 
 
         Peer peerToSendFP = PeerList.get(garlicMessage.getDestination());
@@ -106,10 +82,7 @@ public class GMParser {
         byte[] content = garlicMessage.getContent();
 
 
-        if (peerToSendFP != null && peerToSendFP.isConnected()) {
-
-        } else {
-
+        if (peerToSendFP == null || !peerToSendFP.isConnected()) {
 
             //todo, put all into a job to handle failing peers and retry send if no ack
 
@@ -138,16 +111,14 @@ public class GMParser {
                         continue;
                     }
 
-                    //todo add again if we have peer formation and retries
-//                    /**
-//                     * do not add peers which are further or equally away from the key than us
-//                     */
-//                    int peersDistanceToKey = garlicMessage.getDestination().getDistance(p.getKademliaId());
-//                    System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
-//                    if (myDistanceToKey >= peersDistanceToKey) {
-//                        continue;
-//                    }
-
+                    /**
+                     * do not add peers which are further or equally away from the key than us
+                     */
+                    int peersDistanceToKey = garlicMessage.getDestination().getDistance(p.getKademliaId());
+                    if (myDistanceToKey <= peersDistanceToKey) {
+                        continue;
+                    }
+                    System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
 
                     peers.add(p);
                 }
@@ -164,7 +135,7 @@ public class GMParser {
 
             int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
 
-            System.out.println("inserting fp to peer since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey);
+            System.out.println("inserting fp to peer since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId());
 
         }
 
@@ -175,7 +146,7 @@ public class GMParser {
             peerToSendFP.writeBuffer.putInt(content.length);
             peerToSendFP.writeBuffer.put(content);
             peerToSendFP.setWriteBufferFilled();
-            System.out.println("send fp to other peer: " + garlicMessage.getDestination());
+//            System.out.println("send fp to other peer: " + garlicMessage.getDestination());
         } finally {
             peerToSendFP.getWriteBufferLock().unlock();
         }

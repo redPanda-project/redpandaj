@@ -8,6 +8,8 @@ import java.util.ArrayList;
 
 public class Node implements Serializable {
 
+    static final int MAX_SCORE_VALUE = 15;
+
     private static final Logger logger = LogManager.getLogger();
 
     private static final long serialVersionUID = 43L;
@@ -203,9 +205,9 @@ public class Node implements Serializable {
     }
 
     public int getScore() {
-        int score = gmTestsSuccessful * 3 - gmTestsFailed * 5;
+        int score = Math.min(MAX_SCORE_VALUE, gmTestsSuccessful) * 3 - Math.min(MAX_SCORE_VALUE, gmTestsFailed) * 5;
 
-        if (System.currentTimeMillis() - lastSeen > 1000L * 60L * 60) {
+        if (System.currentTimeMillis() - lastSeen > 1000L * 60L * 60L) {
             score -= 50;
         }
 
@@ -214,15 +216,15 @@ public class Node implements Serializable {
 
     public void cleanChecks() {
         //todo: make threadsafe?
-        if (getGmTestsFailed() > 200) {
-            setGmTestsFailed(200);
+        if (getGmTestsFailed() > MAX_SCORE_VALUE) {
+            setGmTestsFailed(MAX_SCORE_VALUE);
         }
 
-        if (getGmTestsSuccessful() > 200) {
-            setGmTestsSuccessful(200);
+        if (getGmTestsSuccessful() > MAX_SCORE_VALUE) {
+            setGmTestsSuccessful(MAX_SCORE_VALUE);
             if (getGmTestsFailed() > 0) {
                 gmTestsFailed--;
-                setGmTestsSuccessful(190);
+                setGmTestsSuccessful(MAX_SCORE_VALUE - 5);
             }
         }
     }

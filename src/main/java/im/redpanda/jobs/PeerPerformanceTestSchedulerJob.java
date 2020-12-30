@@ -2,13 +2,14 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
+import im.redpanda.core.Server;
 import im.redpanda.flaschenpost.FPStoreManager;
 
 public class PeerPerformanceTestSchedulerJob extends Job {
 
 
     public PeerPerformanceTestSchedulerJob() {
-        super(1000L * 10L * 1L, true);
+        super(1000L * 5L * 1L, true);
     }
 
     @Override
@@ -19,7 +20,12 @@ public class PeerPerformanceTestSchedulerJob extends Job {
     @Override
     public void work() {
 
-        Peer goodPeer = PeerList.getGoodPeer(1.0f); //todo change later if network is big enough
+        if (Server.SHUTDOWN) {
+            done();
+            return;
+        }
+
+        Peer goodPeer = PeerList.getGoodPeer(0.5f); //todo change later if network is big enough
 
         if (goodPeer == null) {
             return;

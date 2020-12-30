@@ -144,7 +144,7 @@ public abstract class Job implements Runnable {
             } finally {
                 runningJobsLock.unlock();
             }
-            System.out.println("job finished: " + jobId);
+//            System.out.println("job finished: " + jobId);
         } catch (Throwable e) {
             Log.sentry(e);
         }

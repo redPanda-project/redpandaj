@@ -55,7 +55,7 @@ public class KademliaSearchJob extends Job {
         try {
             Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
             if (blacklistedTill != null)
-            System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
+                System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
             if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
                 kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
             } else {
@@ -105,7 +105,7 @@ public class KademliaSearchJob extends Job {
                  */
                 int peersDistanceToKey = id.getDistance(p.getKademliaId());
                 System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
-                if (myDistanceToKey >= peersDistanceToKey) {
+                if (myDistanceToKey <= peersDistanceToKey) {
                     continue;
                 }
 
