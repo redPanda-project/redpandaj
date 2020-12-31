@@ -3,11 +3,17 @@ package im.redpanda.store;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
 import im.redpanda.core.Server;
+import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.graph.SimpleWeightedGraph;
+import org.jgrapht.nio.csv.CSVExporter;
+import org.jgrapht.nio.csv.CSVFormat;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
 import java.io.File;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,8 +39,17 @@ public class NodeStore {
     private final DB dbDisk;
 
     private final HashMap<KademliaId, Node> fastNodes;
+    private final SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
 
     public NodeStore() {
+        nodeGraph = Server.localSettings.getNodeGraph();
+
+        ArrayList<Node> nodes = new ArrayList<Node>();
+        for (Node node : nodeGraph.vertexSet()) {
+            nodes.add(node);
+        }
+        nodeGraph.removeAllVertices(nodes);
+
         dbonHeap = DBMaker
                 .heapDB()
 //                .closeOnJvmShutdown()
@@ -141,6 +156,7 @@ public class NodeStore {
 
     public HashMap<KademliaId, Node> getFastNodes() {
 
+
         if (fastNodes.size() < 10) {
             int toInsert = 10 - fastNodes.size();
 
@@ -156,6 +172,14 @@ public class NodeStore {
                     fastNodes.put(o.getKey(), o.getValue());
                     toInsert--;
 
+                    nodeGraph.addVertex(o.getValue());
+                    Node randomEdge = getRandomEdge(o.getValue());
+                    if (randomEdge != null) {
+                        DefaultEdge defaultEdge = nodeGraph.addEdge(o.getValue(), randomEdge);
+                        nodeGraph.setEdgeWeight(defaultEdge, Math.random());
+                    }
+
+
                 }
                 if (toInsert == 0) {
                     break;
@@ -164,10 +188,70 @@ public class NodeStore {
             }
 
         }
+        if (nodeGraph.edgeSet().size() < 200) {
+            addRandomEdge();
+        }
+
+        printGraph();
+
         return fastNodes;
     }
 
-//    put
+    private void printGraph() {
+        CSVExporter<Node, DefaultEdge> exporter = new CSVExporter<>(
+                CSVFormat.EDGE_LIST
+        );
+        exporter.setParameter(CSVFormat.Parameter.EDGE_WEIGHTS, true);
+        exporter.setVertexIdProvider(node -> node.toString());
+
+        Writer writer = new StringWriter();
+        exporter.exportGraph(nodeGraph, writer);
+        System.out.println(writer.toString());
+    }
+
+    private void addRandomEdge() {
+
+        Set<Node> kademliaIds = nodeGraph.vertexSet();
+
+        ArrayList<Node> ids = new ArrayList<>(kademliaIds);
 
 
+        boolean added = false;
+        int count = 0;
+
+        while (!added && count < 5) {
+
+            Collections.shuffle(ids);
+            Node a = ids.get(0);
+            ids.remove(a);
+            Collections.shuffle(ids);
+            Node b = ids.get(0);
+            ids.add(a);
+
+            DefaultEdge defaultEdge = nodeGraph.addEdge(a, b);
+
+            if (defaultEdge != null) {
+                nodeGraph.setEdgeWeight(defaultEdge, 0);
+                added = true;
+            }
+
+            count++;
+        }
+
+
+    }
+
+    private Node getRandomEdge(Node exclude) {
+        ArrayList<Node> nodes = new ArrayList<>(nodeGraph.vertexSet());
+        nodes.remove(exclude);
+        Collections.shuffle(nodes);
+        if (nodes.isEmpty()) {
+            return null;
+        }
+        return nodes.get(0);
+    }
+
+    public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
+        return nodeGraph;
+    }
 }

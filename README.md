@@ -25,3 +25,7 @@ In addition to the clarifications on the limitations by Google and Apple, the la
 
 The android application is deprecated and was removed from the play store.
 
+
+## Dependencies
+
+- [JGraphT](https://github.com/jgrapht/jgrapht/blob/master/README.md#introduction) License: LGPL 2.1 http://www.gnu.org/licenses/lgpl-2.1.html or EPL http://www.eclipse.org/org/documents/epl-v20.php

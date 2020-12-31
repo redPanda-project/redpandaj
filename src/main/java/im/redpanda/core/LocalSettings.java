@@ -1,9 +1,9 @@
 package im.redpanda.core;
 
+import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.graph.SimpleWeightedGraph;
+
 import java.io.*;
-import java.util.HashMap;
-import java.util.Random;
-import java.util.Set;
 
 /**
  * @author Robin Braun
@@ -19,10 +19,13 @@ public class LocalSettings implements Serializable {
     private long updateAndroidTimestamp;
     private byte[] updateAndroidSignature;
 
+    private SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
+
     public LocalSettings() {
         myIdentity = new NodeId();
         myIp = "";
         updateTimestamp = -1;
+        nodeGraph = new SimpleWeightedGraph(DefaultEdge.class);
     }
 
     public void setUpdateSignature(byte[] updateSignature) {
@@ -125,5 +128,9 @@ public class LocalSettings implements Serializable {
 
     public NodeId getMyIdentity() {
         return myIdentity;
+    }
+
+    public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
+        return nodeGraph;
     }
 }

@@ -232,7 +232,7 @@ public class KademliaId implements Serializable {
 
     @Override
     public String toString() {
-        return Base58.encode(keyBytes);
+        return Base58.encode(keyBytes).substring(0, 10);
     }
 
     public static KademliaId fromBase58(String base58String) throws AddressFormatException {

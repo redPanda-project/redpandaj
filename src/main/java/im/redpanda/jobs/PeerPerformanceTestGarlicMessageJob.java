@@ -105,6 +105,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
             for (Node node : nodes) {
                 node.increaseGmTestsSuccessful();
+                node.seen();
             }
 
 

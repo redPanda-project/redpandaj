@@ -42,9 +42,13 @@ public class Node implements Serializable {
         return lastSeen;
     }
 
+    public void seen() {
+        this.lastSeen = System.currentTimeMillis();
+    }
+
     //ToDo run seen every once in a while to trigger seen for peers which are permanently connected
     public void seen(String ip, int port) {
-        this.lastSeen = System.currentTimeMillis();
+        seen();
         ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
 
         ArrayList<ConnectionPoint> toRemove = new ArrayList<>();
@@ -180,6 +184,21 @@ public class Node implements Serializable {
 
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Node node = (Node) o;
+
+        return nodeId.equals(node.nodeId);
+    }
+
+    @Override
+    public int hashCode() {
+        return nodeId.hashCode();
+    }
+
     public int getGmTestsSuccessful() {
         return gmTestsSuccessful;
     }
@@ -227,6 +246,11 @@ public class Node implements Serializable {
                 setGmTestsSuccessful(MAX_SCORE_VALUE - 5);
             }
         }
+    }
+
+    @Override
+    public String toString() {
+        return nodeId.getKademliaId().toString();
     }
 }
 
