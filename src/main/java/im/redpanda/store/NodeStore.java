@@ -38,7 +38,6 @@ public class NodeStore {
     private final DB dboffHeap;
     private final DB dbDisk;
 
-    private final HashMap<KademliaId, Node> fastNodes;
     private final SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
 
     public NodeStore() {
@@ -92,8 +91,6 @@ public class NodeStore {
                 .expireAfterCreate()
                 .expireAfterGet(15, TimeUnit.MINUTES)
                 .create();
-
-        fastNodes = new HashMap<>();
     }
 
     public void put(KademliaId kademliaId, Node node) {
@@ -154,11 +151,12 @@ public class NodeStore {
         return onDisk.size();
     }
 
-    public HashMap<KademliaId, Node> getFastNodes() {
 
+    private void maintainNodes() {
+        int currentNodeCount = nodeGraph.vertexSet().size();
 
-        if (fastNodes.size() < 10) {
-            int toInsert = 10 - fastNodes.size();
+        if (currentNodeCount < 10) {
+            int toInsert = 10 - currentNodeCount;
 
             Set<Map.Entry<KademliaId, Node>> entriesSet = onHeap.entrySet();
 
@@ -167,16 +165,15 @@ public class NodeStore {
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
             for (Map.Entry<KademliaId, Node> o : entries) {
-                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore() + " " + o.getValue().getGmTestsSuccessful() + " " + o.getValue().getGmTestsFailed());
-                if (!fastNodes.containsKey(o.getKey())) {
-                    fastNodes.put(o.getKey(), o.getValue());
+//                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore() + " " + o.getValue().getGmTestsSuccessful() + " " + o.getValue().getGmTestsFailed());
+                if (!nodeGraph.containsVertex(o.getValue())) {
                     toInsert--;
 
                     nodeGraph.addVertex(o.getValue());
                     Node randomEdge = getRandomEdge(o.getValue());
                     if (randomEdge != null) {
                         DefaultEdge defaultEdge = nodeGraph.addEdge(o.getValue(), randomEdge);
-                        nodeGraph.setEdgeWeight(defaultEdge, Math.random());
+                        nodeGraph.setEdgeWeight(defaultEdge, 0.5);
                     }
 
 
@@ -193,9 +190,8 @@ public class NodeStore {
         }
 
         printGraph();
-
-        return fastNodes;
     }
+
 
     private void printGraph() {
         CSVExporter<Node, DefaultEdge> exporter = new CSVExporter<>(
@@ -231,7 +227,7 @@ public class NodeStore {
             DefaultEdge defaultEdge = nodeGraph.addEdge(a, b);
 
             if (defaultEdge != null) {
-                nodeGraph.setEdgeWeight(defaultEdge, 0);
+                nodeGraph.setEdgeWeight(defaultEdge, 0.5);
                 added = true;
             }
 
@@ -252,6 +248,7 @@ public class NodeStore {
     }
 
     public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
+        maintainNodes();
         return nodeGraph;
     }
 }

@@ -3,10 +3,11 @@ package im.redpanda.jobs;
 import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
+import org.jgrapht.graph.DefaultEdge;
+import org.jgrapht.graph.SimpleWeightedGraph;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
 
@@ -55,30 +56,68 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         int garlicSequenceLenght = 2;
 
-        HashMap<KademliaId, Node> fastNodes = Server.nodeStore.getFastNodes();
-        if (fastNodes.size() < garlicSequenceLenght) {
+        SimpleWeightedGraph<Node, DefaultEdge> g = Server.nodeStore.getNodeGraph();
+        if (g.vertexSet().size() < garlicSequenceLenght) {
             return;
         }
 
-        ArrayList<Node> values = new ArrayList<>(fastNodes.values());
+
+        ArrayList<Node> values = new ArrayList<>(g.vertexSet());
 
         Collections.shuffle(values);
 
-        for (Node node : values) {
-            if (node.getScore() < 0 && Math.random() < 0.8f) {
-                // if a node is bad we should only test it rarely
-                continue;
-            }
+        this.nodes = new ArrayList<>();
+        Node currentNode = values.get(0);
+        nodes.add(currentNode);
+        int currentLength = 0;
 
-            if (nodes.size() == garlicSequenceLenght) {
+        while (currentLength < 3) {
+            ArrayList<DefaultEdge> edges = new ArrayList<>(g.outgoingEdgesOf(currentNode));
+            Collections.shuffle(edges);
+            for (DefaultEdge e : edges) {
+                if (g.getEdgeWeight(e) < 0&& Math.random() < 0.8f) {
+                    // if a edge is bad we should only test it rarely
+                    continue;
+                }
+                if (g.getEdgeWeight(e) < -0.8&& Math.random() < 0.95f) {
+                    // if a edge is bad we should only test it rarely
+                    continue;
+                }
+
+                Node target = g.getEdgeSource(e);
+                if (target == currentNode) {
+                    target = g.getEdgeTarget(e);
+                }
+
+                if (nodes.contains(target)) {
+                    continue;
+                }
+
+                currentNode = target;
+                nodes.add(currentNode);
+                currentNode.cleanChecks();
                 break;
             }
-            node.cleanChecks();
-            nodes.add(node);
+
+            currentLength++;
+
+
         }
 
+        String a = "";
+        Node nodeBefore = null;
+        for (Node node : nodes) {
+            if (nodeBefore != null) {
+                a += " -(" + String.format("%.1f", g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
+            } else {
+                a += node;
+            }
+            nodeBefore = node;
+        }
+        System.out.println("path: " + a);
 
-        byte[] content = calculateNestedGarlicMessages(nodes, getJobId());
+
+        byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
 
         flaschenPostInsertPeer.getWriteBufferLock().lock();
         try {
@@ -100,6 +139,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     @Override
     public void done() {
         super.done();
+
+        float scoreToAdd = 0;
         if (success) {
             flaschenPostInsertPeer.getNode().increaseGmTestsSuccessful();
 
@@ -108,13 +149,36 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 node.seen();
             }
 
-
+            scoreToAdd = 0.1f;
         } else {
             flaschenPostInsertPeer.getNode().increaseGmTestsFailed();
             for (Node node : nodes) {
                 node.increaseGmTestsFailed();
             }
+            scoreToAdd = -0.1f;
         }
+
+        SimpleWeightedGraph<Node, DefaultEdge> g = Server.nodeStore.getNodeGraph();
+
+        String a = "";
+        Node nodeBefore = null;
+        for (Node node : nodes) {
+            if (nodeBefore != null) {
+                DefaultEdge edge = g.getEdge(nodeBefore, node);
+                double newWeight = g.getEdgeWeight(edge) + scoreToAdd;
+                if (newWeight > 1) {
+                    newWeight = 1;
+                } else if (newWeight < -1) {
+                    newWeight = -1;
+                }
+                g.setEdgeWeight(edge, newWeight);
+                a += " -(" + String.format("%.1f", newWeight) + ")-> " + node;
+            } else {
+                a += node;
+            }
+            nodeBefore = node;
+        }
+        System.out.println("path: " + a + " (updated)");
 
     }
 
