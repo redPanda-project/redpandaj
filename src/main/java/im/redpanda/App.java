@@ -2,26 +2,16 @@ package im.redpanda;
 
 import im.redpanda.core.ListenConsole;
 import im.redpanda.core.Server;
+import im.redpanda.jobs.ServerRestartJob;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
-import io.sentry.SentryOptions;
-import io.sentry.event.UserBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Enumeration;
-import java.util.GregorianCalendar;
-import java.util.jar.Attributes;
-import java.util.jar.Manifest;
-
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -110,6 +100,9 @@ public class App {
         } else {
             logger.warn("Warning, no git revision found...");
         }
+
+        //lets restart the server once in a while until we have stable releases...
+        new ServerRestartJob().start();
 
         Server.start();
 

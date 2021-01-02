@@ -3,7 +3,7 @@ package im.redpanda.store;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
 import im.redpanda.core.Server;
-import org.jgrapht.graph.DefaultEdge;
+import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.SimpleWeightedGraph;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
@@ -38,7 +38,7 @@ public class NodeStore {
     private final DB dboffHeap;
     private final DB dbDisk;
 
-    private final SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
+    private final SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
     private final Map<Node, Long> nodeBlacklist;
 
     public NodeStore() {
@@ -46,7 +46,7 @@ public class NodeStore {
 
         if (Server.localSettings == null) {
             System.out.println("warning, could not restore nodeGraph from local settings....");
-            nodeGraph = new SimpleWeightedGraph(DefaultEdge.class);
+            nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
         } else {
             nodeGraph = Server.localSettings.getNodeGraph();
         }
@@ -161,6 +161,9 @@ public class NodeStore {
 
 
     public void maintainNodes() {
+
+        removeNodeIfNoGoodLinkAvailable();
+
         int currentNodeCount = nodeGraph.vertexSet().size();
 
         if (currentNodeCount < 10) {
@@ -183,10 +186,10 @@ public class NodeStore {
                     toInsert--;
 
                     nodeGraph.addVertex(o.getValue());
-                    Node randomEdge = getRandomEdge(o.getValue());
+                    Node randomEdge = getRandomNode(o.getValue());
                     if (randomEdge != null) {
-                        DefaultEdge defaultEdge = nodeGraph.addEdge(o.getValue(), randomEdge);
-                        nodeGraph.setEdgeWeight(defaultEdge, 0.5);
+                        NodeEdge defaultEdge = nodeGraph.addEdge(o.getValue(), randomEdge);
+                        nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                     }
 
 
@@ -199,8 +202,6 @@ public class NodeStore {
 
         }
 
-        removeNodeIfNoGoodLinkAvailable();
-
 
         if (nodeGraph.edgeSet().size() < 200) {
             addRandomEdge();
@@ -210,7 +211,7 @@ public class NodeStore {
     }
 
     private boolean isNodeStillBlacklisted(Node node) {
-        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 5L;
+        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 15L;
     }
 
     private void removeNodeIfNoGoodLinkAvailable() {
@@ -220,8 +221,8 @@ public class NodeStore {
 
             boolean oneGoodLink = false;
 
-            for (DefaultEdge defaultEdge : nodeGraph.edgesOf(node)) {
-                if (nodeGraph.getEdgeWeight(defaultEdge) > -0.5) {
+            for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
+                if (nodeGraph.getEdgeWeight(defaultEdge) > PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
                     oneGoodLink = true;
                     break;
                 }
@@ -243,7 +244,7 @@ public class NodeStore {
 
 
     public void printGraph() {
-        CSVExporter<Node, DefaultEdge> exporter = new CSVExporter<>(
+        CSVExporter<Node, NodeEdge> exporter = new CSVExporter<>(
                 CSVFormat.EDGE_LIST
         );
         exporter.setParameter(CSVFormat.Parameter.EDGE_WEIGHTS, true);
@@ -259,7 +260,7 @@ public class NodeStore {
 
         Set<Node> nodes = nodeGraph.vertexSet();
 
-        if (nodes.isEmpty()) {
+        if (nodes.size() < 2) {
             return;
         }
 
@@ -278,10 +279,10 @@ public class NodeStore {
             Node b = ids.get(0);
             ids.add(a);
 
-            DefaultEdge defaultEdge = nodeGraph.addEdge(a, b);
+            NodeEdge defaultEdge = nodeGraph.addEdge(a, b);
 
             if (defaultEdge != null) {
-                nodeGraph.setEdgeWeight(defaultEdge, 0.5);
+                nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                 added = true;
             }
 
@@ -291,7 +292,7 @@ public class NodeStore {
 
     }
 
-    private Node getRandomEdge(Node exclude) {
+    private Node getRandomNode(Node exclude) {
         ArrayList<Node> nodes = new ArrayList<>(nodeGraph.vertexSet());
         nodes.remove(exclude);
         Collections.shuffle(nodes);
@@ -301,7 +302,7 @@ public class NodeStore {
         return nodes.get(0);
     }
 
-    public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
+    public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
     }
 }

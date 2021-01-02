@@ -1,6 +1,6 @@
 package im.redpanda.core;
 
-import org.jgrapht.graph.DefaultEdge;
+import im.redpanda.store.NodeEdge;
 import org.jgrapht.graph.SimpleWeightedGraph;
 
 import java.io.*;
@@ -11,6 +11,8 @@ import java.io.*;
 public class LocalSettings implements Serializable {
 
 
+    private static final long serialVersionUID = 639L;
+
     private NodeId myIdentity;
     private String myIp;
     private long updateTimestamp;
@@ -19,13 +21,13 @@ public class LocalSettings implements Serializable {
     private long updateAndroidTimestamp;
     private byte[] updateAndroidSignature;
 
-    private SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
+    private SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
 
     public LocalSettings() {
         myIdentity = new NodeId();
         myIp = "";
         updateTimestamp = -1;
-        nodeGraph = new SimpleWeightedGraph(DefaultEdge.class);
+        nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
     }
 
     public void setUpdateSignature(byte[] updateSignature) {
@@ -130,7 +132,7 @@ public class LocalSettings implements Serializable {
         return myIdentity;
     }
 
-    public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
+    public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
     }
 }

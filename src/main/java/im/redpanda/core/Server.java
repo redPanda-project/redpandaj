@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.jobs.KadRefreshJob;
+import im.redpanda.jobs.NodeStoreMaintainJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.store.NodeStore;
@@ -152,6 +153,7 @@ public class Server {
 
         new PeerPerformanceTestSchedulerJob().start();
         new RequestPeerListJob().start();
+        new NodeStoreMaintainJob().start();
 
     }
 

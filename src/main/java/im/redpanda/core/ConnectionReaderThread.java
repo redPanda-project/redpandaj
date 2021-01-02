@@ -544,7 +544,6 @@ public class ConnectionReaderThread extends Thread {
 
                     try (FileOutputStream fos = new FileOutputStream("update")) {
                         fos.write(data);
-                        //fos.close(); There is no more need for this line since you had created the instance of "fos" inside the try. And this will automatically close the OutputStream
                         logger.debug("update store in update file");
 
                         File f = new File("update");
