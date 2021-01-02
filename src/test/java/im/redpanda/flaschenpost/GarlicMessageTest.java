@@ -13,6 +13,7 @@ public class GarlicMessageTest {
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
         Server.nodeId = new NodeId();
+        Server.NONCE = Server.nodeId.getKademliaId();
     }
 
     @Test
