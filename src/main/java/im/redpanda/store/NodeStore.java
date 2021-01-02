@@ -44,7 +44,12 @@ public class NodeStore {
     public NodeStore() {
         nodeBlacklist = new HashMap<>();
 
-        nodeGraph = Server.localSettings.getNodeGraph();
+        if (Server.localSettings == null) {
+            System.out.println("warning, could not restore nodeGraph from local settings....");
+            nodeGraph = new SimpleWeightedGraph(DefaultEdge.class);
+        } else {
+            nodeGraph = Server.localSettings.getNodeGraph();
+        }
 
 //        ArrayList<Node> nodes = new ArrayList<Node>();
 //        for (Node node : nodeGraph.vertexSet()) {

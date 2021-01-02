@@ -9,7 +9,6 @@ import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.store.NodeStore;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.security.Security;
@@ -24,11 +23,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
 
     @Test
-    @Ignore("Tests needs file access which is not very robust")
     public void calculateNestedGarlicMessagesTest() {
-
-        //todo mockup for NodeStore
-
         ArrayList<Node> nodes = new ArrayList<Node>();
 
         Node nodeA = new Node(Server.nodeId);
@@ -40,8 +35,6 @@ public class PeerPerformanceTestGarlicMessageJobTest {
         byte[] bytes = PeerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
 
         GMContent parse = GMParser.parse(bytes);
-
-
     }
 
     @Before
