@@ -10,6 +10,10 @@ import static org.junit.Assert.*;
 public class NodeTest {
 
 
+    static {
+        Server.localSettings = new LocalSettings();
+    }
+
     @Test
     public void getByKademliaId() {
 
