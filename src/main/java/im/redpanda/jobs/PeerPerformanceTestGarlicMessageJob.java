@@ -47,6 +47,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     @Override
     public void init() {
 
+        Server.nodeStore.maintainNodes();
+
         flaschenPostInsertPeer = PeerList.getGoodPeer();
 
         if (!flaschenPostInsertPeer.isConnected() || flaschenPostInsertPeer.getNode() == null) {

@@ -155,7 +155,7 @@ public class NodeStore {
     }
 
 
-    private void maintainNodes() {
+    public void maintainNodes() {
         int currentNodeCount = nodeGraph.vertexSet().size();
 
         if (currentNodeCount < 10) {
@@ -296,7 +296,6 @@ public class NodeStore {
     }
 
     public SimpleWeightedGraph<Node, DefaultEdge> getNodeGraph() {
-        maintainNodes();
         return nodeGraph;
     }
 }

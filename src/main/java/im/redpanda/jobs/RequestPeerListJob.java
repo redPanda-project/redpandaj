@@ -8,7 +8,7 @@ public class RequestPeerListJob extends Job {
 
 
     public RequestPeerListJob() {
-        super(1000L * 60L * 5L, true);
+        super(1000L * 30L * 1L, true);
     }
 
     @Override
