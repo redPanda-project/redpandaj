@@ -143,8 +143,8 @@ public class ConnectionReaderThread extends Thread {
 
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
 
-                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().getKademliaId() != null) {
-                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+                    if (peerToWrite.getNodeId() != null) {
+                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
                     } else {
 
                     }
@@ -211,14 +211,17 @@ public class ConnectionReaderThread extends Thread {
                     byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
                     nodeIdBuffer.get(nodeIdBytes);
 
-                    KademliaId kademliaId = new KademliaId(nodeIdBytes);
+                    NodeId nodeId = NodeId.importPublic(nodeIdBytes);
 
-                    if (kademliaId.equals(Server.NONCE)) {
-                        Log.put("found ourselves in the peerlist", 80);
-                        break;
+                    if (nodeId == null) {
+                        System.out.println("could not get nodeId from peerlist....");
+                        continue;
                     }
 
-                    NodeId nodeId = new NodeId(kademliaId);
+                    if (nodeId.getKademliaId().equals(Server.NONCE)) {
+                        Log.put("found ourselves in the peerlist", 80);
+                        continue;
+                    }
 
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
 
@@ -227,9 +230,12 @@ public class ConnectionReaderThread extends Thread {
                         continue;
                     }
 
-                    Node byKademliaId = Node.getByKademliaId(kademliaId);
+                    Node byKademliaId = Node.getByKademliaId(nodeId.getKademliaId());
                     if (byKademliaId != null) {
                         byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
+                    } else {
+                        //this will store the new node in the NodeStore as well
+                        new Node(nodeId);
                     }
 
                 } else {
@@ -1150,9 +1156,9 @@ public class ConnectionReaderThread extends Thread {
             read = peer.getSocketChannel().read(myReaderBuffer);
             Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             key.cancel();
-            peer.disconnect("could not read...");
+            peer.disconnect("could not read peer...");
             return;
         } catch (Throwable e) {
             Log.sentry(e);

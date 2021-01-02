@@ -21,6 +21,8 @@ public class RequestPeerListJob extends Job {
 
         Peer peer = PeerList.getGoodPeer(1.0f);
 
+        //todo request and send peers over garlic messages...
+
         try {
             peer.getWriteBufferLock().lock();
             try {

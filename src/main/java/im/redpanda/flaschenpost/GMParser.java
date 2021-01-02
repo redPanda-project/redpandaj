@@ -90,6 +90,8 @@ public class GMParser {
 
             TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
 
+            //todo use best route for this flaschenpost by network graph
+
             //insert all nodes
             PeerList.getReadWriteLock().readLock().lock();
             try {
@@ -118,7 +120,7 @@ public class GMParser {
                     if (myDistanceToKey <= peersDistanceToKey) {
                         continue;
                     }
-                    System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
+//                    System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
 
                     peers.add(p);
                 }
@@ -132,9 +134,8 @@ public class GMParser {
 
             peerToSendFP = peers.first();
 
-            int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
-
-            System.out.println("inserting fp to peer since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId());
+//            int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
+//            System.out.println("inserting fp to peer " + garlicMessage.getDestination() + "  since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId() + " con " + peerToSendFP.isConnected());
 
         }
 

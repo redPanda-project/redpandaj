@@ -201,7 +201,7 @@ public class NodeStore {
             addRandomEdge();
         }
 
-        printGraph();
+//        printGraph();
     }
 
     private boolean isNodeStillBlacklisted(Node node) {
@@ -237,7 +237,7 @@ public class NodeStore {
     }
 
 
-    private void printGraph() {
+    public void printGraph() {
         CSVExporter<Node, DefaultEdge> exporter = new CSVExporter<>(
                 CSVFormat.EDGE_LIST
         );
@@ -246,6 +246,7 @@ public class NodeStore {
 
         Writer writer = new StringWriter();
         exporter.exportGraph(nodeGraph, writer);
+        System.out.println("Current Network Graph with weights representing the performance for garlic routing.");
         System.out.println(writer.toString());
     }
 
