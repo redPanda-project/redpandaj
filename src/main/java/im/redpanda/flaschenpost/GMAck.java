@@ -16,26 +16,43 @@ public class GMAck extends GMContent {
         this.ackid = Server.random.nextInt();
     }
 
-    public GMAck(ByteBuffer buffer) {
+    public GMAck(byte[] contentToParse) {
 
-        byte[] content = new byte[4];
+//        ByteBuffer buffer = ByteBuffer.wrap(contentToParse);
+//
+//        byte[] content = new byte[4];
+//
+//        buffer.get(content);
 
-        buffer.get(content);
-
-        setContent(content);
+        setContent(contentToParse);
     }
 
     @Override
     protected void computeContent() {
-        ByteBuffer allocate = ByteBuffer.allocate(1 + 4);
+        ByteBuffer allocate = ByteBuffer.allocate(1 + 4 + 4);
         allocate.put(getGMType().getId());
+        allocate.putInt(4); // bytes after this int
         allocate.putInt(ackid);
 
         setContent(allocate.array());
     }
 
     protected void parseContent() {
-        ackid = ByteBuffer.wrap(getContent()).getInt();
+        ByteBuffer buffer = ByteBuffer.wrap(getContent());
+
+        byte type = buffer.get();
+
+        if (type != getGMType().getId()) {
+            throw new RuntimeException("ackid should have an ack id type!");
+        }
+
+        int remainingLen = buffer.getInt();
+
+        if (remainingLen != 4) {
+            throw new RuntimeException("len of GMAck wrong...." + remainingLen);
+        }
+
+        ackid = buffer.getInt();
     }
 
     @Override

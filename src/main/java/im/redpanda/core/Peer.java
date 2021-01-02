@@ -6,19 +6,12 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Utils;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.ShortBufferException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -802,19 +795,16 @@ public class Peer implements Comparable<Peer>, Serializable {
          */
         PeerList.add(this);
 
-//        lets request some peers form that peer
-        writeBufferLock.lock();
-        try {
-            writeBuffer.put(Command.REQUEST_PEERLIST);
-            //lets request an update
-            writeBuffer.put(Command.UPDATE_REQUEST_TIMESTAMP);
-            if (!peerInHandshake.lightClient) {
-                //lets request an android update
+        if (!peerInHandshake.lightClient) {
+            writeBufferLock.lock();
+            try {
+                writeBuffer.put(Command.UPDATE_REQUEST_TIMESTAMP);
                 writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP);
+                //peers will now only be requested by the RequestPeerListJob
+                setWriteBufferFilled();
+            } finally {
+                writeBufferLock.unlock();
             }
-            setWriteBufferFilled();
-        } finally {
-            writeBufferLock.unlock();
         }
 
         /**

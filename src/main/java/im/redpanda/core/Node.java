@@ -8,6 +8,8 @@ import java.util.ArrayList;
 
 public class Node implements Serializable {
 
+    static final int MAX_SCORE_VALUE = 15;
+
     private static final Logger logger = LogManager.getLogger();
 
     private static final long serialVersionUID = 43L;
@@ -40,9 +42,13 @@ public class Node implements Serializable {
         return lastSeen;
     }
 
+    public void seen() {
+        this.lastSeen = System.currentTimeMillis();
+    }
+
     //ToDo run seen every once in a while to trigger seen for peers which are permanently connected
     public void seen(String ip, int port) {
-        this.lastSeen = System.currentTimeMillis();
+        seen();
         ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
 
         ArrayList<ConnectionPoint> toRemove = new ArrayList<>();
@@ -178,6 +184,21 @@ public class Node implements Serializable {
 
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Node node = (Node) o;
+
+        return nodeId.equals(node.nodeId);
+    }
+
+    @Override
+    public int hashCode() {
+        return nodeId.hashCode();
+    }
+
     public int getGmTestsSuccessful() {
         return gmTestsSuccessful;
     }
@@ -200,6 +221,36 @@ public class Node implements Serializable {
 
     public void increaseGmTestsSuccessful() {
         this.gmTestsSuccessful++;
+    }
+
+    public int getScore() {
+        int score = Math.min(MAX_SCORE_VALUE, gmTestsSuccessful) * 3 - Math.min(MAX_SCORE_VALUE, gmTestsFailed) * 5;
+
+        if (System.currentTimeMillis() - lastSeen > 1000L * 60L * 60L) {
+            score -= 50;
+        }
+
+        return score;
+    }
+
+    public void cleanChecks() {
+        //todo: make threadsafe?
+        if (getGmTestsFailed() > MAX_SCORE_VALUE) {
+            setGmTestsFailed(MAX_SCORE_VALUE);
+        }
+
+        if (getGmTestsSuccessful() > MAX_SCORE_VALUE) {
+            setGmTestsSuccessful(MAX_SCORE_VALUE);
+            if (getGmTestsFailed() > 0) {
+                gmTestsFailed--;
+                setGmTestsSuccessful(MAX_SCORE_VALUE - 5);
+            }
+        }
+    }
+
+    @Override
+    public String toString() {
+        return nodeId.getKademliaId().toString();
     }
 }
 

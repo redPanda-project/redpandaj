@@ -35,16 +35,17 @@ public class GarlicMessage extends Flaschenpost {
      * The NodeId used for encryption. This NodeId should not be reused!
      * There is always a new NodeId for every new garlic message.
      */
-    private NodeId encryptionNodeId;
+    private final NodeId encryptionNodeId;
     /**
      * ackId which should be encrypted as well. This ackId is used to acknowledge the Flaschenpost.
      */
     private int ackId;
     /**
-     * The Content of the GarlicMessage is a List of other GarlicMessages.
+     * The Content of the GarlicMessage is a List of other GMContent objects.
      */
-    private byte[] iv;
-    private ArrayList<GMContent> nestedMessages;
+    private final byte[] iv;
+    private final ArrayList<GMContent> nestedMessages;
+    private byte[] encryptedInformation;
     private byte[] signature;
 
     public GarlicMessage(NodeId targetsNodeId) {
@@ -58,11 +59,24 @@ public class GarlicMessage extends Flaschenpost {
         this.iv = new byte[16];
         Server.secureRandom.nextBytes(this.iv);
 
-        this.encryptionNodeId = new NodeId();
+        this.encryptionNodeId = NodeId.generateWithSimpleKey();
     }
 
 
-    public GarlicMessage(ByteBuffer buffer) {
+    public GarlicMessage(byte[] bytes) {
+
+        setContent(bytes);
+
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+
+        byte gmType = buffer.get();
+
+        int overallByteLen = buffer.getInt();
+
+        if (overallByteLen != buffer.remaining()) {
+            throw new RuntimeException("Warning, length of gm content wrong: " + overallByteLen + " " + buffer.remaining());
+        }
+
         destination = KademliaId.fromBuffer(buffer);
 
 
@@ -75,10 +89,8 @@ public class GarlicMessage extends Flaschenpost {
 
 
         int encryptedLength = buffer.getInt();
-        byte[] contentBytes = new byte[encryptedLength];
-        buffer.get(contentBytes);
-
-        setContent(contentBytes);
+        encryptedInformation = new byte[encryptedLength];
+        buffer.get(encryptedInformation);
 
         signature = Utils.readSignature(buffer);
 
@@ -133,8 +145,11 @@ public class GarlicMessage extends Flaschenpost {
 
             byte[] signature = encryptionNodeId.sign(encryptedBytes);
 
-            ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + IV_LEN + NodeId.PUBLIC_KEYLEN + 4 + encryptedBytes.length + signature.length);
+            int overallLength = 1 + 4 + KademliaId.ID_LENGTH_BYTES + IV_LEN + NodeId.PUBLIC_KEYLEN + 4 + encryptedBytes.length + signature.length;
+
+            ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(overallLength);
             encryptedAndSignedBytes.put(getGMType().getId());
+            encryptedAndSignedBytes.putInt(overallLength - 1 - 4);
             encryptedAndSignedBytes.put(destination.getBytes());
             encryptedAndSignedBytes.put(iv);
             encryptedAndSignedBytes.put(encryptionNodeId.exportPublic());
@@ -164,7 +179,7 @@ public class GarlicMessage extends Flaschenpost {
     protected void parseContent() {
 
         //lets check the signature
-        boolean verify = encryptionNodeId.verify(getContent(), signature);
+        boolean verify = encryptionNodeId.verify(encryptedInformation, signature);
         if (!verify) {
             System.out.println("signature could not be verified for a Garlic Message...");
             Log.sentry("signature could not be verified for a Garlic Message...");
@@ -183,7 +198,7 @@ public class GarlicMessage extends Flaschenpost {
         try {
             Cipher cipher = Cipher.getInstance(ALGORITHM, PROVIDER);
             cipher.init(Cipher.DECRYPT_MODE, sharedSecret, ivParameterSpec);
-            byte[] decryptedBytes = cipher.doFinal(getContent());
+            byte[] decryptedBytes = cipher.doFinal(encryptedInformation);
 
             ByteBuffer decryptedBuffer = ByteBuffer.wrap(decryptedBytes);
             int numberOfNeastedMessages = decryptedBuffer.getInt();
@@ -193,7 +208,12 @@ public class GarlicMessage extends Flaschenpost {
 
                 int toParseBytes = decryptedBuffer.getInt();
                 int startingPosition = decryptedBuffer.position();
-                GMContent parsed = GMParser.parse(decryptedBuffer);
+
+                byte[] bytesForSingleGM = new byte[toParseBytes];
+
+                decryptedBuffer.get(bytesForSingleGM);
+
+                GMContent parsed = GMParser.parse(bytesForSingleGM);
                 addGMContent(parsed);
 
                 if (decryptedBuffer.position() != startingPosition + toParseBytes) {

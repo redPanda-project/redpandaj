@@ -5,9 +5,12 @@
 
 DIRECTORY=sources
 
+#todo change later to master branch
+BRANCH=dev
+
 if [ ! -d "$DIRECTORY" ]; then
   echo "$DIRECTORY does not exists cloning into $DIRECTORY..."
-  git clone git://github.com/redPanda-project/redpandaj.git $DIRECTORY
+  git clone --branch $BRANCH git://github.com/redPanda-project/redpandaj.git $DIRECTORY
 fi
 
 cd $DIRECTORY
@@ -36,5 +39,5 @@ cp ./$DIRECTORY/helpful/build.sh build.sh
 echo "updating start script from gitrepo"
 cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/redpanda-console.sh
 
-echo "update sucesfully..."
-echo "start repanda by typing ./bin/redpanda-console.sh"
+echo "update successfully..."
+echo "start redpanda by typing ./bin/redpanda-console.sh"

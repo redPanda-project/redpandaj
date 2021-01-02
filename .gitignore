@@ -117,5 +117,5 @@ buildNumber.properties
 .mvn/wrapper/maven-wrapper.jar
 privateSigningKey.txt
 
-
+.restart
 *.apk

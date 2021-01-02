@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.kademlia.KadStoreManager;
-import im.redpanda.store.NodeStore;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
@@ -136,6 +136,12 @@ public class ListenConsole extends Thread {
                 } finally {
                     PeerList.getReadWriteLock().writeLock().unlock();
                 }
+
+                if (Server.nodeStore != null) {
+                    Server.nodeStore.printGraph();
+                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
+                }
+
             } else if (readLine.equals("ll")) {
                 System.out.println("New Log Level:");
                 String readLine2 = bufferedReader.readLine();

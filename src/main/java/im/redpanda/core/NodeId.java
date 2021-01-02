@@ -1,12 +1,13 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.crypt.Utils;
-import io.sentry.Sentry;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
@@ -49,6 +50,11 @@ public class NodeId implements Serializable {
      */
     public NodeId(KademliaId kademliaId) {
         this.kademliaId = kademliaId;
+    }
+
+
+    public static NodeId generateWithSimpleKey() {
+        return new NodeId(generateECKeys());
     }
 
     /**
@@ -398,5 +404,9 @@ public class NodeId implements Serializable {
         return NodeId.importPublic(publicKeyBytes);
     }
 
+    @Override
+    public int hashCode() {
+        return getKademliaId().hashCode();
+    }
 }
 

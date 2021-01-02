@@ -1,7 +1,5 @@
 package im.redpanda.core;
 
-import org.junit.runner.Result;
-
 public class TestHelper {
     private static boolean running = false;
 
@@ -27,6 +25,7 @@ public class TestHelper {
                 throw new RuntimeException("redpanda did not start within 10 seconds...");
             }
         }
+        System.out.println("redpanda started...");
 
     }
 

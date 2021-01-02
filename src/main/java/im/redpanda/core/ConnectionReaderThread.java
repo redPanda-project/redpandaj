@@ -11,11 +11,12 @@ import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
-import im.redpanda.flaschenpost.GarlicMessage;
-import im.redpanda.jobs.*;
+import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaInsertJob;
+import im.redpanda.jobs.KademliaSearchJob;
+import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
@@ -142,8 +143,8 @@ public class ConnectionReaderThread extends Thread {
 
 //                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
 
-                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().getKademliaId() != null) {
-                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().getKademliaId().getBytes());
+                    if (peerToWrite.getNodeId() != null) {
+                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
                     } else {
 
                     }
@@ -210,14 +211,17 @@ public class ConnectionReaderThread extends Thread {
                     byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
                     nodeIdBuffer.get(nodeIdBytes);
 
-                    KademliaId kademliaId = new KademliaId(nodeIdBytes);
+                    NodeId nodeId = NodeId.importPublic(nodeIdBytes);
 
-                    if (kademliaId.equals(Server.NONCE)) {
-                        Log.put("found ourselves in the peerlist", 80);
-                        break;
+                    if (nodeId == null) {
+                        System.out.println("could not get nodeId from peerlist....");
+                        continue;
                     }
 
-                    NodeId nodeId = new NodeId(kademliaId);
+                    if (nodeId.getKademliaId().equals(Server.NONCE)) {
+                        Log.put("found ourselves in the peerlist", 80);
+                        continue;
+                    }
 
                     newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
 
@@ -226,9 +230,12 @@ public class ConnectionReaderThread extends Thread {
                         continue;
                     }
 
-                    Node byKademliaId = Node.getByKademliaId(kademliaId);
+                    Node byKademliaId = Node.getByKademliaId(nodeId.getKademliaId());
                     if (byKademliaId != null) {
                         byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
+                    } else {
+                        //this will store the new node in the NodeStore as well
+                        new Node(nodeId);
                     }
 
                 } else {
@@ -537,7 +544,6 @@ public class ConnectionReaderThread extends Thread {
 
                     try (FileOutputStream fos = new FileOutputStream("update")) {
                         fos.write(data);
-                        //fos.close(); There is no more need for this line since you had created the instance of "fos" inside the try. And this will automatically close the OutputStream
                         logger.debug("update store in update file");
 
                         File f = new File("update");
@@ -1119,56 +1125,7 @@ public class ConnectionReaderThread extends Thread {
             byte[] content = new byte[contentLen];
             readBuffer.get(content);
 
-            GMContent gmContent = GMParser.parse(ByteBuffer.wrap(content));
-
-            if (gmContent instanceof GarlicMessage) {
-
-                GarlicMessage gm = (GarlicMessage) gmContent;
-
-                if (gm.isTargetedToUs()) {
-                    System.out.println("gm for us!!");
-
-                    for (GMContent innerContent : gm.getGMContent()) {
-                        if (innerContent instanceof GMAck) {
-
-                            GMAck gmAck = (GMAck) innerContent;
-
-                            Job runningJob = Job.getRunningJob(gmAck.getAckid());
-
-                            if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
-                                PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
-                                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
-                                perfJob.success();
-                            }
-
-
-                        }
-                    }
-
-
-                } else {
-                    System.out.println("gm for other lets route the message to destination...");
-
-                    Peer peerToSendFP = PeerList.get(gm.getDestination());
-
-                    if (peerToSendFP != null) {
-
-                        peerToSendFP.getWriteBufferLock().lock();
-                        try {
-                            peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
-                            peerToSendFP.writeBuffer.putInt(contentLen);
-                            peerToSendFP.writeBuffer.put(content);
-                            peerToSendFP.setWriteBufferFilled();
-                        } finally {
-                            peerToSendFP.getWriteBufferLock().unlock();
-                        }
-                    } else {
-                        //todo
-                    }
-
-                }
-            }
-
+            GMContent gmContent = GMParser.parse(content);
 
             return 1 + 4 + contentLen;
 
@@ -1198,9 +1155,9 @@ public class ConnectionReaderThread extends Thread {
             read = peer.getSocketChannel().read(myReaderBuffer);
             Log.put("!!read bytes: " + read, 200);
         } catch (IOException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             key.cancel();
-            peer.disconnect("could not read...");
+            peer.disconnect("could not read peer...");
             return;
         } catch (Throwable e) {
             Log.sentry(e);

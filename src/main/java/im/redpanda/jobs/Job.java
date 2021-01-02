@@ -28,6 +28,10 @@ public abstract class Job implements Runnable {
     public Job() {
     }
 
+    public Job(long reRunDelay) {
+        this.reRunDelay = reRunDelay;
+    }
+
     public Job(long reRunDelay, boolean permanent) {
         this.reRunDelay = reRunDelay;
         this.permanent = permanent;
@@ -144,7 +148,7 @@ public abstract class Job implements Runnable {
             } finally {
                 runningJobsLock.unlock();
             }
-            System.out.println("job finished: " + jobId);
+//            System.out.println("job finished: " + jobId);
         } catch (Throwable e) {
             Log.sentry(e);
         }

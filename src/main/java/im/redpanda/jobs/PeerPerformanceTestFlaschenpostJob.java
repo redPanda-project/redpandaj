@@ -1,6 +1,9 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.Server;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 
@@ -16,7 +19,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
     @Override
     public void init() {
 
-        cleanPeerChecks();
+        peer.getNode().cleanChecks();
 
         System.out.println("we are creating a Flaschenpost to monitor other peers...");
 
@@ -48,23 +51,6 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
     }
 
-    private void cleanPeerChecks() {
-        Node node = peer.getNode();
-        if (node != null) {
-            if (node.getGmTestsFailed() > 200) {
-                node.setGmTestsFailed(200);
-            }
-
-            if (node.getGmTestsSuccessful() > 200) {
-                node.setGmTestsSuccessful(200);
-                if (node.getGmTestsFailed() > 0) {
-                    node.setGmTestsFailed(node.getGmTestsFailed() - 1);
-                    node.setGmTestsSuccessful(100);
-                }
-            }
-
-        }
-    }
 
     @Override
     public void work() {

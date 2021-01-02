@@ -4,11 +4,16 @@ import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
 import java.io.File;
+import java.security.Security;
 
 import static org.junit.Assert.*;
 
 public class NodeTest {
 
+    static {
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+        Server.localSettings = new LocalSettings();
+    }
 
     @Test
     public void getByKademliaId() {

@@ -3,6 +3,7 @@
 # redpanda start script with auto restart and update installing...
 
 FILE=update
+FILE_RESTART=.restart
 errorReportFileAllowed=.errorReports.allowed
 errorReportFileDisallowed=.errorReports.disallowed
 SETTINGS_FILE=bin/settings
@@ -72,7 +73,10 @@ while [ true ]; do
   $cmd -jar redpanda.jar $extras
 
   if [ -f $FILE ]; then
-    echo "restart..."
+    echo "restart due to update..."
+  elif [ -f $FILE_RESTART ]; then
+    rm $FILE_RESTART
+    echo "restart due to restart request..."
   else
     echo "quit..."
     break

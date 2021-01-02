@@ -28,7 +28,7 @@ public class FlaschenpostTest {
 
 
     @Test
-    public void echoNesteGM() {
+    public void echoNestedGM() {
         GMEchoTest gmEchoTest = new GMEchoTest();
 
         NodeId nodeId = new NodeId();

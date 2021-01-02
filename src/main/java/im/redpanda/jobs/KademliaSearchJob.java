@@ -5,7 +5,6 @@ import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,13 +17,13 @@ public class KademliaSearchJob extends Job {
 
     /**
      * Here we use a blacklist to block search request for the same KademliaId in short time intervals.
-     * If a search is initialized from a node and the next nodes are also have to start a search request,
-     * it is possible that two nodes request the same search from use.
+     * If a search is initialized from a node and the next nodes also have to start a search request,
+     * it is possible that two nodes request the same search from us.
      * This blacklist will block any duplicated request for the same search.
      */
-    private static HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
-    private static ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
-    private static long BLACKLIST_KEY_FOR = 1000L * 5L;
+    private static final HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
+    private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
+    private static final long BLACKLIST_KEY_FOR = 1000L * 5L;
     //todo: we need a housekeeper for this hashmap!
 
     public static final int SEND_TO_NODES = 2;
@@ -32,9 +31,9 @@ public class KademliaSearchJob extends Job {
     private static final int ASKED = 2;
     private static final int SUCCESS = 1;
 
-    private KademliaId id;
+    private final KademliaId id;
     private TreeMap<Peer, Integer> peers = null;
-    private ArrayList<KadContent> contents = new ArrayList<>();
+    private final ArrayList<KadContent> contents = new ArrayList<>();
 
     public KademliaSearchJob(KademliaId id) {
         this.id = id;
@@ -56,7 +55,7 @@ public class KademliaSearchJob extends Job {
         try {
             Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
             if (blacklistedTill != null)
-            System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
+                System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
             if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
                 kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
             } else {
@@ -106,7 +105,7 @@ public class KademliaSearchJob extends Job {
                  */
                 int peersDistanceToKey = id.getDistance(p.getKademliaId());
                 System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
-                if (myDistanceToKey >= peersDistanceToKey) {
+                if (myDistanceToKey <= peersDistanceToKey) {
                     continue;
                 }
 
@@ -227,8 +226,6 @@ public class KademliaSearchJob extends Job {
 
 
     protected ArrayList<KadContent> success() {
-
-        System.out.println("sucess!!!222");
 
         if (contents.isEmpty()) {
             return null;

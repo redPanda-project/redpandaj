@@ -1,14 +1,11 @@
 package im.redpanda.core;
 
 import org.apache.logging.log4j.LogManager;
-import org.mapdb.elsa.ElsaSerializerBase;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -28,33 +25,33 @@ public class PeerList {
     /**
      * We store each Peer in a hashmap for fast get operations via KademliaId
      */
-    private static HashMap<KademliaId, Peer> peerlist;
+    private static final HashMap<KademliaId, Peer> peerlist;
 
     /**
      * We store each Peer in a hashmap for fast get operations via Ip and Port
      */
-    private static HashMap<Integer, Peer> peerlistIpPort;
+    private static final HashMap<Integer, Peer> peerlistIpPort;
 
     /**
      * Blacklist of ips via HashMap
      */
-    private static HashMap<Integer, Peer> blacklistIp;
+    private static final HashMap<Integer, Peer> blacklistIp;
 
     /**
      * We store each Peer in a ArrayList to obtain a sorted list of Peers where the good peers are on top
      */
-    private static ArrayList<Peer> peerArrayList;
+    private static final ArrayList<Peer> peerArrayList;
 
     /**
      * ReadWriteLock for peerlist peerArrayList and Buckets
      */
-    private static ReadWriteLock readWriteLock;
+    private static final ReadWriteLock readWriteLock;
 
     /**
      * Buckets for the Kademlia routing
      */
-    private static ArrayList<Peer>[] buckets;
-    private static ArrayList<Peer>[] bucketsReplacement;
+    private static final ArrayList<Peer>[] buckets;
+    private static final ArrayList<Peer>[] bucketsReplacement;
 
     static {
         peerlist = new HashMap<>();
@@ -201,10 +198,7 @@ public class PeerList {
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
-            if (peer == null) {
-                return false;
-            }
-            return true;
+            return peer != null;
         } finally {
             readWriteLock.writeLock().unlock();
         }
@@ -300,20 +294,28 @@ public class PeerList {
     }
 
     public static Peer getGoodPeer() {
+        return getGoodPeer(0.4f);
+    }
+
+    public static Peer getGoodPeer(float upperPercent) {
         readWriteLock.writeLock().lock();
         try {
             Collections.sort(peerArrayList);
 
             int size = peerArrayList.size();
 
-            for (Peer p : peerArrayList) {
-                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
+            if (size == 0) {
+                return null;
             }
+
+//            for (Peer p : peerArrayList) {
+//                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
+//            }
 
             //lets get a random x percent peer
 
-            int max = (int) Math.ceil(size * 0.4f);
-            System.out.println("max to get a good peer: " + max);
+            int max = (int) Math.ceil(size * upperPercent);
+//            System.out.println("max to get a good peer: " + max);
 
             int i = Server.random.nextInt(max);
 
