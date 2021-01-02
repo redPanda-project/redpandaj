@@ -11,6 +11,9 @@ import java.util.Collections;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
 
+    public static final int TEST_HOPS_MAX = 6;
+    public static final int TEST_HOPS_MIN = 2;
+
     public static final double LINK_FAILED = 2;
     public static final double CUT_HARD = 3;
     public static final int CUT_MID = 5;
@@ -19,6 +22,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int MIN_WEIGHT = 1;
     public static final float DELTA_SUCESS = 1;
     public static final float DELTA_FAIL = -1;
+
+    private static int countSuccess = 0;
+    private static int countFailed = 0;
+
     ArrayList<Node> nodes;
     boolean success = false;
     private Peer flaschenPostInsertPeer;
@@ -63,7 +70,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         flaschenPostInsertPeer.getNode().cleanChecks();
 
-        int garlicSequenceLenght = 4;
+
+        int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN);
 
         SimpleWeightedGraph<Node, NodeEdge> g = Server.nodeStore.getNodeGraph();
         if (g.vertexSet().size() < garlicSequenceLenght) {
@@ -226,10 +234,31 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
         System.out.println("path: " + a + " (updated " + (success ? "success" : "failed") + ")");
 
+        if (success) {
+            countSuccess++;
+        } else {
+            countFailed++;
+        }
+
     }
+
 
     public void success() {
         success = true;
         done();
+    }
+
+    public static int getCountSuccess() {
+        return countSuccess;
+    }
+
+
+    public static int getCountFailed() {
+        return countFailed;
+    }
+
+
+    public static double getSuccessRate() {
+        return countSuccess / (countSuccess + countFailed);
     }
 }

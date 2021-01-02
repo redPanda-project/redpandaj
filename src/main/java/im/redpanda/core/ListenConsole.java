@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.kademlia.KadStoreManager;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
@@ -138,6 +139,7 @@ public class ListenConsole extends Thread {
 
                 if (Server.nodeStore != null) {
                     Server.nodeStore.printGraph();
+                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " sucess: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }
 
             } else if (readLine.equals("ll")) {
