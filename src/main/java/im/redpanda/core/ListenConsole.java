@@ -139,7 +139,7 @@ public class ListenConsole extends Thread {
 
                 if (Server.nodeStore != null) {
                     Server.nodeStore.printGraph();
-                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " sucess: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
+                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }
 
             } else if (readLine.equals("ll")) {

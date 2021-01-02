@@ -39,5 +39,5 @@ cp ./$DIRECTORY/helpful/build.sh build.sh
 echo "updating start script from gitrepo"
 cp ./$DIRECTORY/helpful/redpanda-console.sh ./bin/redpanda-console.sh
 
-echo "update sucessfully..."
+echo "update successfully..."
 echo "start redpanda by typing ./bin/redpanda-console.sh"

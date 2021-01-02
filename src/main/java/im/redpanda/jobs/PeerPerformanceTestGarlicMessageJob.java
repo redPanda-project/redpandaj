@@ -11,7 +11,7 @@ import java.util.Collections;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
 
-    public static final int TEST_HOPS_MAX = 6;
+    public static final int TEST_HOPS_MAX = 8;
     public static final int TEST_HOPS_MIN = 2;
 
     public static final double LINK_FAILED = 2;
@@ -20,7 +20,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final double CUT_LOW = 8;
     public static final int MAX_WEIGHT = 10;
     public static final int MIN_WEIGHT = 1;
-    public static final float DELTA_SUCESS = 1;
+    public static final float DELTA_SUCCESS = 1;
     public static final float DELTA_FAIL = -1;
 
     private static int countSuccess = 0;
@@ -71,10 +71,12 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         flaschenPostInsertPeer.getNode().cleanChecks();
 
 
-        int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN);
+        // nodes = hops + 1
+        int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
 
         SimpleWeightedGraph<Node, NodeEdge> g = Server.nodeStore.getNodeGraph();
         if (g.vertexSet().size() < garlicSequenceLenght) {
+            super.done();
             return;
         }
 
@@ -193,6 +195,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public void done() {
         super.done();
 
+        if (nodes.size() < 2) {
+            System.out.println("nodes list too small to perform check");
+            return;
+        }
+
         float scoreToAdd = 0;
         if (success) {
             flaschenPostInsertPeer.getNode().increaseGmTestsSuccessful();
@@ -202,7 +209,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 node.seen();
             }
 
-            scoreToAdd = DELTA_SUCESS;
+            scoreToAdd = DELTA_SUCCESS;
         } else {
             flaschenPostInsertPeer.getNode().increaseGmTestsFailed();
             for (Node node : nodes) {
@@ -232,7 +239,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             }
             nodeBefore = node;
         }
-        System.out.println("path: " + a + " (updated " + (success ? "success" : "failed") + ")");
+        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (updated " + (success ? "success" : "failed") + ")");
 
         if (success) {
             countSuccess++;
@@ -259,6 +266,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
 
     public static double getSuccessRate() {
-        return countSuccess / (countSuccess + countFailed);
+        if (countSuccess + countFailed == 0) {
+            return 0;
+        }
+        return (double) countSuccess / (double) (countSuccess + countFailed);
     }
 }

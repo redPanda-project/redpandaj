@@ -8,7 +8,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 
 
     public PeerPerformanceTestSchedulerJob() {
-        super(1000L * 3L * 1L, true);
+        super(500L * 1L * 1L, true);
     }
 
     @Override

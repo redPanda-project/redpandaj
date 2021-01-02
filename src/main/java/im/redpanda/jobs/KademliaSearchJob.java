@@ -227,8 +227,6 @@ public class KademliaSearchJob extends Job {
 
     protected ArrayList<KadContent> success() {
 
-        System.out.println("sucess!!!222");
-
         if (contents.isEmpty()) {
             return null;
         }
