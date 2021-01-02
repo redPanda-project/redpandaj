@@ -39,15 +39,18 @@ public class NodeStore {
     private final DB dbDisk;
 
     private final SimpleWeightedGraph<Node, DefaultEdge> nodeGraph;
+    private final Map<Node, Long> nodeBlacklist;
 
     public NodeStore() {
+        nodeBlacklist = new HashMap<>();
+
         nodeGraph = Server.localSettings.getNodeGraph();
 
-        ArrayList<Node> nodes = new ArrayList<Node>();
-        for (Node node : nodeGraph.vertexSet()) {
-            nodes.add(node);
-        }
-        nodeGraph.removeAllVertices(nodes);
+//        ArrayList<Node> nodes = new ArrayList<Node>();
+//        for (Node node : nodeGraph.vertexSet()) {
+//            nodes.add(node);
+//        }
+//        nodeGraph.removeAllVertices(nodes);
 
         dbonHeap = DBMaker
                 .heapDB()
@@ -165,6 +168,11 @@ public class NodeStore {
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
             for (Map.Entry<KademliaId, Node> o : entries) {
+
+                if (isNodeStillBlacklisted(o.getValue())) {
+                    continue;
+                }
+
 //                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore() + " " + o.getValue().getGmTestsSuccessful() + " " + o.getValue().getGmTestsFailed());
                 if (!nodeGraph.containsVertex(o.getValue())) {
                     toInsert--;
@@ -185,11 +193,47 @@ public class NodeStore {
             }
 
         }
+
+        removeNodeIfNoGoodLinkAvailable();
+
+
         if (nodeGraph.edgeSet().size() < 200) {
             addRandomEdge();
         }
 
         printGraph();
+    }
+
+    private boolean isNodeStillBlacklisted(Node node) {
+        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 5L;
+    }
+
+    private void removeNodeIfNoGoodLinkAvailable() {
+
+        Node nodeToRemove = null;
+        for (Node node : nodeGraph.vertexSet()) {
+
+            boolean oneGoodLink = false;
+
+            for (DefaultEdge defaultEdge : nodeGraph.edgesOf(node)) {
+                if (nodeGraph.getEdgeWeight(defaultEdge) > -0.5) {
+                    oneGoodLink = true;
+                    break;
+                }
+            }
+
+            if (!oneGoodLink) {
+                nodeToRemove = node;
+                break;
+            }
+
+
+        }
+        if (nodeToRemove != null) {
+            nodeBlacklist.put(nodeToRemove, System.currentTimeMillis());
+            nodeGraph.removeVertex(nodeToRemove);
+            System.out.println("removed node since no good link available: " + nodeToRemove);
+        }
     }
 
 
@@ -207,9 +251,13 @@ public class NodeStore {
 
     private void addRandomEdge() {
 
-        Set<Node> kademliaIds = nodeGraph.vertexSet();
+        Set<Node> nodes = nodeGraph.vertexSet();
 
-        ArrayList<Node> ids = new ArrayList<>(kademliaIds);
+        if (nodes.isEmpty()) {
+            return;
+        }
+
+        ArrayList<Node> ids = new ArrayList<>(nodes);
 
 
         boolean added = false;

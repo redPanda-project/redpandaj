@@ -404,5 +404,9 @@ public class NodeId implements Serializable {
         return NodeId.importPublic(publicKeyBytes);
     }
 
+    @Override
+    public int hashCode() {
+        return getKademliaId().hashCode();
+    }
 }
 

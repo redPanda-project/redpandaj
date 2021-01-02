@@ -4,7 +4,6 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -275,6 +274,14 @@ public class OutboundHandler extends Thread {
         Server.peerListLock.writeLock().lock();
         try {
             for (String hostport : Settings.knownNodes) {
+                if (hostport.contains("[")) {
+                    //todo add port
+                    String[] split = hostport.split("]");
+                    String ipv6 = split[0].substring(1);
+                    PeerList.add(new Peer(ipv6, 59558));
+                    continue;
+                }
+
                 String[] split = hostport.split(":");
                 String host = split[0];
                 int port = Integer.parseInt(split[1]);

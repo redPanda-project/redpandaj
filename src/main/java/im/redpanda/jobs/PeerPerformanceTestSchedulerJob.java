@@ -3,13 +3,12 @@ package im.redpanda.jobs;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.Server;
-import im.redpanda.flaschenpost.FPStoreManager;
 
 public class PeerPerformanceTestSchedulerJob extends Job {
 
 
     public PeerPerformanceTestSchedulerJob() {
-        super(1000L * 1L * 1L, true);
+        super(1000L * 3L * 1L, true);
     }
 
     @Override
@@ -34,7 +33,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 //        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
         new PeerPerformanceTestGarlicMessageJob().start();
 
-        FPStoreManager.cleanUp();
+//        FPStoreManager.cleanUp();
 
     }
 }

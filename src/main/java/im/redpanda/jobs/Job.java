@@ -28,6 +28,10 @@ public abstract class Job implements Runnable {
     public Job() {
     }
 
+    public Job(long reRunDelay) {
+        this.reRunDelay = reRunDelay;
+    }
+
     public Job(long reRunDelay, boolean permanent) {
         this.reRunDelay = reRunDelay;
         this.permanent = permanent;

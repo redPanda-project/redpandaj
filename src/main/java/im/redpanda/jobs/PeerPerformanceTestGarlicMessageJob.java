@@ -16,6 +16,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     private Peer flaschenPostInsertPeer;
 
     public PeerPerformanceTestGarlicMessageJob() {
+        super(2500L);
         nodes = new ArrayList<>();
     }
 
@@ -71,18 +72,22 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         nodes.add(currentNode);
         int currentLength = 0;
 
-        while (currentLength < 3) {
+        while (currentLength < garlicSequenceLenght) {
             ArrayList<DefaultEdge> edges = new ArrayList<>(g.outgoingEdgesOf(currentNode));
             Collections.shuffle(edges);
             for (DefaultEdge e : edges) {
-                if (g.getEdgeWeight(e) < 0&& Math.random() < 0.8f) {
-                    // if a edge is bad we should only test it rarely
-                    continue;
+                // if a edge is bad we should only test it rarely
+                if (g.getEdgeWeight(e) < -0.8) {
+                    if (Math.random() < 0.95f)
+                        continue;
+                } else if (g.getEdgeWeight(e) < 0) {
+                    if (Math.random() < 0.8f)
+                        continue;
+                } else if (g.getEdgeWeight(e) < 0.8) {
+                    if (Math.random() < 0.6f)
+                        continue;
                 }
-                if (g.getEdgeWeight(e) < -0.8&& Math.random() < 0.95f) {
-                    // if a edge is bad we should only test it rarely
-                    continue;
-                }
+
 
                 Node target = g.getEdgeSource(e);
                 if (target == currentNode) {
@@ -134,6 +139,12 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void work() {
+        if (getEstimatedRuntime() > 1000L * 4L) {
+            System.out.println("garlic check max timeout reached... " + getEstimatedRuntime());
+
+            if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null)
+                done();
+        }
     }
 
     @Override

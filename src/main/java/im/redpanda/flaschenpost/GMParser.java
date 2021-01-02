@@ -127,7 +127,6 @@ public class GMParser {
             }
 
             if (peers.size() == 0) {
-                System.out.println("no peers found....");
                 return;
             }
 
