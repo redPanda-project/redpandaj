@@ -214,6 +214,10 @@ public class NodeStore {
         return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 15L;
     }
 
+    public void clearNodeBlacklist() {
+        nodeBlacklist.clear();
+    }
+
     private void removeNodeIfNoGoodLinkAvailable() {
 
         Node nodeToRemove = null;
@@ -304,5 +308,14 @@ public class NodeStore {
 
     public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
+    }
+
+    public void printBlacklist() {
+
+        for (Node node : nodeBlacklist.keySet()) {
+            System.out.println(node.toString());
+        }
+
+
     }
 }

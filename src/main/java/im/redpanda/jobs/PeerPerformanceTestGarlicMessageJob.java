@@ -65,6 +65,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         flaschenPostInsertPeer = PeerList.getGoodPeer();
 
         if (!flaschenPostInsertPeer.isConnected() || flaschenPostInsertPeer.getNode() == null) {
+            super.done();
             return;
         }
 
@@ -196,8 +197,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         super.done();
 
         if (nodes.size() < 2) {
-            System.out.println("nodes list too small to perform check");
-            return;
+//            System.out.println("nodes list too small to perform check");
+            throw new RuntimeException("job started with too less nodes, this should not happen");
+//            return;
         }
 
         float scoreToAdd = 0;
@@ -239,7 +241,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             }
             nodeBefore = node;
         }
-        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (updated " + (success ? "success" : "failed") + ")");
+        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ")");
 
         if (success) {
             countSuccess++;

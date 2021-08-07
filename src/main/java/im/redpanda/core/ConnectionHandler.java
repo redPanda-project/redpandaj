@@ -6,10 +6,6 @@
 package im.redpanda.core;
 
 
-import im.redpanda.App;
-import im.redpanda.commands.FBPublicKey;
-import im.redpanda.crypt.Utils;
-import io.sentry.Sentry;
 import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;

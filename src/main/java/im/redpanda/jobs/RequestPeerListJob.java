@@ -19,11 +19,11 @@ public class RequestPeerListJob extends Job {
     @Override
     public void work() {
 
-        Peer peer = PeerList.getGoodPeer(1.0f);
 
         //todo request and send peers over garlic messages...
 
         try {
+            Peer peer = PeerList.getGoodPeer(1.0f);
             peer.getWriteBufferLock().lock();
             try {
                 peer.writeBuffer.put(Command.REQUEST_PEERLIST);
