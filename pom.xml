@@ -17,7 +17,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
-        <smack.version>4.3.4</smack.version>
+        <smack.version>4.3.5</smack.version>
         <jackson.version>2.12.0</jackson.version>
         <logback.version>1.2.3</logback.version>
     </properties>
