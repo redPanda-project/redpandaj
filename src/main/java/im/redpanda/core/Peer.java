@@ -554,12 +554,11 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     }
 
-    int writeBytesToPeer(ByteBuffer writeBuffer) throws IOException {
+    int writeBytesToPeer() throws IOException {
         writeBufferCrypted.flip();
         int writtenBytes = getSocketChannel().write(writeBufferCrypted);
+        Log.put("written bytes to node: " + writtenBytes + " remaining: " + writeBufferCrypted.remaining(), 100);
         writeBufferCrypted.compact();
-
-        Log.put("written bytes to node: " + writtenBytes, 100);
 
         return writtenBytes;
     }

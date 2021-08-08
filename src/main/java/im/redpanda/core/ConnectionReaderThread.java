@@ -1138,7 +1138,7 @@ public class ConnectionReaderThread extends Thread {
     }
 
 
-    private void readConnection(Peer peer) {
+    private int readConnection(Peer peer) {
 
 
         ByteBuffer writeBuffer = peer.writeBuffer;
@@ -1158,14 +1158,14 @@ public class ConnectionReaderThread extends Thread {
 //            e.printStackTrace();
             key.cancel();
             peer.disconnect("could not read peer...");
-            return;
+            return 0;
         } catch (Throwable e) {
             Log.sentry(e);
             Log.sentry("Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
             e.printStackTrace();
             key.cancel();
             peer.disconnect("could not read...");
-            return;
+            return 0;
         }
 
         if (read == -2) {
@@ -1183,7 +1183,7 @@ public class ConnectionReaderThread extends Thread {
                     new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
             );
             Log.sentry("read 0 bytes...");
-            return;
+            return 0;
         } else if (read == -1) {
             Log.put("closing connection " + peer.ip + ": not readable! ", 100);
             peer.disconnect(" read == -1 ");
@@ -1226,6 +1226,7 @@ public class ConnectionReaderThread extends Thread {
             throw new RuntimeException("myReaderBuffer was not ready for the next read: " + myReaderBuffer);
         }
 
+        return read;
     }
 
     public static void loopCommands(Peer peer, ByteBuffer readBuffer) {
