@@ -6,7 +6,7 @@
 
     <groupId>im.redpanda</groupId>
     <artifactId>server</artifactId>
-    <version>0.1.4-SNAPSHOT</version>
+    <version>0.1.5-SNAPSHOT</version>
 
 
     <name>server</name>
@@ -247,6 +247,7 @@
                         </manifest>
                         <manifestEntries>
                             <Implementation-Build>${buildNumber}</Implementation-Build>
+                            <Multi-Release>true</Multi-Release>
                         </manifestEntries>
                     </archive>
                     <descriptorRefs>
