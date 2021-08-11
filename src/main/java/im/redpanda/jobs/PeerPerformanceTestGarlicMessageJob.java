@@ -171,8 +171,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 //                    printPath());
 
 
-            if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null)
+            if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
                 done();
+            }
         }
     }
 

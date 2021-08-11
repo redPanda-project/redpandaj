@@ -75,7 +75,12 @@ public class App {
 
 
         ServerContext serverContext = new ServerContext();
+        startServer(serverContext);
 
+        new ListenConsole(serverContext).start();
+    }
+
+    private static void startServer(ServerContext serverContext) {
         ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
         int port = connectionHandler.bind();
         serverContext.setPort(port);
@@ -102,6 +107,8 @@ public class App {
         //lets restart the server once in a while until we have stable releases...
         new ServerRestartJob(serverContext).start();
 
+        ByteBufferPool.init();
+
         Server server = new Server(serverContext, connectionHandler);
         server.start();
 
@@ -110,9 +117,6 @@ public class App {
         Log.init(serverContext);
 
         new PeerJobs(serverContext).start();
-
-        new ListenConsole(serverContext).start();
-
     }
 
     private static void initLogger() {

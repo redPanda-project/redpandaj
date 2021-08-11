@@ -169,7 +169,7 @@ public class PeerList {
      * @return
      */
     public boolean removeIpPort(String ip, int port) {
-        logger.info("remove ip and port: %s : %s", ip, port);
+        logger.info(String.format("remove ip and port: %s : %s", ip, port));
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));

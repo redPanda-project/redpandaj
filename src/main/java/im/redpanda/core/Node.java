@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.crypt.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -75,7 +76,7 @@ public class Node implements Serializable {
         }
 
         for (ConnectionPoint point : connectionPoints) {
-            logger.debug("seen, ip list for node: " + point.getIp() + ":" + point.getPort() + " reties: " + point.getRetries());
+            logger.debug(String.format("seen, ip list for node: %s:%s reties: %s, last seen: %s", point.getIp(), point.getPort(), point.getRetries(), Utils.formatDurationFromNow(point.getLastSeen())));
         }
 
     }

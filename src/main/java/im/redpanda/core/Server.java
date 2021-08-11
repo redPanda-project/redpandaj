@@ -51,7 +51,7 @@ public class Server {
 
     public static void startedUpSuccessful(ServerContext serverContext) {
         Settings.init(serverContext);
-        ByteBufferPool.init();
+
 
         new HTTPServer(serverContext).start();
 
