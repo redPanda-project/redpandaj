@@ -6,18 +6,25 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Random;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 
 public class OutboundHandler extends Thread {
 
     long lastAddedKnownNodes;
     Random random = new Random();
+    private final PeerList peerList;
+
+
+    public OutboundHandler(PeerList peerList) {
+        this.peerList = peerList;
+    }
 
     public void init() {
         start();
 
 
-        if (PeerList.getPeerArrayList() == null || Server.NONCE == null) {
+        if (Server.NONCE == null) {
             throw new RuntimeException("Do not start the outbound thread if peers and nonce not loaded!");
         }
     }
@@ -41,8 +48,8 @@ public class OutboundHandler extends Thread {
         Thread.currentThread().setName(orgName + " - OutboundThread");
 
 
-        ReadWriteLock peerListLock = Server.peerListLock;
-        ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+        ReadWriteLock peerListLock = peerList.getReadWriteLock();
+        ArrayList<Peer> peerListArray = peerList.getPeerArrayList();
 
         ArrayList<Peer> peersToRemove = new ArrayList<>();
 
@@ -53,13 +60,13 @@ public class OutboundHandler extends Thread {
 //            System.out.println("Peers: " + PeerList.size());
 
 
-            if (PeerList.size() < 5) {
+            if (peerList.size() < 5) {
                 reseed();
             }
 
             try {
                 peerListLock.writeLock().lock();
-                Collections.sort(peerList);
+                Collections.sort(peerListArray);
             } catch (java.lang.IllegalArgumentException e) {
                 try {
                     sleep(200);
@@ -77,7 +84,7 @@ public class OutboundHandler extends Thread {
                 int actCons = 0;
                 int connectingCons = 0;
                 int newConnections = 0;
-                for (Peer peer : peerList) {
+                for (Peer peer : peerListArray) {
                     if (peer.isConnected()) {
                         actCons++;
                     } else if (peer.isConnecting) {
@@ -92,7 +99,7 @@ public class OutboundHandler extends Thread {
 
                 actCons += connectingCons;
                 int cnt = 0;
-                for (Peer peer : peerList) {
+                for (Peer peer : peerListArray) {
 
 
                     cnt++;
@@ -106,7 +113,7 @@ public class OutboundHandler extends Thread {
                         Log.put("peers " + actCons + " are enough...", 300);
 
                         if (cnt == 1 && actCons >= Settings.MAX_CONNECTIONS) {
-                            for (Peer p1 : peerList) {
+                            for (Peer p1 : peerListArray) {
                                 if (p1.isConnected()) {
                                     p1.disconnect("max cons");
 
@@ -128,7 +135,7 @@ public class OutboundHandler extends Thread {
                     }
 
                     boolean alreadyConnectedToSameIpandPort = false;
-                    for (Peer p2 : peerList) {
+                    for (Peer p2 : peerListArray) {
                         if (peer.equalsIpAndPort(p2) && (peer.isConnected() || peer.isConnecting)) {
                             alreadyConnectedToSameIpandPort = true;
                             break;
@@ -156,7 +163,7 @@ public class OutboundHandler extends Thread {
                     boolean alreadyConnectedToSameNodeId = false;
                     if (peer.getKademliaId() != null) {
                         //already connected to same trusted node?
-                        for (Peer p2 : peerList) {
+                        for (Peer p2 : peerListArray) {
 
                             if (alreadyConnectedToSameNodeId) {
                                 break;
@@ -245,7 +252,7 @@ public class OutboundHandler extends Thread {
 
             for (Peer toRemove : peersToRemove) {
 //                System.out.println("removing peer from OH: " + toRemove.getKademliaId());
-                Server.removePeer(toRemove);
+                peerList.remove(toRemove);
             }
             peersToRemove.clear();
 
@@ -270,15 +277,15 @@ public class OutboundHandler extends Thread {
 
         lastAddedKnownNodes = System.currentTimeMillis();
 
-
-        Server.peerListLock.writeLock().lock();
+        Lock lock = peerList.getReadWriteLock().writeLock();
+        lock.lock();
         try {
             for (String hostport : Settings.knownNodes) {
                 if (hostport.contains("[")) {
                     //todo add port
                     String[] split = hostport.split("]");
                     String ipv6 = split[0].substring(1);
-                    PeerList.add(new Peer(ipv6, 59558));
+                    peerList.add(new Peer(ipv6, 59558));
                     continue;
                 }
 
@@ -286,13 +293,10 @@ public class OutboundHandler extends Thread {
                 String host = split[0];
                 int port = Integer.parseInt(split[1]);
 
-
-//                Server.findPeer(new Peer(host, port));
-                PeerList.add(new Peer(host, port));
-
+                peerList.add(new Peer(host, port));
             }
         } finally {
-            Server.peerListLock.writeLock().unlock();
+            lock.unlock();
         }
 
     }

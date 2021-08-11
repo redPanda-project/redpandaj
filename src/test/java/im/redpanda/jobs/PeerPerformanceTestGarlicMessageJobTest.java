@@ -1,9 +1,6 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.LocalSettings;
-import im.redpanda.core.Node;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.store.NodeStore;
@@ -16,6 +13,8 @@ import java.util.ArrayList;
 
 public class PeerPerformanceTestGarlicMessageJobTest {
 
+    private final static ServerContext serverContext = new ServerContext();
+
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
@@ -24,6 +23,8 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
     @Test
     public void calculateNestedGarlicMessagesTest() {
+
+
         ArrayList<Node> nodes = new ArrayList<Node>();
 
         Node nodeA = new Node(Server.nodeId);
@@ -32,16 +33,18 @@ public class PeerPerformanceTestGarlicMessageJobTest {
         Node nodeB = new Node(Server.nodeId);
         nodes.add(nodeB);
 
-        byte[] bytes = PeerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
+        PeerPerformanceTestGarlicMessageJob peerPerformanceTestGarlicMessageJob = new PeerPerformanceTestGarlicMessageJob(serverContext);
 
-        GMContent parse = GMParser.parse(bytes);
+        byte[] bytes = peerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
+
+        GMContent parse = GMParser.parse(serverContext, bytes);
+        //todo assert?
     }
 
     @Before
     public void setUp() throws Exception {
-        Server.MY_PORT = 1;
         Server.localSettings = new LocalSettings();
-        Server.nodeStore = new NodeStore();
+        Server.nodeStore = new NodeStore(serverContext);
         Server.nodeId = new NodeId();
     }
 

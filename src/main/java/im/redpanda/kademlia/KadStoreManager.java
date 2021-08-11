@@ -1,9 +1,6 @@
 package im.redpanda.kademlia;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.Log;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
@@ -161,7 +158,7 @@ public class KadStoreManager {
 //        System.out.println("kadid: " + kademliaId.hexRepresentation());
 //        System.out.println("kadid: " + Utils.bytesToHexString(dhtKey.getBytes()));
 
-        System.out.println("kadid: " + kademliaId.toString());
+        System.out.println("kadid: " + kademliaId);
 
         //random content
         byte[] payload = new byte[1024];
@@ -200,7 +197,7 @@ public class KadStoreManager {
 
         ScheduledFuture scheduledFuture = runningJobs.get(pointer);
 
-        Job r = (Job) job;
+        Job r = job;
 
         boolean couldCancel = scheduledFuture.cancel(false);
         System.out.println("cancel: " + couldCancel);
@@ -233,11 +230,11 @@ public class KadStoreManager {
     }
 
 
-    public static void maintain() {
+    public static void maintain(ServerContext serverContext) {
         lock.lock();
         try {
             for (KadContent kc : entries.values()) {
-                new KademliaInsertJob(kc).start();
+                new KademliaInsertJob(serverContext, kc).start();
             }
         } finally {
             lock.unlock();
@@ -248,7 +245,7 @@ public class KadStoreManager {
     static class Job implements Runnable {
 
         HashMap<Integer, ScheduledFuture> runningJobs;
-        private Integer pointer;
+        private final Integer pointer;
         private String data = null;
 
         public Job(HashMap<Integer, ScheduledFuture> runningJobs, Integer pointer) {

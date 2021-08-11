@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 public class KademliaInsertJob extends Job {
 
@@ -19,17 +20,20 @@ public class KademliaInsertJob extends Job {
     private static final int ASKED = 2;
     private static final int SUCCESS = 1;
 
-    private KadContent kadContent;
+    private final KadContent kadContent;
     private TreeMap<Peer, Integer> peers = null;
 
 
-    public KademliaInsertJob(KadContent kadContent) {
+    public KademliaInsertJob(ServerContext serverContext, KadContent kadContent) {
+        super(serverContext);
         this.kadContent = kadContent;
     }
 
     @Override
     public void init() {
 
+
+        PeerList peerList = serverContext.getPeerList();
 
         //We first save the KadContent in our StoreManager, we use "dht-caching"
         // such that too far away entries will be removed faster
@@ -39,16 +43,17 @@ public class KademliaInsertJob extends Job {
         peers = new TreeMap<>(new PeerComparator(kadContent.getId()));
 
         //insert all nodes
-        PeerList.getReadWriteLock().readLock().lock();
+        Lock lock = peerList.getReadWriteLock().readLock();
+        lock.lock();
         try {
-            ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+            ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
-            if (peerList == null) {
+            if (peerArrayList == null) {
                 initilized = false;
                 return;
             }
 
-            for (Peer p : peerList) {
+            for (Peer p : peerArrayList) {
 
                 if (p.getNodeId() == null) {
                     continue;
@@ -57,7 +62,7 @@ public class KademliaInsertJob extends Job {
                 peers.put(p, NONE);
             }
         } finally {
-            PeerList.getReadWriteLock().readLock().unlock();
+            lock.unlock();
         }
     }
 

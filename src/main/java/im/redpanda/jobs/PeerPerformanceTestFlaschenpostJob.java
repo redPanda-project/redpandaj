@@ -1,9 +1,6 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.Command;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Peer;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 
@@ -12,7 +9,8 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
     Peer peer;
     boolean success = false;
 
-    public PeerPerformanceTestFlaschenpostJob(Peer peer) {
+    public PeerPerformanceTestFlaschenpostJob(ServerContext serverContext, Peer peer) {
+        super(serverContext);
         this.peer = peer;
     }
 
@@ -29,7 +27,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
         GMAck gmAck = new GMAck(getJobId());
 
-        GarlicMessage garlicMessage = new GarlicMessage(targetId);
+        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
         garlicMessage.addGMContent(gmAck);
 
         byte[] content = garlicMessage.getContent();

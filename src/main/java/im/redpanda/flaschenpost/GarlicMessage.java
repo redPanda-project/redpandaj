@@ -1,9 +1,6 @@
 package im.redpanda.flaschenpost;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.Log;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.crypt.Utils;
 
 import javax.crypto.*;
@@ -48,9 +45,9 @@ public class GarlicMessage extends Flaschenpost {
     private byte[] encryptedInformation;
     private byte[] signature;
 
-    public GarlicMessage(NodeId targetsNodeId) {
+    public GarlicMessage(ServerContext serverContext, NodeId targetsNodeId) {
         // we create a Flaschenpost with the target KademliaId and a new random integer as id and the current time.
-        super(targetsNodeId.getKademliaId());
+        super(serverContext, targetsNodeId.getKademliaId());
 
         this.targetsNodeId = targetsNodeId;
         this.publicKey = targetsNodeId.exportPublic();
@@ -213,7 +210,7 @@ public class GarlicMessage extends Flaschenpost {
 
                 decryptedBuffer.get(bytesForSingleGM);
 
-                GMContent parsed = GMParser.parse(bytesForSingleGM);
+                GMContent parsed = GMParser.parse(serverContext, bytesForSingleGM);
                 addGMContent(parsed);
 
                 if (decryptedBuffer.position() != startingPosition + toParseBytes) {

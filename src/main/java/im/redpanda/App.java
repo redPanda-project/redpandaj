@@ -1,7 +1,6 @@
 package im.redpanda;
 
-import im.redpanda.core.ListenConsole;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.jobs.ServerRestartJob;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
@@ -42,19 +41,6 @@ public class App {
         initLogger();
 
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-
-            @Override
-            public void run() {
-                final String orgName = Thread.currentThread().getName();
-                Thread.currentThread().setName(orgName + " - shutdownhook");
-                logger.info("started shutdownhook...");
-                Server.shutdown();
-                logger.info("shutdownhook done");
-            }
-        });
-
-
         boolean activateSentry = false;
         if (args.length > 0) {
             String sentryExtras = args[0];
@@ -86,12 +72,38 @@ public class App {
             logger.warn("Warning, no git revision found...");
         }
 
+
+        ServerContext serverContext = new ServerContext();
+        serverContext.setPeerList(new PeerList());
+
+        ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
+        int port = connectionHandler.bind();
+        serverContext.setPort(port);
+
+
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+            @Override
+            public void run() {
+                final String orgName = Thread.currentThread().getName();
+                Thread.currentThread().setName(orgName + " - shutdownhook");
+                logger.info("started shutdownhook...");
+                Server.shutdown(serverContext);
+                logger.info("shutdownhook done");
+            }
+        });
+
         //lets restart the server once in a while until we have stable releases...
-        new ServerRestartJob().start();
+        new ServerRestartJob(serverContext).start();
 
-        Server.start();
+        Server server = new Server(serverContext, connectionHandler);
+        server.start();
 
-        new ListenConsole().start();
+        Log.init(serverContext);
+
+        new PeerJobs(serverContext).start();
+
+        new ListenConsole(serverContext).start();
 
     }
 

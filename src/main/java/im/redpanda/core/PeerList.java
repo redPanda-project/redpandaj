@@ -9,9 +9,9 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * This "static" class stores all peers in two Hashmaps for fast get operations using the {@link KademliaId} and Ip+Port.
+ * This class stores all peers in two Hashmaps for fast get operations using the {@link KademliaId} and Ip+Port.
  * For the connections we establish, we need a sorted List with regard to specific parameters.
- * This class maintains an ArrayList with the same peers as in the Hashmap.
+ * This class maintains an ArrayList with the same peers as in the Hashmaps.
  * In addition, a peer can be optionally be stored in the DHT routing table, called the Buckets.
  * Note that not all nodes will be in the routing table (Buckets).
  * <p>
@@ -25,35 +25,36 @@ public class PeerList {
     /**
      * We store each Peer in a hashmap for fast get operations via KademliaId
      */
-    private static final HashMap<KademliaId, Peer> peerlist;
+    private final HashMap<KademliaId, Peer> peerlist;
 
     /**
      * We store each Peer in a hashmap for fast get operations via Ip and Port
      */
-    private static final HashMap<Integer, Peer> peerlistIpPort;
+    private final HashMap<Integer, Peer> peerlistIpPort;
 
     /**
      * Blacklist of ips via HashMap
      */
-    private static final HashMap<Integer, Peer> blacklistIp;
+    private final HashMap<Integer, Peer> blacklistIp;
 
     /**
      * We store each Peer in a ArrayList to obtain a sorted list of Peers where the good peers are on top
      */
-    private static final ArrayList<Peer> peerArrayList;
+    private final ArrayList<Peer> peerArrayList;
 
     /**
      * ReadWriteLock for peerlist peerArrayList and Buckets
      */
-    private static final ReadWriteLock readWriteLock;
+    private final ReadWriteLock readWriteLock;
 
     /**
      * Buckets for the Kademlia routing
      */
-    private static final ArrayList<Peer>[] buckets;
-    private static final ArrayList<Peer>[] bucketsReplacement;
+    private final ArrayList<Peer>[] buckets;
+    private final ArrayList<Peer>[] bucketsReplacement;
 
-    static {
+
+    public PeerList() {
         peerlist = new HashMap<>();
         peerlistIpPort = new HashMap<>();
         blacklistIp = new HashMap<>();
@@ -61,9 +62,6 @@ public class PeerList {
         readWriteLock = new ReentrantReadWriteLock();
         buckets = new ArrayList[KademliaId.ID_LENGTH];
         bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
-    }
-
-    private PeerList() {
     }
 
     /**
@@ -74,7 +72,7 @@ public class PeerList {
      * @param peer The peer to add to the PeerList.
      * @return old peer, null if no old peer or old peer null.
      */
-    public static Peer add(Peer peer) {
+    public Peer add(Peer peer) {
         Peer oldPeer = null;
 
         // we have to check if the peer is already in the PeerList, for this we use the HashMaps since they are much faster
@@ -120,7 +118,7 @@ public class PeerList {
      * @param peer
      * @return hash value
      */
-    private static Integer getIpPortHash(Peer peer) {
+    private Integer getIpPortHash(Peer peer) {
         return getIpPortHash(peer.getIp(), peer.getPort());
     }
 
@@ -135,7 +133,7 @@ public class PeerList {
      *
      * @param peer
      */
-    public static boolean remove(Peer peer) {
+    public boolean remove(Peer peer) {
 //        System.out.println("remove peer: " + peer.getKademliaId());
         readWriteLock.writeLock().lock();
         try {
@@ -148,7 +146,7 @@ public class PeerList {
         }
     }
 
-    private static boolean removeByObject(Peer peer) {
+    private boolean removeByObject(Peer peer) {
         readWriteLock.writeLock().lock();
         try {
             boolean removed = peerArrayList.remove(peer);
@@ -171,7 +169,7 @@ public class PeerList {
      * @param port
      * @return
      */
-    public static boolean removeIpPort(String ip, int port) {
+    public boolean removeIpPort(String ip, int port) {
         logger.info("remove ipport: " + ip + ":" + port);
         readWriteLock.writeLock().lock();
         try {
@@ -194,7 +192,7 @@ public class PeerList {
      * @param port
      * @return
      */
-    public static boolean removeIpPortOnly(String ip, int port) {
+    public boolean removeIpPortOnly(String ip, int port) {
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
@@ -210,7 +208,7 @@ public class PeerList {
      *
      * @param id
      */
-    public static boolean remove(KademliaId id) {
+    public boolean remove(KademliaId id) {
         boolean removedOnePeer = false;
         try {
             readWriteLock.writeLock().lock();
@@ -231,13 +229,13 @@ public class PeerList {
     /**
      * clears all underlying lists and Hashmaps. Does not acquire locks.
      */
-    public static void clear() {
+    public void clear() {
         peerlist.clear();
         peerArrayList.clear();
         peerlistIpPort.clear();
     }
 
-    public static Peer get(KademliaId id) {
+    public Peer get(KademliaId id) {
         try {
             readWriteLock.readLock().lock();
             return peerlist.get(id);
@@ -246,11 +244,11 @@ public class PeerList {
         }
     }
 
-    public static ReadWriteLock getReadWriteLock() {
+    public ReadWriteLock getReadWriteLock() {
         return readWriteLock;
     }
 
-    public static ArrayList<Peer> getPeerArrayList() {
+    public ArrayList<Peer> getPeerArrayList() {
         return peerArrayList;
     }
 
@@ -260,7 +258,7 @@ public class PeerList {
      *
      * @return
      */
-    public static int size() {
+    public int size() {
         readWriteLock.readLock().lock();
         try {
             return peerArrayList.size();
@@ -274,7 +272,7 @@ public class PeerList {
      *
      * @param peer
      */
-    public static void updateKademliaId(Peer peer, KademliaId newId) {
+    public void updateKademliaId(Peer peer, KademliaId newId) {
 
         KademliaId oldId = peer.getKademliaId();
         System.out.println("updating KadId, old " + oldId + " new: " + newId.toString());
@@ -293,11 +291,11 @@ public class PeerList {
 
     }
 
-    public static Peer getGoodPeer() {
+    public Peer getGoodPeer() {
         return getGoodPeer(0.4f);
     }
 
-    public static Peer getGoodPeer(float upperPercent) {
+    public Peer getGoodPeer(float upperPercent) {
         readWriteLock.writeLock().lock();
         try {
             Collections.sort(peerArrayList);
@@ -308,14 +306,9 @@ public class PeerList {
                 return null;
             }
 
-//            for (Peer p : peerArrayList) {
-//                System.out.println("peer: " + p.ip + " score: " + p.getPriority());
-//            }
-
             //lets get a random x percent peer
 
             int max = (int) Math.ceil(size * upperPercent);
-//            System.out.println("max to get a good peer: " + max);
 
             int i = Server.random.nextInt(max);
 
@@ -325,43 +318,10 @@ public class PeerList {
         }
     }
 
-//    public static class MyReentrantReadWriteLock implements ReadWriteLock {
-//
-//        private MyReentrantLock lock = new MyReentrantLock();
-//
-//        public ReentrantLock writeLock() {
-//            return lock;
-//        }
-//
-//
-//        public ReentrantLock readLock() {
-//            return lock;
-//        }
-//    }
-//
-//    public static class MyReentrantLock extends ReentrantLock {
-//
-//        private String stack = "";
-//
-//        @Override
-//        public void lock() {
-//            String stack = "";
-//            for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-//                stack += e.toString() + "\n";
-//            }
-//            super.lock();
-//            System.out.println("last successful lock of peerlist: " + stack);
-//        }
-//
-//        @Override
-//        public void unlock() {
-//            super.unlock();
-//            System.out.println("unlock successfully!");
-//        }
-//
-//        public String getStack() {
-//            return stack;
-//        }
-//    }
+    public void clearConnectionDetails(Peer peer) {
+        Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
+        removeIpPortOnly(peer.getIp(), peer.getPort());
+        peer.removeIpAndPort();
+    }
 
 }

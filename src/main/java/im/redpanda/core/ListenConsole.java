@@ -11,12 +11,20 @@ import java.io.UnsupportedEncodingException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 public class ListenConsole extends Thread {
+    private final PeerList peerList;
+    private final ServerContext serverContext;
+
+    public ListenConsole(ServerContext serverContext) {
+        this.peerList = serverContext.getPeerList();
+        this.serverContext = serverContext;
+    }
 
     @Override
     public void run() {
@@ -29,29 +37,29 @@ public class ListenConsole extends Thread {
         }
     }
 
-    private static void listen() throws IOException {
+    private void listen() throws IOException {
 
-        InputStreamReader inputStreamReader = new InputStreamReader(System.in, "UTF-8");
+        InputStreamReader inputStreamReader = new InputStreamReader(System.in, StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
 
         while (!Server.SHUTDOWN) {
 
             String readLine = bufferedReader.readLine();
 
-            if (PeerList.size() == 0) {
+            if (peerList.size() == 0) {
                 continue;
             }
 
             if (readLine.equals("")) {
 
-                System.out.println("Status listenPort: " + Server.MY_PORT + " NONCE: " + Server.NONCE + "\n");
+                System.out.println("Status listenPort: " + serverContext.getPort() + " NONCE: " + Server.NONCE + "\n");
 
                 int actCons = 0;
 
-                PeerList.getReadWriteLock().writeLock().lock();
+                peerList.getReadWriteLock().writeLock().lock();
                 try {
 
-                    ArrayList<Peer> peerArrayList = PeerList.getPeerArrayList();
+                    ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
                     ArrayList<Peer> list = peerArrayList;
 //                    Collections.sort(peerTrustsCloned, new Comparator<PeerTrustData>() {
@@ -136,9 +144,8 @@ public class ListenConsole extends Thread {
                     Server.nodeStore.printBlacklist();
 
 
-
                 } finally {
-                    PeerList.getReadWriteLock().writeLock().unlock();
+                    peerList.getReadWriteLock().writeLock().unlock();
                 }
 
                 if (Server.nodeStore != null) {
@@ -173,16 +180,16 @@ public class ListenConsole extends Thread {
                 }
             } else if (readLine.equals("e")) {
                 Server.nodeStore.saveToDisk();
-                Server.shutdown();
+                Server.shutdown(serverContext);
                 System.exit(0);
             } else if (readLine.equals("c")) {
                 System.out.println("closing all connections...");
 
-                PeerList.getReadWriteLock().writeLock().lock();
-                for (Peer peer : PeerList.getPeerArrayList()) {
+                peerList.getReadWriteLock().writeLock().lock();
+                for (Peer peer : peerList.getPeerArrayList()) {
                     peer.disconnect("disconnect by user");
                 }
-                PeerList.getReadWriteLock().writeLock().unlock();
+                peerList.getReadWriteLock().writeLock().unlock();
 
 
             } else if (readLine.equals("alloc")) {
@@ -199,7 +206,7 @@ public class ListenConsole extends Thread {
                 String[] split = readLine2.split(":");
                 try {
                     int port = Integer.parseInt(split[1]);
-                    PeerList.add(new Peer(split[0], port));
+                    peerList.add(new Peer(split[0], port));
                 } catch (NumberFormatException e) {
                     e.printStackTrace();
                 }

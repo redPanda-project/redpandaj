@@ -3,6 +3,7 @@ package im.redpanda.store;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.SimpleWeightedGraph;
 import org.jgrapht.nio.csv.CSVExporter;
@@ -41,8 +42,10 @@ public class NodeStore {
 
     private final SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
     private final Map<Node, Long> nodeBlacklist;
+    private final ServerContext serverContext;
 
-    public NodeStore() {
+    public NodeStore(ServerContext serverContext) {
+        this.serverContext = serverContext;
         nodeBlacklist = new HashMap<>();
 
         if (Server.localSettings == null) {
@@ -69,7 +72,7 @@ public class NodeStore {
                 .make();
 
         dbDisk = DBMaker
-                .fileDB("data/nodeids" + Server.MY_PORT + ".mapdb")
+                .fileDB("data/nodeids" + serverContext.getPort() + ".mapdb")
                 .fileMmapEnableIfSupported()
 //                .closeOnJvmShutdown()
                 .checksumHeaderBypass()
@@ -126,8 +129,8 @@ public class NodeStore {
             System.out.println("NodeStore may be broken here we have to close and reopen the store...");
 
             close();
-            new File("data/nodeids" + Server.MY_PORT + ".mapdb").delete();
-            Server.nodeStore = new NodeStore();
+            new File("data/nodeids" + serverContext.getPort() + ".mapdb").delete();
+            Server.nodeStore = new NodeStore(serverContext);
 
         }
 

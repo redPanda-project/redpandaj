@@ -18,7 +18,7 @@ public class ParseCommandTest {
 
         if (Server.nodeStore == null) {
             new File("data").mkdirs();
-            Server.nodeStore = new NodeStore();
+            Server.nodeStore = new NodeStore(new ServerContext());
         }
     }
 
@@ -32,6 +32,8 @@ public class ParseCommandTest {
     @Test
     public void testLoopCommands() {
 
+        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(new ServerContext(), 5);
+
         //lets check if it is able to parse 3 ping commands in one step
         ByteBuffer allocate = ByteBuffer.allocate(1024);
         allocate.put(Command.PING);
@@ -40,7 +42,7 @@ public class ParseCommandTest {
 
         Peer peerForDebug = getPeerForDebug();
         peerForDebug.setConnected(true);
-        ConnectionReaderThread.loopCommands(peerForDebug, allocate);
+        connectionReaderThread.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -52,7 +54,7 @@ public class ParseCommandTest {
         allocate.put(Command.SEND_PEERLIST);
         allocate.putInt(1);
 
-        ConnectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+        connectionReaderThread.loopCommands(getPeerForDebug(), allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -72,7 +74,7 @@ public class ParseCommandTest {
 
         peerForDebug = getPeerForDebug();
         peerForDebug.setConnected(true);
-        ConnectionReaderThread.loopCommands(peerForDebug, allocate);
+        connectionReaderThread.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -84,25 +86,27 @@ public class ParseCommandTest {
 
     @Test
     public void testREQUEST_PEERLIST() {
+        ServerContext serverContext = new ServerContext();
+        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+        PeerList peerList = serverContext.getPeerList();
+
 
         int peersToTest = 100;
 
-        PeerList.getReadWriteLock().writeLock().lock();
 
-
-        int startingPeerListSize = PeerList.size();
+        int startingPeerListSize = peerList.size();
 
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
-            PeerList.add(testpeer1);
+            peerList.add(testpeer1);
         }
 
 
         Peer me = getPeerForDebug();
 
-        ConnectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
+        connectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
         ByteBuffer writeBuffer = me.getWriteBuffer();
 
@@ -122,7 +126,7 @@ public class ParseCommandTest {
 
         FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForFBPeerList));
 
-        assertTrue(rootAsFBPeerList.peersLength() == PeerList.size());
+        assertTrue(rootAsFBPeerList.peersLength() == peerList.size());
 
         FBPeer foundPeer = null;
         for (int j = 0; j < rootAsFBPeerList.peersLength(); j++) {
@@ -137,41 +141,41 @@ public class ParseCommandTest {
 
         //cleanup
         for (i = 0; i < peersToTest; i++) {
-            PeerList.removeIpPort("rand_rewrewR_testip" + i, i);
+            peerList.removeIpPort("rand_rewrewR_testip" + i, i);
         }
 
-        assertEquals(startingPeerListSize, PeerList.size());
+        assertEquals(startingPeerListSize, peerList.size());
 
-        PeerList.getReadWriteLock().writeLock().unlock();
 
     }
 
     @Test
     public void testSend_PEERLIST() {
-
+        ServerContext serverContext = new ServerContext();
+        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+        PeerList peerList = serverContext.getPeerList();
 
         int peersToTest = 100;
 
-        PeerList.getReadWriteLock().writeLock().lock();
 
-        int initPeerListSize = PeerList.size();
+        int initPeerListSize = peerList.size();
 
         int i = 0;
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
 //            System.out.println("node id: " + testpeer1.getNodeId().getKademliaId().toString());
-            PeerList.add(testpeer1);
+            peerList.add(testpeer1);
         }
 //        PeerList.getReadWriteLock().writeLock().unlock();
 
         Peer me = getPeerForDebug();
 
-        ConnectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
+        connectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
 //        PeerList.getReadWriteLock().writeLock().lock();
 
-        PeerList.clear();
+        peerList.clear();
 
 
         ByteBuffer writeBuffer = me.getWriteBuffer();
@@ -187,15 +191,12 @@ public class ParseCommandTest {
 //        System.out.println("" + Utils.bytesToHexString(bytes));
         writeBuffer.position(0);
 
-        ConnectionReaderThread.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
+        connectionReaderThread.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
 
         assertFalse(writeBuffer.hasRemaining());
 
-        assertTrue(PeerList.size() - initPeerListSize == peersToTest);
+        assertTrue(peerList.size() - initPeerListSize == peersToTest);
 
-        PeerList.clear();
-
-        PeerList.getReadWriteLock().writeLock().unlock();
 
     }
 

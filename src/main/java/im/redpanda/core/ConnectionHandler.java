@@ -6,6 +6,7 @@
 package im.redpanda.core;
 
 
+import im.redpanda.crypt.Utils;
 import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
@@ -44,9 +45,13 @@ public class ConnectionHandler extends Thread {
     public static DecimalFormat df = new DecimalFormat("#.000");
     boolean startFurther;
 
+    private final ServerContext serverContext;
+    private final PeerList peerList;
 
-    public ConnectionHandler(boolean startFurther) {
+    public ConnectionHandler(ServerContext serverContext, boolean startFurther) {
         this.startFurther = startFurther;
+        this.serverContext = serverContext;
+        this.peerList = serverContext.getPeerList();
     }
 
     static {
@@ -61,9 +66,13 @@ public class ConnectionHandler extends Thread {
     }
 
 
-    public void bind() {
-
-
+    /**
+     * Returns the port which the ServerSocketChannel was bound to.
+     *
+     * @return
+     */
+    public int bind() {
+        int port = -1;
         try {
             ServerSocketChannel serverSocketChannel;
             serverSocketChannel = ServerSocketChannel.open();
@@ -71,7 +80,7 @@ public class ConnectionHandler extends Thread {
 
             boolean bound = false;
             //MY_PORT = Settings.STD_PORT;
-            Server.MY_PORT = Settings.getStartPort();
+            port = Settings.getStartPort();
             ServerSocket serverSocket = null;
 
 
@@ -79,35 +88,27 @@ public class ConnectionHandler extends Thread {
 
 
             while (!bound) {
-
-                bound = true;
                 try {
-                    serverSocketChannel.socket().bind(new InetSocketAddress(Server.MY_PORT));
+                    serverSocketChannel.socket().bind(new InetSocketAddress(port));
+                    bound = true;
                 } catch (Throwable e) {
-
-
-                    System.out.println("could not bound to port: " + Server.MY_PORT);
-
-
-                    //e.printStackTrace();
-                    bound = false;
-                    //MY_PORT = Settings.STD_PORT + random.nextInt(30);
-                    Server.MY_PORT += 1;
+                    System.out.println("could not bound to port: " + port);
+                    port++;
                 }
 
             }
 
-            System.out.println("bound successfuly to port: " + Server.MY_PORT);
-
+            System.out.println("bound successfully to port: " + port);
 
             addServerSocketChannel(serverSocketChannel);
             if (startFurther) {
-                Server.startedUpSuccessful();
+                Server.startedUpSuccessful(serverContext);
             }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
 
+        return port;
     }
 
     void addServerSocketChannel(ServerSocketChannel serverSocketChannel) {
@@ -142,7 +143,7 @@ public class ConnectionHandler extends Thread {
 
         bind();
 
-        ConnectionReaderThread.init();
+        ConnectionReaderThread.init(serverContext);
 
         while (!Server.SHUTDOWN) {
 
@@ -248,7 +249,7 @@ public class ConnectionHandler extends Thread {
                                 ConnectionHandler.peerInHandshakesLock.unlock();
                             }
 
-                            ConnectionReaderThread.sendHandshake(peerInHandshake);
+                            ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
 
                             newKey.attach(peerInHandshake);
                             peerInHandshake.setKey(newKey);
@@ -296,7 +297,7 @@ public class ConnectionHandler extends Thread {
                                 key.interestOps(SelectionKey.OP_READ);
 
                                 Log.putStd("Connection established...");
-                                ConnectionReaderThread.sendHandshake(peerInHandshake);
+                                ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
                             }
                             if (key.isReadable()) {
 
@@ -323,7 +324,7 @@ public class ConnectionHandler extends Thread {
                                         /**
                                          * The status indicates that no handshake was parsed before for this PeerInHandshake
                                          */
-                                        boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
+                                        boolean b = ConnectionReaderThread.parseHandshake(peerList, peerInHandshake, allocate);
 //                                    System.out.println("handshake okay?: " + b);
                                     } else {
 
@@ -493,9 +494,7 @@ public class ConnectionHandler extends Thread {
                                          * actual peer
                                          */
 
-                                        Peer peer = peerInHandshake.getPeer();
-
-                                        peer.setupConnection(peerInHandshake);
+                                        setupConnection(peerInHandshake.getPeer(), peerInHandshake);
                                         continue;
 
 
@@ -660,6 +659,48 @@ public class ConnectionHandler extends Thread {
         Log.putStd(
                 "ConnectionHandler thread died...");
 
+    }
+
+
+    public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
+
+        ReentrantLock writeBufferLock = peerOrigin.getWriteBufferLock();
+        writeBufferLock.lock();
+
+        try {
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.remove(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
+
+            peerOrigin.setupConnectionForPeer(peerInHandshake);
+
+
+            //update the selection key to the actual peer
+            peerInHandshake.getKey().attach(this);
+
+            /**
+             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
+             */
+            peerList.add(peerOrigin);
+
+            /**
+             * Lets search for the Node object for that peer and load it.
+             */
+            Node byKademliaId = Node.getByKademliaId(peerInHandshake.getIdentity());
+            if (byKademliaId == null) {
+                byKademliaId = new Node(peerInHandshake.getNodeId());
+            } else {
+                System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+            }
+            byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
+            peerOrigin.setNode(byKademliaId);
+
+        } finally {
+            writeBufferLock.unlock();
+        }
     }
 
 

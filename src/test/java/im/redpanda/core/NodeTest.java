@@ -6,7 +6,7 @@ import org.junit.Test;
 import java.io.File;
 import java.security.Security;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 public class NodeTest {
 
@@ -18,12 +18,13 @@ public class NodeTest {
     @Test
     public void getByKademliaId() {
 
+        ServerContext serverContext = new ServerContext();
 
         new File("data").mkdirs();
 
         NodeStore nodeStore = Server.nodeStore;
         if (nodeStore == null) {
-            nodeStore = new NodeStore();
+            nodeStore = new NodeStore(serverContext);
             Server.nodeStore = nodeStore;
         }
 

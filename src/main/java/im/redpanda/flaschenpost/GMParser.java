@@ -1,9 +1,6 @@
 package im.redpanda.flaschenpost;
 
-import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.PeerPerformanceTestFlaschenpostJob;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
@@ -12,10 +9,12 @@ import im.redpanda.kademlia.PeerComparator;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.TreeSet;
+import java.util.concurrent.locks.Lock;
 
 public class GMParser {
 
-    public static GMContent parse(byte[] content) {
+    public static GMContent parse(ServerContext serverContext, byte[] content) {
+
 
         ByteBuffer buffer = ByteBuffer.wrap(content);
 
@@ -31,7 +30,7 @@ public class GMParser {
 
             // if the gm is targeted to us the content will be handled by the parseContent routine of the gm
             if (!garlicMessage.isTargetedToUs()) {
-                sendGarlicMessageToPeer(garlicMessage);
+                sendGarlicMessageToPeer(serverContext, garlicMessage);
             }
 
 
@@ -65,7 +64,7 @@ public class GMParser {
         throw new RuntimeException("Unknown GMType at parsing: " + type);
     }
 
-    private static void sendGarlicMessageToPeer(GarlicMessage garlicMessage) {
+    private static void sendGarlicMessageToPeer(ServerContext serverContext, GarlicMessage garlicMessage) {
 
 //        boolean put = FPStoreManager.put(garlicMessage);
 //
@@ -76,8 +75,9 @@ public class GMParser {
 //            System.out.println("handle fp with destination " + garlicMessage.getDestination() + " id " + garlicMessage.getId());
 //        }
 
+        PeerList peerList = serverContext.getPeerList();
 
-        Peer peerToSendFP = PeerList.get(garlicMessage.getDestination());
+        Peer peerToSendFP = peerList.get(garlicMessage.getDestination());
 
         byte[] content = garlicMessage.getContent();
 
@@ -93,15 +93,16 @@ public class GMParser {
             //todo use best route for this flaschenpost by network graph
 
             //insert all nodes
-            PeerList.getReadWriteLock().readLock().lock();
+            Lock lock = peerList.getReadWriteLock().readLock();
+            lock.lock();
             try {
-                ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+                ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
-                if (peerList == null) {
+                if (peerArrayList == null) {
                     return;
                 }
 
-                for (Peer p : peerList) {
+                for (Peer p : peerArrayList) {
 
                     //do not add the peer if the peer is not connected or the nodeId is unknown!
                     if (p.getNodeId() == null || !p.isConnected()) {
@@ -125,7 +126,7 @@ public class GMParser {
                     peers.add(p);
                 }
             } finally {
-                PeerList.getReadWriteLock().readLock().unlock();
+                lock.unlock();
             }
 
             if (peers.size() == 0) {

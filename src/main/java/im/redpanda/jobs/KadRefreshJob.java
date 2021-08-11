@@ -1,12 +1,13 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadStoreManager;
 
 public class KadRefreshJob extends Job {
 
 
-    public KadRefreshJob() {
-        super(1000L * 60L * 60L * 1L, true);
+    public KadRefreshJob(ServerContext serverContext) {
+        super(serverContext, 1000L * 60L * 60L * 1L, true);
     }
 
     @Override
@@ -17,7 +18,7 @@ public class KadRefreshJob extends Job {
     public void work() {
 
         System.out.println("refresh the KadContent");
-        KadStoreManager.maintain();
+        KadStoreManager.maintain(serverContext);
 
     }
 }

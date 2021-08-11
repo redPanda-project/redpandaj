@@ -7,7 +7,7 @@ import java.security.Security;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 public class NodeStoreTest {
 
@@ -19,7 +19,7 @@ public class NodeStoreTest {
     public void testBlacklist() {
 
         Server.localSettings = new LocalSettings();
-        Server.nodeStore = new NodeStore();
+        Server.nodeStore = new NodeStore(new ServerContext());
 
         Map<Node, Long> nodeBlacklist = new HashMap<>();
 

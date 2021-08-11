@@ -2,6 +2,7 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import org.junit.Test;
 
 import java.security.Security;
@@ -10,10 +11,13 @@ import static org.junit.Assert.*;
 
 public class GarlicMessageTest {
 
+    private static final ServerContext serverContext;
+
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
         Server.nodeId = new NodeId();
         Server.NONCE = Server.nodeId.getKademliaId();
+        serverContext = new ServerContext();
     }
 
     @Test
@@ -24,12 +28,12 @@ public class GarlicMessageTest {
 
         GMAck gmAck = new GMAck(123);
 
-        GarlicMessage garlicMessage = new GarlicMessage(targetId);
+        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
         garlicMessage.addGMContent(gmAck);
 
         byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(content);
+        GMContent parse = GMParser.parse(serverContext, content);
 
         assertNotNull(parse);
 
@@ -46,12 +50,12 @@ public class GarlicMessageTest {
 
         GMAck gmAck = new GMAck(456);
 
-        GarlicMessage garlicMessage = new GarlicMessage(targetId);
+        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
         garlicMessage.addGMContent(gmAck);
 
         byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(content);
+        GMContent parse = GMParser.parse(serverContext, content);
 
         assertNotNull(parse);
 
@@ -83,18 +87,18 @@ public class GarlicMessageTest {
 
         GMAck gmAck = new GMAck(456);
 
-        GarlicMessage garlicMessage = new GarlicMessage(targetId);
+        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
         garlicMessage.addGMContent(gmAck);
 
         byte[] content = garlicMessage.getContent();
 
         assertEquals(GMType.GARLIC_MESSAGE.getId(), content[0]);
 
-        GMContent parse = GMParser.parse(content);
+        GMContent parse = GMParser.parse(serverContext, content);
 
         assertEquals(GarlicMessage.class, parse.getClass());
 
-        GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(content);
+        GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(serverContext, content);
 
         assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
