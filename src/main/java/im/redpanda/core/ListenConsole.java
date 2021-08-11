@@ -47,6 +47,7 @@ public class ListenConsole extends Thread {
             String readLine = bufferedReader.readLine();
 
             if (peerList.size() == 0) {
+                System.out.println("no peers...");
                 continue;
             }
 

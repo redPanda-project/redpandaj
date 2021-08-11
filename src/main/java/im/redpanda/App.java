@@ -105,6 +105,8 @@ public class App {
         Server server = new Server(serverContext, connectionHandler);
         server.start();
 
+        Server.startedUpSuccessful(serverContext);
+
         Log.init(serverContext);
 
         new PeerJobs(serverContext).start();

@@ -50,18 +50,12 @@ public class Server {
     }
 
     public static void startedUpSuccessful(ServerContext serverContext) {
-
-
         Settings.init(serverContext);
         ByteBufferPool.init();
 
-        logger.debug("NodeStore has entries: " + serverContext.getNodeStore().size());
-
+        new HTTPServer(serverContext).start();
 
         outboundHandler.start();
-
-
-        new HTTPServer(serverContext).start();
 
         startedUpSuccessful = true;
 

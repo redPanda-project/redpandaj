@@ -101,9 +101,6 @@ public class ConnectionHandler extends Thread {
             System.out.println("bound successfully to port: " + port);
 
             addServerSocketChannel(serverSocketChannel);
-            if (startFurther) {
-                Server.startedUpSuccessful(serverContext);
-            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -679,7 +676,7 @@ public class ConnectionHandler extends Thread {
 
 
             //update the selection key to the actual peer
-            peerInHandshake.getKey().attach(this);
+            peerInHandshake.getKey().attach(peerOrigin);
 
             /**
              * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
