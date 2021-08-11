@@ -132,6 +132,10 @@ public class ListenConsole extends Thread {
                     System.out.println("KadStore entries: ");
                     KadStoreManager.printStatus();
 
+                    System.out.println("NodeStore blacklist: ");
+                    Server.nodeStore.printBlacklist();
+
+
 
                 } finally {
                     PeerList.getReadWriteLock().writeLock().unlock();
@@ -150,6 +154,9 @@ public class ListenConsole extends Thread {
                 } catch (NumberFormatException e) {
                     e.printStackTrace();
                 }
+            } else if (readLine.equals("b")) {
+                System.out.println("resetting NodeStore blacklist");
+                Server.nodeStore.clearNodeBlacklist();
             } else if (readLine.equals("t")) {
                 ThreadMXBean bean = ManagementFactory.getThreadMXBean();
                 ThreadInfo[] ti = bean.getThreadInfo(bean.getAllThreadIds(), true, true);

@@ -60,7 +60,7 @@ public abstract class Job implements Runnable {
             }
         }
 
-        if (!initilized) {
+        if (!initilized || done) {
             //if the init method failed, (protected var set to false),
             // we retry the init in the next run
             return;
@@ -134,23 +134,28 @@ public abstract class Job implements Runnable {
             }
 
             done = true;
+            stopJob();
 
-            //remove this job from the runningJobs
-            runningJobsLock.lock();
-            try {
-                Job remove = runningJobs.remove(jobId);
-                if (remove != null) {
-                    future.cancel(false);
-                } else {
-                    //job already done, but we should never be in this case, run exception to debug this case
-                    throw new RuntimeException("CODE 17dh6");
-                }
-            } finally {
-                runningJobsLock.unlock();
-            }
-//            System.out.println("job finished: " + jobId);
         } catch (Throwable e) {
             Log.sentry(e);
+        }
+    }
+
+    /**
+     * remove this job from the runningJobs and cancels the future
+     */
+    private void stopJob() {
+        runningJobsLock.lock();
+        try {
+            Job remove = runningJobs.remove(jobId);
+            if (remove != null) {
+                future.cancel(false);
+            } else {
+                //job already done, but we should never be in this case, run exception to debug this case
+                throw new RuntimeException("CODE 17dh6");
+            }
+        } finally {
+            runningJobsLock.unlock();
         }
     }
 

@@ -41,20 +41,6 @@ public class App {
 
         initLogger();
 
-//        Enumeration<URL> resources = new App().getClass().getClassLoader()
-//                .getResources("META-INF/MANIFEST.MF");
-//        while (resources.hasMoreElements()) {
-//            try {
-//                Manifest manifest = new Manifest(resources.nextElement().openStream());
-//                // check that this is your manifest and do what you need or get the next one
-//
-////                System.out.println(" build number: " + manifest.getMainAttributes().getValue("Implementation-Build"));
-//
-//            } catch (IOException E) {
-//                // handle
-//            }
-//        }
-
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
 
@@ -62,7 +48,6 @@ public class App {
             public void run() {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
-//                Server.nodeStore.saveToDisk();
                 logger.info("started shutdownhook...");
                 Server.shutdown();
                 logger.info("shutdownhook done");
@@ -117,7 +102,7 @@ public class App {
 
     public static String readGitProperties() throws IOException {
         String gitRev = null;
-        InputStream is = new App().getClass().getResourceAsStream("/git.properties");
+        InputStream is = App.class.getResourceAsStream("/git.properties");
         if (is == null) {
             return null;
         }
