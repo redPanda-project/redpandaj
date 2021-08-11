@@ -2,9 +2,8 @@ package im.redpanda.flaschenpost;
 
 
 import im.redpanda.core.KademliaId;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 
 /**
  * This class represents the basic information for a Flaschenpost and will be extended by a GarlicMessage.
@@ -27,18 +26,7 @@ public abstract class Flaschenpost extends GMContent {
      */
     protected long timestamp;
 
-    /**
-     * Byte representation of the encrypted content. This should be created after the encryption process and is used
-     * to transmit the Flaschenpost over the wire.
-     */
-    //protected byte[] content;
-    public int getId() {
-        return id;
-    }
-
-    public long getTimestamp() {
-        return timestamp;
-    }
+    protected final ServerContext serverContext;
 
     /**
      * Creates a new Flaschenpost with the given destination. The Id is a new random integer and the timestamp is
@@ -46,57 +34,67 @@ public abstract class Flaschenpost extends GMContent {
      *
      * @param destination
      */
-    public Flaschenpost(KademliaId destination) {
+    public Flaschenpost(ServerContext serverContext, KademliaId destination) {
+        this.serverContext = serverContext;
         this.destination = destination;
         this.id = Server.random.nextInt();
         this.timestamp = System.currentTimeMillis();
     }
 
-    public Flaschenpost() {
+    public Flaschenpost(ServerContext serverContext) {
+        this.serverContext = serverContext;
     }
 
-    public static void put(KademliaId destination, byte[] content) {
-
-
-        //let us get the closest node in our peerlist to the destination
-
-        // we only want to find peers which are closer to destination than we are
-        int nearestDistance = destination.getDistance(Server.NONCE);
-        Peer nearestPeer = null;
-
-        System.out.println("our distance: " + nearestDistance);
-
-        PeerList.getReadWriteLock().readLock().lock();
-        try {
-            for (Peer p : PeerList.getPeerArrayList()) {
-
-                if (p.getNodeId() == null || !p.isIntegrated()) {
-                    continue;
-                }
-
-                int distance = p.getKademliaId().getDistance(destination);
-                System.out.println("distance: " + distance);
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearestPeer = p;
-                }
-
-            }
-
-
-            if (nearestPeer == null) {
-                System.out.println("we are the closest peer!");
-            } else {
-                System.out.println("found peer with distance: " + nearestDistance + " peer: " + nearestPeer.getNodeId());
-            }
-
-
-        } finally {
-            PeerList.getReadWriteLock().readLock().unlock();
-        }
-
-
+    /**
+     * Byte representation of the encrypted content. This should be created after the encryption process and is used
+     * to transmit the Flaschenpost over the wire.
+     */
+    public int getId() {
+        return id;
     }
+
+//    public static void put(KademliaId destination, byte[] content) {
+//
+//
+//        //let us get the closest node in our peerlist to the destination
+//
+//        // we only want to find peers which are closer to destination than we are
+//        int nearestDistance = destination.getDistance(Server.NONCE);
+//        Peer nearestPeer = null;
+//
+//        System.out.println("our distance: " + nearestDistance);
+//
+//        PeerList.getReadWriteLock().readLock().lock();
+//        try {
+//            for (Peer p : PeerList.getPeerArrayList()) {
+//
+//                if (p.getNodeId() == null || !p.isIntegrated()) {
+//                    continue;
+//                }
+//
+//                int distance = p.getKademliaId().getDistance(destination);
+//                System.out.println("distance: " + distance);
+//                if (distance < nearestDistance) {
+//                    nearestDistance = distance;
+//                    nearestPeer = p;
+//                }
+//
+//            }
+//
+//
+//            if (nearestPeer == null) {
+//                System.out.println("we are the closest peer!");
+//            } else {
+//                System.out.println("found peer with distance: " + nearestDistance + " peer: " + nearestPeer.getNodeId());
+//            }
+//
+//
+//        } finally {
+//            PeerList.getReadWriteLock().readLock().unlock();
+//        }
+//
+//
+//    }
 
     @Override
     protected void computeContent() {
@@ -104,7 +102,7 @@ public abstract class Flaschenpost extends GMContent {
     }
 
     public boolean isTargetedToUs() {
-        return (destination.equals(Server.nodeId.getKademliaId()));
+        return (destination.equals(serverContext.getNonce()));
     }
 
     public KademliaId getDestination() {

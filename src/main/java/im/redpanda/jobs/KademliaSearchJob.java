@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class KademliaSearchJob extends Job {
@@ -35,7 +36,8 @@ public class KademliaSearchJob extends Job {
     private TreeMap<Peer, Integer> peers = null;
     private final ArrayList<KadContent> contents = new ArrayList<>();
 
-    public KademliaSearchJob(KademliaId id) {
+    public KademliaSearchJob(ServerContext serverContext, KademliaId id) {
+        super(serverContext);
         this.id = id;
     }
 
@@ -68,7 +70,7 @@ public class KademliaSearchJob extends Job {
         }
 
 
-        int myDistanceToKey = id.getDistance(Server.NONCE);
+        int myDistanceToKey = id.getDistance(serverContext.getNonce());
 
 //        BigInteger key = id.getInt();
 //        BigInteger me = Server.NONCE.getInt();
@@ -78,17 +80,20 @@ public class KademliaSearchJob extends Job {
         //key is not blacklisted, lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(id));
 
-        //insert all nodes
-        PeerList.getReadWriteLock().readLock().lock();
-        try {
-            ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+        PeerList peerList = serverContext.getPeerList();
 
-            if (peerList == null) {
+        //insert all nodes
+        Lock lock = peerList.getReadWriteLock().readLock();
+        lock.lock();
+        try {
+            ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
+
+            if (peerArrayList == null) {
                 initilized = false;
                 return;
             }
 
-            for (Peer p : peerList) {
+            for (Peer p : peerArrayList) {
 
                 //do not add the peer if the peer is not connected or the nodeId is unknown!
                 if (p.getNodeId() == null || !p.isConnected()) {
@@ -113,7 +118,7 @@ public class KademliaSearchJob extends Job {
                 peers.put(p, NONE);
             }
         } finally {
-            PeerList.getReadWriteLock().readLock().unlock();
+            lock.unlock();
         }
 
         System.out.println("peers for search found: " + peers.size());
@@ -121,8 +126,6 @@ public class KademliaSearchJob extends Job {
 
     @Override
     public void work() {
-
-
         /**
          * check for timeout, maybe we already got an answer but not SEND_TO_NODES
          */

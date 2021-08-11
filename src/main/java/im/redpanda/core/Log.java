@@ -7,14 +7,9 @@ package im.redpanda.core;
 import im.redpanda.App;
 import im.redpanda.jobs.Job;
 import io.sentry.Sentry;
-import io.sentry.event.Event;
-import io.sentry.event.EventBuilder;
-import io.sentry.event.helper.EventBuilderHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -27,14 +22,15 @@ public class Log {
     public static int LEVEL = 10;
     private static AtomicInteger rating;
 
-    static {
-//        System.out.println("is testing: " + isJUnitTest());
+
+    public static void init(ServerContext serverContext) {
+        //        System.out.println("is testing: " + isJUnitTest());
         if (isJUnitTest()) {
             LEVEL = 3000;
 //            LEVEL = 0;
         }
 
-        new Job(20000, true) {
+        new Job(serverContext, 20000, true) {
             @Override
             public void init() {
                 rating = new AtomicInteger();
@@ -49,7 +45,6 @@ public class Log {
 //                logger.trace("current rating for sentry logging: " + i);
             }
         }.start();
-
     }
 
     public static void put(String msg, int level) {
@@ -112,7 +107,7 @@ public class Log {
 
     public static boolean isJUnitTest() {
         StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        List<StackTraceElement> list = Arrays.asList(stackTrace);
+        StackTraceElement[] list = stackTrace;
         for (StackTraceElement element : list) {
             if (element.getClassName().startsWith("org.junit.")) {
                 return true;

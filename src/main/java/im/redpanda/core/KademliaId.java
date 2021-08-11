@@ -20,7 +20,7 @@ public class KademliaId implements Serializable {
 
     public final transient static int ID_LENGTH = 160;
     public final transient static int ID_LENGTH_BYTES = (ID_LENGTH / 8);
-    private byte[] keyBytes;
+    private final byte[] keyBytes;
     private int nodeDistance = -1;
 //    private BigInteger bigInt;
 
@@ -166,7 +166,7 @@ public class KademliaId implements Serializable {
             bits.clear(i);
         }
         bits.flip(0, 8);        // Flip the bits since they're in reverse order
-        result[numByteZeroes] = (byte) bits.toByteArray()[0];
+        result[numByteZeroes] = bits.toByteArray()[0];
 
         /* Set the remaining bytes to Maximum value */
         for (int i = numByteZeroes + 1; i < result.length; i++) {
@@ -244,12 +244,12 @@ public class KademliaId implements Serializable {
      *
      * @return distance to Test.NONCE
      */
-    public int getDistanceToUs() {
+    public int getDistanceToUs(ServerContext serverContext) {
         if (nodeDistance != -1) {
             return nodeDistance;
         }
 
-        nodeDistance = getDistance(Server.NONCE);
+        nodeDistance = getDistance(serverContext.getNonce());
         return nodeDistance;
     }
 

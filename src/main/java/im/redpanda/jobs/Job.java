@@ -1,6 +1,7 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Log;
+import im.redpanda.core.ServerContext;
 
 import java.util.HashMap;
 import java.util.Random;
@@ -10,10 +11,11 @@ import java.util.concurrent.locks.ReentrantLock;
 public abstract class Job implements Runnable {
 
     //    public static final long RERUNTIME = 500L;
-    private static HashMap<Integer, Job> runningJobs = new HashMap<>(10);
-    private static ReentrantLock runningJobsLock = new ReentrantLock();
+    private static final HashMap<Integer, Job> runningJobs = new HashMap<>(10);
+    private static final ReentrantLock runningJobsLock = new ReentrantLock();
     public static final Random rand = new Random();
 
+    protected ServerContext serverContext;
 
     private long reRunDelay = 500L; //default value
     private boolean permanent = false;
@@ -25,14 +27,17 @@ public abstract class Job implements Runnable {
     protected boolean initilized = false;
 
 
-    public Job() {
+    public Job(ServerContext serverContext) {
+        this.serverContext = serverContext;
     }
 
-    public Job(long reRunDelay) {
+    public Job(ServerContext serverContext, long reRunDelay) {
+        this.serverContext = serverContext;
         this.reRunDelay = reRunDelay;
     }
 
-    public Job(long reRunDelay, boolean permanent) {
+    public Job(ServerContext serverContext, long reRunDelay, boolean permanent) {
+        this.serverContext = serverContext;
         this.reRunDelay = reRunDelay;
         this.permanent = permanent;
     }

@@ -1,8 +1,8 @@
 package im.redpanda;
 
-import im.redpanda.core.ListenConsole;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.jobs.ServerRestartJob;
+import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
 import org.apache.logging.log4j.LogManager;
@@ -42,19 +42,6 @@ public class App {
         initLogger();
 
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-
-            @Override
-            public void run() {
-                final String orgName = Thread.currentThread().getName();
-                Thread.currentThread().setName(orgName + " - shutdownhook");
-                logger.info("started shutdownhook...");
-                Server.shutdown();
-                logger.info("shutdownhook done");
-            }
-        });
-
-
         boolean activateSentry = false;
         if (args.length > 0) {
             String sentryExtras = args[0];
@@ -86,12 +73,45 @@ public class App {
             logger.warn("Warning, no git revision found...");
         }
 
+
+        ServerContext serverContext = new ServerContext();
+
+        ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
+        int port = connectionHandler.bind();
+        serverContext.setPort(port);
+        serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
+        serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
+        serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+        serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+
+
+        logger.info("started node with KademliaId: " + serverContext.getNonce().toString() + " port: " + serverContext.getPort());
+
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+            @Override
+            public void run() {
+                final String orgName = Thread.currentThread().getName();
+                Thread.currentThread().setName(orgName + " - shutdownhook");
+                logger.info("started shutdownhook...");
+                Server.shutdown(serverContext);
+                logger.info("shutdownhook done");
+            }
+        });
+
         //lets restart the server once in a while until we have stable releases...
-        new ServerRestartJob().start();
+        new ServerRestartJob(serverContext).start();
 
-        Server.start();
+        Server server = new Server(serverContext, connectionHandler);
+        server.start();
 
-        new ListenConsole().start();
+        Server.startedUpSuccessful(serverContext);
+
+        Log.init(serverContext);
+
+        new PeerJobs(serverContext).start();
+
+        new ListenConsole(serverContext).start();
 
     }
 

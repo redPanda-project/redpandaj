@@ -4,6 +4,7 @@ import java.io.File;
 
 public class Settings {
 
+    public static final int DEFAULT_PORT = 59558;
     public static boolean DEBUG = true;
     public static boolean NAT_OPEN = false;
     public static int STD_PORT = 59558;
@@ -22,14 +23,14 @@ public class Settings {
     public static boolean IPV6_ONLY = false;
     public static boolean IPV4_ONLY = false;
 
-    public static void init() {
+    public static void init(ServerContext serverContext) {
         File file = new File("redpanda.jar");
         if (!file.exists()) {
             System.out.println("No jar to update found, disable auto update");
             loadUpdates = false;
 
             file = new File("target/redpanda.jar");
-            if (file.exists() && Server.MY_PORT == 59558) {
+            if (file.exists() && serverContext.getPort() == DEFAULT_PORT) {
                 System.out.println("found compiled jar, this is a seed node");
                 seedNode = true;
             }

@@ -3,38 +3,29 @@ package im.redpanda.core;
 import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
-import java.io.File;
 import java.security.Security;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 public class NodeTest {
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-        Server.localSettings = new LocalSettings();
     }
 
     @Test
     public void getByKademliaId() {
-
-
-        new File("data").mkdirs();
-
-        NodeStore nodeStore = Server.nodeStore;
-        if (nodeStore == null) {
-            nodeStore = new NodeStore();
-            Server.nodeStore = nodeStore;
-        }
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        NodeStore nodeStore = serverContext.getNodeStore();
 
         int size = nodeStore.size();
         System.out.println("Size of NodeStore: " + size);
 
-        Node node = new Node(new NodeId());
+        Node node = new Node(serverContext, new NodeId());
 
         KademliaId kademliaId = node.getNodeId().getKademliaId();
 
-        Node byKademliaId = Node.getByKademliaId(kademliaId);
+        Node byKademliaId = Node.getByKademliaId(serverContext, kademliaId);
 
         assertTrue(byKademliaId != null);
 
@@ -42,12 +33,7 @@ public class NodeTest {
 
         assertTrue(byKademliaId.getNodeId().hasPrivate());
 
-//        byKademliaId.seen("test", -1);
-
         assertTrue(nodeStore.size() - size == 1);
-
-//        nodeStore.close();
-
 
     }
 }

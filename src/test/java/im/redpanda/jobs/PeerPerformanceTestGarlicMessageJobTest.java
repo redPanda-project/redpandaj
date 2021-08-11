@@ -1,20 +1,17 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.LocalSettings;
 import im.redpanda.core.Node;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
-import im.redpanda.store.NodeStore;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.security.Security;
 import java.util.ArrayList;
 
 public class PeerPerformanceTestGarlicMessageJobTest {
+
+    private final static ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -24,29 +21,21 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
     @Test
     public void calculateNestedGarlicMessagesTest() {
+
+
         ArrayList<Node> nodes = new ArrayList<Node>();
 
-        Node nodeA = new Node(Server.nodeId);
+        Node nodeA = new Node(serverContext, serverContext.getNodeId());
         nodes.add(nodeA);
 
-        Node nodeB = new Node(Server.nodeId);
+        Node nodeB = new Node(serverContext, serverContext.getNodeId());
         nodes.add(nodeB);
 
-        byte[] bytes = PeerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
+        PeerPerformanceTestGarlicMessageJob peerPerformanceTestGarlicMessageJob = new PeerPerformanceTestGarlicMessageJob(serverContext);
 
-        GMContent parse = GMParser.parse(bytes);
-    }
+        byte[] bytes = peerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
 
-    @Before
-    public void setUp() throws Exception {
-        Server.MY_PORT = 1;
-        Server.localSettings = new LocalSettings();
-        Server.nodeStore = new NodeStore();
-        Server.nodeId = new NodeId();
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        Server.nodeStore.close();
+        GMContent parse = GMParser.parse(serverContext, bytes);
+        //todo assert?
     }
 }

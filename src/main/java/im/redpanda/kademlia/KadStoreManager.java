@@ -3,7 +3,7 @@ package im.redpanda.kademlia;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Log;
 import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
@@ -30,7 +30,12 @@ public class KadStoreManager {
     private static final ReentrantLock lock = new ReentrantLock();
     private static long lastCleanup = 0;
     private static int size = 0;
+    private final ServerContext serverContext;
 
+
+    public KadStoreManager(ServerContext serverContext) {
+        this.serverContext = serverContext;
+    }
 
     /**
      * basic put operation into our DHT Storage, if entry exists with same KadId,
@@ -39,7 +44,7 @@ public class KadStoreManager {
      *
      * @param content
      */
-    public static boolean put(KadContent content) {
+    public boolean put(KadContent content) {
 
         KademliaId id = content.getId();
 
@@ -80,7 +85,7 @@ public class KadStoreManager {
                 for (KadContent c : entries.values()) {
 
 
-                    int distance = Server.NONCE.getDistance(c.getId());
+                    int distance = serverContext.getNonce().getDistance(c.getId());
 
 
 //                    long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
@@ -161,7 +166,7 @@ public class KadStoreManager {
 //        System.out.println("kadid: " + kademliaId.hexRepresentation());
 //        System.out.println("kadid: " + Utils.bytesToHexString(dhtKey.getBytes()));
 
-        System.out.println("kadid: " + kademliaId.toString());
+        System.out.println("kadid: " + kademliaId);
 
         //random content
         byte[] payload = new byte[1024];
@@ -200,7 +205,7 @@ public class KadStoreManager {
 
         ScheduledFuture scheduledFuture = runningJobs.get(pointer);
 
-        Job r = (Job) job;
+        Job r = job;
 
         boolean couldCancel = scheduledFuture.cancel(false);
         System.out.println("cancel: " + couldCancel);
@@ -233,11 +238,11 @@ public class KadStoreManager {
     }
 
 
-    public static void maintain() {
+    public static void maintain(ServerContext serverContext) {
         lock.lock();
         try {
             for (KadContent kc : entries.values()) {
-                new KademliaInsertJob(kc).start();
+                new KademliaInsertJob(serverContext, kc).start();
             }
         } finally {
             lock.unlock();
@@ -248,7 +253,7 @@ public class KadStoreManager {
     static class Job implements Runnable {
 
         HashMap<Integer, ScheduledFuture> runningJobs;
-        private Integer pointer;
+        private final Integer pointer;
         private String data = null;
 
         public Job(HashMap<Integer, ScheduledFuture> runningJobs, Integer pointer) {

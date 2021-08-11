@@ -1,6 +1,7 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.core.Settings;
 
 import java.io.File;
@@ -12,8 +13,8 @@ public class ServerRestartJob extends Job {
     private static final long STARTED_AT = System.currentTimeMillis();
     public static long RESTART_TIME;
 
-    public ServerRestartJob() {
-        super(1000L * 60L * 60L, true);
+    public ServerRestartJob(ServerContext serverContext) {
+        super(serverContext, 1000L * 60L * 60L, true);
         RESTART_TIME = 1000L * 60L * 60L * 24L * 2L + Server.random.nextInt(60 * 60 * 8) * 1000L;
     }
 
@@ -44,7 +45,7 @@ public class ServerRestartJob extends Job {
             }
         }
 
-        Server.shutdown();
+        Server.shutdown(serverContext);
         System.exit(0);
 
 
