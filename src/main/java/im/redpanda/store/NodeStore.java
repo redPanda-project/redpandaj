@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 public class NodeStore {
 
+    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -211,7 +212,7 @@ public class NodeStore {
     }
 
     private boolean isNodeStillBlacklisted(Node node) {
-        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 15L;
+        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < NODE_BLACKLISTED_FOR_GRAPH;
     }
 
     private void removeNodeIfNoGoodLinkAvailable() {
@@ -253,7 +254,7 @@ public class NodeStore {
         Writer writer = new StringWriter();
         exporter.exportGraph(nodeGraph, writer);
         System.out.println("Current Network Graph with weights representing the performance for garlic routing.");
-        System.out.println(writer.toString());
+        System.out.println(writer);
     }
 
     private void addRandomEdge() {
