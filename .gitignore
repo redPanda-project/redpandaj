@@ -119,3 +119,6 @@ privateSigningKey.txt
 
 .restart
 *.apk
+
+.idea/azure
+.idea/azureSettings.xml
