@@ -1,36 +1,41 @@
 package im.redpanda.jobs;
 
 
-
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
+import im.redpanda.core.ServerContext;
 
 import java.util.ArrayList;
 import java.util.TreeMap;
+import java.util.concurrent.locks.Lock;
 
 public class KademliaPeerLookupJob extends Job {
 
 
-    private KademliaId destination;
-    private TreeMap<Peer, Integer> peers = new TreeMap<>();
+    private final KademliaId destination;
+    private final TreeMap<Peer, Integer> peers = new TreeMap<>();
 
 
-    public KademliaPeerLookupJob(KademliaId destination) {
+    public KademliaPeerLookupJob(ServerContext serverContext, KademliaId destination) {
+        super(serverContext);
+
         this.destination = destination;
 
+        PeerList peerList = serverContext.getPeerList();
 
         //insert all nodes
-        PeerList.getReadWriteLock().readLock().lock();
+        Lock lock = peerList.getReadWriteLock().readLock();
+        lock.lock();
         try {
-            ArrayList<Peer> peerList = PeerList.getPeerArrayList();
+            ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
-            for (Peer p : peerList) {
+            for (Peer p : peerArrayList) {
                 peers.put(p, 0);
             }
 
         } finally {
-            PeerList.getReadWriteLock().readLock().unlock();
+            lock.unlock();
         }
 
     }

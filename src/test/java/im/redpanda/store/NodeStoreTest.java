@@ -1,13 +1,15 @@
 package im.redpanda.store;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Node;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.ServerContext;
 import org.junit.Test;
 
 import java.security.Security;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 public class NodeStoreTest {
 
@@ -17,13 +19,9 @@ public class NodeStoreTest {
 
     @Test
     public void testBlacklist() {
-
-        Server.localSettings = new LocalSettings();
-        Server.nodeStore = new NodeStore();
-
         Map<Node, Long> nodeBlacklist = new HashMap<>();
 
-        Node node = new Node(new NodeId());
+        Node node = new Node(ServerContext.buildDefaultServerContext(), new NodeId());
 
         nodeBlacklist.put(node, System.currentTimeMillis());
 

@@ -1,20 +1,23 @@
 package im.redpanda.core;
 
-import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.crypt.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.crypto.*;
+import javax.crypto.Cipher;
+import javax.crypto.KeyAgreement;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.security.*;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 
 public class PeerInHandshake {
 
@@ -199,7 +202,7 @@ public class PeerInHandshake {
         this.randomFromThem = randomFromThem;
     }
 
-    public void calculateSharedSecret() {
+    public void calculateSharedSecret(ServerContext serverContext) {
 
         if (nodeId == null) {
             throw new RuntimeException("calculateSharedSecret: nodeId was null");
@@ -211,7 +214,7 @@ public class PeerInHandshake {
 
         try {
             KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
-            keyAgreement.init(Server.nodeId.getKeyPair().getPrivate());
+            keyAgreement.init(serverContext.getNodeId().getKeyPair().getPrivate());
             keyAgreement.doPhase(nodeId.getKeyPair().getPublic(), true);
 
             SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
@@ -274,20 +277,6 @@ public class PeerInHandshake {
             e.printStackTrace();
         }
 
-    }
-
-    public boolean peerIsHigher() {
-//        return isConnectionInitializedByMe;
-        for (int i = 0; i < KademliaId.ID_LENGTH / 8; i++) {
-            int compare = Byte.compare(Server.NONCE.getBytes()[i], nodeId.getKademliaId().getBytes()[i]);
-            if (compare > 0) {
-                return true;
-            } else if (compare < 0) {
-                return false;
-            }
-        }
-        System.out.println("could not compare!!!");
-        return false;
     }
 
     public boolean isWeSendOurRandom() {

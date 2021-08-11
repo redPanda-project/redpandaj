@@ -4,19 +4,19 @@ package im.redpanda.jobs;
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
 
-    private Peer answerTo;
-    private int ackID;
+    private final Peer answerTo;
+    private final int ackID;
 
-    public KademliaSearchJobAnswerPeer(KademliaId id, Peer answerTo, int ackID) {
-        super(id);
+    public KademliaSearchJobAnswerPeer(ServerContext serverContext, KademliaId id, Peer answerTo, int ackID) {
+        super(serverContext, id);
         this.answerTo = answerTo;
         this.ackID = ackID;
     }
