@@ -25,7 +25,7 @@ public class PeerList {
     /**
      * We store each Peer in a hashmap for fast get operations via KademliaId
      */
-    private final HashMap<KademliaId, Peer> peerlist;
+    private final HashMap<KademliaId, Peer> peerHashMap;
 
     /**
      * We store each Peer in a hashmap for fast get operations via Ip and Port
@@ -55,7 +55,7 @@ public class PeerList {
 
 
     public PeerList() {
-        peerlist = new HashMap<>();
+        peerHashMap = new HashMap<>();
         peerlistIpPort = new HashMap<>();
         blacklistIp = new HashMap<>();
         peerArrayList = new ArrayList<>();
@@ -77,7 +77,7 @@ public class PeerList {
 
         // we have to check if the peer is already in the PeerList, for this we use the HashMaps since they are much faster
         if (peer.getKademliaId() != null) {
-            oldPeer = peerlist.get(peer.getKademliaId());
+            oldPeer = peerHashMap.get(peer.getKademliaId());
             if (oldPeer != null) {
                 // Peer with same KademliaId exists already
                 Log.put("Peer with same KademliaId exists already", 100);
@@ -102,7 +102,7 @@ public class PeerList {
         try {
             readWriteLock.writeLock().lock();
             if (peer.getKademliaId() != null) {
-                oldPeer = peerlist.put(peer.getKademliaId(), peer);
+                oldPeer = peerHashMap.put(peer.getKademliaId(), peer);
             }
             peerlistIpPort.put(getIpPortHash(peer), peer);
             peerArrayList.add(peer);
@@ -134,7 +134,6 @@ public class PeerList {
      * @param peer
      */
     public boolean remove(Peer peer) {
-//        System.out.println("remove peer: " + peer.getKademliaId());
         readWriteLock.writeLock().lock();
         try {
             if (peer.getKademliaId() == null) {
@@ -170,14 +169,14 @@ public class PeerList {
      * @return
      */
     public boolean removeIpPort(String ip, int port) {
-        logger.info("remove ipport: " + ip + ":" + port);
+        logger.info("remove ip and port: %s : %s", ip, port);
         readWriteLock.writeLock().lock();
         try {
             Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
             if (peer == null) {
                 return false;
             }
-            peerlist.remove(peer.getKademliaId());
+            peerHashMap.remove(peer.getKademliaId());
             peerArrayList.remove(peer);
             return true;
         } finally {
@@ -212,7 +211,7 @@ public class PeerList {
         boolean removedOnePeer = false;
         try {
             readWriteLock.writeLock().lock();
-            Peer remove = peerlist.remove(id);
+            Peer remove = peerHashMap.remove(id);
             if (remove == null) {
                 return false;
             }
@@ -230,7 +229,7 @@ public class PeerList {
      * clears all underlying lists and Hashmaps. Does not acquire locks.
      */
     public void clear() {
-        peerlist.clear();
+        peerHashMap.clear();
         peerArrayList.clear();
         peerlistIpPort.clear();
     }
@@ -238,7 +237,7 @@ public class PeerList {
     public Peer get(KademliaId id) {
         try {
             readWriteLock.readLock().lock();
-            return peerlist.get(id);
+            return peerHashMap.get(id);
         } finally {
             readWriteLock.readLock().unlock();
         }
@@ -281,10 +280,10 @@ public class PeerList {
         try {
             if (oldId != null) {
                 // We have to remove the old id
-                peerlist.remove(oldId);
+                peerHashMap.remove(oldId);
             }
             peer.setNodeId(new NodeId(newId));
-            peerlist.put(newId, peer);
+            peerHashMap.put(newId, peer);
         } finally {
             readWriteLock.writeLock().unlock();
         }
