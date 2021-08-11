@@ -6,8 +6,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class PeerListTest {
 
@@ -64,7 +63,7 @@ public class PeerListTest {
     }
 
     @Test
-    public void remove() throws InterruptedException {
+    public void remove() {
 
         PeerList peerList = new PeerList();
 
@@ -84,32 +83,100 @@ public class PeerListTest {
     }
 
     @Test
+    public void removeByKademliaId() {
+        PeerList peerList = new PeerList();
+        Peer peer = new Peer("127.0.0.2", 50558);
+        NodeId id = new NodeId();
+        peer.setNodeId(id);
+        peerList.add(peer);
+
+        Peer peer2 = new Peer("127.0.0.1", 50558);
+        NodeId id2 = new NodeId();
+        peer.setNodeId(id2);
+        peerList.add(peer2);
+
+        peerList.remove(id.getKademliaId());
+
+        assertEquals(1, peerList.size());
+        assertNotEquals(peer, peerList.getGoodPeer());
+    }
+
+    @Test
     public void removeIpPort() {
+        PeerList peerList = new PeerList();
+        peerList.add(new Peer("127.0.0.1", 50558));
+        peerList.removeIpPort("127.0.0.1", 50558);
+        assertEquals(0, peerList.size());
     }
 
     @Test
     public void removeIpPortOnly() {
-    }
-
-    @Test
-    public void testRemove() {
-    }
-
-    @Test
-    public void get() {
+        PeerList peerList = new PeerList();
+        peerList.add(new Peer("127.0.0.1", 50558));
+        peerList.removeIpPortOnly("127.0.0.1", 50558);
+        assertEquals(1, peerList.size());
     }
 
     @Test
     public void size() {
+        PeerList peerList = new PeerList();
+        peerList.add(new Peer("127.0.0.1", 50558));
+        assertEquals(1, peerList.size());
     }
 
 
     @Test
-    public void getGoodPeerSimpleTest() {
+    public void clear() {
         PeerList peerList = new PeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
+        peerList.clear();
+        assertEquals(0, peerList.size());
+    }
 
+    @Test
+    public void updateKademliaId() {
+        PeerList peerList = new PeerList();
+
+        Peer peer = new Peer("127.0.0.1", 50558);
+        NodeId oldId = new NodeId();
+        peer.setNodeId(oldId);
+        peerList.add(peer);
+
+        assertEquals(1, peerList.size());
+        KademliaId newId = new KademliaId();
+        peerList.updateKademliaId(peer, newId);
+
+        assertEquals(peer, peerList.get(newId));
+        assertEquals(peer.getKademliaId(), newId);
+        assertNotEquals(peer.getKademliaId(), oldId.getKademliaId());
+    }
+
+    @Test
+    public void getGoodPeer() {
+        PeerList peerList = new PeerList();
+        peerList.add(new Peer("127.0.0.1", 50558));
         Peer goodPeer = peerList.getGoodPeer();
         assertNotNull(goodPeer);
     }
+
+    @Test
+    public void clearConnectionDetails() {
+    }
+
+    @Test
+    public void get() {
+        PeerList peerList = new PeerList();
+        Peer peer = new Peer("127.0.0.2", 50558);
+        NodeId id = new NodeId();
+        peer.setNodeId(id);
+        peerList.add(peer);
+
+        Peer peer2 = new Peer("127.0.0.1", 50558);
+        NodeId id2 = new NodeId();
+        peer.setNodeId(id2);
+        peerList.add(peer2);
+
+        assertEquals(peer, peerList.get(id.getKademliaId()));
+    }
+
 }
