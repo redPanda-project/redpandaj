@@ -562,9 +562,9 @@ public class Peer implements Comparable<Peer>, Serializable {
     }
 
 
-    public boolean peerIsHigher() {
+    public boolean peerIsHigher(ServerContext serverContext) {
         for (int i = 0; i < KademliaId.ID_LENGTH / 8; i++) {
-            int compare = Byte.toUnsignedInt(getKademliaId().getBytes()[i]) - Byte.toUnsignedInt(Server.NONCE.getBytes()[i]);
+            int compare = Byte.toUnsignedInt(getKademliaId().getBytes()[i]) - Byte.toUnsignedInt(serverContext.getNonce().getBytes()[i]);
             if (compare > 0) {
                 return true;
             } else if (compare < 0) {

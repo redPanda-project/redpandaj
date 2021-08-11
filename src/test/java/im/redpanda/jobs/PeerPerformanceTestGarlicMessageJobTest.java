@@ -1,11 +1,9 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Node;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
-import im.redpanda.store.NodeStore;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.security.Security;
@@ -13,7 +11,7 @@ import java.util.ArrayList;
 
 public class PeerPerformanceTestGarlicMessageJobTest {
 
-    private final static ServerContext serverContext = new ServerContext();
+    private final static ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -27,10 +25,10 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
         ArrayList<Node> nodes = new ArrayList<Node>();
 
-        Node nodeA = new Node(Server.nodeId);
+        Node nodeA = new Node(serverContext, serverContext.getNodeId());
         nodes.add(nodeA);
 
-        Node nodeB = new Node(Server.nodeId);
+        Node nodeB = new Node(serverContext, serverContext.getNodeId());
         nodes.add(nodeB);
 
         PeerPerformanceTestGarlicMessageJob peerPerformanceTestGarlicMessageJob = new PeerPerformanceTestGarlicMessageJob(serverContext);
@@ -39,17 +37,5 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
         GMContent parse = GMParser.parse(serverContext, bytes);
         //todo assert?
-    }
-
-    @Before
-    public void setUp() throws Exception {
-        Server.localSettings = new LocalSettings();
-        Server.nodeStore = new NodeStore(serverContext);
-        Server.nodeId = new NodeId();
-    }
-
-    @After
-    public void tearDown() throws Exception {
-        Server.nodeStore.close();
     }
 }

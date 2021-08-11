@@ -1,6 +1,9 @@
 package im.redpanda.flaschenpost;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.Peer;
+import im.redpanda.core.PeerList;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.PeerPerformanceTestFlaschenpostJob;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
@@ -23,7 +26,7 @@ public class GMParser {
 
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
-            GarlicMessage garlicMessage = new GarlicMessage(content);
+            GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
             garlicMessage.tryParseContent();
 
 //            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());
@@ -86,7 +89,7 @@ public class GMParser {
 
             //todo, put all into a job to handle failing peers and retry send if no ack
 
-            int myDistanceToKey = garlicMessage.getDestination().getDistance(Server.NONCE);
+            int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
 
             TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
 

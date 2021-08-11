@@ -52,7 +52,7 @@ public class ListenConsole extends Thread {
 
             if (readLine.equals("")) {
 
-                System.out.println("Status listenPort: " + serverContext.getPort() + " NONCE: " + Server.NONCE + "\n");
+                System.out.println("Status listenPort: " + serverContext.getPort() + " NONCE: " + serverContext.getNonce() + "\n");
 
                 int actCons = 0;
 
@@ -141,15 +141,15 @@ public class ListenConsole extends Thread {
                     KadStoreManager.printStatus();
 
                     System.out.println("NodeStore blacklist: ");
-                    Server.nodeStore.printBlacklist();
+                    serverContext.getNodeStore().printBlacklist();
 
 
                 } finally {
                     peerList.getReadWriteLock().writeLock().unlock();
                 }
 
-                if (Server.nodeStore != null) {
-                    Server.nodeStore.printGraph();
+                if (serverContext.getNodeStore() != null) {
+                    serverContext.getNodeStore().printGraph();
                     System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }
 
@@ -163,7 +163,7 @@ public class ListenConsole extends Thread {
                 }
             } else if (readLine.equals("b")) {
                 System.out.println("resetting NodeStore blacklist");
-                Server.nodeStore.clearNodeBlacklist();
+                serverContext.getNodeStore().clearNodeBlacklist();
             } else if (readLine.equals("t")) {
                 ThreadMXBean bean = ManagementFactory.getThreadMXBean();
                 ThreadInfo[] ti = bean.getThreadInfo(bean.getAllThreadIds(), true, true);
@@ -179,7 +179,7 @@ public class ListenConsole extends Thread {
 
                 }
             } else if (readLine.equals("e")) {
-                Server.nodeStore.saveToDisk();
+                serverContext.getNodeStore().saveToDisk();
                 Server.shutdown(serverContext);
                 System.exit(0);
             } else if (readLine.equals("c")) {

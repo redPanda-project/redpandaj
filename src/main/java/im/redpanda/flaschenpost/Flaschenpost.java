@@ -26,7 +26,7 @@ public abstract class Flaschenpost extends GMContent {
      */
     protected long timestamp;
 
-    protected ServerContext serverContext;
+    protected final ServerContext serverContext;
 
     /**
      * Creates a new Flaschenpost with the given destination. The Id is a new random integer and the timestamp is
@@ -41,7 +41,8 @@ public abstract class Flaschenpost extends GMContent {
         this.timestamp = System.currentTimeMillis();
     }
 
-    public Flaschenpost() {
+    public Flaschenpost(ServerContext serverContext) {
+        this.serverContext = serverContext;
     }
 
     /**
@@ -101,7 +102,7 @@ public abstract class Flaschenpost extends GMContent {
     }
 
     public boolean isTargetedToUs() {
-        return (destination.equals(Server.nodeId.getKademliaId()));
+        return (destination.equals(serverContext.getNonce()));
     }
 
     public KademliaId getDestination() {

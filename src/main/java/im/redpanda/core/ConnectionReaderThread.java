@@ -102,9 +102,9 @@ public class ConnectionReaderThread extends Thread {
 
     }
 
-    public static boolean parseHandshake(PeerList peerList, PeerInHandshake peerInHandshake, ByteBuffer buffer) {
+    public static boolean parseHandshake(ServerContext serverContext, PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
-
+        PeerList peerList = serverContext.getPeerList();
         if (buffer.remaining() < 30) {
             System.out.println("not enough bytes for handshake");
             return false;
@@ -149,7 +149,7 @@ public class ConnectionReaderThread extends Thread {
 
         buffer.compact();
 
-        if (identity.equals(Server.NONCE)) {
+        if (identity.equals(serverContext.getNonce())) {
             /**
              * We connected to ourselves, disconnect
              */
@@ -368,7 +368,7 @@ public class ConnectionReaderThread extends Thread {
             writeBuffer.put(Server.MAGIC.getBytes());
             writeBuffer.put((byte) Server.VERSION);
             writeBuffer.put((byte) 0); //we are no light client
-            writeBuffer.put(Server.NONCE.getBytes());
+            writeBuffer.put(serverContext.getNonce().getBytes());
             writeBuffer.putInt(serverContext.getPort());
         } catch (BufferOverflowException e) {
             Log.sentry("bufferoverflow in put magic, buffer before: " + bufferBeforeWriting);
@@ -394,6 +394,79 @@ public class ConnectionReaderThread extends Thread {
 
         writeBuffer.compact();
         ByteBufferPool.returnObject(writeBuffer);
+    }
+
+    public static void sendPublicKeyToPeer(ServerContext serverContext, PeerInHandshake peerInHandshake) {
+
+
+//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
+//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
+//        builder.finish(sendPublicKey);
+//        ByteBuffer byteBuffer = builder.dataBuffer();
+
+        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
+
+        buffer.put(Command.SEND_PUBLIC_KEY);
+        buffer.put(serverContext.getNodeId().exportPublic());
+        buffer.flip();
+
+//        ByteBuffer[] buffers = new ByteBuffer[2];
+//        buffers[0] = buffer;
+//        buffers[1] = byteBuffer;
+
+        try {
+            long write = peerInHandshake.getSocketChannel().write(buffer);
+            System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void loopCommands(Peer peer, ByteBuffer readBuffer) {
+        readBuffer.flip();
+
+        int parsedBytesLocally = -1;
+
+        while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
+
+            int newPosition = readBuffer.position(); // lets save the position before touching the buffer
+
+            peer.setLastActionOnConnection(System.currentTimeMillis());
+//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
+            byte b = readBuffer.get();
+            Log.put("command: " + b + " " + readBuffer, 200);
+
+
+            parsedBytesLocally = parseCommand(b, readBuffer, peer);
+            if (!peer.isConnected()) {
+                /**
+                 * the readBuffer was already returned to the pool by the disconnect method and we are not allowed
+                 * to use the readBuffer anymore
+                 */
+                return;
+            }
+            peer.lastCommand = b;
+            newPosition += parsedBytesLocally;
+            readBuffer.position(newPosition);
+        }
+
+        readBuffer.compact();
+    }
+
+    private static void requestPublicKey(PeerInHandshake peerInHandshake) {
+        peerInHandshake.setStatus(1);
+        ByteBuffer writeBuffer = ByteBuffer.allocate(1);
+
+        writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
+        writeBuffer.flip();
+
+        try {
+            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
+            System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
@@ -521,7 +594,7 @@ public class ConnectionReaderThread extends Thread {
                         continue;
                     }
 
-                    if (nodeId.getKademliaId().equals(Server.NONCE)) {
+                    if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
                         Log.put("found ourselves in the peerlist", 80);
                         continue;
                     }
@@ -533,12 +606,12 @@ public class ConnectionReaderThread extends Thread {
                         continue;
                     }
 
-                    Node byKademliaId = Node.getByKademliaId(nodeId.getKademliaId());
+                    Node byKademliaId = Node.getByKademliaId(serverContext, nodeId.getKademliaId());
                     if (byKademliaId != null) {
                         byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
                     } else {
                         //this will store the new node in the NodeStore as well
-                        new Node(nodeId);
+                        new Node(serverContext, nodeId);
                     }
 
                 } else {
@@ -562,12 +635,12 @@ public class ConnectionReaderThread extends Thread {
 
 
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
-//            System.out.println("UPDATE_REQUEST_TIMESTAMP " + Server.localSettings.getUpdateTimestamp());
+//            System.out.println("UPDATE_REQUEST_TIMESTAMP " + serverContext.getLocalSettings().getUpdateTimestamp());
             ByteBuffer writeBuffer = peer.getWriteBuffer();
             peer.writeBufferLock.lock();
             try {
                 writeBuffer.put(Command.UPDATE_ANSWER_TIMESTAMP);
-                writeBuffer.putLong(Server.localSettings.getUpdateTimestamp());
+                writeBuffer.putLong(serverContext.getLocalSettings().getUpdateTimestamp());
             } finally {
                 peer.writeBufferLock.unlock();
             }
@@ -589,11 +662,11 @@ public class ConnectionReaderThread extends Thread {
 
 //            System.out.println("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Settings.getMyCurrentVersionTimestamp()));
 
-            if (othersTimestamp < Server.localSettings.getUpdateTimestamp()) {
+            if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
                 System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
             }
 
-            if (othersTimestamp > Server.localSettings.getUpdateTimestamp() && Settings.isLoadUpdates()) {
+            if (othersTimestamp > serverContext.getLocalSettings().getUpdateTimestamp() && Settings.isLoadUpdates()) {
                 Runnable runnable = new Runnable() {
                     @Override
                     public void run() {
@@ -627,11 +700,11 @@ public class ConnectionReaderThread extends Thread {
             return 1 + 8;
         } else if (command == Command.UPDATE_REQUEST_CONTENT) {
 
-            if (Server.localSettings.getUpdateTimestamp() == -1) {
+            if (serverContext.getLocalSettings().getUpdateTimestamp() == -1) {
                 return 1;
             }
 
-            if (Server.localSettings.getUpdateSignature() == null) {
+            if (serverContext.getLocalSettings().getUpdateSignature() == null) {
                 System.out.println("we dont have an official signature to upload that update to other peers!");
                 return 1;
             }
@@ -664,13 +737,13 @@ public class ConnectionReaderThread extends Thread {
 
                             System.out.println("hash data: " + Sha256Hash.create(data));
 
-                            System.out.println("timestamp: " + Server.localSettings.getUpdateTimestamp());
+                            System.out.println("timestamp: " + serverContext.getLocalSettings().getUpdateTimestamp());
 
-                            ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + Server.localSettings.getUpdateSignature().length + data.length);
+                            ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + serverContext.getLocalSettings().getUpdateSignature().length + data.length);
                             a.put(Command.UPDATE_ANSWER_CONTENT);
-                            a.putLong(Server.localSettings.getUpdateTimestamp());
+                            a.putLong(serverContext.getLocalSettings().getUpdateTimestamp());
                             a.putInt(data.length);
-                            a.put(Server.localSettings.getUpdateSignature());
+                            a.put(serverContext.getLocalSettings().getUpdateSignature());
                             a.put(data);
                             if (a.remaining() != 0) {
                                 throw new RuntimeException("not enough bytes for the update!!!");
@@ -802,7 +875,7 @@ public class ConnectionReaderThread extends Thread {
             readBuffer.get(data);
 
 
-            if (othersTimestamp > Server.localSettings.getUpdateTimestamp() && !Settings.isSeedNode()) {
+            if (othersTimestamp > serverContext.getLocalSettings().getUpdateTimestamp() && !Settings.isSeedNode()) {
                 System.out.println("we got the update successfully, install it! timestamp: " + othersTimestamp);
 
                 logger.debug("obtained redpandaj update successfully");
@@ -826,7 +899,7 @@ public class ConnectionReaderThread extends Thread {
                 logger.debug("update verified: " + verified);
 
                 File file = new File("redpanda.jar");
-                long myCurrentVersionTimestamp = Server.localSettings.getUpdateTimestamp();
+                long myCurrentVersionTimestamp = serverContext.getLocalSettings().getUpdateTimestamp();
                 if (!file.exists()) {
                     logger.debug("No jar to update found, exiting auto update!");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
@@ -837,7 +910,7 @@ public class ConnectionReaderThread extends Thread {
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
 
-                if (Server.localSettings.getUpdateTimestamp() >= othersTimestamp) {
+                if (serverContext.getLocalSettings().getUpdateTimestamp() >= othersTimestamp) {
                     logger.debug("update not required our update timestamp is newer or equal, aborting...");
                     return 1 + 8 + 4 + lenOfSignature + data.length;
                 }
@@ -852,9 +925,9 @@ public class ConnectionReaderThread extends Thread {
                         File f = new File("update");
                         f.setLastModified(othersTimestamp);
 
-                        Server.localSettings.setUpdateSignature(signature);
-                        Server.localSettings.setUpdateTimestamp(othersTimestamp);
-                        Server.localSettings.save(serverContext.getPort());
+                        serverContext.getLocalSettings().setUpdateSignature(signature);
+                        serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
+                        serverContext.getLocalSettings().save(serverContext.getPort());
 
                         try {
                             Thread.sleep(3000);
@@ -913,7 +986,7 @@ public class ConnectionReaderThread extends Thread {
             }
             peer.writeBufferLock.lock();
             peer.getWriteBuffer().put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
-            peer.getWriteBuffer().putLong(Server.localSettings.getUpdateAndroidTimestamp());
+            peer.getWriteBuffer().putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
             peer.writeBufferLock.unlock();
             peer.setWriteBufferFilled();
             return 1;
@@ -926,9 +999,9 @@ public class ConnectionReaderThread extends Thread {
 
             long othersTimestamp = readBuffer.getLong();
 
-            Log.put("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Server.localSettings.getUpdateAndroidTimestamp()), 70);
+            Log.put("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()), 70);
 
-            if (othersTimestamp < Server.localSettings.getUpdateAndroidTimestamp()) {
+            if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                 System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
             }
 
@@ -936,14 +1009,14 @@ public class ConnectionReaderThread extends Thread {
              * We can use the exact same timestamp since we now store the timestamp in the local settings
              * and do not count on the reported timestamp of the system.
              */
-            if (othersTimestamp > Server.localSettings.getUpdateAndroidTimestamp()) {
+            if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                 Runnable runnable = new Runnable() {
                     @Override
                     public void run() {
                         updateUploadLock.acquireUninterruptibly();
                         try {
 
-                            if (othersTimestamp <= Server.localSettings.getUpdateAndroidTimestamp()) {
+                            if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                                 //maybe we downloaded the update while waiting for lock!
                                 System.out.println("already downloaded, skipping...");
                                 return;
@@ -978,7 +1051,7 @@ public class ConnectionReaderThread extends Thread {
         } else if (command == Command.ANDROID_UPDATE_REQUEST_CONTENT) {
 
 
-            if (Server.localSettings.getUpdateAndroidSignature() == null) {
+            if (serverContext.getLocalSettings().getUpdateAndroidSignature() == null) {
                 System.out.println("we dont have an official signature to upload that android.apk update to other peers!");
                 return 1;
             }
@@ -1010,30 +1083,30 @@ public class ConnectionReaderThread extends Thread {
 
                         ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
 
-                        bytesToHash.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                        bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                         bytesToHash.put(data);
 
 
-                        System.out.println("timestamp: " + Server.localSettings.getUpdateAndroidTimestamp());
+                        System.out.println("timestamp: " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
 
-                        System.out.println("signature: " + Utils.bytesToHexString(Server.localSettings.getUpdateAndroidSignature()));
+                        System.out.println("signature: " + Utils.bytesToHexString(serverContext.getLocalSettings().getUpdateAndroidSignature()));
 
-                        System.out.println("ver: " + Updater.getPublicUpdaterKey().verify(bytesToHash.array(), Server.localSettings.getUpdateAndroidSignature()));
+                        System.out.println("ver: " + Updater.getPublicUpdaterKey().verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature()));
 
-                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(), Server.localSettings.getUpdateAndroidSignature());
+                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature());
                         System.out.println("update verified: " + verify);
 
 
                         if (!verify) {
-                            System.out.println("################################ update not verified " + Server.localSettings.getUpdateAndroidTimestamp());
+                            System.out.println("################################ update not verified " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                             return;
                         }
 
-                        byte[] androidSignature = Server.localSettings.getUpdateAndroidSignature();
+                        byte[] androidSignature = serverContext.getLocalSettings().getUpdateAndroidSignature();
 
                         ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
                         a.put(Command.ANDROID_UPDATE_ANSWER_CONTENT);
-                        a.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                        a.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                         a.putInt(data.length);
                         a.put(androidSignature);
                         a.put(data);
@@ -1124,7 +1197,7 @@ public class ConnectionReaderThread extends Thread {
             readBuffer.get(data);
 
 
-            if (othersTimestamp > Server.localSettings.getUpdateAndroidTimestamp()) {
+            if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                 System.out.println("we got the update successfully, lets copy it to hard drive if signature is correct");
 
 
@@ -1157,9 +1230,9 @@ public class ConnectionReaderThread extends Thread {
                         File f = new File("android.apk");
                         f.setLastModified(othersTimestamp);
 
-                        Server.localSettings.setUpdateAndroidTimestamp(othersTimestamp);
-                        Server.localSettings.setUpdateAndroidSignature(signature);
-                        Server.localSettings.save(serverContext.getPort());
+                        serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
+                        serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
+                        serverContext.getLocalSettings().save(serverContext.getPort());
 
 
                         peerList.getReadWriteLock().readLock().lock();
@@ -1171,7 +1244,7 @@ public class ConnectionReaderThread extends Thread {
                                 p.writeBufferLock.lock();
                                 try {
                                     p.writeBuffer.put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
-                                    p.writeBuffer.putLong(Server.localSettings.getUpdateAndroidTimestamp());
+                                    p.writeBuffer.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                                 } finally {
                                     p.writeBufferLock.unlock();
                                 }
@@ -1263,7 +1336,7 @@ public class ConnectionReaderThread extends Thread {
 
 
             if (kadContent.verify()) {
-                boolean saved = KadStoreManager.put(kadContent);
+                boolean saved = serverContext.getKadStoreManager().put(kadContent);
 
 //                if (saved) {
                 peer.getWriteBufferLock().lock();
@@ -1397,7 +1470,7 @@ public class ConnectionReaderThread extends Thread {
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
             if (kadContent.verify()) {
-                boolean saved = KadStoreManager.put(kadContent);
+                boolean saved = serverContext.getKadStoreManager().put(kadContent);
 
                 System.out.println("got KadContent successfully from search!");
 
@@ -1438,79 +1511,6 @@ public class ConnectionReaderThread extends Thread {
         throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
 
 //        return 0;
-    }
-
-    public void loopCommands(Peer peer, ByteBuffer readBuffer) {
-        readBuffer.flip();
-
-        int parsedBytesLocally = -1;
-
-        while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
-
-            int newPosition = readBuffer.position(); // lets save the position before touching the buffer
-
-            peer.setLastActionOnConnection(System.currentTimeMillis());
-//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
-            byte b = readBuffer.get();
-            Log.put("command: " + b + " " + readBuffer, 200);
-
-
-            parsedBytesLocally = parseCommand(b, readBuffer, peer);
-            if (!peer.isConnected()) {
-                /**
-                 * the readBuffer was already returned to the pool by the disconnect method and we are not allowed
-                 * to use the readBuffer anymore
-                 */
-                return;
-            }
-            peer.lastCommand = b;
-            newPosition += parsedBytesLocally;
-            readBuffer.position(newPosition);
-        }
-
-        readBuffer.compact();
-    }
-
-    private static void requestPublicKey(PeerInHandshake peerInHandshake) {
-        peerInHandshake.setStatus(1);
-        ByteBuffer writeBuffer = ByteBuffer.allocate(1);
-
-        writeBuffer.put(Command.REQUEST_PUBLIC_KEY);
-        writeBuffer.flip();
-
-        try {
-            int write = peerInHandshake.getSocketChannel().write(writeBuffer);
-            System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void sendPublicKeyToPeer(PeerInHandshake peerInHandshake) {
-
-
-//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
-//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
-//        builder.finish(sendPublicKey);
-//        ByteBuffer byteBuffer = builder.dataBuffer();
-
-        ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
-
-        buffer.put(Command.SEND_PUBLIC_KEY);
-        buffer.put(Server.nodeId.exportPublic());
-        buffer.flip();
-
-//        ByteBuffer[] buffers = new ByteBuffer[2];
-//        buffers[0] = buffer;
-//        buffers[1] = byteBuffer;
-
-        try {
-            long write = peerInHandshake.getSocketChannel().write(buffer);
-            System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     @Override

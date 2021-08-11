@@ -14,21 +14,13 @@ public class OutboundHandler extends Thread {
     long lastAddedKnownNodes;
     Random random = new Random();
     private final PeerList peerList;
+    private final ServerContext serverContext;
 
 
-    public OutboundHandler(PeerList peerList) {
-        this.peerList = peerList;
+    public OutboundHandler(ServerContext serverContext) {
+        this.peerList = serverContext.getPeerList();
+        this.serverContext = serverContext;
     }
-
-    public void init() {
-        start();
-
-
-        if (Server.NONCE == null) {
-            throw new RuntimeException("Do not start the outbound thread if peers and nonce not loaded!");
-        }
-    }
-
 
     boolean allowInterrupt = false;
 
@@ -40,6 +32,87 @@ public class OutboundHandler extends Thread {
         }
     }
 
+    private static boolean connectTo(ServerContext serverContext, final Peer peer) {
+
+        peer.retries++;
+        peer.isConnecting = true;
+        peer.isConnectionInitializedByMe = true;
+        peer.lastActionOnConnection = System.currentTimeMillis();
+
+        Node byKademliaId = Node.getByKademliaId(serverContext, peer.getKademliaId());
+
+        int retries = 0;
+        if (byKademliaId != null) {
+            retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+            peer.retries = retries;
+            //todo if retries to high disconnect?
+        }
+
+
+        try {
+            SocketChannel open = SocketChannel.open();
+            open.configureBlocking(false);
+
+            boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
+
+            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
+
+            /**
+             * Lets check if we have a nodeId and add it to the PeerInHandShake
+             */
+            if (peer.getNodeId() != null) {
+                peerInHandshake.setNodeId(peer.getNodeId());
+            }
+
+            peerInHandshake.addConnection(alreadyConnected);
+
+            return true;
+        } catch (UnknownHostException ex) {
+            System.out.println("outgoing con failed, unknown host...");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            Log.put("outgoing con failed... " + peer.ip, 0);
+        }
+        return false;
+    }
+
+    private void reseed() {
+
+        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
+            return;
+        }
+
+        lastAddedKnownNodes = System.currentTimeMillis();
+
+        Lock lock = peerList.getReadWriteLock().writeLock();
+        lock.lock();
+        try {
+            for (String hostport : Settings.knownNodes) {
+                if (hostport.contains("[")) {
+                    //todo add port
+                    String[] split = hostport.split("]");
+                    String ipv6 = split[0].substring(1);
+                    peerList.add(new Peer(ipv6, 59558));
+                    continue;
+                }
+
+                String[] split = hostport.split(":");
+                String host = split[0];
+                int port = Integer.parseInt(split[1]);
+
+                peerList.add(new Peer(host, port));
+            }
+        } finally {
+            lock.unlock();
+        }
+
+    }
 
     @Override
     public void run() {
@@ -226,7 +299,7 @@ public class OutboundHandler extends Thread {
 
                         Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 150);
 
-                        boolean success = connectTo(peer);
+                        boolean success = connectTo(serverContext, peer);
                         actCons++;
                         newConnections++;
                         if (!success) {
@@ -267,89 +340,6 @@ public class OutboundHandler extends Thread {
             }
 
         }
-    }
-
-    private void reseed() {
-
-        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
-            return;
-        }
-
-        lastAddedKnownNodes = System.currentTimeMillis();
-
-        Lock lock = peerList.getReadWriteLock().writeLock();
-        lock.lock();
-        try {
-            for (String hostport : Settings.knownNodes) {
-                if (hostport.contains("[")) {
-                    //todo add port
-                    String[] split = hostport.split("]");
-                    String ipv6 = split[0].substring(1);
-                    peerList.add(new Peer(ipv6, 59558));
-                    continue;
-                }
-
-                String[] split = hostport.split(":");
-                String host = split[0];
-                int port = Integer.parseInt(split[1]);
-
-                peerList.add(new Peer(host, port));
-            }
-        } finally {
-            lock.unlock();
-        }
-
-    }
-
-
-    private static boolean connectTo(final Peer peer) {
-
-        peer.retries++;
-        peer.isConnecting = true;
-        peer.isConnectionInitializedByMe = true;
-        peer.lastActionOnConnection = System.currentTimeMillis();
-
-        Node byKademliaId = Node.getByKademliaId(peer.getKademliaId());
-
-        int retries = 0;
-        if (byKademliaId != null) {
-            retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
-            peer.retries = retries;
-            //todo if retries to high disconnect?
-        }
-
-
-        try {
-            SocketChannel open = SocketChannel.open();
-            open.configureBlocking(false);
-
-            boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
-
-            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
-            ConnectionHandler.peerInHandshakesLock.lock();
-            try {
-                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
-            } finally {
-                ConnectionHandler.peerInHandshakesLock.unlock();
-            }
-
-            /**
-             * Lets check if we have a nodeId and add it to the PeerInHandShake
-             */
-            if (peer.getNodeId() != null) {
-                peerInHandshake.setNodeId(peer.getNodeId());
-            }
-
-            peerInHandshake.addConnection(alreadyConnected);
-
-            return true;
-        } catch (UnknownHostException ex) {
-            System.out.println("outgoing con failed, unknown host...");
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            Log.put("outgoing con failed... " + peer.ip, 0);
-        }
-        return false;
     }
 
 

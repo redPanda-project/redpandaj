@@ -1,7 +1,6 @@
 package im.redpanda.flaschenpost;
 
 import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import org.junit.Test;
 
@@ -13,14 +12,13 @@ public class FlaschenpostTest {
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-        Server.nodeId = new NodeId();
     }
 
     @Test
     public void simpleTargetTest() {
-        ServerContext serverContext = new ServerContext();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
-        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
+        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck();
 

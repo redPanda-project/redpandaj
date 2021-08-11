@@ -2,6 +2,7 @@ package im.redpanda;
 
 import im.redpanda.core.*;
 import im.redpanda.jobs.ServerRestartJob;
+import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
 import org.apache.logging.log4j.LogManager;
@@ -74,12 +75,17 @@ public class App {
 
 
         ServerContext serverContext = new ServerContext();
-        serverContext.setPeerList(new PeerList());
 
         ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
         int port = connectionHandler.bind();
         serverContext.setPort(port);
+        serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
+        serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
+        serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+        serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
 
+
+        logger.info("started node with KademliaId: " + serverContext.getNonce().toString() + " port: " + serverContext.getPort());
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
 

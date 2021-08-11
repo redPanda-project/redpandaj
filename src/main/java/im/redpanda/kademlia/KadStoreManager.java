@@ -1,6 +1,9 @@
 package im.redpanda.kademlia;
 
-import im.redpanda.core.*;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
@@ -27,7 +30,12 @@ public class KadStoreManager {
     private static final ReentrantLock lock = new ReentrantLock();
     private static long lastCleanup = 0;
     private static int size = 0;
+    private final ServerContext serverContext;
 
+
+    public KadStoreManager(ServerContext serverContext) {
+        this.serverContext = serverContext;
+    }
 
     /**
      * basic put operation into our DHT Storage, if entry exists with same KadId,
@@ -36,7 +44,7 @@ public class KadStoreManager {
      *
      * @param content
      */
-    public static boolean put(KadContent content) {
+    public boolean put(KadContent content) {
 
         KademliaId id = content.getId();
 
@@ -77,7 +85,7 @@ public class KadStoreManager {
                 for (KadContent c : entries.values()) {
 
 
-                    int distance = Server.NONCE.getDistance(c.getId());
+                    int distance = serverContext.getNonce().getDistance(c.getId());
 
 
 //                    long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);

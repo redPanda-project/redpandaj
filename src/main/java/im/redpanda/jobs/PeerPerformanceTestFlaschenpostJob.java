@@ -1,6 +1,9 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 
@@ -23,7 +26,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
 
         //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
+        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(getJobId());
 

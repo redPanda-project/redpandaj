@@ -324,7 +324,7 @@ public class ConnectionHandler extends Thread {
                                         /**
                                          * The status indicates that no handshake was parsed before for this PeerInHandshake
                                          */
-                                        boolean b = ConnectionReaderThread.parseHandshake(peerList, peerInHandshake, allocate);
+                                        boolean b = ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
 //                                    System.out.println("handshake okay?: " + b);
                                     } else {
 
@@ -337,7 +337,7 @@ public class ConnectionHandler extends Thread {
                                             /**
                                              * The other Peer request our public key, lets send our public key!
                                              */
-                                            ConnectionReaderThread.sendPublicKeyToPeer(peerInHandshake);
+                                            ConnectionReaderThread.sendPublicKeyToPeer(serverContext, peerInHandshake);
                                         } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
                                             /**
                                              * We got the public Peer, lets store it and check that this public key
@@ -419,7 +419,7 @@ public class ConnectionHandler extends Thread {
 
                                         Log.put("lets generate the shared secret", 80);
 
-                                        peerInHandshake.calculateSharedSecret();
+                                        peerInHandshake.calculateSharedSecret(serverContext);
 
                                         /**
                                          * Shared Secret and IV calculated via ECDH and random bytes,
@@ -689,9 +689,9 @@ public class ConnectionHandler extends Thread {
             /**
              * Lets search for the Node object for that peer and load it.
              */
-            Node byKademliaId = Node.getByKademliaId(peerInHandshake.getIdentity());
+            Node byKademliaId = Node.getByKademliaId(serverContext, peerInHandshake.getIdentity());
             if (byKademliaId == null) {
-                byKademliaId = new Node(peerInHandshake.getNodeId());
+                byKademliaId = new Node(serverContext, peerInHandshake.getNodeId());
             } else {
                 System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
             }

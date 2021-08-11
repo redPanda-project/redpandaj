@@ -4,7 +4,6 @@ import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.NodeStoreMaintainJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
-import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,15 +19,11 @@ public class Server {
 
     public static final int VERSION = 22;
     static String MAGIC = "k3gV";
-    public static LocalSettings localSettings;
-    public static NodeId nodeId;
-    public static KademliaId NONCE;
     public static boolean SHUTDOWN = false;
     public static int outBytes = 0;
     public static int inBytes = 0;
     public static ConnectionHandler connectionHandler;
     public static OutboundHandler outboundHandler;
-    public static NodeStore nodeStore;
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
     public static boolean startedUpSuccessful = false;
 
@@ -45,8 +40,7 @@ public class Server {
     public Server(ServerContext serverContext, ConnectionHandler connectionHandler) {
         this.serverContext = serverContext;
         Server.connectionHandler = connectionHandler;
-        nodeStore = new NodeStore(serverContext);
-        outboundHandler = new OutboundHandler(serverContext.getPeerList());
+        outboundHandler = new OutboundHandler(serverContext);
     }
 
     public static void triggerOutboundThread() {
@@ -56,23 +50,18 @@ public class Server {
     }
 
     public static void startedUpSuccessful(ServerContext serverContext) {
-        localSettings = LocalSettings.load(serverContext.getPort());
 
 
         Settings.init(serverContext);
         ByteBufferPool.init();
 
-        logger.debug("NodeStore has entries: " + nodeStore.size());
-
-        nodeId = localSettings.getMyIdentity();
-        NONCE = nodeId.getKademliaId();
-        logger.info("started node with KademliaId: " + NONCE.toString() + " port: " + serverContext.getPort());
+        logger.debug("NodeStore has entries: " + serverContext.getNodeStore().size());
 
 
-        outboundHandler.init();
+        outboundHandler.start();
 
 
-        new HTTPServer().start();
+        new HTTPServer(serverContext).start();
 
         startedUpSuccessful = true;
 
@@ -95,8 +84,8 @@ public class Server {
             e.printStackTrace();
         }
 
-        Server.nodeStore.close();
-        Server.localSettings.save(serverContext.getPort());
+        serverContext.getNodeStore().close();
+        serverContext.getLocalSettings().save(serverContext.getPort());
     }
 
     public void start() {

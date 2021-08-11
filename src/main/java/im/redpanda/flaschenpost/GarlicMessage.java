@@ -60,7 +60,8 @@ public class GarlicMessage extends Flaschenpost {
     }
 
 
-    public GarlicMessage(byte[] bytes) {
+    public GarlicMessage(ServerContext serverContext, byte[] bytes) {
+        super(serverContext);
 
         setContent(bytes);
 
@@ -188,7 +189,7 @@ public class GarlicMessage extends Flaschenpost {
         }
 
         //lets decrypt the content
-        SecretKey sharedSecret = getSharedSecret(Server.nodeId, encryptionNodeId);
+        SecretKey sharedSecret = getSharedSecret(serverContext.getNodeId(), encryptionNodeId);
 
         IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
 

@@ -1,7 +1,6 @@
 package im.redpanda.flaschenpost;
 
 import im.redpanda.core.NodeId;
-import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import org.junit.Test;
 
@@ -15,16 +14,14 @@ public class GarlicMessageTest {
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-        Server.nodeId = new NodeId();
-        Server.NONCE = Server.nodeId.getKademliaId();
-        serverContext = new ServerContext();
+        serverContext = ServerContext.buildDefaultServerContext();
     }
 
     @Test
     public void simpleCreationTest() {
 
         //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
+        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(123);
 
@@ -46,7 +43,7 @@ public class GarlicMessageTest {
     public void parseTestAckGarlicMessage() {
 
         //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
+        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(456);
 
@@ -63,7 +60,7 @@ public class GarlicMessageTest {
 
         GarlicMessage parsedGM = (GarlicMessage) parse;
 
-        assertEquals(Server.nodeId.getKademliaId(), parsedGM.destination);
+        assertEquals(serverContext.getNodeId().getKademliaId(), parsedGM.destination);
 
         assertEquals(true, parsedGM.isTargetedToUs());
 

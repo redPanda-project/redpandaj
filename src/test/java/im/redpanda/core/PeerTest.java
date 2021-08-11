@@ -7,9 +7,6 @@ import static org.junit.Assert.*;
 
 public class PeerTest {
 
-    static {
-        Server.NONCE = new KademliaId();
-    }
 
     @Test
     public void getNodeId() {
@@ -26,7 +23,6 @@ public class PeerTest {
         assertTrue(peer.equalsIpAndPort(peer2));
         assertFalse(peer.equalsIpAndPort(peer3));
         assertFalse(peer.equalsIpAndPort(peer4));
-
     }
 
     @Test
@@ -72,7 +68,7 @@ public class PeerTest {
 
     @Test
     public void peerIsHigher() {
-
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
         Peer peer = new Peer("1.1.1.1", 123);
         Peer peer2 = new Peer("1.1.1.1", 123);
@@ -86,8 +82,8 @@ public class PeerTest {
         peer.setNodeId(new NodeId(kademliaId));
         peer2.setNodeId(new NodeId(kademliaId2));
 
-        assertFalse(peer.peerIsHigher());
-        assertTrue(peer2.peerIsHigher());
+        assertFalse(peer.peerIsHigher(serverContext));
+        assertTrue(peer2.peerIsHigher(serverContext));
 
     }
 }

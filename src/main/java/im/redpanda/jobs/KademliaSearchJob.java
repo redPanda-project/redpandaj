@@ -70,7 +70,7 @@ public class KademliaSearchJob extends Job {
         }
 
 
-        int myDistanceToKey = id.getDistance(Server.NONCE);
+        int myDistanceToKey = id.getDistance(serverContext.getNonce());
 
 //        BigInteger key = id.getInt();
 //        BigInteger me = Server.NONCE.getInt();

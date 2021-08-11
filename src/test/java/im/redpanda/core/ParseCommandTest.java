@@ -2,10 +2,8 @@ package im.redpanda.core;
 
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
-import im.redpanda.store.NodeStore;
 import org.junit.Test;
 
-import java.io.File;
 import java.nio.ByteBuffer;
 import java.security.Security;
 
@@ -13,13 +11,10 @@ import static org.junit.Assert.*;
 
 public class ParseCommandTest {
 
+    private final ServerContext serverContext = new ServerContext();
+
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-
-        if (Server.nodeStore == null) {
-            new File("data").mkdirs();
-            Server.nodeStore = new NodeStore(new ServerContext());
-        }
     }
 
     public Peer getPeerForDebug() {
@@ -151,7 +146,7 @@ public class ParseCommandTest {
 
     @Test
     public void testSend_PEERLIST() {
-        ServerContext serverContext = new ServerContext();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
         ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
         PeerList peerList = serverContext.getPeerList();
 

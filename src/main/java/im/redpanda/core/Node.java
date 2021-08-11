@@ -24,12 +24,12 @@ public class Node implements Serializable {
      *
      * @param nodeId
      */
-    public Node(NodeId nodeId) {
+    public Node(ServerContext serverContext, NodeId nodeId) {
         this.nodeId = nodeId;
         lastSeen = System.currentTimeMillis();
-        Server.nodeStore.put(nodeId.getKademliaId(), this);
+        serverContext.getNodeStore().put(nodeId.getKademliaId(), this);
         //run the get command afterwards to trigger the eviction timer
-        Server.nodeStore.get(nodeId.getKademliaId());
+        serverContext.getNodeStore().get(nodeId.getKademliaId());
         connectionPoints = new ArrayList<>();
     }
 
@@ -80,11 +80,11 @@ public class Node implements Serializable {
 
     }
 
-    public static Node getByKademliaId(KademliaId id) {
+    public static Node getByKademliaId(ServerContext serverContext, KademliaId id) {
         if (id == null) {
             return null;
         }
-        return Server.nodeStore.get(id);
+        return serverContext.getNodeStore().get(id);
     }
 
     public boolean addConnectionPoint(String ip, int port) {

@@ -25,6 +25,9 @@ import java.security.spec.X509EncodedKeySpec;
  */
 public class NodeId implements Serializable {
 
+    static {
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    }
 
     public static final int PUBLIC_KEYLEN_LONG = 92;
     public static final int PUBLIC_KEYLEN = 65;

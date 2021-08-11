@@ -4,7 +4,6 @@ package im.redpanda.jobs;
 import im.redpanda.core.*;
 import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.kademlia.PeerComparator;
 
 import java.nio.ByteBuffer;
@@ -37,7 +36,7 @@ public class KademliaInsertJob extends Job {
 
         //We first save the KadContent in our StoreManager, we use "dht-caching"
         // such that too far away entries will be removed faster
-        KadStoreManager.put(kadContent);
+        serverContext.getKadStoreManager().put(kadContent);
 
         //lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(kadContent.getId()));
