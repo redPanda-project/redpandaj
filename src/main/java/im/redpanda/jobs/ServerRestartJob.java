@@ -1,6 +1,7 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.core.Settings;
 
 import java.io.File;
@@ -10,10 +11,11 @@ import java.io.IOException;
 public class ServerRestartJob extends Job {
 
     private static final long STARTED_AT = System.currentTimeMillis();
-    public static final long RESTART_TIME = 1000L * 60L * 60L * 24L;
+    public static long RESTART_TIME;
 
-    public ServerRestartJob() {
-        super(1000L * 60L * 60L, true);
+    public ServerRestartJob(ServerContext serverContext) {
+        super(serverContext, 1000L * 60L * 60L, true);
+        RESTART_TIME = 1000L * 60L * 60L * 24L * 2L + Server.random.nextInt(60 * 60 * 8) * 1000L;
     }
 
     @Override
@@ -39,11 +41,11 @@ public class ServerRestartJob extends Job {
                 new FileOutputStream(file).close();
             } catch (IOException e) {
                 e.printStackTrace();
-                System.out.println("coould not create .restart file, the restart will fail... exiting...");
+                System.out.println("could not create .restart file, the restart will fail... exiting...");
             }
         }
 
-        Server.shutdown();
+        Server.shutdown(serverContext);
         System.exit(0);
 
 

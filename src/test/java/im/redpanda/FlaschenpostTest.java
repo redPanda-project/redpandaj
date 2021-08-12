@@ -1,6 +1,7 @@
 package im.redpanda;
 
 import im.redpanda.core.NodeId;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMEchoTest;
 import im.redpanda.flaschenpost.GMType;
 import im.redpanda.flaschenpost.GarlicMessage;
@@ -33,7 +34,7 @@ public class FlaschenpostTest {
 
         NodeId nodeId = new NodeId();
 
-        GarlicMessage garlicMessage = new GarlicMessage(nodeId);
+        GarlicMessage garlicMessage = new GarlicMessage(new ServerContext(), nodeId);
 
         byte[] content = garlicMessage.getContent();
 

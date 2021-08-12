@@ -30,24 +30,24 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     boolean success = false;
     private Peer flaschenPostInsertPeer;
 
-    public PeerPerformanceTestGarlicMessageJob() {
-        super(2500L);
+    public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
+        super(serverContext, 2500L);
         nodes = new ArrayList<>();
     }
 
-    public static byte[] calculateNestedGarlicMessages(ArrayList<Node> nodes, int jobId) {
+    public byte[] calculateNestedGarlicMessages(ArrayList<Node> nodes, int jobId) {
         //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(Server.nodeId.exportPublic());
+        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(jobId);
 
-        GarlicMessage currentLayer = new GarlicMessage(targetId);
+        GarlicMessage currentLayer = new GarlicMessage(serverContext, targetId);
         currentLayer.addGMContent(gmAck);
 
 
         for (Node node : nodes) {
 
-            GarlicMessage newLayer = new GarlicMessage(node.getNodeId());
+            GarlicMessage newLayer = new GarlicMessage(serverContext, node.getNodeId());
             newLayer.addGMContent(currentLayer);
 
             currentLayer = newLayer;
@@ -62,9 +62,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     @Override
     public void init() {
 
-        flaschenPostInsertPeer = PeerList.getGoodPeer();
+        flaschenPostInsertPeer = serverContext.getPeerList().getGoodPeer();
 
         if (!flaschenPostInsertPeer.isConnected() || flaschenPostInsertPeer.getNode() == null) {
+            super.done();
             return;
         }
 
@@ -74,7 +75,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         // nodes = hops + 1
         int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
 
-        SimpleWeightedGraph<Node, NodeEdge> g = Server.nodeStore.getNodeGraph();
+        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
         if (g.vertexSet().size() < garlicSequenceLenght) {
             super.done();
             return;
@@ -170,13 +171,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 //                    printPath());
 
 
-            if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null)
+            if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
                 done();
+            }
         }
     }
 
     private String printPath() {
-        SimpleWeightedGraph<Node, NodeEdge> g = Server.nodeStore.getNodeGraph();
+        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
 
         String a = "";
         Node nodeBefore = null;
@@ -196,8 +198,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         super.done();
 
         if (nodes.size() < 2) {
-            System.out.println("nodes list too small to perform check");
-            return;
+//            System.out.println("nodes list too small to perform check");
+            throw new RuntimeException("job started with too less nodes, this should not happen");
+//            return;
         }
 
         float scoreToAdd = 0;
@@ -218,7 +221,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             scoreToAdd = DELTA_FAIL;
         }
 
-        SimpleWeightedGraph<Node, NodeEdge> g = Server.nodeStore.getNodeGraph();
+        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
 
         String a = "";
         Node nodeBefore = null;
@@ -239,7 +242,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             }
             nodeBefore = node;
         }
-        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (updated " + (success ? "success" : "failed") + ")");
+        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ")");
 
         if (success) {
             countSuccess++;

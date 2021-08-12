@@ -1,8 +1,8 @@
 package im.redpanda;
 
-import im.redpanda.core.ListenConsole;
-import im.redpanda.core.Server;
+import im.redpanda.core.*;
 import im.redpanda.jobs.ServerRestartJob;
+import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
 import org.apache.logging.log4j.LogManager;
@@ -41,34 +41,6 @@ public class App {
 
         initLogger();
 
-//        Enumeration<URL> resources = new App().getClass().getClassLoader()
-//                .getResources("META-INF/MANIFEST.MF");
-//        while (resources.hasMoreElements()) {
-//            try {
-//                Manifest manifest = new Manifest(resources.nextElement().openStream());
-//                // check that this is your manifest and do what you need or get the next one
-//
-////                System.out.println(" build number: " + manifest.getMainAttributes().getValue("Implementation-Build"));
-//
-//            } catch (IOException E) {
-//                // handle
-//            }
-//        }
-
-
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-
-            @Override
-            public void run() {
-                final String orgName = Thread.currentThread().getName();
-                Thread.currentThread().setName(orgName + " - shutdownhook");
-//                Server.nodeStore.saveToDisk();
-                logger.info("started shutdownhook...");
-                Server.shutdown();
-                logger.info("shutdownhook done");
-            }
-        });
-
 
         boolean activateSentry = false;
         if (args.length > 0) {
@@ -101,13 +73,50 @@ public class App {
             logger.warn("Warning, no git revision found...");
         }
 
+
+        ServerContext serverContext = new ServerContext();
+        startServer(serverContext);
+
+        new ListenConsole(serverContext).start();
+    }
+
+    private static void startServer(ServerContext serverContext) {
+        ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
+        int port = connectionHandler.bind();
+        serverContext.setPort(port);
+        serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
+        serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
+        serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+        serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+
+
+        logger.info("started node with KademliaId: " + serverContext.getNonce().toString() + " port: " + serverContext.getPort());
+
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+            @Override
+            public void run() {
+                final String orgName = Thread.currentThread().getName();
+                Thread.currentThread().setName(orgName + " - shutdownhook");
+                logger.info("started shutdownhook...");
+                Server.shutdown(serverContext);
+                logger.info("shutdownhook done");
+            }
+        });
+
         //lets restart the server once in a while until we have stable releases...
-        new ServerRestartJob().start();
+        new ServerRestartJob(serverContext).start();
 
-        Server.start();
+        ByteBufferPool.init();
 
-        new ListenConsole().start();
+        Server server = new Server(serverContext, connectionHandler);
+        server.start();
 
+        Server.startedUpSuccessful(serverContext);
+
+        Log.init(serverContext);
+
+        new PeerJobs(serverContext).start();
     }
 
     private static void initLogger() {
@@ -117,7 +126,7 @@ public class App {
 
     public static String readGitProperties() throws IOException {
         String gitRev = null;
-        InputStream is = new App().getClass().getResourceAsStream("/git.properties");
+        InputStream is = App.class.getResourceAsStream("/git.properties");
         if (is == null) {
             return null;
         }

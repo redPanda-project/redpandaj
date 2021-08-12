@@ -530,7 +530,7 @@ public class Utils {
     }
 
     // 00000001, 00000010, 00000100, 00001000, ...
-    private static final int bitMask[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
+    private static final int[] bitMask = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
 
     // Checks if the given bit is set in data
     public static boolean checkBitLE(byte[] data, int index) {
@@ -550,6 +550,10 @@ public class Utils {
 
     public static String formatDuration(long millis) {
         return formatDuration(Duration.ofMillis(millis));
+    }
+
+    public static String formatDurationFromNow(long millis) {
+        return formatDuration(Duration.ofMillis(System.currentTimeMillis() - millis));
     }
 
     public static String formatDuration(Duration duration) {

@@ -1,14 +1,14 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
 import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 
 public class PeerPerformanceTestSchedulerJob extends Job {
 
 
-    public PeerPerformanceTestSchedulerJob() {
-        super(500L * 1L * 1L, true);
+    public PeerPerformanceTestSchedulerJob(ServerContext serverContext) {
+        super(serverContext, 1000L * 5L * 1L, true);
     }
 
     @Override
@@ -24,14 +24,14 @@ public class PeerPerformanceTestSchedulerJob extends Job {
             return;
         }
 
-        Peer goodPeer = PeerList.getGoodPeer(0.5f); //todo change later if network is big enough
+        Peer goodPeer = serverContext.getPeerList().getGoodPeer(0.5f); //todo change later if network is big enough
 
         if (goodPeer == null) {
             return;
         }
 
 //        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
-        new PeerPerformanceTestGarlicMessageJob().start();
+        new PeerPerformanceTestGarlicMessageJob(serverContext).start();
 
 //        FPStoreManager.cleanUp();
 

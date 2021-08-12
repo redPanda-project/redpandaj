@@ -2,13 +2,13 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
+import im.redpanda.core.ServerContext;
 
 public class RequestPeerListJob extends Job {
 
 
-    public RequestPeerListJob() {
-        super(1000L * 30L * 1L, true);
+    public RequestPeerListJob(ServerContext serverContext) {
+        super(serverContext, 1000L * 30L * 1L, true);
     }
 
     @Override
@@ -19,11 +19,11 @@ public class RequestPeerListJob extends Job {
     @Override
     public void work() {
 
-        Peer peer = PeerList.getGoodPeer(1.0f);
 
         //todo request and send peers over garlic messages...
 
         try {
+            Peer peer = serverContext.getPeerList().getGoodPeer(1.0f);
             peer.getWriteBufferLock().lock();
             try {
                 peer.writeBuffer.put(Command.REQUEST_PEERLIST);

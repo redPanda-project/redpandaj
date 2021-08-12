@@ -2,20 +2,16 @@ package im.redpanda.core;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.locks.Lock;
 
 public class PeerJobs extends Thread {
 
-    private static PeerJobs pj;
+    private final ServerContext serverContext;
+    private final PeerList peerList;
 
-    static {
-        pj = new PeerJobs();
-    }
-
-
-    public static void startUp() {
-        pj.start();
+    public PeerJobs(ServerContext serverContext) {
+        this.serverContext = serverContext;
+        this.peerList = serverContext.getPeerList();
     }
 
     @Override
@@ -40,7 +36,7 @@ public class PeerJobs extends Thread {
                 ex.printStackTrace();
             }
 
-            if (PeerList.size() == 0) {
+            if (peerList.size() == 0) {
                 continue;
             }
 
@@ -68,10 +64,10 @@ public class PeerJobs extends Thread {
                 ConnectionHandler.peerInHandshakesLock.unlock();
             }
 
-
-            PeerList.getReadWriteLock().readLock().lock();
+            Lock lock = peerList.getReadWriteLock().readLock();
+            lock.lock();
             try {
-                for (Peer p : PeerList.getPeerArrayList()) {
+                for (Peer p : peerList.getPeerArrayList()) {
 
                     try {
                         Thread.sleep(20);
@@ -130,7 +126,7 @@ public class PeerJobs extends Thread {
 
                 }
             } finally {
-                PeerList.getReadWriteLock().readLock().unlock();
+                lock.unlock();
             }
         }
     }

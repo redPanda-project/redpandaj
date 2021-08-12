@@ -6,10 +6,7 @@
 package im.redpanda.core;
 
 
-import im.redpanda.App;
-import im.redpanda.commands.FBPublicKey;
 import im.redpanda.crypt.Utils;
-import io.sentry.Sentry;
 import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
@@ -48,9 +45,13 @@ public class ConnectionHandler extends Thread {
     public static DecimalFormat df = new DecimalFormat("#.000");
     boolean startFurther;
 
+    private final ServerContext serverContext;
+    private final PeerList peerList;
 
-    public ConnectionHandler(boolean startFurther) {
+    public ConnectionHandler(ServerContext serverContext, boolean startFurther) {
         this.startFurther = startFurther;
+        this.serverContext = serverContext;
+        this.peerList = serverContext.getPeerList();
     }
 
     static {
@@ -65,9 +66,13 @@ public class ConnectionHandler extends Thread {
     }
 
 
-    public void bind() {
-
-
+    /**
+     * Returns the port which the ServerSocketChannel was bound to.
+     *
+     * @return
+     */
+    public int bind() {
+        int port = -1;
         try {
             ServerSocketChannel serverSocketChannel;
             serverSocketChannel = ServerSocketChannel.open();
@@ -75,7 +80,7 @@ public class ConnectionHandler extends Thread {
 
             boolean bound = false;
             //MY_PORT = Settings.STD_PORT;
-            Server.MY_PORT = Settings.getStartPort();
+            port = Settings.getStartPort();
             ServerSocket serverSocket = null;
 
 
@@ -83,35 +88,24 @@ public class ConnectionHandler extends Thread {
 
 
             while (!bound) {
-
-                bound = true;
                 try {
-                    serverSocketChannel.socket().bind(new InetSocketAddress(Server.MY_PORT));
+                    serverSocketChannel.socket().bind(new InetSocketAddress(port));
+                    bound = true;
                 } catch (Throwable e) {
-
-
-                    System.out.println("could not bound to port: " + Server.MY_PORT);
-
-
-                    //e.printStackTrace();
-                    bound = false;
-                    //MY_PORT = Settings.STD_PORT + random.nextInt(30);
-                    Server.MY_PORT += 1;
+                    System.out.println("could not bound to port: " + port);
+                    port++;
                 }
 
             }
 
-            System.out.println("bound successfuly to port: " + Server.MY_PORT);
-
+            System.out.println("bound successfully to port: " + port);
 
             addServerSocketChannel(serverSocketChannel);
-            if (startFurther) {
-                Server.startedUpSuccessful();
-            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
 
+        return port;
     }
 
     void addServerSocketChannel(ServerSocketChannel serverSocketChannel) {
@@ -144,9 +138,7 @@ public class ConnectionHandler extends Thread {
             }
         });
 
-        bind();
-
-        ConnectionReaderThread.init();
+        ConnectionReaderThread.init(serverContext);
 
         while (!Server.SHUTDOWN) {
 
@@ -160,16 +152,13 @@ public class ConnectionHandler extends Thread {
                     workingRead.remove(p);
 
 
-                    //Log.putStd("current interests: " + p.getSelectionKey().interestOps());
-//ToDo: optimize
-                    //if (p.writeBuffer != null && p.writeBuffer.hasRemaining()) {
+                    //ToDo: optimize
                     p.writeBufferLock.lock();
                     try {
                         p.setWriteBufferFilled();
                     } finally {
                         p.writeBufferLock.unlock();
                     }
-                    //}
 
                     p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
 
@@ -177,14 +166,6 @@ public class ConnectionHandler extends Thread {
                     Log.putStd("key was canneled");
                 }
             }
-
-            //Log.putStd("1: " + df.format((double)(System.nanoTime() - time)/ 1000000.));
-//            Log.put("NEW KEY RUN - before select", 2000);
-//            try {
-//                Thread.sleep(100);
-//            } catch (InterruptedException e) {
-//                e.printStackTrace();
-//            }
 
             int readyChannels = 0;
             try {
@@ -203,19 +184,10 @@ public class ConnectionHandler extends Thread {
             }
 
             time = System.nanoTime();
-            //Log.putStd("2: " + df.format((double)(System.nanoTime() - time)/ 1000000.));
 
-            //Log.put("NEW KEY RUN - after select", 2000);
             Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
             if (readyChannels == 0 && selectedKeys.isEmpty()) {
-                //Log.putStd("asd");
-//                try {
-//                    sleep(100);
-//                } catch (InterruptedException ex) {
-//                    Logger.getLogger(ConnectionHandler.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//                System.out.println("no selected keys");
                 continue;
             }
 
@@ -272,7 +244,7 @@ public class ConnectionHandler extends Thread {
                                 ConnectionHandler.peerInHandshakesLock.unlock();
                             }
 
-                            ConnectionReaderThread.sendHandshake(peerInHandshake);
+                            ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
 
                             newKey.attach(peerInHandshake);
                             peerInHandshake.setKey(newKey);
@@ -320,7 +292,7 @@ public class ConnectionHandler extends Thread {
                                 key.interestOps(SelectionKey.OP_READ);
 
                                 Log.putStd("Connection established...");
-                                ConnectionReaderThread.sendHandshake(peerInHandshake);
+                                ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
                             }
                             if (key.isReadable()) {
 
@@ -347,7 +319,7 @@ public class ConnectionHandler extends Thread {
                                         /**
                                          * The status indicates that no handshake was parsed before for this PeerInHandshake
                                          */
-                                        boolean b = ConnectionReaderThread.parseHandshake(peerInHandshake, allocate);
+                                        boolean b = ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
 //                                    System.out.println("handshake okay?: " + b);
                                     } else {
 
@@ -360,7 +332,7 @@ public class ConnectionHandler extends Thread {
                                             /**
                                              * The other Peer request our public key, lets send our public key!
                                              */
-                                            ConnectionReaderThread.sendPublicKeyToPeer(peerInHandshake);
+                                            ConnectionReaderThread.sendPublicKeyToPeer(serverContext, peerInHandshake);
                                         } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
                                             /**
                                              * We got the public Peer, lets store it and check that this public key
@@ -442,7 +414,7 @@ public class ConnectionHandler extends Thread {
 
                                         Log.put("lets generate the shared secret", 80);
 
-                                        peerInHandshake.calculateSharedSecret();
+                                        peerInHandshake.calculateSharedSecret(serverContext);
 
                                         /**
                                          * Shared Secret and IV calculated via ECDH and random bytes,
@@ -517,9 +489,7 @@ public class ConnectionHandler extends Thread {
                                          * actual peer
                                          */
 
-                                        Peer peer = peerInHandshake.getPeer();
-
-                                        peer.setupConnection(peerInHandshake);
+                                        setupConnection(peerInHandshake.getPeer(), peerInHandshake);
                                         continue;
 
 
@@ -586,21 +556,18 @@ public class ConnectionHandler extends Thread {
 
                         int interestOps = key.interestOps();
 
-                        //Log.putStd("interestsssssssssssss: " + interestOps);
                         if ((interestOps == (SelectionKey.OP_WRITE | SelectionKey.OP_READ))) {
                             key.interestOps(SelectionKey.OP_WRITE);
                         } else if (interestOps == (SelectionKey.OP_READ)) {
                             key.interestOps(0);
                         } else {
-                            System.out.println("adszaudgwzqanzauzgzwzeuzgrgewgsbfsvdhfs " + interestOps);
+                            System.out.println("Error code 45354824173 " + interestOps);
                             key.interestOps(0);
-//                            key.cancel();
                         }
 
                         if (!workingRead.contains(peer)) {
                             workingRead.add(peer);
                             peersToReadAndParse.add(peer);
-                            //Log.putStd("4: " + df.format((double) (System.nanoTime() - time) / 1000000.));
                         } else {
 
 
@@ -609,20 +576,17 @@ public class ConnectionHandler extends Thread {
                             BlockingQueue<Peer> peersToReadAndParse = ConnectionHandler.peersToReadAndParse;
                             ArrayList<ConnectionReaderThread> threads = ConnectionReaderThread.threads;
 
-                            Log.putStd("asde2fsdfcv546tv54bv6 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size() + ConnectionReaderThread.threads.size());
-                            //throw new RuntimeException("asde2fsdfcv546tv54bv6");
+                            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size() + ConnectionReaderThread.threads.size());
                         }
 
                     } else if (key.isWritable()) {
 
-//                        Log.putStd("key is writeAble");
                         peer.writeBufferLock.lock();
 
                         try {
 
                             int writtenBytes = 0;
-                            boolean remainingBytes = false;
-
+                            boolean remainingBytes = true;
 
                             /**
                              * First encrypt all bytes from the writebuffer to the writebuffercrypted...
@@ -635,33 +599,21 @@ public class ConnectionHandler extends Thread {
                             remainingBytes = peer.writeBufferCrypted.hasRemaining();
                             peer.writeBufferCrypted.compact();
 
-//                            Log.putStd("remainingBytes: " + remainingBytes);
-
                             //switch buffer for reading
                             if (!remainingBytes) {
                                 key.interestOps(SelectionKey.OP_READ);
-                                //Log.putStd("removed OP_WRITE");
                             } else {
-                                //Log.putStd("write from buffer...");
-
                                 try {
-                                    writtenBytes = peer.writeBytesToPeer(peer.writeBufferCrypted);
+                                    writtenBytes = peer.writeBytesToPeer();
                                     Log.put("written bytes: " + writtenBytes, 200);
                                 } catch (IOException e) {
                                     e.printStackTrace();
                                     Log.putStd("could not write bytes to peer, peer disconnected?");
                                     peer.disconnect("could not write");
-                                    continue; //finally unlocks the lock
+                                    continue; //finally, unlocks the lock
                                 }
-//                            Log.put("written: " + writtenBytes, 40);
                             }
 
-//                                peer.writeBuffer.flip(); //switch buffer for writing
-//                                writeBuffer.limit(writeBuffer.capacity());
-//                            writeBuffer.limit(limit);
-//                            writeBuffer.position(position - writtenBytes);
-
-                            //Log.putStd("wrote from buffer... " + writtenBytes + " ip: " + peer.ip);
                             Server.outBytes += writtenBytes;
                             peer.sendBytes += writtenBytes;
                         } finally {
@@ -692,13 +644,8 @@ public class ConnectionHandler extends Thread {
 
                 } catch (Throwable e) {
                     key.cancel();
-//                    Peer peer = ((Peer) key.attachment());
-//                    Log.putStd("Catched fatal exception! " + peer.ip);
                     e.printStackTrace();
                     Log.sentry(e);
-                    //peer.disconnect(" IOException 4827f3fj");
-//                    peer.disconnect("Fatal exception");
-//                    Log.putCritical(e);
                 }
 
             }
@@ -707,6 +654,48 @@ public class ConnectionHandler extends Thread {
         Log.putStd(
                 "ConnectionHandler thread died...");
 
+    }
+
+
+    public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
+
+        ReentrantLock writeBufferLock = peerOrigin.getWriteBufferLock();
+        writeBufferLock.lock();
+
+        try {
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.remove(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
+
+            peerOrigin.setupConnectionForPeer(peerInHandshake);
+
+
+            //update the selection key to the actual peer
+            peerInHandshake.getKey().attach(peerOrigin);
+
+            /**
+             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
+             */
+            peerList.add(peerOrigin);
+
+            /**
+             * Lets search for the Node object for that peer and load it.
+             */
+            Node byKademliaId = Node.getByKademliaId(serverContext, peerInHandshake.getIdentity());
+            if (byKademliaId == null) {
+                byKademliaId = new Node(serverContext, peerInHandshake.getNodeId());
+            } else {
+                System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+            }
+            byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
+            peerOrigin.setNode(byKademliaId);
+
+        } finally {
+            writeBufferLock.unlock();
+        }
     }
 
 

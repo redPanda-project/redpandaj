@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.crypt.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,12 +25,12 @@ public class Node implements Serializable {
      *
      * @param nodeId
      */
-    public Node(NodeId nodeId) {
+    public Node(ServerContext serverContext, NodeId nodeId) {
         this.nodeId = nodeId;
         lastSeen = System.currentTimeMillis();
-        Server.nodeStore.put(nodeId.getKademliaId(), this);
+        serverContext.getNodeStore().put(nodeId.getKademliaId(), this);
         //run the get command afterwards to trigger the eviction timer
-        Server.nodeStore.get(nodeId.getKademliaId());
+        serverContext.getNodeStore().get(nodeId.getKademliaId());
         connectionPoints = new ArrayList<>();
     }
 
@@ -75,16 +76,16 @@ public class Node implements Serializable {
         }
 
         for (ConnectionPoint point : connectionPoints) {
-            logger.debug("seen, ip list for node: " + point.getIp() + ":" + point.getPort() + " reties: " + point.getRetries());
+            logger.debug(String.format("seen, ip list for node: %s:%s reties: %s, last seen: %s", point.getIp(), point.getPort(), point.getRetries(), Utils.formatDurationFromNow(point.getLastSeen())));
         }
 
     }
 
-    public static Node getByKademliaId(KademliaId id) {
+    public static Node getByKademliaId(ServerContext serverContext, KademliaId id) {
         if (id == null) {
             return null;
         }
-        return Server.nodeStore.get(id);
+        return serverContext.getNodeStore().get(id);
     }
 
     public boolean addConnectionPoint(String ip, int port) {

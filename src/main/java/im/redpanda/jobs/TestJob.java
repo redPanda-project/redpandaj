@@ -1,10 +1,15 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.ServerContext;
+
 public class TestJob extends Job {
 
 
     private String someData = "test";
 
+    public TestJob(ServerContext serverContext) {
+        super(serverContext);
+    }
 
     public void setSomeData(String someData) {
         this.someData = someData;
@@ -36,7 +41,10 @@ public class TestJob extends Job {
 
 
     public static void main(String[] args) throws InterruptedException {
-        TestJob testJob = new TestJob();
+        ServerContext serverContext = new ServerContext();
+
+        // todo write unit test for this
+        TestJob testJob = new TestJob(serverContext);
         testJob.start();
 
         Integer jobId = testJob.getJobId();

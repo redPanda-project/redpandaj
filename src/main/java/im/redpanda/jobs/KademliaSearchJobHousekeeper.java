@@ -1,7 +1,7 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.KademliaId;
-import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.core.ServerContext;
 import org.apache.logging.log4j.LogManager;
 
 import java.util.HashMap;
@@ -14,8 +14,8 @@ public class KademliaSearchJobHousekeeper extends Job {
     /**
      * This Job maintains the kademliaIdSearchBlacklist from the KademliaSearchJob class.
      */
-    public KademliaSearchJobHousekeeper() {
-        super(1000L * 60L * 10L, true);
+    public KademliaSearchJobHousekeeper(ServerContext serverContext) {
+        super(serverContext, 1000L * 60L * 10L, true);
     }
 
     @Override

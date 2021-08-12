@@ -2,7 +2,7 @@ package im.redpanda.store;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
-import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.SimpleWeightedGraph;
 import org.jgrapht.nio.csv.CSVExporter;
@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 public class NodeStore {
 
+    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -31,50 +32,51 @@ public class NodeStore {
     private static final long MAX_SIZE_OFFHEAP = 50L * 1024L * 1024L;
     private static final long MAX_SIZE_ONDISK = 300L * 1024L * 1024L;
 
-    private final HTreeMap onHeap;
-    private final HTreeMap offHeap;
-    private final HTreeMap onDisk;
-    private final DB dbonHeap;
-    private final DB dboffHeap;
-    private final DB dbDisk;
+    private HTreeMap onHeap;
+    private HTreeMap offHeap;
+    private HTreeMap onDisk;
+    private DB dbonHeap;
+    private DB dboffHeap;
+    private DB dbDisk;
 
-    private final SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
+    private SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
     private final Map<Node, Long> nodeBlacklist;
+    private final ServerContext serverContext;
 
-    public NodeStore() {
+    private NodeStore(ServerContext serverContext) {
+        this.serverContext = serverContext;
         nodeBlacklist = new HashMap<>();
+        nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
+    }
 
-        if (Server.localSettings == null) {
+    public static NodeStore buildWithDiskCache(ServerContext serverContext) {
+
+        NodeStore nodeStore = new NodeStore(serverContext);
+
+        if (serverContext.getLocalSettings() == null) {
             System.out.println("warning, could not restore nodeGraph from local settings....");
-            nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
         } else {
-            nodeGraph = Server.localSettings.getNodeGraph();
+            nodeStore.nodeGraph = serverContext.getLocalSettings().getNodeGraph();
         }
 
-//        ArrayList<Node> nodes = new ArrayList<Node>();
-//        for (Node node : nodeGraph.vertexSet()) {
-//            nodes.add(node);
-//        }
-//        nodeGraph.removeAllVertices(nodes);
-
-        dbonHeap = DBMaker
+        nodeStore.dbonHeap = DBMaker
                 .heapDB()
 //                .closeOnJvmShutdown()
                 .make();
 
-        dboffHeap = DBMaker
+        nodeStore.dboffHeap = DBMaker
                 .memoryDirectDB()
 //                .closeOnJvmShutdown()
                 .make();
 
-        dbDisk = DBMaker
-                .fileDB("data/nodeids" + Server.MY_PORT + ".mapdb")
+        nodeStore.dbDisk = DBMaker
+                .fileDB("data/nodeids" + serverContext.getPort() + ".mapdb")
                 .fileMmapEnableIfSupported()
 //                .closeOnJvmShutdown()
                 .checksumHeaderBypass()
                 .make();
 
-        onDisk = dbDisk
+        nodeStore.onDisk = nodeStore.dbDisk
                 .hashMap("nodeidsOnDisk")
                 .expireStoreSize(MAX_SIZE_ONDISK)
                 .expireExecutor(threadPool)
@@ -82,23 +84,49 @@ public class NodeStore {
                 .expireAfterGet(60, TimeUnit.DAYS)
                 .createOrOpen();
 
-        offHeap = dboffHeap
+        nodeStore.offHeap = nodeStore.dboffHeap
                 .hashMap("nodeidsOffHeap")
                 .expireStoreSize(MAX_SIZE_OFFHEAP)
-                .expireOverflow(onDisk)
+                .expireOverflow(nodeStore.onDisk)
                 .expireExecutor(threadPool)
                 .expireAfterCreate()
                 .expireAfterGet(60, TimeUnit.MINUTES)
                 .create();
 
-        onHeap = dbonHeap
+        nodeStore.onHeap = nodeStore.dbonHeap
                 .hashMap("nodeidsOnHeap")
                 .expireStoreSize(MAX_SIZE_ONHEAP)
-                .expireOverflow(offHeap)
+                .expireOverflow(nodeStore.offHeap)
                 .expireExecutor(threadPool)
                 .expireAfterCreate()
                 .expireAfterGet(15, TimeUnit.MINUTES)
                 .create();
+
+        return nodeStore;
+    }
+
+    public static NodeStore buildWithMemoryCacheOnly(ServerContext serverContext) {
+        NodeStore nodeStore = new NodeStore(serverContext);
+
+        if (serverContext.getLocalSettings() == null) {
+            System.out.println("warning, could not restore nodeGraph from local settings....");
+        } else {
+            nodeStore.nodeGraph = serverContext.getLocalSettings().getNodeGraph();
+        }
+
+        nodeStore.dbonHeap = DBMaker
+                .heapDB()
+                .make();
+
+        nodeStore.onHeap = nodeStore.dbonHeap
+                .hashMap("nodeidsOnHeap")
+                .expireStoreSize(MAX_SIZE_ONHEAP)
+                .expireExecutor(threadPool)
+                .expireAfterCreate()
+                .expireAfterGet(15, TimeUnit.HOURS)
+                .create();
+
+        return nodeStore;
     }
 
     public void put(KademliaId kademliaId, Node node) {
@@ -125,9 +153,8 @@ public class NodeStore {
             System.out.println("NodeStore may be broken here we have to close and reopen the store...");
 
             close();
-            new File("data/nodeids" + Server.MY_PORT + ".mapdb").delete();
-            Server.nodeStore = new NodeStore();
-
+            new File("data/nodeids" + serverContext.getPort() + ".mapdb").delete();
+            serverContext.setNodeStore(new NodeStore(serverContext));
         }
 
 //        System.out.println("save to disk: " + onHeap.size() + " " + offHeap.size() + " " + onDisk.size());
@@ -155,6 +182,9 @@ public class NodeStore {
      * @return
      */
     public int size() {
+        if (onDisk == null) {
+            return onHeap.size();
+        }
         saveToDisk();
         return onDisk.size();
     }
@@ -211,7 +241,11 @@ public class NodeStore {
     }
 
     private boolean isNodeStillBlacklisted(Node node) {
-        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < 1000L * 60L * 15L;
+        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < NODE_BLACKLISTED_FOR_GRAPH;
+    }
+
+    public void clearNodeBlacklist() {
+        nodeBlacklist.clear();
     }
 
     private void removeNodeIfNoGoodLinkAvailable() {
@@ -253,7 +287,7 @@ public class NodeStore {
         Writer writer = new StringWriter();
         exporter.exportGraph(nodeGraph, writer);
         System.out.println("Current Network Graph with weights representing the performance for garlic routing.");
-        System.out.println(writer.toString());
+        System.out.println(writer);
     }
 
     private void addRandomEdge() {
@@ -304,5 +338,14 @@ public class NodeStore {
 
     public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
+    }
+
+    public void printBlacklist() {
+
+        for (Node node : nodeBlacklist.keySet()) {
+            System.out.println(node.toString());
+        }
+
+
     }
 }

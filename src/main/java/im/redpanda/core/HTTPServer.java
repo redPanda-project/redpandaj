@@ -17,13 +17,16 @@ import java.nio.file.Paths;
 public class HTTPServer extends Thread {
 
     private final int PORT;
+    private final ServerContext serverContext;
 
-    public HTTPServer() {
+    public HTTPServer(ServerContext serverContext) {
         this.PORT = 8081;
+        this.serverContext = serverContext;
     }
 
-    public HTTPServer(int PORT) {
+    public HTTPServer(ServerContext serverContext, int PORT) {
         this.PORT = PORT;
+        this.serverContext = serverContext;
     }
 
     @Override
@@ -40,7 +43,7 @@ public class HTTPServer extends Thread {
         }
     }
 
-    static class HHandler implements HttpHandler {
+    class HHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
             Headers h = t.getResponseHeaders();
@@ -50,8 +53,8 @@ public class HTTPServer extends Thread {
             byte[] data = Files.readAllBytes(path);
 
 
-            long timestamp = Server.localSettings.getUpdateAndroidTimestamp();
-            byte[] signature = Server.localSettings.getUpdateAndroidSignature();
+            long timestamp = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
+            byte[] signature = serverContext.getLocalSettings().getUpdateAndroidSignature();
 
             ByteBuffer buffer = ByteBuffer.allocate(8 + 4 + signature.length + data.length);
             buffer.putLong(timestamp);
