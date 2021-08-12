@@ -138,8 +138,6 @@ public class ConnectionHandler extends Thread {
             }
         });
 
-        bind();
-
         ConnectionReaderThread.init(serverContext);
 
         while (!Server.SHUTDOWN) {
