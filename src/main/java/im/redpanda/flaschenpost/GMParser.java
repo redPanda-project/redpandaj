@@ -133,13 +133,14 @@ public class GMParser {
             }
 
             if (peers.size() == 0) {
+                System.out.println(String.format("no peer found for destination %s which is near to target", garlicMessage.getDestination()));
                 return;
             }
 
             peerToSendFP = peers.first();
 
-//            int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
-//            System.out.println("inserting fp to peer " + garlicMessage.getDestination() + "  since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId() + " con " + peerToSendFP.isConnected());
+            int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
+            System.out.println("inserting fp to peer " + garlicMessage.getDestination() + "  since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId() + " con " + peerToSendFP.isConnected());
 
         }
 

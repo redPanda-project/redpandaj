@@ -4,6 +4,7 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.graph.SimpleWeightedGraph;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 public class NodeStore {
 
     public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
+    public static final int MAX_EDGES_IN_GRAPH = 50;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -39,14 +41,15 @@ public class NodeStore {
     private DB dboffHeap;
     private DB dbDisk;
 
-    private SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
+    private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
+    private long lastTimeEdgeAdded = 0;
     private final Map<Node, Long> nodeBlacklist;
     private final ServerContext serverContext;
 
     private NodeStore(ServerContext serverContext) {
         this.serverContext = serverContext;
         nodeBlacklist = new HashMap<>();
-        nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
+        nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     }
 
     public static NodeStore buildWithDiskCache(ServerContext serverContext) {
@@ -233,8 +236,8 @@ public class NodeStore {
         }
 
 
-        if (nodeGraph.edgeSet().size() < 200) {
-            addRandomEdge();
+        if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
+            addRandomEdgeIfWaitedEnough();
         }
 
 //        printGraph();
@@ -290,8 +293,17 @@ public class NodeStore {
         System.out.println(writer);
     }
 
-    private void addRandomEdge() {
 
+    private void addRandomEdgeIfWaitedEnough() {
+
+        if (System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 30L) {
+            addRandomEdge();
+            lastTimeEdgeAdded = System.currentTimeMillis();
+        }
+
+    }
+
+    private void addRandomEdge() {
         Set<Node> nodes = nodeGraph.vertexSet();
 
         if (nodes.size() < 2) {
@@ -318,6 +330,7 @@ public class NodeStore {
             if (defaultEdge != null) {
                 nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                 added = true;
+                System.out.println(String.format("added edge: %s -> %s", a.getNodeId(), b.getNodeId()));
             }
 
             count++;
@@ -336,7 +349,7 @@ public class NodeStore {
         return nodes.get(0);
     }
 
-    public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
+    public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
     }
 

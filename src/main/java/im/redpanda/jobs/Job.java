@@ -45,7 +45,7 @@ public abstract class Job implements Runnable {
     @Override
     public void run() {
 
-        if (!permanent && getEstimatedRuntime() > 20000L) {
+        if (!permanent && getEstimatedRuntime() > 60000L) {
             //if this job takes too long, lets finish
             System.out.println("job max time reached: " + jobId + " " + this.getClass().getName());
             done();
