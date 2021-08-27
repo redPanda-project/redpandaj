@@ -6,6 +6,8 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.graph.SimpleWeightedGraph;
+import org.jgrapht.nio.Attribute;
+import org.jgrapht.nio.DefaultAttribute;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
 import org.mapdb.DB;
@@ -22,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 public class NodeStore {
 
-    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
+    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 24L * 2L;
     public static final int MAX_EDGES_IN_GRAPH = 50;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
@@ -202,9 +204,7 @@ public class NodeStore {
         if (currentNodeCount < 10) {
             int toInsert = 10 - currentNodeCount;
 
-            Set<Map.Entry<KademliaId, Node>> entriesSet = onHeap.entrySet();
-
-            ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(entriesSet);
+            ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(onHeap.entrySet());
 
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
@@ -282,9 +282,10 @@ public class NodeStore {
 
     public void printGraph() {
         CSVExporter<Node, NodeEdge> exporter = new CSVExporter<>(
-                CSVFormat.EDGE_LIST
+                CSVFormat.MATRIX
         );
         exporter.setParameter(CSVFormat.Parameter.EDGE_WEIGHTS, true);
+        exporter.setParameter(CSVFormat.Parameter.MATRIX_FORMAT_ZERO_WHEN_NO_EDGE, true);
         exporter.setVertexIdProvider(node -> node.toString());
 
         Writer writer = new StringWriter();
@@ -295,8 +296,15 @@ public class NodeStore {
 
 
     private void addRandomEdgeIfWaitedEnough() {
+        boolean allEdgesGood = true;
+        for (NodeEdge edge : nodeGraph.edgeSet()) {
+            if (nodeGraph.getEdgeWeight(edge) < 5) {
+                allEdgesGood = false;
+                break;
+            }
+        }
 
-        if (System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 30L) {
+        if (allEdgesGood || System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 30L) {
             addRandomEdge();
             lastTimeEdgeAdded = System.currentTimeMillis();
         }
@@ -360,5 +368,21 @@ public class NodeStore {
         }
 
 
+    }
+
+    public void printAllNotBlacklisted() {
+
+        for (Node node : (Collection<Node>) onHeap.values()) {
+            if (nodeBlacklist.containsKey(node)) {
+                continue;
+            }
+            System.out.println(node.toString());
+        }
+
+
+    }
+
+    public void clearGraph() {
+        nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     }
 }
