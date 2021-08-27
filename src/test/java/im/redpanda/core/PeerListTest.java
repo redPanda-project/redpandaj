@@ -13,7 +13,9 @@ public class PeerListTest {
     @Test
     public void add() throws InterruptedException {
 
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
 
         Peer mtestip = new Peer("mtestip", 5);
 
@@ -43,7 +45,9 @@ public class PeerListTest {
 
     @Test
     public void addWithSameKadId() throws InterruptedException {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
 
         //different Ips but same KadId
         KademliaId kademliaId = new KademliaId();
@@ -65,7 +69,9 @@ public class PeerListTest {
     @Test
     public void remove() {
 
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
 
         Peer toRemovePeerIp = new Peer("toRemovePeerIp", 5);
 
@@ -84,7 +90,9 @@ public class PeerListTest {
 
     @Test
     public void removeByKademliaId() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
         Peer peer = new Peer("127.0.0.2", 50558);
         NodeId id = new NodeId();
         peer.setNodeId(id);
@@ -103,7 +111,9 @@ public class PeerListTest {
 
     @Test
     public void removeIpPort() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
         peerList.removeIpPort("127.0.0.1", 50558);
         assertEquals(0, peerList.size());
@@ -111,7 +121,9 @@ public class PeerListTest {
 
     @Test
     public void removeIpPortOnly() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+        PeerList peerList = serverContext.getPeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
         peerList.removeIpPortOnly("127.0.0.1", 50558);
         assertEquals(1, peerList.size());
@@ -119,7 +131,8 @@ public class PeerListTest {
 
     @Test
     public void size() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        PeerList peerList = serverContext.getPeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
         assertEquals(1, peerList.size());
     }
@@ -127,7 +140,8 @@ public class PeerListTest {
 
     @Test
     public void clear() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        PeerList peerList = serverContext.getPeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
         peerList.clear();
         assertEquals(0, peerList.size());
@@ -135,7 +149,8 @@ public class PeerListTest {
 
     @Test
     public void updateKademliaId() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        PeerList peerList = serverContext.getPeerList();
 
         Peer peer = new Peer("127.0.0.1", 50558);
         NodeId oldId = new NodeId();
@@ -153,7 +168,8 @@ public class PeerListTest {
 
     @Test
     public void getGoodPeer() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        PeerList peerList = serverContext.getPeerList();
         peerList.add(new Peer("127.0.0.1", 50558));
         Peer goodPeer = peerList.getGoodPeer();
         assertNotNull(goodPeer);
@@ -165,7 +181,9 @@ public class PeerListTest {
 
     @Test
     public void get() {
-        PeerList peerList = new PeerList();
+        ServerContext serverContext = ServerContext.buildDefaultServerContext();
+        PeerList peerList = serverContext.getPeerList();
+        ;
         Peer peer = new Peer("127.0.0.2", 50558);
         NodeId id = new NodeId();
         peer.setNodeId(id);

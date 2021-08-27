@@ -1,10 +1,14 @@
 package im.redpanda.core;
 
+import im.redpanda.kademlia.PeerComparator;
 import org.apache.logging.log4j.LogManager;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.TreeSet;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -53,8 +57,11 @@ public class PeerList {
     private final ArrayList<Peer>[] buckets;
     private final ArrayList<Peer>[] bucketsReplacement;
 
+    private final ServerContext serverContext;
 
-    public PeerList() {
+
+    public PeerList(ServerContext serverContext) {
+        this.serverContext = serverContext;
         peerHashMap = new HashMap<>();
         peerlistIpPort = new HashMap<>();
         blacklistIp = new HashMap<>();
@@ -82,6 +89,14 @@ public class PeerList {
                 // Peer with same KademliaId exists already
                 Log.put("Peer with same KademliaId exists already", 100);
                 return oldPeer;
+            } else {
+                /**
+                 * Peer has a NodeId but was not found in list, lets add the node without checking for ip and port.
+                 * Since a Node with same IP and port but different NodeId might be already connected.
+                 */
+                System.out.println("added node with new nodeId but maybe same ip + port...");
+                oldPeer = addPeer(peer);
+                return oldPeer;
             }
         }
 
@@ -99,6 +114,13 @@ public class PeerList {
             }
         }
 
+        oldPeer = addPeer(peer);
+        return oldPeer;
+    }
+
+    @Nullable
+    private Peer addPeer(Peer peer) {
+        Peer oldPeer = null;
         try {
             readWriteLock.writeLock().lock();
             if (peer.getKademliaId() != null) {
@@ -306,7 +328,6 @@ public class PeerList {
             }
 
             //lets get a random x percent peer
-
             int max = (int) Math.ceil(size * upperPercent);
 
             int i = Server.random.nextInt(max);
@@ -321,6 +342,66 @@ public class PeerList {
         Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
         removeIpPortOnly(peer.getIp(), peer.getPort());
         peer.removeIpAndPort();
+    }
+
+
+    /**
+     * does not use connected peers or light clients
+     *
+     * @param targetId
+     * @return
+     */
+    public Peer getClosestGoodPeer(KademliaId targetId) {
+
+        Peer goodPeer = get(targetId);
+        if (goodPeer == null || !goodPeer.isConnected()) {
+
+            TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(targetId));
+
+            //insert all nodes
+            Lock lock = getReadWriteLock().readLock();
+            lock.lock();
+            try {
+                ArrayList<Peer> peerArrayList = getPeerArrayList();
+
+                for (Peer p : peerArrayList) {
+
+                    //do not add the peer if the peer is not connected or the nodeId is unknown!
+                    if (p.getNodeId() == null || !p.isConnected()) {
+                        continue;
+                    }
+
+                    //remove all light clients
+                    if (p.isLightClient()) {
+                        continue;
+                    }
+
+                    if (p.getNode() == null) {
+                        continue;
+                    }
+
+                    if (targetId.getDistanceToUs(serverContext) < p.getKademliaId().getDistance(targetId)) {
+                        continue;
+                    }
+
+                    peers.add(p);
+                }
+            } finally {
+                lock.unlock();
+            }
+
+            if (peers.size() == 0) {
+                System.out.println(String.format("no peer found for destination %s which is near to target", targetId));
+                return null;
+            }
+
+            goodPeer = peers.first();
+
+            int peersDistance = targetId.getDistance(goodPeer.getKademliaId());
+//            System.out.println("good peer for target " + targetId + " distance " + peersDistance + " our distance node: " + goodPeer.getNode().getNodeId() + " connected: " + goodPeer.isConnected());
+
+        }
+        return goodPeer;
     }
 
 }
