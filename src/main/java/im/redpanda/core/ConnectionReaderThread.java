@@ -497,7 +497,7 @@ public class ConnectionReaderThread extends Thread {
                 int size = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
                         continue;
                     }
                     size++;
@@ -513,7 +513,7 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
                         continue;
                     }
 
