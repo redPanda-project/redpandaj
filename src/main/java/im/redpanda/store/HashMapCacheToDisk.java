@@ -163,7 +163,7 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
                 e.printStackTrace();
             }
 
-            while (true) {
+            while (inMemory != null && onDisk != null && !inMemory.isClosed() && !onDisk.isClosed()) {
 
                 int cnt = evictionQueue.size();
 
