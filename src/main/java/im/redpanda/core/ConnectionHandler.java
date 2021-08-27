@@ -330,7 +330,7 @@ public class ConnectionHandler extends Thread {
                                         byte command = allocate.get();
                                         if (command == Command.REQUEST_PUBLIC_KEY) {
                                             /**
-                                             * The other Peer request our public key, lets send our public key!
+                                             * The other Peer requested our public key, lets send our public key!
                                              */
                                             ConnectionReaderThread.sendPublicKeyToPeer(serverContext, peerInHandshake);
                                         } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
@@ -677,9 +677,12 @@ public class ConnectionHandler extends Thread {
             peerInHandshake.getKey().attach(peerOrigin);
 
             /**
-             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
+             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets add it by KademliaId
              */
-            peerList.add(peerOrigin);
+            Peer oldPeer = peerList.add(peerOrigin);
+            if (oldPeer != null) {
+                System.out.println("already connected to same node");
+            }
 
             /**
              * Lets search for the Node object for that peer and load it.
