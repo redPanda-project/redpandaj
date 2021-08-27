@@ -91,12 +91,9 @@ public class PeerList {
                 return oldPeer;
             } else {
                 /**
-                 * Peer has a NodeId but was not found in list, lets add the node without checking for ip and port.
-                 * Since a Node with same IP and port but different NodeId might be already connected.
+                 * Peer has a NodeId but was not found in list.
+                 * If we would return without checking for ip and port, fast connections to same peer might make a problem.
                  */
-                System.out.println("added node with new nodeId but maybe same ip + port...");
-                oldPeer = addPeer(peer);
-                return oldPeer;
             }
         }
 
