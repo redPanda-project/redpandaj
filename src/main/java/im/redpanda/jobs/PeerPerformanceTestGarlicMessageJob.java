@@ -63,24 +63,16 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void init() {
-
-        flaschenPostInsertPeer = serverContext.getPeerList().getGoodPeer();
-
-        if (!flaschenPostInsertPeer.isConnected() || flaschenPostInsertPeer.getNode() == null) {
+        DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
+        if (nodeGraph.vertexSet().isEmpty()) {
             super.done();
             return;
         }
 
-        flaschenPostInsertPeer.getNode().cleanChecks();
-
-
         // nodes = hops + 1
-        int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
-
-        DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
-        if (nodeGraph.vertexSet().size() < garlicSequenceLenght) {
-            super.done();
-            return;
+        int garlicSequenceLength = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
+        if (nodeGraph.vertexSet().size() < garlicSequenceLength) {
+            garlicSequenceLength = nodeGraph.vertexSet().size();
         }
 
 
@@ -94,7 +86,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         nodes.add(currentNode);
         int currentLength = 0;
 
-        while (currentLength < garlicSequenceLenght) {
+        while (currentLength < garlicSequenceLength) {
             ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
             Collections.shuffle(edges);
             for (NodeEdge edge : edges) {
@@ -135,20 +127,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             return;
         }
 
-//        String a = "";
-//        Node nodeBefore = null;
-//        for (Node node : nodes) {
-//            if (nodeBefore != null) {
-//                a += " -(" + String.format("%.1f", g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
-//            } else {
-//                a += node;
-//            }
-//            nodeBefore = node;
-//        }
-//        System.out.println("path: " + a);
-
-
         byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+
+        Peer closestGoodPeer = serverContext.getPeerList().getClosestGoodPeer(this.nodes.get(0).getNodeId().getKademliaId());
+        if (closestGoodPeer == null) {
+            super.done();
+            return;
+        }
+        flaschenPostInsertPeer = closestGoodPeer;
+        flaschenPostInsertPeer.getNode().cleanChecks();
 
         flaschenPostInsertPeer.getWriteBufferLock().lock();
         try {
@@ -244,7 +231,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
         if (!success) {
-            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") ");
+            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
         }
 
         if (success) {
