@@ -8,7 +8,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 
 
     public PeerPerformanceTestSchedulerJob(ServerContext serverContext) {
-        super(serverContext, 100L * 5L * 1L, true);
+        super(serverContext, 2000L * 1L * 1L, true);
     }
 
     @Override
@@ -24,15 +24,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
             return;
         }
 
-        Peer goodPeer = serverContext.getPeerList().getGoodPeer(0.5f); //todo change later if network is big enough
-
-        if (goodPeer == null) {
-            return;
-        }
-
-//        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
         new PeerPerformanceTestGarlicMessageJob(serverContext).start();
-
 //        FPStoreManager.cleanUp();
 
     }
