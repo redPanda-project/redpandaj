@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
 
 public class NodeStore {
 
-    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 24L * 2L;
-    public static final int MAX_EDGES_IN_GRAPH = 50;
+    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
+    public static final int MAX_EDGES_IN_GRAPH = 500;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -225,7 +225,7 @@ public class NodeStore {
                         nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                     }
 
-
+                    return;
                 }
                 if (toInsert == 0) {
                     break;
@@ -253,13 +253,18 @@ public class NodeStore {
 
     private void removeNodeIfNoGoodLinkAvailable() {
 
+        Set<Node> nodes = nodeGraph.vertexSet();
+        if (nodes.size() < 5) {
+            return;
+        }
+
         Node nodeToRemove = null;
-        for (Node node : nodeGraph.vertexSet()) {
+        for (Node node : nodes) {
 
             boolean oneGoodLink = false;
 
             for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
-                if (nodeGraph.getEdgeWeight(defaultEdge) > PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
+                if (nodeGraph.getEdgeWeight(defaultEdge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
                     oneGoodLink = true;
                     break;
                 }
@@ -290,7 +295,7 @@ public class NodeStore {
 
         Writer writer = new StringWriter();
         exporter.exportGraph(nodeGraph, writer);
-        System.out.println("Current Network Graph with weights representing the performance for garlic routing.");
+        System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", nodeGraph.edgeSet().size()));
         System.out.println(writer);
     }
 
@@ -304,7 +309,7 @@ public class NodeStore {
             }
         }
 
-        if (allEdgesGood || System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 30L) {
+        if (allEdgesGood || System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 10L) {
             addRandomEdge();
             lastTimeEdgeAdded = System.currentTimeMillis();
         }

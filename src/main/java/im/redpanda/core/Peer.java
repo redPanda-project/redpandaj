@@ -102,7 +102,16 @@ public class Peer implements Comparable<Peer>, Serializable {
         return nodeId;
     }
 
+    public void clearNode() {
+        this.node = null;
+    }
+
     public void setNode(Node node) {
+
+        if (this.nodeId != null && !this.nodeId.equals(node.getNodeId())) {
+            System.out.println(String.format("set wrong node to peer, panic: %s - %s", this.nodeId, node.getNodeId()));
+        }
+
         this.node = node;
     }
 
@@ -298,7 +307,7 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     public void disconnect(String reason) {
 
-        setNode(null);
+        clearNode();
         isConnecting = false;
         authed = false;
         connectedSince = 0;
@@ -513,8 +522,8 @@ public class Peer implements Comparable<Peer>, Serializable {
 //            byte[] decrypt = decrypt(bytesToDecrypt);
 
             if (readBuffer.remaining() < remaining) {
-                int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 30);
-
+                int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 60);
+                System.out.println("get new readBuffer with size " + newSize);
                 ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
 
 //                ByteBuffer allocate = ByteBuffer.allocate(newSize);

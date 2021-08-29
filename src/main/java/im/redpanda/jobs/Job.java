@@ -181,6 +181,19 @@ public abstract class Job implements Runnable {
         }
     }
 
+    public void setReRunDelay(long newDelay) {
+        if (this.reRunDelay == newDelay) {
+            return;
+        }
+        this.reRunDelay = newDelay;
+        future.cancel(false);
+        future = JobScheduler.insert(this, reRunDelay);
+    }
+
+    public long getReRunDelay() {
+        return reRunDelay;
+    }
+
     public Integer getJobId() {
         return jobId;
     }

@@ -38,9 +38,13 @@ public class PeerListTest {
         peerList.add(mtestip);
         assertTrue(peerList.size() - initSize == 1);
 
+
+        Peer mtestipWithNodeId = new Peer("mtestip", 5);
+        mtestipWithNodeId.setNodeId(new NodeId());
+        peerList.add(mtestipWithNodeId);
+        assertTrue(peerList.size() - initSize == 2);
+
         peerList.getReadWriteLock().writeLock().unlock();
-
-
     }
 
     @Test

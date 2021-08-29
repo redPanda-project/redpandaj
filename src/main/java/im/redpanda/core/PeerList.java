@@ -107,7 +107,18 @@ public class PeerList {
             if (oldPeer != null) {
                 // Peer with same Ip+Port exists already
                 System.out.println("Peer with same Ip+Port exists already");
-                return oldPeer;
+
+
+                if (peer.getNodeId() == null) {
+                    // new peer to add has no node id, lets not add it
+                    return oldPeer;
+                }
+
+                if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
+                } else {
+                    return oldPeer;
+                }
+
             }
         }
 
@@ -253,6 +264,15 @@ public class PeerList {
         peerlistIpPort.clear();
     }
 
+    public boolean contains(KademliaId id) {
+        try {
+            readWriteLock.readLock().lock();
+            return peerHashMap.containsKey(id);
+        } finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
+
     public Peer get(KademliaId id) {
         try {
             readWriteLock.readLock().lock();
@@ -388,7 +408,7 @@ public class PeerList {
             }
 
             if (peers.size() == 0) {
-                System.out.println(String.format("no peer found for destination %s which is near to target", targetId));
+//                System.out.println(String.format("no peer found for destination %s which is near to target", targetId));
                 return null;
             }
 

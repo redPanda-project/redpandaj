@@ -145,7 +145,7 @@ public class ConnectionReaderThread extends Thread {
             return false;
         }
 
-        Log.put("Verbindungsaufbau (" + peerInHandshake.ip + "): " + magic + " " + version + " " + identity + " " + port + " initByMe: ", 10);
+        Log.put("Verbindungsaufbau (" + peerInHandshake.ip + "): " + magic + " " + version + " " + identity + " " + port, 10);
 
         buffer.compact();
 
@@ -307,7 +307,12 @@ public class ConnectionReaderThread extends Thread {
         }
         if (read == 0) {
             Log.putStd("dafuq 2332");
-            peer.disconnect("dafuq 2332");
+//            peer.disconnect("dafuq 2332");
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             Sentry.getContext().recordBreadcrumb(
                     new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
             );
@@ -432,7 +437,7 @@ public class ConnectionReaderThread extends Thread {
 
             int newPosition = readBuffer.position(); // lets save the position before touching the buffer
 
-            peer.setLastActionOnConnection(System.currentTimeMillis());
+
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
             Log.put("command: " + b + " " + readBuffer, 200);
@@ -475,6 +480,16 @@ public class ConnectionReaderThread extends Thread {
 
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
+
+            peer.setLastActionOnConnection(System.currentTimeMillis());
+
+            if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
+                logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer, peer.getKademliaId()));
+                serverContext.getPeerList().add(peer);
+//                peer.disconnect("node not in peerlist!");
+                return 0;
+            }
+
             peer.getWriteBufferLock().lock();
             try {
                 peer.writeBuffer.put(Command.PONG);

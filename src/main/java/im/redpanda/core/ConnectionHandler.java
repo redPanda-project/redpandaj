@@ -493,6 +493,9 @@ public class ConnectionHandler extends Thread {
                                         continue;
 
 
+                                    } else {
+                                        System.out.println("got wrong first command, lets disconnect");
+                                        peerInHandshake.getSocketChannel().close();
                                     }
 
 
@@ -518,8 +521,6 @@ public class ConnectionHandler extends Thread {
                         key.cancel();
                         continue;
                     }
-                    ByteBuffer readBuffer = peer.readBuffer;
-                    //ByteBuffer writeBuffer = peer.writeBufferCrypted;
 
                     if (!key.isValid()) {
                         peer.disconnect("key is invalid.");
@@ -528,7 +529,6 @@ public class ConnectionHandler extends Thread {
 
                     if (key.isConnectable()) {
 
-                        //Log.putStd("dwdhjawdgawgd ");
                         boolean connected = false;
                         try {
                             connected = peer.getSocketChannel().finishConnect();
@@ -537,7 +537,6 @@ public class ConnectionHandler extends Thread {
                         } catch (SecurityException e) {
                             e.printStackTrace();
                         }
-//                            Log.putStd("finished!");
 
                         if (!connected) {
                             Log.put("connection could not be established...", 150);
@@ -680,8 +679,13 @@ public class ConnectionHandler extends Thread {
              * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets add it by KademliaId
              */
             Peer oldPeer = peerList.add(peerOrigin);
-            if (oldPeer != null) {
-                System.out.println("already connected to same node");
+            if (oldPeer != null && oldPeer.isConnected()) {
+                if (!peerOrigin.getNodeId().equals(oldPeer.getNodeId())) {
+                    System.out.println("already connected to same node with same id");
+                } else {
+                    System.out.println("already connected to same node with same ip+port");
+                }
+
             }
 
             /**

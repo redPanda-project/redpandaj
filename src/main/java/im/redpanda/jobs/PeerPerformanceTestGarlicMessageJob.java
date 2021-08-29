@@ -15,14 +15,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int TEST_HOPS_MAX = 8;
     public static final int TEST_HOPS_MIN = 2;
 
-    public static final double LINK_FAILED = 2;
-    public static final double CUT_HARD = 3;
-    public static final int CUT_MID = 5;
-    public static final double CUT_LOW = 8;
+    public static final double LINK_FAILED = 10;
+    public static final double CUT_HARD = 14;
+    public static final int CUT_MID = 10;
+    public static final double CUT_LOW = 3;
     public static final int MAX_WEIGHT = 15;
     public static final int MIN_WEIGHT = 1;
-    public static final float DELTA_SUCCESS = 1;
-    public static final float DELTA_FAIL = -1;
+    public static final float DELTA_SUCCESS = -1;
+    public static final float DELTA_FAIL = 1;
     public static final long JOB_TIMEOUT = 1000L * 5L;
 
     private static int countSuccess = 0;
@@ -36,6 +36,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         super(serverContext, 2500L);
         nodes = new ArrayList<>();
     }
+
 
     public byte[] calculateNestedGarlicMessages(ArrayList<Node> nodes, int jobId) {
         //lets target to ourselves without the private key!
@@ -75,6 +76,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             garlicSequenceLength = nodeGraph.vertexSet().size();
         }
 
+        if (getSuccessRate() < 0.5) {
+            garlicSequenceLength = 1;
+        }
+
 
         ArrayList<Node> values = new ArrayList<>(nodeGraph.vertexSet());
 
@@ -90,16 +95,16 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
             Collections.shuffle(edges);
             for (NodeEdge edge : edges) {
-                // if a edge is bad we should only test it rarely
+                // if an edge is bad we should only test it rarely
 
                 if (edge.isLastCheckFailed()) {
-                    if (nodeGraph.getEdgeWeight(edge) < CUT_HARD) {
+                    if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
                         if (Math.random() < 0.98f)
                             continue;
-                    } else if (nodeGraph.getEdgeWeight(edge) < CUT_MID) {
+                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
                         if (Math.random() < 0.9f)
                             continue;
-                    } else if (nodeGraph.getEdgeWeight(edge) < CUT_LOW) {
+                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
                         if (Math.random() < 0.7f)
                             continue;
                     }
@@ -231,7 +236,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
         if (!success) {
-            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
+//            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
         }
 
         if (success) {
@@ -263,5 +268,17 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             return 0;
         }
         return (double) countSuccess / (double) (countSuccess + countFailed);
+    }
+
+
+    public static void decayRates() {
+        countSuccess--;
+        if (countSuccess < 0) {
+            countSuccess = 0;
+        }
+        countFailed--;
+        if (countFailed < 0) {
+            countFailed = 0;
+        }
     }
 }

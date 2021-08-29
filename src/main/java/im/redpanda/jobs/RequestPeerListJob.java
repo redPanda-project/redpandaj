@@ -8,7 +8,7 @@ public class RequestPeerListJob extends Job {
 
 
     public RequestPeerListJob(ServerContext serverContext) {
-        super(serverContext, 1000L * 30L * 1L, true);
+        super(serverContext, 1000L * 60L * 1L, true);
     }
 
     @Override
@@ -28,7 +28,6 @@ public class RequestPeerListJob extends Job {
             try {
                 peer.writeBuffer.put(Command.REQUEST_PEERLIST);
                 peer.setWriteBufferFilled();
-                System.out.println("requested peerlist from peer");
             } finally {
                 peer.getWriteBufferLock().unlock();
             }

@@ -47,7 +47,8 @@ public class ListenConsole extends Thread {
             String readLine = bufferedReader.readLine();
 
             if (peerList.size() == 0) {
-                System.out.println("no peers...");
+                System.out.println("no peers..., set log level to 400");
+                Log.LEVEL = 400;
                 continue;
             }
 
