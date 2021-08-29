@@ -15,8 +15,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int TEST_HOPS_MAX = 8;
     public static final int TEST_HOPS_MIN = 2;
 
-    public static final double LINK_FAILED = 10;
-    public static final double CUT_HARD = 14;
+    public static final double LINK_FAILED = 12;
+    public static final double CUT_HARD = 12;
     public static final int CUT_MID = 10;
     public static final double CUT_LOW = 3;
     public static final int MAX_WEIGHT = 15;
@@ -99,10 +99,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
                 if (edge.isLastCheckFailed()) {
                     if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
-                        if (Math.random() < 0.98f)
+                        if (Math.random() < 0.999f)
                             continue;
                     } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
-                        if (Math.random() < 0.9f)
+                        if (Math.random() < 0.95f)
                             continue;
                     } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
                         if (Math.random() < 0.7f)
@@ -235,9 +235,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             nodeBefore = node;
         }
 
-        if (!success) {
-//            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
-        }
+//        if (!success) {
+            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
+//        }
 
         if (success) {
             countSuccess++;

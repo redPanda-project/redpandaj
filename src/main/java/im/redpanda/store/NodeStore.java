@@ -26,6 +26,7 @@ public class NodeStore {
 
     public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
     public static final int MAX_EDGES_IN_GRAPH = 500;
+    public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 3;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -270,7 +271,7 @@ public class NodeStore {
                 }
             }
 
-            if (!oneGoodLink) {
+            if (!oneGoodLink && nodeGraph.edgesOf(node).size() >= MIN_EDGES_NEEDED_FOR_NODE_REMOVAL) {
                 nodeToRemove = node;
                 break;
             }
@@ -377,11 +378,13 @@ public class NodeStore {
 
     public void printAllNotBlacklisted() {
 
-        for (Node node : (Collection<Node>) onHeap.values()) {
-            if (nodeBlacklist.containsKey(node)) {
-                continue;
-            }
-            System.out.println(node.toString());
+
+
+        for (Node node : nodeGraph.vertexSet()) {
+//            if (nodeBlacklist.containsKey(node)) {
+//                continue;
+//            }
+            System.out.println(node.toString() + " " + (nodeBlacklist.containsKey(node) ? "b" : ""));
         }
 
 
