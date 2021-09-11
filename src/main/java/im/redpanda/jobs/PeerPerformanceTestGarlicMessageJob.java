@@ -4,7 +4,7 @@ import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
-import org.jgrapht.graph.SimpleWeightedGraph;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,14 +14,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int TEST_HOPS_MAX = 8;
     public static final int TEST_HOPS_MIN = 2;
 
-    public static final double LINK_FAILED = 2;
-    public static final double CUT_HARD = 3;
-    public static final int CUT_MID = 5;
-    public static final double CUT_LOW = 8;
-    public static final int MAX_WEIGHT = 10;
+    public static final double LINK_FAILED = 12;
+    public static final double CUT_HARD = 12;
+    public static final int CUT_MID = 10;
+    public static final double CUT_LOW = 3;
+    public static final int MAX_WEIGHT = 15;
     public static final int MIN_WEIGHT = 1;
-    public static final float DELTA_SUCCESS = 1;
-    public static final float DELTA_FAIL = -1;
+    public static final float DELTA_SUCCESS = -1;
+    public static final float DELTA_FAIL = 1;
+    public static final long JOB_TIMEOUT = 1000L * 5L;
 
     private static int countSuccess = 0;
     private static int countFailed = 0;
@@ -34,6 +35,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         super(serverContext, 2500L);
         nodes = new ArrayList<>();
     }
+
 
     public byte[] calculateNestedGarlicMessages(ArrayList<Node> nodes, int jobId) {
         //lets target to ourselves without the private key!
@@ -61,60 +63,53 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void init() {
-
-        flaschenPostInsertPeer = serverContext.getPeerList().getGoodPeer();
-
-        if (!flaschenPostInsertPeer.isConnected() || flaschenPostInsertPeer.getNode() == null) {
+        DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
+        if (nodeGraph.vertexSet().isEmpty()) {
             super.done();
             return;
         }
-
-        flaschenPostInsertPeer.getNode().cleanChecks();
-
 
         // nodes = hops + 1
-        int garlicSequenceLenght = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
+        int garlicSequenceLength = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
+        if (nodeGraph.vertexSet().size() < garlicSequenceLength) {
+            garlicSequenceLength = nodeGraph.vertexSet().size();
+        }
 
-        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
-        if (g.vertexSet().size() < garlicSequenceLenght) {
-            super.done();
-            return;
+        if (getSuccessRate() < 0.5) {
+            garlicSequenceLength = 1;
         }
 
 
-        ArrayList<Node> values = new ArrayList<>(g.vertexSet());
+        ArrayList<Node> values = new ArrayList<>(nodeGraph.vertexSet());
 
         Collections.shuffle(values);
+        Node startingNode = values.get(0);
 
         this.nodes = new ArrayList<>();
-        Node currentNode = values.get(0);
+        Node currentNode = startingNode;
         nodes.add(currentNode);
         int currentLength = 0;
 
-        while (currentLength < garlicSequenceLenght) {
-            ArrayList<NodeEdge> edges = new ArrayList<>(g.outgoingEdgesOf(currentNode));
+        while (currentLength < garlicSequenceLength) {
+            ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
             Collections.shuffle(edges);
-            for (NodeEdge e : edges) {
-                // if a edge is bad we should only test it rarely
+            for (NodeEdge edge : edges) {
+                // if an edge is bad we should only test it rarely
 
-                if (e.isLastCheckFailed()) {
-                    if (g.getEdgeWeight(e) < CUT_HARD) {
-                        if (Math.random() < 0.98f)
+                if (edge.isLastCheckFailed()) {
+                    if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
+                        if (Math.random() < 0.999f)
                             continue;
-                    } else if (g.getEdgeWeight(e) < CUT_MID) {
-                        if (Math.random() < 0.9f)
+                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
+                        if (Math.random() < 0.95f)
                             continue;
-                    } else if (g.getEdgeWeight(e) < CUT_LOW) {
+                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
                         if (Math.random() < 0.7f)
                             continue;
                     }
                 }
 
-
-                Node target = g.getEdgeSource(e);
-                if (target == currentNode) {
-                    target = g.getEdgeTarget(e);
-                }
+                Node target = nodeGraph.getEdgeTarget(edge);
 
                 if (nodes.contains(target)) {
                     continue;
@@ -136,20 +131,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             return;
         }
 
-//        String a = "";
-//        Node nodeBefore = null;
-//        for (Node node : nodes) {
-//            if (nodeBefore != null) {
-//                a += " -(" + String.format("%.1f", g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
-//            } else {
-//                a += node;
-//            }
-//            nodeBefore = node;
-//        }
-//        System.out.println("path: " + a);
-
-
         byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+
+        Peer closestGoodPeer = serverContext.getPeerList().getClosestGoodPeer(this.nodes.get(0).getNodeId().getKademliaId());
+        if (closestGoodPeer == null) {
+            super.done();
+            return;
+        }
+        flaschenPostInsertPeer = closestGoodPeer;
+        flaschenPostInsertPeer.getNode().cleanChecks();
 
         flaschenPostInsertPeer.getWriteBufferLock().lock();
         try {
@@ -166,7 +156,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void work() {
-        if (getEstimatedRuntime() > 1000L * 4L) {
+        if (getEstimatedRuntime() > JOB_TIMEOUT) {
 //            System.out.println("garlic check failed " + getEstimatedRuntime() + ", path: " +
 //                    printPath());
 
@@ -178,7 +168,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
 
     private String printPath() {
-        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
+        DefaultDirectedWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
 
         String a = "";
         Node nodeBefore = null;
@@ -198,9 +188,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         super.done();
 
         if (nodes.size() < 2) {
-//            System.out.println("nodes list too small to perform check");
             throw new RuntimeException("job started with too less nodes, this should not happen");
-//            return;
         }
 
         float scoreToAdd = 0;
@@ -221,28 +209,34 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             scoreToAdd = DELTA_FAIL;
         }
 
-        SimpleWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
+        DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
 
-        String a = "";
+        String pathString = "";
         Node nodeBefore = null;
         for (Node node : nodes) {
             if (nodeBefore != null) {
-                NodeEdge edge = g.getEdge(nodeBefore, node);
-                double newWeight = g.getEdgeWeight(edge) + scoreToAdd;
+                NodeEdge edge = nodeGraph.getEdge(nodeBefore, node);
+                if (!nodeGraph.containsEdge(edge)) {
+                    continue;
+                }
+                double newWeight = nodeGraph.getEdgeWeight(edge) + scoreToAdd;
                 if (newWeight > MAX_WEIGHT) {
                     newWeight = MAX_WEIGHT;
                 } else if (newWeight < MIN_WEIGHT) {
                     newWeight = MIN_WEIGHT;
                 }
-                g.setEdgeWeight(edge, newWeight);
+                nodeGraph.setEdgeWeight(edge, newWeight);
                 edge.setLastCheckFailed(!success);
-                a += " -(" + String.format("%.1f", newWeight) + ")-> " + node;
+                pathString += " -(" + String.format("%.1f", newWeight) + ")-> " + node;
             } else {
-                a += node;
+                pathString += node;
             }
             nodeBefore = node;
         }
-        System.out.println("path: " + a + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ")");
+
+//        if (!success) {
+//            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
+//        }
 
         if (success) {
             countSuccess++;
@@ -273,5 +267,17 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             return 0;
         }
         return (double) countSuccess / (double) (countSuccess + countFailed);
+    }
+
+
+    public static void decayRates() {
+        countSuccess--;
+        if (countSuccess < 0) {
+            countSuccess = 0;
+        }
+        countFailed--;
+        if (countFailed < 0) {
+            countFailed = 0;
+        }
     }
 }

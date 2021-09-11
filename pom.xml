@@ -14,12 +14,15 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
 
         <smack.version>4.3.5</smack.version>
-        <jackson.version>2.12.4</jackson.version>
-        <logback.version>1.2.5</logback.version>
+        <jackson.version>2.12.5</jackson.version>
+        <logback.version>1.2.6</logback.version>
+
+        <sonar.organization>redpanda-project</sonar.organization>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     </properties>
 
     <dependencies>
@@ -75,12 +78,12 @@
         <dependency>
             <groupId>com.google.flatbuffers</groupId>
             <artifactId>flatbuffers-java</artifactId>
-            <version>2.0.2</version>
+            <version>2.0.3</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-pool2</artifactId>
-            <version>2.11.0</version>
+            <version>2.11.1</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core -->
@@ -162,6 +165,7 @@
                             <goals>
                                 <goal>prepare-agent</goal>
                             </goals>
+                            <phase>test-compile</phase>
                         </execution>
                         <execution>
                             <id>jacoco-site</id>
@@ -288,31 +292,6 @@
                 </executions>
             </plugin>
 
-            <!--            <plugin>-->
-            <!--                <groupId>org.codehaus.mojo</groupId>-->
-            <!--                <artifactId>buildnumber-maven-plugin</artifactId>-->
-            <!--                <version>1.4</version>-->
-            <!--                <executions>-->
-            <!--                    <execution>-->
-            <!--                        <id>buildnumber</id>-->
-            <!--                        <phase>validate</phase>-->
-            <!--                        <goals>-->
-            <!--                            <goal>create</goal>-->
-            <!--                        </goals>-->
-            <!--                    </execution>-->
-            <!--                </executions>-->
-            <!--                <configuration>-->
-            <!--                    <format>{0,number}</format>-->
-            <!--                    <items>-->
-            <!--                        <item>buildNumber</item>-->
-            <!--                    </items>-->
-            <!--                    <doCheck>false</doCheck>-->
-            <!--                    <doUpdate>false</doUpdate>-->
-            <!--                    <revisionOnScmFailure>unknownbuild</revisionOnScmFailure>-->
-            <!--                </configuration>-->
-            <!--            </plugin>-->
-
-
             <plugin>
                 <groupId>pl.project13.maven</groupId>
                 <artifactId>git-commit-id-plugin</artifactId>
@@ -362,6 +341,14 @@
                             <value>myvalue</value>
                         </systemProperty>
                     </systemProperties>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>11</source>
+                    <target>11</target>
                 </configuration>
             </plugin>
 

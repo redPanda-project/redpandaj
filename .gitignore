@@ -122,3 +122,4 @@ privateSigningKey.txt
 
 .idea/azure
 .idea/azureSettings.xml
+.idea/sonarlint/

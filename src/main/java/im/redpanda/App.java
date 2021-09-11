@@ -1,6 +1,8 @@
 package im.redpanda;
 
 import im.redpanda.core.*;
+import im.redpanda.jobs.GMManagerCleanJobs;
+import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
@@ -116,7 +118,13 @@ public class App {
 
         Log.init(serverContext);
 
+        startPermanentJobsWithServerContext(serverContext);
+    }
+
+    private static void startPermanentJobsWithServerContext(ServerContext serverContext) {
         new PeerJobs(serverContext).start();
+        new SaveJobs(serverContext).start();
+        new GMManagerCleanJobs(serverContext).start();
     }
 
     private static void initLogger() {

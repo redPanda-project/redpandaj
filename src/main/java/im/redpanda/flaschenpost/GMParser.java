@@ -27,6 +27,17 @@ public class GMParser {
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
             GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
+
+            if (!garlicMessage.isSignedCorrectly()) {
+                return null;
+            }
+            boolean alreadyPresent = GMStoreManager.put(garlicMessage);
+
+            if (alreadyPresent) {
+                System.out.println("FP already handled... ");
+                return null;
+            }
+
             garlicMessage.tryParseContent();
 
 //            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());
@@ -133,6 +144,7 @@ public class GMParser {
             }
 
             if (peers.size() == 0) {
+//                System.out.println(String.format("no peer found for destination %s which is near to target", garlicMessage.getDestination()));
                 return;
             }
 
