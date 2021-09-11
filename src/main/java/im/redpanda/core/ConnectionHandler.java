@@ -568,14 +568,7 @@ public class ConnectionHandler extends Thread {
                             workingRead.add(peer);
                             peersToReadAndParse.add(peer);
                         } else {
-
-
-                            ArrayList<Peer> workingRead = ConnectionHandler.workingRead;
-                            BlockingQueue<Peer> doneRead = ConnectionHandler.doneRead;
-                            BlockingQueue<Peer> peersToReadAndParse = ConnectionHandler.peersToReadAndParse;
-                            ArrayList<ConnectionReaderThread> threads = ConnectionReaderThread.threads;
-
-                            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size() + ConnectionReaderThread.threads.size());
+                            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size());
                         }
 
                     } else if (key.isWritable()) {

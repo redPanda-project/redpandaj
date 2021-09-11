@@ -116,17 +116,6 @@ public class ListenConsole extends Thread {
 //                    System.out.println("Services last run: ConnectionHandler: " + (System.currentTimeMillis() - ConnectionHandler.lastRun) + " MessageDownloader: " + (System.currentTimeMillis() - MessageDownloader.lastRun) + " MessageVerifierHsqlDb: " + (System.currentTimeMillis() - MessageVerifierHsqlDb.lastRun));
 //                    System.out.println("Livetime socketio connections: " + Stats.getSocketioConnectionsLiveTime());
 
-                    int size = 0;
-                    ConnectionReaderThread.threadLock.lock();
-                    try {
-                        size = ConnectionReaderThread.threads.size();
-                    } finally {
-                        ConnectionReaderThread.threadLock.unlock();
-                    }
-
-
-                    System.out.println("Threads: " + size);
-
                     Map<String, List<DefaultPooledObjectInfo>> stringListMap = ByteBufferPool.getPool().listAllObjects();
 
                     String out = "";

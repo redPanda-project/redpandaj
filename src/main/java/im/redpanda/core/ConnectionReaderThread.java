@@ -49,13 +49,14 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ConnectionReaderThread extends Thread {
 
     private static final Logger logger = LogManager.getLogger();
+    public static final String ANDROID_UPDATE_FILE = "android.apk";
 
-    public static int MAX_THREADS = 30;
-    public static int STD_TIMEOUT = 10;
-    public static int MIN_SIGNATURE_LEN = 70;
-    public static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
+    public static final int STD_TIMEOUT = 10;
+    public static final int MIN_SIGNATURE_LEN = 70;
+    private static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
     public static final ReentrantLock threadLock = new ReentrantLock(false);
     public static final ExecutorService threadPool = Executors.newFixedThreadPool(4);
+
 
     /**
      * Here we can set the max simultaneously uploads.
@@ -63,11 +64,12 @@ public class ConnectionReaderThread extends Thread {
     private static final Semaphore updateUploadLock = new Semaphore(1);
     private static final ReentrantLock updateDownloadLock = new ReentrantLock();
     private final PeerList peerList;
+    private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
+    private final ServerContext serverContext;
 
     private boolean run = true;
     private final int timeout;
-    private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
-    private final ServerContext serverContext;
+    private int maxThreads = 30;
 
     /**
      * Timeout in seconds for polling for new work to do.
@@ -173,7 +175,6 @@ public class ConnectionReaderThread extends Thread {
                 //No peer found with this identity, lets create a new Peer instance and add it to the list
                 peer = new Peer(peerInHandshake.ip, peerInHandshake.port);
                 peer.setNodeId(new NodeId(identity));
-//                peer.setKademliaId(identity);
             } else {
                 //lets transfer the NodeId from Peer to the handshake...
                 peerInHandshake.setNodeId(peer.getNodeId());
@@ -300,7 +301,6 @@ public class ConnectionReaderThread extends Thread {
         }
         if (read == 0) {
             Log.putStd("dafuq 2332");
-//            peer.disconnect("dafuq 2332");
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
@@ -395,23 +395,11 @@ public class ConnectionReaderThread extends Thread {
     }
 
     public static void sendPublicKeyToPeer(ServerContext serverContext, PeerInHandshake peerInHandshake) {
-
-
-//        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
-//        int publicKeyBytes = builder.createByteVector(Server.nodeId.exportPublic());
-//        int sendPublicKey = FBPublicKey.createFBPublicKey(builder, publicKeyBytes);
-//        builder.finish(sendPublicKey);
-//        ByteBuffer byteBuffer = builder.dataBuffer();
-
         ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
 
         buffer.put(Command.SEND_PUBLIC_KEY);
         buffer.put(serverContext.getNodeId().exportPublic());
         buffer.flip();
-
-//        ByteBuffer[] buffers = new ByteBuffer[2];
-//        buffers[0] = buffer;
-//        buffers[1] = byteBuffer;
 
         try {
             long write = peerInHandshake.getSocketChannel().write(buffer);
@@ -849,8 +837,6 @@ public class ConnectionReaderThread extends Thread {
             }
             int lenOfSignature = signature.length;
 
-//            System.out.println("download in pipe: " + new Date(othersTimestamp));
-
             if (toReadBytes > readBuffer.remaining()) {
                 if (Math.random() < 0.01) {
                     System.out.println("update progress: " + (int) ((double) readBuffer.remaining() / (double) toReadBytes * 100.) + " %");
@@ -869,9 +855,6 @@ public class ConnectionReaderThread extends Thread {
 
                 logger.debug("obtained redpandaj update successfully");
 
-
-                logger.debug("signature found: " + Utils.bytesToHexString(signature) + " len: " + signature.length);
-                logger.debug("hash data: " + Sha256Hash.create(data));
 
                 //lets check the signature chunk:
                 NodeId nodeId = Updater.getPublicUpdaterKey();
@@ -969,7 +952,7 @@ public class ConnectionReaderThread extends Thread {
             return 1 + 8 + 4 + lenOfSignature + data.length;
 
         } else if (command == Command.ANDROID_UPDATE_REQUEST_TIMESTAMP) {
-            File file = new File("android.apk");
+            File file = new File(ANDROID_UPDATE_FILE);
             if (!file.exists()) {
                 return 1;
             }
@@ -1053,7 +1036,7 @@ public class ConnectionReaderThread extends Thread {
                     e.printStackTrace();
                 }
 
-                Path path = Paths.get("android.apk");
+                Path path = Paths.get(ANDROID_UPDATE_FILE);
 
 
                 try {
@@ -1296,7 +1279,7 @@ public class ConnectionReaderThread extends Thread {
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
             if (kadContent.verify()) {
-                boolean saved = serverContext.getKadStoreManager().put(kadContent);
+                serverContext.getKadStoreManager().put(kadContent);
 
                 peer.getWriteBufferLock().lock();
                 try {
@@ -1478,7 +1461,7 @@ public class ConnectionReaderThread extends Thread {
             threadLock.lock();
             try {
                 threadSize = threads.size();
-                if (threadSize > MAX_THREADS) {
+                if (threadSize > maxThreads) {
                     run = false;
                     threads.remove(this);
                     Log.put("threads now: " + threads.size(), -10);
@@ -1519,15 +1502,15 @@ public class ConnectionReaderThread extends Thread {
                     if (peekedAndFound > 5) {
 
                         threadLock.lock();
-                        if (threads.size() < MAX_THREADS) {
+                        if (threads.size() < maxThreads) {
 
                             try {
                                 ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, STD_TIMEOUT);
                                 threads.add(connectionReaderThread);
                                 Log.put("threads now: " + threads.size(), -10);
                             } catch (Throwable e) {
-                                MAX_THREADS = MAX_THREADS - 1;
-                                System.out.println("reducing max threads: " + MAX_THREADS);
+                                maxThreads = maxThreads - 1;
+                                System.out.println("reducing max threads: " + maxThreads);
                             }
 
                         }
