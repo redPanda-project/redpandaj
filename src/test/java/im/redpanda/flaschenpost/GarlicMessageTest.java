@@ -91,11 +91,9 @@ public class GarlicMessageTest {
 
         assertEquals(GMType.GARLIC_MESSAGE.getId(), content[0]);
 
-        GMContent parse = GMParser.parse(serverContext, content);
-
-        assertEquals(GarlicMessage.class, parse.getClass());
-
         GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(serverContext, content);
+
+        assertEquals(GarlicMessage.class, parsedGM.getClass());
 
         assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
@@ -104,6 +102,25 @@ public class GarlicMessageTest {
         assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
         assertThrows(RuntimeException.class, () -> parsedGM.parseContent());
+    }
+
+    @Test
+    public void parseTestSecondParse() {
+        //lets target to a random node id!
+        NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
+
+        GMAck gmAck = new GMAck(456);
+
+        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+        garlicMessage.addGMContent(gmAck);
+
+        byte[] content = garlicMessage.getContent();
+
+        GMParser.parse(serverContext, content);
+
+        GarlicMessage parsedAgainGarlicMessage = (GarlicMessage) GMParser.parse(serverContext, content);
+
+        assertNull(parsedAgainGarlicMessage);
     }
 
 
