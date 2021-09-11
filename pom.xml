@@ -23,6 +23,9 @@
 
         <sonar.organization>redpanda-project</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${project.basedir}/target/site/jacoco/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <dependencies>
@@ -165,6 +168,7 @@
                             <goals>
                                 <goal>prepare-agent</goal>
                             </goals>
+                            <phase>test-compile</phase>
                         </execution>
                         <execution>
                             <id>jacoco-site</id>
