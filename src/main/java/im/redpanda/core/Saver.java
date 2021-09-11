@@ -8,6 +8,9 @@ import java.util.logging.Logger;
 
 public class Saver {
 
+    private Saver() {
+    }
+
     public static final String SAVE_DIR = "data";
 
     public static void savePeerss(ArrayList<Peer> peers) {
@@ -18,37 +21,21 @@ public class Saver {
         }
         //arrayList = (ArrayList<PeerSaveable>) arrayList.clone();//hack?
 
-        FileOutputStream fileOutputStream = null;
-        ObjectOutputStream objectOutputStream = null;
+
+        File file = new File(SAVE_DIR + "/peers.dat");
+
 
         try {
-            File file = new File(SAVE_DIR + "/peers.dat");
-
             file.createNewFile();
-            fileOutputStream = new FileOutputStream(file);
-            objectOutputStream = new ObjectOutputStream(fileOutputStream);
-            objectOutputStream.writeObject(arrayList);
-            objectOutputStream.close();
-            fileOutputStream.close();
+            try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
+                try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+                    objectOutputStream.writeObject(arrayList);
+                }
+            }
+
 
         } catch (IOException ex) {
             Logger.getLogger(Saver.class.getName()).log(Level.SEVERE, null, ex);
-        } finally {
-            try {
-                if (objectOutputStream != null) {
-                    objectOutputStream.close();
-                }
-            } catch (IOException ex) {
-                Logger.getLogger(Saver.class.getName()).log(Level.SEVERE, null, ex);
-            } finally {
-                if (fileOutputStream != null) {
-                    try {
-                        fileOutputStream.close();
-                    } catch (IOException ex) {
-                        Logger.getLogger(Saver.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                }
-            }
         }
 
     }
@@ -57,27 +44,25 @@ public class Saver {
         try {
             File file = new File(SAVE_DIR + "/peers.dat");
 
-            FileInputStream fileInputStream = new FileInputStream(file);
-            ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream);
-            Object readObject = objectInputStream.readObject();
-            objectInputStream.close();
-            fileInputStream.close();
+            try (FileInputStream fileInputStream = new FileInputStream(file)) {
+                try (ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
+                    Object readObject = objectInputStream.readObject();
+                    objectInputStream.close();
+                    fileInputStream.close();
 
-            ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
-            HashMap<KademliaId, Peer> hashMap = new HashMap<KademliaId, Peer>();
+                    ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
+                    HashMap<KademliaId, Peer> hashMap = new HashMap<KademliaId, Peer>();
 
-
-            for (PeerSaveable p : pp) {
-                hashMap.put(p.nodeId.getKademliaId(), p.toPeer());
+                    for (PeerSaveable p : pp) {
+                        hashMap.put(p.nodeId.getKademliaId(), p.toPeer());
+                    }
+                    return hashMap;
+                }
             }
 
 
-            return hashMap;
-
-
-        } catch (ClassNotFoundException ex) {
-        } catch (IOException ex) {
-        } catch (ClassCastException ex) {
+        } catch (ClassNotFoundException | IOException | ClassCastException ex) {
+            //we can ignore the errors here and just reseed the peers
         }
 
         System.out.println("could not load peers.dat");
