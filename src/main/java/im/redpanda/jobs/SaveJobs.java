@@ -6,7 +6,7 @@ public class SaveJobs extends Job {
 
 
     public SaveJobs(ServerContext serverContext) {
-        super(serverContext, 1000L * 60L * 5L, true);
+        super(serverContext, 1000L * 60L * 15L, true);
     }
 
     @Override
@@ -18,6 +18,7 @@ public class SaveJobs extends Job {
     @Override
     public void work() {
         serverContext.getLocalSettings().save(serverContext.getPort());
+        serverContext.getNodeStore().saveToDisk();
     }
 
 
