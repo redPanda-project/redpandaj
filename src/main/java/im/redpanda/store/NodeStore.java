@@ -1,22 +1,22 @@
 package im.redpanda.store;
 
 import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.jgrapht.graph.SimpleWeightedGraph;
-import org.jgrapht.nio.Attribute;
-import org.jgrapht.nio.DefaultAttribute;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
-import java.io.File;
+import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,6 +27,7 @@ public class NodeStore {
     public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
     public static final int MAX_EDGES_IN_GRAPH = 500;
     public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 3;
+    public static final int MAX_NODES_FOR_GRAPH = 20;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -115,7 +116,7 @@ public class NodeStore {
         NodeStore nodeStore = new NodeStore(serverContext);
 
         if (serverContext.getLocalSettings() == null) {
-            System.out.println("warning, could not restore nodeGraph from local settings....");
+            Log.put("warning, could not restore nodeGraph from local settings....", 5);
         } else {
             nodeStore.nodeGraph = serverContext.getLocalSettings().getNodeGraph();
         }
@@ -159,18 +160,18 @@ public class NodeStore {
             System.out.println("NodeStore may be broken here we have to close and reopen the store...");
 
             close();
-            new File("data/nodeids" + serverContext.getPort() + ".mapdb").delete();
+            Path path = Path.of(String.format("data/nodeids%s.mapdb", serverContext.getPort()));
+            try {
+                Files.delete(path);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
             serverContext.setNodeStore(new NodeStore(serverContext));
         }
-
-//        System.out.println("save to disk: " + onHeap.size() + " " + offHeap.size() + " " + onDisk.size());
 
     }
 
     public void close() {
-
-//        saveToDisk();
-
         onHeap.close();
         offHeap.close();
         onDisk.close();
@@ -178,8 +179,6 @@ public class NodeStore {
         dbonHeap.close();
         dboffHeap.close();
         dbDisk.close();
-
-
     }
 
     /**
@@ -202,36 +201,23 @@ public class NodeStore {
 
         int currentNodeCount = nodeGraph.vertexSet().size();
 
-        if (currentNodeCount < 10) {
-            int toInsert = 10 - currentNodeCount;
+        if (currentNodeCount < MAX_NODES_FOR_GRAPH) {
 
             ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(onHeap.entrySet());
 
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
             for (Map.Entry<KademliaId, Node> o : entries) {
+                Node nodeToAdd = o.getValue();
 
-                if (isNodeStillBlacklisted(o.getValue())) {
+                if (isNodeStillBlacklisted(nodeToAdd)) {
                     continue;
                 }
 
-//                System.out.println("v: " + o.getValue().getNodeId() + " " + o.getValue().getScore() + " " + o.getValue().getGmTestsSuccessful() + " " + o.getValue().getGmTestsFailed());
-                if (!nodeGraph.containsVertex(o.getValue())) {
-                    toInsert--;
-
-                    nodeGraph.addVertex(o.getValue());
-                    Node randomEdge = getRandomNode(o.getValue());
-                    if (randomEdge != null) {
-                        NodeEdge defaultEdge = nodeGraph.addEdge(o.getValue(), randomEdge);
-                        nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
-                    }
-
+                if (!nodeGraph.containsVertex(nodeToAdd)) {
+                    addNodeWithInitialEdges(nodeToAdd);
                     return;
                 }
-                if (toInsert == 0) {
-                    break;
-                }
-
             }
 
         }
@@ -240,8 +226,15 @@ public class NodeStore {
         if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
             addRandomEdgeIfWaitedEnough();
         }
+    }
 
-//        printGraph();
+    private void addNodeWithInitialEdges(Node nodeToAdd) {
+        nodeGraph.addVertex(nodeToAdd);
+        Node randomEdge = getRandomNode(nodeToAdd);
+        if (randomEdge != null) {
+            NodeEdge defaultEdge = nodeGraph.addEdge(nodeToAdd, randomEdge);
+            nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
+        }
     }
 
     private boolean isNodeStillBlacklisted(Node node) {
@@ -262,14 +255,7 @@ public class NodeStore {
         Node nodeToRemove = null;
         for (Node node : nodes) {
 
-            boolean oneGoodLink = false;
-
-            for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
-                if (nodeGraph.getEdgeWeight(defaultEdge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
-                    oneGoodLink = true;
-                    break;
-                }
-            }
+            boolean oneGoodLink = isOneGoodLinkAvailable(node);
 
             if (!oneGoodLink && nodeGraph.edgesOf(node).size() >= MIN_EDGES_NEEDED_FOR_NODE_REMOVAL) {
                 nodeToRemove = node;
@@ -283,6 +269,15 @@ public class NodeStore {
             nodeGraph.removeVertex(nodeToRemove);
             System.out.println("removed node since no good link available: " + nodeToRemove);
         }
+    }
+
+    private boolean isOneGoodLinkAvailable(Node node) {
+        for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
+            if (nodeGraph.getEdgeWeight(defaultEdge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
+                return true;
+            }
+        }
+        return false;
     }
 
 
@@ -377,7 +372,6 @@ public class NodeStore {
     }
 
     public void printAllNotBlacklisted() {
-
 
 
         for (Node node : nodeGraph.vertexSet()) {
