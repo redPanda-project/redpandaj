@@ -55,7 +55,7 @@ public class ConnectionReaderThread extends Thread {
     public static int MIN_SIGNATURE_LEN = 70;
     public static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
     public static final ReentrantLock threadLock = new ReentrantLock(false);
-    public static ExecutorService threadPool = Executors.newFixedThreadPool(4);
+    public static final ExecutorService threadPool = Executors.newFixedThreadPool(4);
 
     /**
      * Here we can set the max simultaneously uploads.
@@ -112,7 +112,6 @@ public class ConnectionReaderThread extends Thread {
 
 
         String magic = readString(buffer, 4);
-//        System.out.println("magic: " + magic);
 
         int version = buffer.get();
         peerInHandshake.setProtocolVersion(version);
@@ -123,18 +122,12 @@ public class ConnectionReaderThread extends Thread {
             peerInHandshake.setLightClient(true);
         }
 
-//        System.out.println("version: " + version);
-
         byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
         buffer.get(nonceBytes);
 
         KademliaId identity = new KademliaId(nonceBytes);
 
-//        System.out.println("identity: " + identity.toString());
-
         int port = buffer.getInt();
-
-//        System.out.println("port: " + port);
 
         peerInHandshake.setIdentity(identity);
 
@@ -438,7 +431,6 @@ public class ConnectionReaderThread extends Thread {
             int newPosition = readBuffer.position(); // lets save the position before touching the buffer
 
 
-//            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
             Log.put("command: " + b + " " + readBuffer, 200);
 
@@ -1007,37 +999,34 @@ public class ConnectionReaderThread extends Thread {
              * and do not count on the reported timestamp of the system.
              */
             if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
-                Runnable runnable = new Runnable() {
-                    @Override
-                    public void run() {
-                        updateUploadLock.acquireUninterruptibly();
-                        try {
+                Runnable runnable = () -> {
+                    updateUploadLock.acquireUninterruptibly();
+                    try {
 
-                            if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
-                                //maybe we downloaded the update while waiting for lock!
-                                System.out.println("already downloaded, skipping...");
-                                return;
-                            }
-
-                            System.out.println("our android.apk version is outdated, we try to download it from this peer!");
-                            peer.writeBufferLock.lock();
-                            peer.writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_CONTENT);
-                            peer.writeBufferLock.unlock();
-                            peer.setWriteBufferFilled();
-
-
-                            //lets not download another version in the next x seconds, otherwise our RAM may explode!
-                            try {
-                                Thread.sleep(60000);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
-                        } finally {
-                            System.out.println("we can now download it from another peer...");
-                            updateUploadLock.release();
+                        if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
+                            //maybe we downloaded the update while waiting for lock!
+                            System.out.println("already downloaded, skipping...");
+                            return;
                         }
 
+                        System.out.println("our android.apk version is outdated, we try to download it from this peer!");
+                        peer.writeBufferLock.lock();
+                        peer.writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_CONTENT);
+                        peer.writeBufferLock.unlock();
+                        peer.setWriteBufferFilled();
+
+
+                        //lets not download another version in the next x seconds, otherwise our RAM may explode!
+                        try {
+                            Thread.sleep(60000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    } finally {
+                        System.out.println("we can now download it from another peer...");
+                        updateUploadLock.release();
                     }
+
                 };
 
                 threadPool.submit(runnable);
@@ -1158,14 +1147,11 @@ public class ConnectionReaderThread extends Thread {
             return 1;
         } else if (command == Command.ANDROID_UPDATE_ANSWER_CONTENT) {
 
-//            System.out.println("we get an update from node!");
-
             if (8 + 4 + 65 > readBuffer.remaining()) {
                 return 0;
             }
 
 
-//            System.out.println("we get a update from node 2");
             long othersTimestamp = readBuffer.getLong();
             int toReadBytes = readBuffer.getInt();
 
@@ -1175,8 +1161,6 @@ public class ConnectionReaderThread extends Thread {
                 return 0;
             }
             int signatureLen = signature.length;
-
-//            System.out.println("download in pipe: " + new Date(othersTimestamp));
 
 
             if (toReadBytes > readBuffer.remaining()) {
@@ -1207,9 +1191,6 @@ public class ConnectionReaderThread extends Thread {
                 bytesToHash.put(data);
 
 
-//                Sha256Hash hash = Sha256Hash.create(bytesToHash.array());
-//                System.out.println("hash: " + Utils.bytesToHexString(hash.getBytes()));
-
                 boolean verify = publicUpdaterKey.verify(bytesToHash.array(), signature);
 
                 System.out.println("update verified: " + verify);
@@ -1218,7 +1199,6 @@ public class ConnectionReaderThread extends Thread {
 
                     try (FileOutputStream fos = new FileOutputStream("android.apk")) {
                         fos.write(data);
-                        //fos.close(); There is no more need for this line since you had created the instance of "fos" inside the try. And this will automatically close the OutputStream
                         System.out.println("update stored in android.apk file");
 
                         File f = new File("android.apk");
@@ -1265,14 +1245,6 @@ public class ConnectionReaderThread extends Thread {
 
         } else if (command == Command.KADEMLIA_STORE) {
 
-//            System.out.println("peer.protocolVersion: " + peer.protocolVersion);
-
-            //todo can be removed later
-            if (peer.protocolVersion < 22) {
-                peer.disconnect("wrong protocol version for this command!");
-                return 0;
-            }
-
             if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
                 return 0;
             }
@@ -1284,9 +1256,6 @@ public class ConnectionReaderThread extends Thread {
             }
 
             int ackId = readBuffer.getInt();
-
-//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
-//            readBuffer.get(kadIdBytes);
 
             long timestamp = readBuffer.getLong();
 
@@ -1326,13 +1295,9 @@ public class ConnectionReaderThread extends Thread {
 
             KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
 
-//            System.out.println("got KadContent successfully " + kadContent.getId() + " len of signature: " + lenOfSignature);
-
-
             if (kadContent.verify()) {
                 boolean saved = serverContext.getKadStoreManager().put(kadContent);
 
-//                if (saved) {
                 peer.getWriteBufferLock().lock();
                 try {
                     peer.getWriteBuffer().put(Command.JOB_ACK);
@@ -1350,15 +1315,12 @@ public class ConnectionReaderThread extends Thread {
                     kademliaInsertJob.start();
                 }
 
-//                }
-
             } else {
                 //todo
                 System.out.println("kadContent verification failed!!!");
                 Log.sentry("kadContent verification failed, lightClient: " + peer.isLightClient());
             }
 
-//            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
             return 1 + 4 + commandLen;
 
         } else if (command == Command.JOB_ACK) {
@@ -1403,7 +1365,6 @@ public class ConnectionReaderThread extends Thread {
                 try {
                     peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
                     peer.getWriteBuffer().putInt(jobId);
-//                    peer.getWriteBuffer().put(kadContent.getId().getBytes());
                     peer.getWriteBuffer().putLong(kadContent.getTimestamp());
                     peer.getWriteBuffer().put(kadContent.getPubkey());
                     peer.getWriteBuffer().putInt(kadContent.getContent().length);
@@ -1428,9 +1389,6 @@ public class ConnectionReaderThread extends Thread {
             }
 
             int ackId = readBuffer.getInt();
-
-//            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH / 8];
-//            readBuffer.get(kadIdBytes);
 
             long timestamp = readBuffer.getLong();
 
@@ -1504,7 +1462,6 @@ public class ConnectionReaderThread extends Thread {
 
         throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
 
-//        return 0;
     }
 
     @Override
@@ -1550,9 +1507,6 @@ public class ConnectionReaderThread extends Thread {
                     System.out.println("too many peers waiting for read: " + size);
                 }
 
-//                System.out.println("peekedAndFound: " + peekedAndFound);
-
-//                if (ConnectionHandler.peersToReadAndParse.size() > threads.size()) {
                 if (ConnectionHandler.peersToReadAndParse.peek() != null) {
 
                     if (peekedAndFound < 0) {
@@ -1608,7 +1562,6 @@ public class ConnectionReaderThread extends Thread {
                 run = false;
                 continue;
             } catch (Throwable e) {
-                System.out.println("ggzdazdndzgrztgr");
                 e.printStackTrace();
             }
 
@@ -1616,7 +1569,6 @@ public class ConnectionReaderThread extends Thread {
 
             if (poll == null) {
                 //this thread can be destroyed, a new one will be started if needed
-                //Log.putStd("thread timeout!! " + getName());
                 run = false;
                 threadLock.lock();
                 threads.remove(this);
@@ -1625,7 +1577,6 @@ public class ConnectionReaderThread extends Thread {
                 continue;
             }
 
-//            Log.putStd("a1: " + df.format((double) (System.nanoTime() - time) / 1000000.));
             long a = System.currentTimeMillis();
 
             try {
@@ -1641,23 +1592,8 @@ public class ConnectionReaderThread extends Thread {
                 System.out.println("time: " + diff);
             }
 
-//            Log.putStd("simulate long query");
-//            try {
-//                sleep(500);
-//            } catch (InterruptedException ex) {
-//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-////            Log.put("done read and parsing", 20);
-//            try {
-//                sleep(500);
-//            } catch (InterruptedException ex) {
-//                Logger.getLogger(ConnectionReaderThread.class.getName()).log(Level.SEVERE, null, ex);
-//            }
             ConnectionHandler.doneRead.add(poll);
 
-//            System.out.println("peer released again for read and write....");
-
-//            System.out.println("wakeup selector from readerthread");
             ConnectionHandler.selector.wakeup();
 
         }
