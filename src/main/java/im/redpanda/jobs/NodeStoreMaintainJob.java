@@ -12,6 +12,7 @@ public class NodeStoreMaintainJob extends Job {
 
     @Override
     public void init() {
+        // no need for job setup
     }
 
     @Override

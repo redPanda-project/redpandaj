@@ -106,8 +106,6 @@ public class PeerList {
             oldPeer = peerlistIpPort.get(getIpPortHash(peer));
             if (oldPeer != null) {
                 // Peer with same Ip+Port exists already
-                System.out.println("Peer with same Ip+Port exists already");
-
 
                 if (peer.getNodeId() == null) {
                     // new peer to add has no node id, lets not add it

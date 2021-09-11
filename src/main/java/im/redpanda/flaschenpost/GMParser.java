@@ -27,6 +27,17 @@ public class GMParser {
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
             GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
+
+            if (!garlicMessage.isSignedCorrectly()) {
+                return null;
+            }
+            boolean alreadyPresent = GMStoreManager.put(garlicMessage);
+
+            if (alreadyPresent) {
+                System.out.println("FP already handled... ");
+                return null;
+            }
+
             garlicMessage.tryParseContent();
 
 //            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());

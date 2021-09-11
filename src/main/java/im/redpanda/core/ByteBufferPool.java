@@ -2,23 +2,22 @@ package im.redpanda.core;
 
 import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
-import io.sentry.event.EventBuilder;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
-import org.apache.commons.pool2.KeyedObjectPool;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ByteBufferPool {
 
 
     private static GenericKeyedObjectPool<Integer, ByteBuffer> pool;
-    private static Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
+    private static final Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
 
     public static void init() {
         BaseKeyedPooledObjectFactory<Integer, ByteBuffer> pooledObjectFactory = new BaseKeyedPooledObjectFactory<Integer, ByteBuffer>() {
@@ -30,7 +29,7 @@ public class ByteBufferPool {
                 if (Runtime.getRuntime().freeMemory() < 1024 * 1024 * 200) {
                     pool.setMaxTotalPerKey(200);
                 } else {
-                    pool.setMaxTotalPerKey(200);
+                    pool.setMaxTotalPerKey(400);
                 }
                 System.out.println("Generating new ByteBuffer for pool. Free memory (MB): " +
                         (Runtime.getRuntime().freeMemory() / 1024. / 1024.) + " Idle: " + pool.getNumIdle() + " Active: " + pool.getNumActive() + " Waiters: " + pool.getNumWaiters());

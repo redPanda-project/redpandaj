@@ -11,6 +11,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class GarlicMessage extends Flaschenpost {
@@ -176,11 +177,7 @@ public class GarlicMessage extends Flaschenpost {
 
     protected void parseContent() {
 
-        //lets check the signature
-        boolean verify = encryptionNodeId.verify(encryptedInformation, signature);
-        if (!verify) {
-            System.out.println("signature could not be verified for a Garlic Message...");
-            Log.sentry("signature could not be verified for a Garlic Message...");
+        if (!isSignedCorrectly()) {
             return;
         }
 
@@ -227,6 +224,20 @@ public class GarlicMessage extends Flaschenpost {
 
     }
 
+    /**
+     * We check the signature of the garlic message.
+     *
+     * @return
+     */
+    public boolean isSignedCorrectly() {
+        boolean verified = encryptionNodeId.verify(encryptedInformation, signature);
+        if (!verified) {
+            System.out.println("signature could not be verified for a Garlic Message...");
+            Log.sentry("signature could not be verified for a Garlic Message...");
+        }
+        return verified;
+    }
+
 
     private SecretKey getSharedSecret(NodeId priv, NodeId pub) {
         try {
@@ -249,5 +260,34 @@ public class GarlicMessage extends Flaschenpost {
     @Override
     public GMType getGMType() {
         return GMType.GARLIC_MESSAGE;
+    }
+
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        GarlicMessage that = (GarlicMessage) o;
+
+        if (!encryptionNodeId.equals(that.encryptionNodeId)) {
+            return false;
+        }
+        if (!Arrays.equals(encryptedInformation, that.encryptedInformation)) {
+            return false;
+        }
+        return Arrays.equals(signature, that.signature);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = encryptionNodeId.hashCode();
+        result = 31 * result + Arrays.hashCode(encryptedInformation);
+        result = 31 * result + Arrays.hashCode(signature);
+        return result;
     }
 }

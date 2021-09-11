@@ -5,7 +5,6 @@ import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.jgrapht.graph.SimpleWeightedGraph;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -236,7 +235,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
 //        if (!success) {
-            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
+//            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
 //        }
 
         if (success) {

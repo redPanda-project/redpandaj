@@ -145,10 +145,6 @@ public class ListenConsole extends Thread {
                     System.out.println("NodeStore blacklist: ");
                     serverContext.getNodeStore().printBlacklist();
 
-                    System.out.println("NodeStore overall: ");
-                    serverContext.getNodeStore().printAllNotBlacklisted();
-
-
                 } finally {
                     peerList.getReadWriteLock().writeLock().unlock();
                 }
