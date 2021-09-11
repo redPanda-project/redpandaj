@@ -145,7 +145,7 @@ public class ConnectionReaderThread extends Thread {
             return false;
         }
 
-        Log.put("Verbindungsaufbau (" + peerInHandshake.ip + "): " + magic + " " + version + " " + identity + " " + port + " initByMe: ", 10);
+        Log.put("Verbindungsaufbau (" + peerInHandshake.ip + "): " + magic + " " + version + " " + identity + " " + port, 10);
 
         buffer.compact();
 
@@ -307,7 +307,12 @@ public class ConnectionReaderThread extends Thread {
         }
         if (read == 0) {
             Log.putStd("dafuq 2332");
-            peer.disconnect("dafuq 2332");
+//            peer.disconnect("dafuq 2332");
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             Sentry.getContext().recordBreadcrumb(
                     new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
             );
@@ -432,7 +437,7 @@ public class ConnectionReaderThread extends Thread {
 
             int newPosition = readBuffer.position(); // lets save the position before touching the buffer
 
-            peer.setLastActionOnConnection(System.currentTimeMillis());
+
 //            Log.put("todo: parse data " + readBuffer.remaining(), 200);
             byte b = readBuffer.get();
             Log.put("command: " + b + " " + readBuffer, 200);
@@ -475,6 +480,16 @@ public class ConnectionReaderThread extends Thread {
 
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
+
+            peer.setLastActionOnConnection(System.currentTimeMillis());
+
+            if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
+                logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer, peer.getKademliaId()));
+                serverContext.getPeerList().add(peer);
+//                peer.disconnect("node not in peerlist!");
+                return 0;
+            }
+
             peer.getWriteBufferLock().lock();
             try {
                 peer.writeBuffer.put(Command.PONG);
@@ -497,7 +512,7 @@ public class ConnectionReaderThread extends Thread {
                 int size = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
                         continue;
                     }
                     size++;
@@ -513,11 +528,9 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient()) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
                         continue;
                     }
-
-//                    FlatBufferBuilder builder2 = new FlatBufferBuilder(1024);
 
                     if (peerToWrite.getNodeId() != null) {
                         kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
@@ -535,13 +548,9 @@ public class ConnectionReaderThread extends Thread {
 
                 int fbPeerList = FBPeerList.createFBPeerList(builder, peersVector);
 
-//                FBPeerList.startFBPeerList(builder);
-//                FBPeerList.addPeers(builder, peersVector);
-//                int fbPeerList = FBPeerList.endFBPeerList(builder);
                 builder.finish(fbPeerList);
 
                 ByteBuffer byteBuffer = builder.dataBuffer();
-//                System.out.println("peersoutbuffer: " + byteBuffer);
 
                 peer.getWriteBufferLock().lock();
                 try {
@@ -622,7 +631,7 @@ public class ConnectionReaderThread extends Thread {
                 if (add == null) {
                     Log.put("new peer added: " + newPeer, 50);
                 } else {
-                    Log.put("peer was already in peerlist: " + newPeer, 50);
+                    Log.put("peer was already in peerlist, added new ConnectionPoint: " + newPeer, 50);
                 }
 
 
@@ -632,7 +641,6 @@ public class ConnectionReaderThread extends Thread {
 
 
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
-//            System.out.println("UPDATE_REQUEST_TIMESTAMP " + serverContext.getLocalSettings().getUpdateTimestamp());
             ByteBuffer writeBuffer = peer.getWriteBuffer();
             peer.writeBufferLock.lock();
             try {
@@ -645,19 +653,11 @@ public class ConnectionReaderThread extends Thread {
             return 1;
         } else if (command == Command.UPDATE_ANSWER_TIMESTAMP) {
 
-
-//            System.out.println("UPDATE_ANSWER_TIMESTAMP ");
-
             if (8 > readBuffer.remaining()) {
                 return 0;
             }
 
             long othersTimestamp = readBuffer.getLong();
-
-
-//            System.out.println("UPDATE_ANSWER_TIMESTAMP " + othersTimestamp);
-
-//            System.out.println("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(Settings.getMyCurrentVersionTimestamp()));
 
             if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
                 System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
@@ -1054,105 +1054,102 @@ public class ConnectionReaderThread extends Thread {
             }
 
 
-            Runnable runnable = new Runnable() {
-                @Override
-                public void run() {
+            Runnable runnable = () -> {
 
-                    updateUploadLock.acquireUninterruptibly();
+                updateUploadLock.acquireUninterruptibly();
 
-                    try {
-                        Thread.sleep(200);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                Path path = Paths.get("android.apk");
+
+
+                try {
+                    System.out.println("we send the android.apk update to a peer!");
+                    byte[] data = Files.readAllBytes(path);
+
+
+                    //lets first check our signature!
+                    NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+
+
+                    ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
+
+                    bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+                    bytesToHash.put(data);
+
+
+                    System.out.println("timestamp: " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+
+                    System.out.println("signature: " + Utils.bytesToHexString(serverContext.getLocalSettings().getUpdateAndroidSignature()));
+
+                    System.out.println("ver: " + Updater.getPublicUpdaterKey().verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature()));
+
+                    boolean verify = publicUpdaterKey.verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature());
+                    System.out.println("update verified: " + verify);
+
+
+                    if (!verify) {
+                        System.out.println("################################ update not verified " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+                        return;
                     }
 
-                    Path path = Paths.get("android.apk");
+                    byte[] androidSignature = serverContext.getLocalSettings().getUpdateAndroidSignature();
 
+                    ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
+                    a.put(Command.ANDROID_UPDATE_ANSWER_CONTENT);
+                    a.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+                    a.putInt(data.length);
+                    a.put(androidSignature);
+                    a.put(data);
+                    a.flip();
 
+                    peer.writeBufferLock.lock();
                     try {
-                        System.out.println("we send the android.apk update to a peer!");
-                        byte[] data = Files.readAllBytes(path);
-
-
-                        //lets first check our signature!
-                        NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
-
-
-                        ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
-
-                        bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-                        bytesToHash.put(data);
-
-
-                        System.out.println("timestamp: " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-
-                        System.out.println("signature: " + Utils.bytesToHexString(serverContext.getLocalSettings().getUpdateAndroidSignature()));
-
-                        System.out.println("ver: " + Updater.getPublicUpdaterKey().verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature()));
-
-                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature());
-                        System.out.println("update verified: " + verify);
-
-
-                        if (!verify) {
-                            System.out.println("################################ update not verified " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-                            return;
+                        if (peer.writeBuffer.remaining() < a.remaining()) {
+                            ByteBuffer allocate = ByteBuffer.allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
+                            peer.writeBuffer.flip();
+                            allocate.put(peer.writeBuffer);
+                            peer.writeBuffer = allocate;
                         }
 
-                        byte[] androidSignature = serverContext.getLocalSettings().getUpdateAndroidSignature();
+                        peer.writeBuffer.put(a.array());
+                        peer.setWriteBufferFilled();
+                    } finally {
+                        peer.writeBufferLock.unlock();
+                    }
 
-                        ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
-                        a.put(Command.ANDROID_UPDATE_ANSWER_CONTENT);
-                        a.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-                        a.putInt(data.length);
-                        a.put(androidSignature);
-                        a.put(data);
-                        a.flip();
+
+                    // we check every 10 seconds if the upload is already finished
+                    int cnt = 0;
+                    while (cnt < 6) {
+                        cnt++;
+                        try {
+                            Thread.sleep(10000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
 
                         peer.writeBufferLock.lock();
                         try {
-                            if (peer.writeBuffer.remaining() < a.remaining()) {
-                                ByteBuffer allocate = ByteBuffer.allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
-                                peer.writeBuffer.flip();
-                                allocate.put(peer.writeBuffer);
-                                peer.writeBuffer = allocate;
+                            if (!peer.isConnected() || (peer.writeBuffer.position() == 0 && peer.writeBufferCrypted.position() == 0)) {
+                                break;
                             }
-
-                            peer.writeBuffer.put(a.array());
-                            peer.setWriteBufferFilled();
                         } finally {
                             peer.writeBufferLock.unlock();
                         }
-
-
-                        // we check every 10 seconds if the upload is already finished
-                        int cnt = 0;
-                        while (cnt < 6) {
-                            cnt++;
-                            try {
-                                Thread.sleep(10000);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
-
-                            peer.writeBufferLock.lock();
-                            try {
-                                if (!peer.isConnected() || (peer.writeBuffer.position() == 0 && peer.writeBufferCrypted.position() == 0)) {
-                                    break;
-                                }
-                            } finally {
-                                peer.writeBufferLock.unlock();
-                            }
-                            System.out.println("peer still downloading...");
-                        }
-
-
-                        updateUploadLock.release();
-
-
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                        System.out.println("peer still downloading...");
                     }
+
+
+                    updateUploadLock.release();
+
+
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             };
 

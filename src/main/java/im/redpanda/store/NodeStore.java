@@ -4,7 +4,10 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.graph.SimpleWeightedGraph;
+import org.jgrapht.nio.Attribute;
+import org.jgrapht.nio.DefaultAttribute;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
 import org.mapdb.DB;
@@ -22,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 public class NodeStore {
 
     public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
+    public static final int MAX_EDGES_IN_GRAPH = 500;
+    public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 3;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
     /**
@@ -39,14 +44,15 @@ public class NodeStore {
     private DB dboffHeap;
     private DB dbDisk;
 
-    private SimpleWeightedGraph<Node, NodeEdge> nodeGraph;
+    private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
+    private long lastTimeEdgeAdded = 0;
     private final Map<Node, Long> nodeBlacklist;
     private final ServerContext serverContext;
 
     private NodeStore(ServerContext serverContext) {
         this.serverContext = serverContext;
         nodeBlacklist = new HashMap<>();
-        nodeGraph = new SimpleWeightedGraph(NodeEdge.class);
+        nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     }
 
     public static NodeStore buildWithDiskCache(ServerContext serverContext) {
@@ -199,9 +205,7 @@ public class NodeStore {
         if (currentNodeCount < 10) {
             int toInsert = 10 - currentNodeCount;
 
-            Set<Map.Entry<KademliaId, Node>> entriesSet = onHeap.entrySet();
-
-            ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(entriesSet);
+            ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(onHeap.entrySet());
 
             Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
@@ -222,7 +226,7 @@ public class NodeStore {
                         nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                     }
 
-
+                    return;
                 }
                 if (toInsert == 0) {
                     break;
@@ -233,8 +237,8 @@ public class NodeStore {
         }
 
 
-        if (nodeGraph.edgeSet().size() < 200) {
-            addRandomEdge();
+        if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
+            addRandomEdgeIfWaitedEnough();
         }
 
 //        printGraph();
@@ -250,19 +254,24 @@ public class NodeStore {
 
     private void removeNodeIfNoGoodLinkAvailable() {
 
+        Set<Node> nodes = nodeGraph.vertexSet();
+        if (nodes.size() < 5) {
+            return;
+        }
+
         Node nodeToRemove = null;
-        for (Node node : nodeGraph.vertexSet()) {
+        for (Node node : nodes) {
 
             boolean oneGoodLink = false;
 
             for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
-                if (nodeGraph.getEdgeWeight(defaultEdge) > PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
+                if (nodeGraph.getEdgeWeight(defaultEdge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
                     oneGoodLink = true;
                     break;
                 }
             }
 
-            if (!oneGoodLink) {
+            if (!oneGoodLink && nodeGraph.edgesOf(node).size() >= MIN_EDGES_NEEDED_FOR_NODE_REMOVAL) {
                 nodeToRemove = node;
                 break;
             }
@@ -279,19 +288,36 @@ public class NodeStore {
 
     public void printGraph() {
         CSVExporter<Node, NodeEdge> exporter = new CSVExporter<>(
-                CSVFormat.EDGE_LIST
+                CSVFormat.MATRIX
         );
         exporter.setParameter(CSVFormat.Parameter.EDGE_WEIGHTS, true);
+        exporter.setParameter(CSVFormat.Parameter.MATRIX_FORMAT_ZERO_WHEN_NO_EDGE, true);
         exporter.setVertexIdProvider(node -> node.toString());
 
         Writer writer = new StringWriter();
         exporter.exportGraph(nodeGraph, writer);
-        System.out.println("Current Network Graph with weights representing the performance for garlic routing.");
+        System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", nodeGraph.edgeSet().size()));
         System.out.println(writer);
     }
 
-    private void addRandomEdge() {
 
+    private void addRandomEdgeIfWaitedEnough() {
+        boolean allEdgesGood = true;
+        for (NodeEdge edge : nodeGraph.edgeSet()) {
+            if (nodeGraph.getEdgeWeight(edge) < 5) {
+                allEdgesGood = false;
+                break;
+            }
+        }
+
+        if (allEdgesGood || System.currentTimeMillis() - lastTimeEdgeAdded > 1000L * 10L) {
+            addRandomEdge();
+            lastTimeEdgeAdded = System.currentTimeMillis();
+        }
+
+    }
+
+    private void addRandomEdge() {
         Set<Node> nodes = nodeGraph.vertexSet();
 
         if (nodes.size() < 2) {
@@ -318,6 +344,7 @@ public class NodeStore {
             if (defaultEdge != null) {
                 nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
                 added = true;
+                System.out.println(String.format("added edge: %s -> %s", a.getNodeId(), b.getNodeId()));
             }
 
             count++;
@@ -336,7 +363,7 @@ public class NodeStore {
         return nodes.get(0);
     }
 
-    public SimpleWeightedGraph<Node, NodeEdge> getNodeGraph() {
+    public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
     }
 
@@ -347,5 +374,23 @@ public class NodeStore {
         }
 
 
+    }
+
+    public void printAllNotBlacklisted() {
+
+
+
+        for (Node node : nodeGraph.vertexSet()) {
+//            if (nodeBlacklist.containsKey(node)) {
+//                continue;
+//            }
+            System.out.println(node.toString() + " " + (nodeBlacklist.containsKey(node) ? "b" : ""));
+        }
+
+
+    }
+
+    public void clearGraph() {
+        nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     }
 }

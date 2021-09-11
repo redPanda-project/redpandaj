@@ -133,6 +133,7 @@ public class GMParser {
             }
 
             if (peers.size() == 0) {
+//                System.out.println(String.format("no peer found for destination %s which is near to target", garlicMessage.getDestination()));
                 return;
             }
 

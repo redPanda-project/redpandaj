@@ -330,7 +330,7 @@ public class ConnectionHandler extends Thread {
                                         byte command = allocate.get();
                                         if (command == Command.REQUEST_PUBLIC_KEY) {
                                             /**
-                                             * The other Peer request our public key, lets send our public key!
+                                             * The other Peer requested our public key, lets send our public key!
                                              */
                                             ConnectionReaderThread.sendPublicKeyToPeer(serverContext, peerInHandshake);
                                         } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
@@ -493,6 +493,9 @@ public class ConnectionHandler extends Thread {
                                         continue;
 
 
+                                    } else {
+                                        System.out.println("got wrong first command, lets disconnect");
+                                        peerInHandshake.getSocketChannel().close();
                                     }
 
 
@@ -518,8 +521,6 @@ public class ConnectionHandler extends Thread {
                         key.cancel();
                         continue;
                     }
-                    ByteBuffer readBuffer = peer.readBuffer;
-                    //ByteBuffer writeBuffer = peer.writeBufferCrypted;
 
                     if (!key.isValid()) {
                         peer.disconnect("key is invalid.");
@@ -528,7 +529,6 @@ public class ConnectionHandler extends Thread {
 
                     if (key.isConnectable()) {
 
-                        //Log.putStd("dwdhjawdgawgd ");
                         boolean connected = false;
                         try {
                             connected = peer.getSocketChannel().finishConnect();
@@ -537,7 +537,6 @@ public class ConnectionHandler extends Thread {
                         } catch (SecurityException e) {
                             e.printStackTrace();
                         }
-//                            Log.putStd("finished!");
 
                         if (!connected) {
                             Log.put("connection could not be established...", 150);
@@ -677,9 +676,17 @@ public class ConnectionHandler extends Thread {
             peerInHandshake.getKey().attach(peerOrigin);
 
             /**
-             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets addd it by KademliaId
+             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets add it by KademliaId
              */
-            peerList.add(peerOrigin);
+            Peer oldPeer = peerList.add(peerOrigin);
+            if (oldPeer != null && oldPeer.isConnected()) {
+                if (!peerOrigin.getNodeId().equals(oldPeer.getNodeId())) {
+                    System.out.println("already connected to same node with same id");
+                } else {
+                    System.out.println("already connected to same node with same ip+port");
+                }
+
+            }
 
             /**
              * Lets search for the Node object for that peer and load it.

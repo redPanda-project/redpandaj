@@ -19,6 +19,7 @@ public class ParseCommandTest {
 
     public Peer getPeerForDebug() {
         Peer me = new Peer("me", 1);
+        me.setNodeId(new NodeId());
         me.writeBuffer = ByteBuffer.allocate(1024 * 1024 * 5);
         return me;
     }
@@ -27,7 +28,10 @@ public class ParseCommandTest {
     @Test
     public void testLoopCommands() {
 
-        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(new ServerContext(), 5);
+        ServerContext serverContext = new ServerContext();
+        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+
+
 
         //lets check if it is able to parse 3 ping commands in one step
         ByteBuffer allocate = ByteBuffer.allocate(1024);
@@ -36,6 +40,7 @@ public class ParseCommandTest {
         allocate.put(Command.PING);
 
         Peer peerForDebug = getPeerForDebug();
+        serverContext.getPeerList().add(peerForDebug);
         peerForDebug.setConnected(true);
         connectionReaderThread.loopCommands(peerForDebug, allocate);
 
@@ -49,7 +54,7 @@ public class ParseCommandTest {
         allocate.put(Command.SEND_PEERLIST);
         allocate.putInt(1);
 
-        connectionReaderThread.loopCommands(getPeerForDebug(), allocate);
+        connectionReaderThread.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -67,7 +72,6 @@ public class ParseCommandTest {
         allocate.put(Command.SEND_PEERLIST);
         allocate.putInt(1);
 
-        peerForDebug = getPeerForDebug();
         peerForDebug.setConnected(true);
         connectionReaderThread.loopCommands(peerForDebug, allocate);
 
@@ -76,7 +80,6 @@ public class ParseCommandTest {
 
         assertTrue(allocate.get() == Command.SEND_PEERLIST);
         assertTrue(allocate.getInt() == 1);
-
     }
 
     @Test

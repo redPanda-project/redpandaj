@@ -47,7 +47,8 @@ public class ListenConsole extends Thread {
             String readLine = bufferedReader.readLine();
 
             if (peerList.size() == 0) {
-                System.out.println("no peers...");
+                System.out.println("no peers..., set log level to 400");
+                Log.LEVEL = 400;
                 continue;
             }
 
@@ -144,6 +145,9 @@ public class ListenConsole extends Thread {
                     System.out.println("NodeStore blacklist: ");
                     serverContext.getNodeStore().printBlacklist();
 
+                    System.out.println("NodeStore overall: ");
+                    serverContext.getNodeStore().printAllNotBlacklisted();
+
 
                 } finally {
                     peerList.getReadWriteLock().writeLock().unlock();
@@ -183,6 +187,9 @@ public class ListenConsole extends Thread {
                 serverContext.getNodeStore().saveToDisk();
                 Server.shutdown(serverContext);
                 System.exit(0);
+            } else if (readLine.equals("cg")) {
+                serverContext.getNodeStore().clearGraph();
+                System.out.println("cleared node graph");
             } else if (readLine.equals("c")) {
                 System.out.println("closing all connections...");
 

@@ -76,7 +76,7 @@ public class Log {
         int currentRating = rating.getAndIncrement();
         if (currentRating < 10) {
             try {
-                System.out.println("send to Sentry: " + e);
+                logger.error("send to Sentry: " + e);
                 Sentry.capture(e);
             } catch (Throwable e2) {
                 e2.printStackTrace();

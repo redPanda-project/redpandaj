@@ -8,7 +8,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
 
 
     public PeerPerformanceTestSchedulerJob(ServerContext serverContext) {
-        super(serverContext, 1000L * 5L * 1L, true);
+        super(serverContext, 200L * 1L * 1L, true);
     }
 
     @Override
@@ -24,16 +24,18 @@ public class PeerPerformanceTestSchedulerJob extends Job {
             return;
         }
 
-        Peer goodPeer = serverContext.getPeerList().getGoodPeer(0.5f); //todo change later if network is big enough
-
-        if (goodPeer == null) {
-            return;
-        }
-
-//        new PeerPerformanceTestFlaschenpostJob(goodPeer).start();
         new PeerPerformanceTestGarlicMessageJob(serverContext).start();
 
-//        FPStoreManager.cleanUp();
+
+        if (PeerPerformanceTestGarlicMessageJob.getSuccessRate() < 0.9 && PeerPerformanceTestGarlicMessageJob.getCountSuccess() + PeerPerformanceTestGarlicMessageJob.getCountFailed() < 10000) {
+            setReRunDelay(100L);
+        } else {
+            setReRunDelay(2000L);
+        }
+
+        if (Math.random() < 0.01) {
+            PeerPerformanceTestGarlicMessageJob.decayRates();
+        }
 
     }
 }
