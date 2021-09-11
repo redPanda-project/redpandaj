@@ -161,17 +161,11 @@
                     <version>0.8.7</version>
                     <executions>
                         <execution>
-                            <id>jacoco-initialize</id>
                             <goals>
                                 <goal>prepare-agent</goal>
-                            </goals>
-                            <phase>test-compile</phase>
-                        </execution>
-                        <execution>
-                            <id>jacoco-site</id>
-                            <phase>package</phase>
-                            <goals>
+                                <goal>prepare-agent-integration</goal>
                                 <goal>report</goal>
+                                <goal>report-integration</goal>
                             </goals>
                         </execution>
                     </executions>
