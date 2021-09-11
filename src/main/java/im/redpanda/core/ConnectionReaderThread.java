@@ -623,9 +623,6 @@ public class ConnectionReaderThread extends Thread {
                     Log.put("new peer added: " + newPeer, 50);
                 } else {
                     Log.put("peer was already in peerlist: " + newPeer, 50);
-
-
-                    System.out.println("added new ConnectionPoint...");
                 }
 
 

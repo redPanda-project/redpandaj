@@ -28,12 +28,11 @@ public class RequestPeerListJob extends Job {
             try {
                 peer.writeBuffer.put(Command.REQUEST_PEERLIST);
                 peer.setWriteBufferFilled();
-                System.out.println("requested peerlist from peer");
             } finally {
                 peer.getWriteBufferLock().unlock();
             }
         } catch (Exception e) {
-
+            e.printStackTrace();
         }
 
     }
