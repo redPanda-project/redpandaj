@@ -425,8 +425,7 @@ public class ConnectionHandler extends Thread {
                         /**
                          * The status indicates that no handshake was parsed before for this PeerInHandshake
                          */
-                        boolean b = ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
-//                                    System.out.println("handshake okay?: " + b);
+                        ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
                     } else {
 
                         /**
@@ -574,12 +573,6 @@ public class ConnectionHandler extends Thread {
 
                     peerInHandshake.getPeerChiperStreams().decrypt(allocate, outBuffer);
 
-//                                allocate.flip();
-//                                byte[] bytesToDecrypt = new byte[allocate.remaining()];
-//                                allocate.get(bytesToDecrypt);
-
-//                                ByteBuffer wrap = ByteBuffer.wrap(peerInHandshake.decrypt(bytesToDecrypt));
-
                     outBuffer.flip();
 
                     byte decryptedCommand = outBuffer.get();
@@ -596,9 +589,6 @@ public class ConnectionHandler extends Thread {
                          */
 
                         setupConnection(peerInHandshake.getPeer(), peerInHandshake);
-                        return;
-
-
                     } else {
                         System.out.println("got wrong first command, lets disconnect");
                         peerInHandshake.getSocketChannel().close();
