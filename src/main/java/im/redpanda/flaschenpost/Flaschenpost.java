@@ -37,7 +37,7 @@ public abstract class Flaschenpost extends GMContent {
     public Flaschenpost(ServerContext serverContext, KademliaId destination) {
         this.serverContext = serverContext;
         this.destination = destination;
-        this.id = Server.random.nextInt();
+        this.id = Server.secureRandom.nextInt();
         this.timestamp = System.currentTimeMillis();
     }
 

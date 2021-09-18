@@ -13,7 +13,7 @@ public class GMAck extends GMContent {
     }
 
     public GMAck() {
-        this.ackid = Server.random.nextInt();
+        this.ackid = Server.secureRandom.nextInt();
     }
 
     public GMAck(byte[] contentToParse) {

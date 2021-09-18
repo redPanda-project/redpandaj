@@ -42,7 +42,7 @@ public class ListenConsole extends Thread {
         InputStreamReader inputStreamReader = new InputStreamReader(System.in, StandardCharsets.UTF_8);
         BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
 
-        while (!Server.SHUTDOWN) {
+        while (!Server.shuttingDown) {
 
             String readLine = bufferedReader.readLine();
 

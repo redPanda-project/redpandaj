@@ -128,7 +128,7 @@ public class OutboundHandler extends Thread {
 
         long loopCount = 0;
 
-        while (!Server.SHUTDOWN) {
+        while (!Server.shuttingDown) {
 
 //            System.out.println("Peers: " + PeerList.size());
 

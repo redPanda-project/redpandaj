@@ -18,7 +18,7 @@ public class NodeStoreMaintainJob extends Job {
     @Override
     public void work() {
 
-        if (serverContext.getNodeStore() != null && !Server.SHUTDOWN) {
+        if (serverContext.getNodeStore() != null && !Server.shuttingDown) {
             serverContext.getNodeStore().maintainNodes();
         }
 

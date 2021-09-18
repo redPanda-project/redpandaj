@@ -70,7 +70,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
         // nodes = hops + 1
-        int garlicSequenceLength = TEST_HOPS_MIN + Server.random.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
+        int garlicSequenceLength = TEST_HOPS_MIN + Server.secureRandom.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
         if (nodeGraph.vertexSet().size() < garlicSequenceLength) {
             garlicSequenceLength = nodeGraph.vertexSet().size();
         }

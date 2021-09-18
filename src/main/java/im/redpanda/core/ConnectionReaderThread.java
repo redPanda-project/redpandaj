@@ -1456,7 +1456,7 @@ public class ConnectionReaderThread extends Thread {
         int lastThreadSize = 1;
         int threadSize = 1;
 
-        while (!Server.SHUTDOWN && run) {
+        while (!Server.shuttingDown && run) {
 
             threadLock.lock();
             try {
