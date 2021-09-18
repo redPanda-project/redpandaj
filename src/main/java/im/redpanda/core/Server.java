@@ -1,6 +1,5 @@
 package im.redpanda.core;
 
-import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.NodeStoreMaintainJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
@@ -9,7 +8,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.security.SecureRandom;
 import java.security.Security;
-import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -24,7 +22,7 @@ public class Server {
     public static int inBytes = 0;
     private ConnectionHandler connectionHandler;
     public static OutboundHandler outboundHandler;
-    public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
+    public static final ExecutorService threadPool = Executors.newFixedThreadPool(2);
 
     public static final SecureRandom secureRandom = new SecureRandom();
 
