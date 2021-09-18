@@ -92,11 +92,6 @@ public class PeerInHandshake {
         return status;
     }
 
-    public PeerInHandshake(String ip) {
-        this.ip = ip;
-    }
-
-
     public void addConnection(boolean alreadyConnected) {
         try {
             socketChannel.configureBlocking(false);
@@ -105,16 +100,6 @@ public class PeerInHandshake {
             ConnectionHandler.selectorLock.lock();
             try {
                 ConnectionHandler.selector.wakeup();
-//                if (connectionPending) {
-//                    peer.isConnecting = true;
-//                    peer.setConnected(false);
-//                key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT);
-//                key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ);
-//                } else {
-//                    peer.isConnecting = false;
-//                    peer.setConnected(true);
-//                    key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_READ);
-//                }
 
                 if (alreadyConnected) {
                     key = socketChannel.register(ConnectionHandler.selector, SelectionKey.OP_READ);

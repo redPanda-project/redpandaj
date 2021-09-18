@@ -127,11 +127,7 @@ public class ConnectionHandler extends Thread {
 
         while (!Server.shuttingDown) {
 
-            Peer p;
-
-            while ((p = doneRead.poll()) != null) {
-                finishedReadingPeer(p);
-            }
+            readPeersBackToSelector();
 
             int readyChannels = 0;
             try {
@@ -145,6 +141,7 @@ public class ConnectionHandler extends Thread {
                     System.out.println("exception in selector");
                 } catch (InterruptedException ex) {
                     ex.printStackTrace();
+                    Thread.currentThread().interrupt();
                 }
                 continue;
             }
@@ -162,9 +159,16 @@ public class ConnectionHandler extends Thread {
             }
         }
 
-        Log.putStd(
-                "ConnectionHandler thread died...");
+        Log.putStd("ConnectionHandler thread died...");
 
+    }
+
+    private void readPeersBackToSelector() {
+        Peer peer;
+
+        while ((peer = doneRead.poll()) != null) {
+            finishedReadingPeer(peer);
+        }
     }
 
     private void handleSelectionKey(Iterator<SelectionKey> keyIterator) {
