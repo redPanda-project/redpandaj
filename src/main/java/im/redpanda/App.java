@@ -2,6 +2,7 @@ package im.redpanda;
 
 import im.redpanda.core.*;
 import im.redpanda.jobs.GMManagerCleanJobs;
+import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.store.NodeStore;
@@ -114,7 +115,7 @@ public class App {
         Server server = new Server(serverContext, connectionHandler);
         server.start();
 
-        Server.startedUpSuccessful(serverContext);
+        Server.startUpRoutines(serverContext);
 
         Log.init(serverContext);
 
@@ -125,6 +126,7 @@ public class App {
         new PeerJobs(serverContext).start();
         new SaveJobs(serverContext).start();
         new GMManagerCleanJobs(serverContext).start();
+        new KadRefreshJob(serverContext).start();
     }
 
     private static void initLogger() {

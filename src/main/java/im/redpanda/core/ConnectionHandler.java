@@ -127,7 +127,7 @@ public class ConnectionHandler extends Thread {
 
         ConnectionReaderThread.init(serverContext);
 
-        while (!Server.SHUTDOWN) {
+        while (!Server.shuttingDown) {
 
             Peer p;
 

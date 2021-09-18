@@ -18,17 +18,15 @@ public class Server {
     private static final Logger logger = LogManager.getLogger();
 
     public static final int VERSION = 22;
-    static String MAGIC = "k3gV";
-    public static boolean SHUTDOWN = false;
+    public final static String MAGIC = "k3gV";
+    public static boolean shuttingDown = false;
     public static int outBytes = 0;
     public static int inBytes = 0;
-    public static ConnectionHandler connectionHandler;
+    private ConnectionHandler connectionHandler;
     public static OutboundHandler outboundHandler;
     public static ExecutorService threadPool = Executors.newFixedThreadPool(2);
-    public static boolean startedUpSuccessful = false;
 
-    public static SecureRandom secureRandom = new SecureRandom();
-    public static Random random = new Random();
+    public static final SecureRandom secureRandom = new SecureRandom();
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -39,7 +37,7 @@ public class Server {
 
     public Server(ServerContext serverContext, ConnectionHandler connectionHandler) {
         this.serverContext = serverContext;
-        Server.connectionHandler = connectionHandler;
+        this.connectionHandler = connectionHandler;
         outboundHandler = new OutboundHandler(serverContext);
     }
 
@@ -49,15 +47,13 @@ public class Server {
         }
     }
 
-    public static void startedUpSuccessful(ServerContext serverContext) {
+    public static void startUpRoutines(ServerContext serverContext) {
         Settings.init(serverContext);
 
 
         new HTTPServer(serverContext).start();
 
         outboundHandler.start();
-
-        startedUpSuccessful = true;
 
         new PeerPerformanceTestSchedulerJob(serverContext).start();
         new RequestPeerListJob(serverContext).start();
@@ -66,16 +62,13 @@ public class Server {
     }
 
     public static void shutdown(ServerContext serverContext) {
-        Server.SHUTDOWN = true;
-
-//        Server.nodeStore.saveToDisk();
-
-//        KadStoreManager.maintain();
+        Server.shuttingDown = true;
 
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
             e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
 
         serverContext.getNodeStore().close();
@@ -84,8 +77,6 @@ public class Server {
 
     public void start() {
         connectionHandler.start();
-        //this is a permanent job and will run every hour...
-        new KadRefreshJob(serverContext).start();
     }
 
 

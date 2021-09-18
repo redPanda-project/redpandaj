@@ -1,6 +1,5 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.Peer;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 
@@ -19,7 +18,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
     @Override
     public void work() {
 
-        if (Server.SHUTDOWN) {
+        if (Server.shuttingDown) {
             done();
             return;
         }

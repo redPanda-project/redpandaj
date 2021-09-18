@@ -344,7 +344,7 @@ public class PeerList {
             //lets get a random x percent peer
             int max = (int) Math.ceil(size * upperPercent);
 
-            int i = Server.random.nextInt(max);
+            int i = Server.secureRandom.nextInt(max);
 
             return peerArrayList.get(i);
         } finally {

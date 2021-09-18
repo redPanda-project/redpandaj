@@ -15,7 +15,7 @@ public class ServerRestartJob extends Job {
 
     public ServerRestartJob(ServerContext serverContext) {
         super(serverContext, 1000L * 60L * 60L, true);
-        RESTART_TIME = 1000L * 60L * 60L * 24L * 2L + Server.random.nextInt(60 * 60 * 8) * 1000L;
+        RESTART_TIME = 1000L * 60L * 60L * 24L * 2L + Server.secureRandom.nextInt(60 * 60 * 8) * 1000L;
     }
 
     @Override
