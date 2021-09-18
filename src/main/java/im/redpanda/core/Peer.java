@@ -5,7 +5,6 @@
 package im.redpanda.core;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
@@ -20,7 +19,7 @@ import java.util.logging.Logger;
 /**
  * @author rflohr
  */
-public class Peer implements Comparable<Peer>, Serializable {
+public class Peer implements Comparable<Peer> {
 
     private Node node;
     public String ip;
@@ -31,38 +30,24 @@ public class Peer implements Comparable<Peer>, Serializable {
     public int protocolVersion;
 
     public int retries = 0;
-    public long lastBufferModified;
-    long lastRetryAfter5 = 0;
     public long lastActionOnConnection = 0;
     int cnt = 0;
     public long connectedSince = 0;
     private NodeId nodeId;
     private ArrayList<String> filterAdresses;
     private SocketChannel socketChannel;
-    //    public ArrayList<ByteBuffer> readBuffers = new ArrayList<ByteBuffer>();
-//    public ArrayList<ByteBuffer> writeBuffers = new ArrayList<ByteBuffer>();
     public ByteBuffer readBuffer;
     public ByteBuffer writeBuffer;
     SelectionKey selectionKey;
-    public boolean firstCommandsProceeded;
     private boolean connected = false;
     public boolean isConnecting;
     public long lastPinged = 0;
     public double ping = 0;
-    public int requestedMsgs = 0;
-    byte[] toEncodeForAuthFromMe;
-    byte[] toEncodeForAuthFromHim;
-    boolean requestedNewAuth;
     public boolean authed = false;
     public ByteBuffer writeBufferCrypted;
-    //    public ByteBuffer readBufferCrypted;
-    public int trustRetries = 0;
     public final ReentrantLock writeBufferLock = new ReentrantLock();
-    public Thread connectinThread;
-    public int parsedCryptedBytes = 0;
-    public long syncMessagesSince = 0;
-    public ArrayList<Integer> removedSendMessages = new ArrayList<Integer>();
-    public int maxSimultaneousRequests = 1;
+    public Thread connectingThread;
+    public ArrayList<Integer> removedSendMessages = new ArrayList<>();
     public byte lastCommand;
 
 
@@ -74,8 +59,6 @@ public class Peer implements Comparable<Peer>, Serializable {
     private boolean isIntegrated = false;
 
     //new variables since redpanda2.0
-//    Cipher cipherSend;
-//    Cipher cipherReceive;
     private PeerChiperStreams peerChiperStreams;
 
     public Peer(String ip, int port) {
@@ -122,58 +105,6 @@ public class Peer implements Comparable<Peer>, Serializable {
         return node;
     }
 
-    //    public void setNodeId(KademliaId nodeId) {
-//
-//        if (nodeId == null) {
-//            return;
-//        }
-//
-//        Test.peerListLock.lock();
-//        try {
-//            System.out.println("############################################ new node id: " + nodeId + " old: " + this.nodeId);
-//
-//            if (this.nodeId == null) {
-//                //only add
-//                //we have to set the new nodeId in advance!
-//                this.nodeId = nodeId;
-//                Test.addPeerToBucket(this);
-//                return;
-//            }
-//
-//            if (this.nodeId.equals(nodeId)) {
-//                //maybe a new instance!
-//                this.nodeId = nodeId;
-//                return;
-//            }
-//
-//            //if we are here the old id is not null and we have a new id/id changed
-//            //first remove the old id from bucket
-//            Test.removePeerFromBucket(this);
-//            System.out.println("removed peer from buckets: new node id: " + nodeId + " old: " + this.nodeId);
-//
-//
-//            //we have to set the new nodeId in advance!
-//            this.nodeId = nodeId;
-//            Test.addPeerToBucket(this);
-//        } finally {
-//            Test.peerListLock.unlock();
-//        }
-//    }
-//
-//    public void removeNodeId() {
-//
-//        if (this.nodeId == null) {
-//            return;
-//        }
-//
-//        Test.peerListLock.lock();
-//        try {
-//            Test.removePeerFromBucket(this);
-//        } finally {
-//            Test.peerListLock.unlock();
-//        }
-//    }
-
     public KademliaId getKademliaId() {
         if (getNodeId() == null) {
             return null;
@@ -205,9 +136,7 @@ public class Peer implements Comparable<Peer>, Serializable {
                 return false;
             }
 
-            //return (ip.equals(n2.ip) && port == n2.port && nonce == n2.nonce);
             return getNodeId().getKademliaId().equals(n2.getNodeId().getKademliaId());
-
         } else {
             return false;
         }
@@ -219,20 +148,9 @@ public class Peer implements Comparable<Peer>, Serializable {
         return super.equals(obj);
     }
 
-//    @Override
-//    public boolean equals(Object obj) {
-//        throw new RuntimeException("hjgadzagdzwad");
-////        return equalsNonce(obj);
-//    }
-
     public long getLastAnswered() {
         return System.currentTimeMillis() - lastActionOnConnection;
     }
-
-
-//    public PeerSaveable toSaveable() {
-//        return new PeerSaveable(ip, port, lastAllMsgsQuerried, nodeId, retries);
-//    }
 
     public boolean isConnected() {
         return connected;
@@ -244,56 +162,35 @@ public class Peer implements Comparable<Peer>, Serializable {
 
     @Override
     public int compareTo(Peer o) {
-
         return o.getPriority() - getPriority();
-
-//        int ret = (int) (retries - o.retries);
-//
-//        if (ret != 0) {
-//            return ret;
-//        }
-//
-//
-//        int a = (int) (o.lastActionOnConnection - lastActionOnConnection);
-//
-//        if (a != 0) {
-//            return a;
-//        }
-//
-//        return (int) (o.lastAllMsgsQuerried - lastAllMsgsQuerried);
     }
 
     public int getPriority() {
 
-        int a = 0;
+        int score = 0;
 
         if (connected) {
-            a += 2000;
+            score += 2000;
         }
 
         if (getNodeId() == null) {
-            a -= 1000;
+            score -= 1000;
         }
 
         if (ip != null && ip.contains(":")) {
-            a += 50;
+            score += 50;
         }
 
-
-        a += -retries * 200;
+        score += -retries * 200;
 
         if (node != null) {
-            a += 5000;
+            score += 5000;
 
-            a -= node.getGmTestsFailed() * 3;
-            a += node.getGmTestsSuccessful() * 5;
+            score -= node.getGmTestsFailed() * 3;
+            score += node.getGmTestsSuccessful() * 5;
         }
 
-        return a;
-    }
-
-    public boolean iSameInstance(Peer p) {
-        return super.equals(p);
+        return score;
     }
 
     public SocketChannel getSocketChannel() {
@@ -303,7 +200,6 @@ public class Peer implements Comparable<Peer>, Serializable {
     public void setSocketChannel(SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
     }
-
 
     public void disconnect(String reason) {
 
@@ -321,8 +217,8 @@ public class Peer implements Comparable<Peer>, Serializable {
             setConnected(false);
 
 
-            if (isConnecting && connectinThread != null) {
-                connectinThread.interrupt();
+            if (isConnecting && connectingThread != null) {
+                connectingThread.interrupt();
             }
 
 
@@ -330,20 +226,10 @@ public class Peer implements Comparable<Peer>, Serializable {
                 selectionKey.cancel();
             }
             if (socketChannel != null) {
-//            ByteBuffer a = ByteBuffer.allocate(1);
-//            a.put((byte) 254);
-//            a.flip();
-//            try {
-//                int write = socketChannel.write(a);
-//                //System.out.println("QUIT bytes: " + write);
-//            } catch (IOException ex) {
-//            } catch (NotYetConnectedException e) {
-//            }
-
                 if (socketChannel.isOpen()) {
                     try {
                         socketChannel.configureBlocking(false);//ToDo: hack
-                    } catch (IOException ex) {
+                    } catch (IOException ignored) {
                     }
                 }
 
@@ -362,8 +248,6 @@ public class Peer implements Comparable<Peer>, Serializable {
                 ByteBufferPool.returnObject(buff);
             }
 
-//            readBuffer = null;
-//            readBufferCrypted = null;
             writeBuffer = null;
             writeBufferCrypted = null;
 
@@ -371,9 +255,9 @@ public class Peer implements Comparable<Peer>, Serializable {
                 writeBufferLock.unlock();
             }
 
-
         } catch (InterruptedException ex) {
             Logger.getLogger(Peer.class.getName()).log(Level.SEVERE, null, ex);
+            Thread.currentThread().interrupt();
         }
 
         Server.triggerOutboundThread();
@@ -381,7 +265,7 @@ public class Peer implements Comparable<Peer>, Serializable {
     }
 
 
-    public void ping() {
+    public void sendPing() {
 
         if (System.currentTimeMillis() - lastPinged < 1000) {
             return;
@@ -393,7 +277,6 @@ public class Peer implements Comparable<Peer>, Serializable {
         }
         if (!getSelectionKey().isValid()) {
             System.out.println("selectionkey invalid11!");
-            //disconnect();
             setConnected(false);
             return;
         }
@@ -430,8 +313,6 @@ public class Peer implements Comparable<Peer>, Serializable {
             return false;
         }
 
-        boolean remainingBytes;
-
         if (writeBuffer == null) {
             return false;
         }
@@ -456,13 +337,13 @@ public class Peer implements Comparable<Peer>, Serializable {
         return false;
     }
 
-    public int encrypteOutputdata() {
+    public void encrypteOutputdata() {
 
         writeBufferLock.lock();
         try {
 
             if (writeBuffer == null) {
-                return 0;
+                return;
             }
 
             writeBuffer.flip();
@@ -471,36 +352,19 @@ public class Peer implements Comparable<Peer>, Serializable {
 
             if (remaining == 0) {
                 writeBuffer.compact();
-                return 0;
+                return;
             }
-
-//            byte[] bytesToEncrypt = new byte[Math.min(remaining, writeBufferCrypted.remaining())];
-//            writeBuffer.get(bytesToEncrypt);
-//
-//
-//            byte[] encrypt = encrypt(bytesToEncrypt);
-//
-//            writeBufferCrypted.put(encrypt);
-//
-//
-
 
             //writebuffer in read, writeBufferCrypted in write mode
             getPeerChiperStreams().encrypt(writeBuffer, writeBufferCrypted);
 
             writeBuffer.compact();
-
-//            System.out.println("encrypted " + remaining + " bytes...");
-
-            return remaining;
         } finally {
             writeBufferLock.unlock();
         }
-
-
     }
 
-    public int decryptInputdata(ByteBuffer byteBufferToDecrypt) {
+    public int decryptInputData(ByteBuffer byteBufferToDecrypt) {
 
         writeBufferLock.lock();
         try {
@@ -514,44 +378,23 @@ public class Peer implements Comparable<Peer>, Serializable {
                 byteBufferToDecrypt.compact();
                 return 0;
             }
-//
-//            byte[] bytesToDecrypt = new byte[remaining];
-//            byteBufferToDecrypt.get(bytesToDecrypt);
-//
-//
-//            byte[] decrypt = decrypt(bytesToDecrypt);
 
             if (readBuffer.remaining() < remaining) {
                 int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 60);
-                System.out.println("get new readBuffer with size " + newSize);
+                Log.put(String.format("get new readBuffer with size: %s", newSize), 5);
                 ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
 
-//                ByteBuffer allocate = ByteBuffer.allocate(newSize);
                 System.arraycopy(readBuffer.array(), 0, newBuffer.array(), 0, readBuffer.array().length);
                 newBuffer.position(readBuffer.position());
-                System.out.println("new readbuffer... " + readBuffer + " " + newBuffer);
                 readBuffer.compact();
                 readBuffer.position(0);
                 ByteBufferPool.returnObject(readBuffer);
                 readBuffer = newBuffer;
             }
 
-//            readBuffer.put(decrypt);
-
-            // byteBufferToDecrypt in read mode, readBuffer in write mode
-
-//            System.out.println("Adecrypt: " + byteBufferToDecrypt + " " + readBuffer);
-
             getPeerChiperStreams().decrypt(byteBufferToDecrypt, readBuffer);
 
-//            System.out.println("Bdecrypt: " + byteBufferToDecrypt + " " + readBuffer);
-
-//            System.out.println("decrypt: " + byteBufferToDecrypt + " " + readBuffer);
-
-
             byteBufferToDecrypt.compact();
-
-//            System.out.println("decrypted  " + remaining + " bytes...");
 
             return remaining;
         } finally {
@@ -580,7 +423,6 @@ public class Peer implements Comparable<Peer>, Serializable {
                 return false;
             }
         }
-        System.out.println("could not compare!!!");
         return false;
     }
 
@@ -622,68 +464,9 @@ public class Peer implements Comparable<Peer>, Serializable {
         return false;
     }
 
-//    /**
-//     * Sets the KademliaId, the updates for Buckets and HashMap should be directly handled by the PeerList.
-//     *
-//     * @param kademliaId
-//     */
-//    public void setKademliaId(KademliaId kademliaId) {
-//        this.kademliaId = kademliaId;
-//
-//
-////        if (kademliaId == null) {
-////            return;
-////        }
-////
-////        Server.peerListLock.writeLock().lock();
-////        try {
-////            System.out.println("############################################ new node id: " + kademliaId + " old: " + this.kademliaId);
-////
-////            if (this.kademliaId == null) {
-////                //only add
-////                //we have to set the new nodeId in advance!
-////                this.kademliaId = kademliaId;
-//////                Server.addPeerToBucket(this);
-////                return;
-////            }
-////
-////            if (this.kademliaId.equals(kademliaId)) {
-////                //maybe a new instance!
-////                this.kademliaId = kademliaId;
-////                return;
-////            }
-////
-////            //if we are here the old id is not null and we have a new id/id changed
-////            //first remove the old id from bucket
-////            Server.removePeerFromBucket(this);
-////            System.out.println("removed peer from buckets: new node id: " + kademliaId + " old: " + this.kademliaId);
-////
-////
-////            //we have to set the new nodeId in advance!
-////            this.kademliaId = kademliaId;
-////            Server.addPeerToBucket(this);
-////        } finally {
-////            Server.peerListLock.writeLock().unlock();
-////        }
-//    }
-
     public PeerSaveable toSaveable() {
         return new PeerSaveable(ip, port, nodeId, retries);
     }
-
-//    public void removeNodeId() {
-//
-//        if (this.nodeId == null) {
-//            return;
-//        }
-//
-//        Server.peerListLock.writeLock().lock();
-//        try {
-//            Server.removePeerFromBucket(this);
-//        } finally {
-//            Server.peerListLock.writeLock().unlock();
-//        }
-//    }
 
     public void setLastActionOnConnection(long lastActionOnConnection) {
         this.lastActionOnConnection = lastActionOnConnection;
@@ -696,51 +479,6 @@ public class Peer implements Comparable<Peer>, Serializable {
     public PeerChiperStreams getPeerChiperStreams() {
         return peerChiperStreams;
     }
-
-//    public byte[] encrypt(byte[] toEncrypt) {
-//
-//
-//
-//
-//        return toEncrypt;
-////        try {
-////
-////            byte[] outputEncryptedBytes;
-////
-////            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
-////            int encryptLength = cipherSend.update(toEncrypt, 0,
-////                    toEncrypt.length, outputEncryptedBytes, 0);
-////            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
-////
-////
-////            return outputEncryptedBytes;
-////        } catch (ShortBufferException
-////                | IllegalBlockSizeException | BadPaddingException e) {
-////            e.printStackTrace();
-////            return null;
-////        }
-//    }
-//
-//    public byte[] decrypt(byte[] bytesToDecrypt) {
-//        return bytesToDecrypt;
-////        try {
-////            byte[] outPlain;
-////
-//////            System.out.println("len to decrypt: " + bytesToDecrypt.length);
-////
-////            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
-////            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
-////                    bytesToDecrypt.length, outPlain, 0);
-////            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
-////
-////            return outPlain;
-////        } catch (IllegalBlockSizeException | BadPaddingException
-////                | ShortBufferException e) {
-////            e.printStackTrace();
-////            return null;
-////        }
-//    }
-
 
     public void setupConnectionForPeer(PeerInHandshake peerInHandshake) {
         //disconnect old connection if present
@@ -760,21 +498,17 @@ public class Peer implements Comparable<Peer>, Serializable {
         ReentrantLock writeBufferLock = getWriteBufferLock();
         writeBufferLock.lock();
         try {
-//            readBuffer = ByteBuffer.allocate(300 * 1024);
-//            readBufferCrypted = ByteBuffer.allocate(300 * 1024);
             writeBuffer = ByteBuffer.allocate(300 * 1024);
             writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
-        } catch (Throwable e) {
-            Log.putStd("Speicher konnte nicht reserviert werden. Disconnect peer...");
-            disconnect("Speicher konnte nicht reserviert werden.");
+        } catch (Exception e) {
+            Log.putStd("Could not reserve enough memory for this connection. Disconnect peer...");
+            disconnect("Could not reserve enough memory for this connection.");
         } finally {
             writeBufferLock.unlock();
         }
 
-
-        //setup the peer with all data from the peerInHandshake
+        //set up the peer with all data from the peerInHandshake
         setLastActionOnConnection(System.currentTimeMillis());
-
 
         setSocketChannel(peerInHandshake.getSocketChannel());
         setSelectionKey(peerInHandshake.getKey());
@@ -794,7 +528,6 @@ public class Peer implements Comparable<Peer>, Serializable {
         }
     }
 
-
     @Override
     public String toString() {
         return "Peer{" +
@@ -802,7 +535,6 @@ public class Peer implements Comparable<Peer>, Serializable {
                 ", port=" + port +
                 '}';
     }
-
 
     public void setLightClient(boolean lightClient) {
         this.lightClient = lightClient;

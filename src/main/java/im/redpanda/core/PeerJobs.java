@@ -111,11 +111,11 @@ public class PeerJobs extends Thread {
                         //p.ping();
                         p.cnt++;
                         if (p.cnt > Settings.peerListRequestDelay * 1000 / (Settings.pingDelay)) {
-                            p.ping();
+                            p.sendPing();
                             p.cnt = 0;
                         } else {
                             if (p.isConnected() && p.getLastAnswered() > Settings.pingDelay) {
-                                p.ping();
+                                p.sendPing();
                             } else {
                             }
 

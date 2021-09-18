@@ -333,7 +333,7 @@ public class ConnectionReaderThread extends Thread {
         /**
          * Decrypt all bytes from the readBufferCrypted to the readBuffer
          */
-        peer.decryptInputdata(myReaderBuffer);
+        peer.decryptInputData(myReaderBuffer);
 
 
         loopCommands(peer, readBuffer);
