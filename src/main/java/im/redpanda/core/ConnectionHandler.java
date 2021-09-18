@@ -30,8 +30,6 @@ public class ConnectionHandler extends Thread {
 
     private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
 
-    public static final boolean ENCRYPTION_ENABLED = false;
-
     public static Selector selector;
     public static final ReentrantLock selectorLock = new ReentrantLock();
 
@@ -94,18 +92,18 @@ public class ConnectionHandler extends Thread {
                 serverSocketChannel.socket().bind(new InetSocketAddress(port));
                 bound = true;
             } catch (Exception e) {
-                System.out.println("could not bound to port: " + port);
+                System.out.println(String.format("could not bound to port: %s", port));
                 port++;
             }
         }
-        logger.info("bound successfully to port: " + port);
+        logger.info(String.format("bound successfully to port: %s", port));
         return port;
     }
 
     void addServerSocketChannel(ServerSocketChannel serverSocketChannel) {
         try {
             selector.wakeup();
-            SelectionKey key = serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+            serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
             selector.wakeup();
             Log.putStd("added ServerSocketChannel");
 
@@ -132,24 +130,7 @@ public class ConnectionHandler extends Thread {
             Peer p;
 
             while ((p = doneRead.poll()) != null) {
-                try {
-
-                    workingRead.remove(p);
-
-
-                    //ToDo: optimize
-                    p.writeBufferLock.lock();
-                    try {
-                        p.setWriteBufferFilled();
-                    } finally {
-                        p.writeBufferLock.unlock();
-                    }
-
-                    p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
-
-                } catch (CancelledKeyException e) {
-                    Log.putStd("key was canneled");
-                }
+                finishedReadingPeer(p);
             }
 
             int readyChannels = 0;
@@ -177,202 +158,231 @@ public class ConnectionHandler extends Thread {
             Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
             while (keyIterator.hasNext()) {
-
-                SelectionKey key = keyIterator.next();
-                keyIterator.remove();
-                if (!key.isValid()) {
-                    Log.putStd("key was invalid");
-                    key.cancel();
-                    continue;
-                }
-
-                try {
-
-                    if (key.isAcceptable()) {
-                        // a connection was accepted by a ServerSocketChannel.
-                        if (!Settings.NAT_OPEN) {
-                            Settings.NAT_OPEN = true;
-                        }
-
-                        ServerSocketChannel s = (ServerSocketChannel) key.channel();
-                        SocketChannel socketChannel = s.accept();
-                        socketChannel.configureBlocking(false);
-                        String ip = socketChannel.socket().getInetAddress().getHostAddress();
-
-                        String[] split = ip.split("\\.");
-                        if (split.length == 4) {
-                            ip = split[0] + "." + split[1] + "." + split[2] + "." + split[3];
-                        } else {
-                            ip = "not4blocks";
-                        }
-
-                        Log.put("incoming connection from ip: " + ip, 12);
-
-                        try {
-                            socketChannel.configureBlocking(false);
-
-                            selector.wakeup();
-                            SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
-
-                            PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
-                            ConnectionHandler.peerInHandshakesLock.lock();
-                            try {
-                                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
-                            } finally {
-                                ConnectionHandler.peerInHandshakesLock.unlock();
-                            }
-
-                            ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
-
-                            newKey.attach(peerInHandshake);
-                            peerInHandshake.setKey(newKey);
-                            selector.wakeup();
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                            Log.putStd("could not init connection....");
-                            return;
-                        }
-                        continue;
-                    }
-
-
-                    /**
-                     * This try-catch is for the complete handshaling process until the first encrypted byte
-                     * was successfully parsed.
-                     */
-                    if (key.attachment() instanceof PeerInHandshake) {
-                        handlePeerInHandshake(key);
-                        continue;
-                    }
-
-                    Peer peer = (Peer) key.attachment();
-                    if (peer == null) {
-                        key.cancel();
-                        continue;
-                    }
-
-                    if (!key.isValid()) {
-                        peer.disconnect("key is invalid.");
-                        continue;
-                    }
-
-                    if (key.isConnectable()) {
-
-                        boolean connected = false;
-                        try {
-                            connected = peer.getSocketChannel().finishConnect();
-                        } catch (IOException | SecurityException e) {
-                            e.printStackTrace();
-                        }
-
-                        if (!connected) {
-                            Log.put("connection could not be established...", 150);
-                            key.cancel();
-                            peer.disconnect("connection could not be established");
-                            continue;
-                        }
-
-                        Log.putStd("Connection established...");
-//                        sendHandshake(peer);
-                        key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-
-
-                        // a connection was established with a remote server.
-                    } else if (key.isReadable()) {
-
-                        int interestOps = key.interestOps();
-
-                        if ((interestOps == (SelectionKey.OP_WRITE | SelectionKey.OP_READ))) {
-                            key.interestOps(SelectionKey.OP_WRITE);
-                        } else if (interestOps == (SelectionKey.OP_READ)) {
-                            key.interestOps(0);
-                        } else {
-                            System.out.println("Error code 45354824173 " + interestOps);
-                            key.interestOps(0);
-                        }
-
-                        if (!workingRead.contains(peer)) {
-                            workingRead.add(peer);
-                            peersToReadAndParse.add(peer);
-                        } else {
-                            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size());
-                        }
-
-                    } else if (key.isWritable()) {
-
-                        peer.writeBufferLock.lock();
-
-                        try {
-
-                            int writtenBytes = 0;
-                            boolean remainingBytes = true;
-
-                            /**
-                             * First encrypt all bytes from the writebuffer to the writebuffercrypted...
-                             * todo: this should be done in a seperate thread/threadpool...
-                             */
-                            peer.encrypteOutputdata();
-
-
-                            peer.writeBufferCrypted.flip();
-                            remainingBytes = peer.writeBufferCrypted.hasRemaining();
-                            peer.writeBufferCrypted.compact();
-
-                            //switch buffer for reading
-                            if (!remainingBytes) {
-                                key.interestOps(SelectionKey.OP_READ);
-                            } else {
-                                try {
-                                    writtenBytes = peer.writeBytesToPeer();
-                                    Log.put("written bytes: " + writtenBytes, 200);
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                    Log.putStd("could not write bytes to peer, peer disconnected?");
-                                    peer.disconnect("could not write");
-                                    continue; //finally, unlocks the lock
-                                }
-                            }
-
-                            Server.outBytes += writtenBytes;
-                            peer.sendBytes += writtenBytes;
-                        } finally {
-                            peer.writeBufferLock.unlock();
-                        }
-
-                    }
-
-                } catch (IOException e) {
-                    key.cancel();
-                    if (key.attachment() instanceof PeerInHandshake) {
-                        PeerInHandshake peerInHandshake = ((PeerInHandshake) key.attachment());
-                        Log.putStd("error! " + peerInHandshake.ip);
-                        try {
-                            peerInHandshake.getSocketChannel().close();
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                        }
-//                        peer.disconnect("IOException");
-                    } else if (key.attachment() instanceof Peer) {
-                        Peer peer = ((Peer) key.attachment());
-                        Log.putStd("error! " + peer.ip);
-                        peer.disconnect("IOException");
-                    }
-
-                    e.printStackTrace();
-
-
-                } catch (Exception e) {
-                    key.cancel();
-                    e.printStackTrace();
-                    Log.sentry(e);
-                }
-
+                handleSelectionKey(keyIterator);
             }
         }
 
         Log.putStd(
                 "ConnectionHandler thread died...");
 
+    }
+
+    private void handleSelectionKey(Iterator<SelectionKey> keyIterator) {
+        SelectionKey key = keyIterator.next();
+        keyIterator.remove();
+        if (!key.isValid()) {
+            Log.putStd("key was invalid");
+            key.cancel();
+            return;
+        }
+
+        try {
+
+            if (key.isAcceptable()) {
+                keyAccept(key);
+                return;
+            } else if (key.attachment() instanceof PeerInHandshake) {
+                handlePeerInHandshake(key);
+                return;
+            }
+
+            if (checkKeyAndAttachment(key)) {
+                return;
+            }
+
+            if (key.isConnectable()) {
+                handleKeyConnectable(key);
+            } else if (key.isReadable()) {
+                handleKeyReadable(key);
+            } else if (key.isWritable()) {
+                handleKeyWriteable(key);
+            }
+
+        } catch (IOException e) {
+            key.cancel();
+            if (key.attachment() instanceof PeerInHandshake) {
+                PeerInHandshake peerInHandshake = ((PeerInHandshake) key.attachment());
+                Log.putStd("error! " + peerInHandshake.ip);
+                try {
+                    peerInHandshake.getSocketChannel().close();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            } else if (key.attachment() instanceof Peer) {
+                Peer peer = ((Peer) key.attachment());
+                Log.putStd("error! " + peer.ip);
+                peer.disconnect("IOException");
+            }
+
+            e.printStackTrace();
+        } catch (Exception e) {
+            key.cancel();
+            e.printStackTrace();
+            Log.sentry(e);
+        }
+    }
+
+    private boolean checkKeyAndAttachment(SelectionKey key) {
+        Peer peer = (Peer) key.attachment();
+        if (peer == null) {
+            key.cancel();
+            return true;
+        }
+
+        if (!key.isValid()) {
+            peer.disconnect("key is invalid.");
+            return true;
+        }
+        return false;
+    }
+
+    private boolean handleKeyWriteable(SelectionKey key) {
+        Peer peer = (Peer) key.attachment();
+        peer.writeBufferLock.lock();
+        try {
+
+            int writtenBytes = 0;
+            boolean remainingBytes = true;
+
+            /**
+             * First encrypt all bytes from the writebuffer to the writebuffercrypted...
+             * todo: this should be done in a seperate thread/threadpool...
+             */
+            peer.encrypteOutputdata();
+
+
+            peer.writeBufferCrypted.flip();
+            remainingBytes = peer.writeBufferCrypted.hasRemaining();
+            peer.writeBufferCrypted.compact();
+
+            //switch buffer for reading
+            if (!remainingBytes) {
+                key.interestOps(SelectionKey.OP_READ);
+            } else {
+                try {
+                    writtenBytes = peer.writeBytesToPeer();
+                    Log.put("written bytes: " + writtenBytes, 200);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    Log.putStd("could not write bytes to peer, peer disconnected?");
+                    peer.disconnect("could not write");
+                    return true;
+                }
+            }
+
+            Server.outBytes += writtenBytes;
+            peer.sendBytes += writtenBytes;
+        } finally {
+            peer.writeBufferLock.unlock();
+        }
+        return false;
+    }
+
+    private void handleKeyReadable(SelectionKey key) {
+        Peer peer = (Peer) key.attachment();
+        int interestOps = key.interestOps();
+
+        if ((interestOps == (SelectionKey.OP_WRITE | SelectionKey.OP_READ))) {
+            key.interestOps(SelectionKey.OP_WRITE);
+        } else if (interestOps == (SelectionKey.OP_READ)) {
+            key.interestOps(0);
+        } else {
+            System.out.println("Error code 45354824173 " + interestOps);
+            key.interestOps(0);
+        }
+
+        if (!workingRead.contains(peer)) {
+            workingRead.add(peer);
+            peersToReadAndParse.add(peer);
+        } else {
+            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size());
+        }
+    }
+
+    private boolean handleKeyConnectable(SelectionKey key) {
+        Peer peer = (Peer) key.attachment();
+        boolean connected = false;
+        try {
+            connected = peer.getSocketChannel().finishConnect();
+        } catch (IOException | SecurityException e) {
+            e.printStackTrace();
+        }
+
+        if (!connected) {
+            Log.put("connection could not be established...", 150);
+            key.cancel();
+            peer.disconnect("connection could not be established");
+            return true;
+        }
+
+        Log.putStd("Connection established...");
+        key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+        return false;
+    }
+
+    private void keyAccept(SelectionKey key) throws IOException {
+        // a connection was accepted by a ServerSocketChannel.
+        if (!Settings.NAT_OPEN) {
+            Settings.NAT_OPEN = true;
+        }
+
+        ServerSocketChannel s = (ServerSocketChannel) key.channel();
+        SocketChannel socketChannel = s.accept();
+        socketChannel.configureBlocking(false);
+        String ip = socketChannel.socket().getInetAddress().getHostAddress();
+
+        String[] split = ip.split("\\.");
+        if (split.length == 4) {
+            ip = split[0] + "." + split[1] + "." + split[2] + "." + split[3];
+        } else {
+            ip = "not4blocks";
+        }
+
+        Log.put("incoming connection from ip: " + ip, 12);
+
+        try {
+            socketChannel.configureBlocking(false);
+
+            selector.wakeup();
+            SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
+
+            PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
+            ConnectionHandler.peerInHandshakesLock.lock();
+            try {
+                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+            } finally {
+                ConnectionHandler.peerInHandshakesLock.unlock();
+            }
+
+            ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
+
+            newKey.attach(peerInHandshake);
+            peerInHandshake.setKey(newKey);
+            selector.wakeup();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            Log.putStd("could not init connection....");
+            return;
+        }
+    }
+
+    private void finishedReadingPeer(Peer p) {
+        try {
+            workingRead.remove(p);
+
+            //ToDo: optimize
+            p.writeBufferLock.lock();
+            try {
+                p.setWriteBufferFilled();
+            } finally {
+                p.writeBufferLock.unlock();
+            }
+
+            p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
+
+        } catch (CancelledKeyException e) {
+            Log.putStd("key was canneled");
+        }
     }
 
     private void handlePeerInHandshake(SelectionKey key) {
