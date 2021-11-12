@@ -19,7 +19,7 @@
 
         <smack.version>4.3.5</smack.version>
         <jackson.version>2.12.5</jackson.version>
-        <logback.version>1.2.6</logback.version>
+        <logback.version>1.2.7</logback.version>
 
         <sonar.organization>redpanda-project</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
