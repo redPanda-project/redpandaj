@@ -163,6 +163,10 @@ public class PeerInHandshake {
         return nodeId;
     }
 
+    public boolean isLightClient() {
+        return lightClient;
+    }
+
     public void setNodeId(NodeId nodeId) {
         this.nodeId = nodeId;
     }

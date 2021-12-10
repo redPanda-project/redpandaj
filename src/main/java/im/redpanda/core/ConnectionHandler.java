@@ -335,13 +335,6 @@ public class ConnectionHandler extends Thread {
         socketChannel.configureBlocking(false);
         String ip = socketChannel.socket().getInetAddress().getHostAddress();
 
-        String[] split = ip.split("\\.");
-        if (split.length == 4) {
-            ip = split[0] + "." + split[1] + "." + split[2] + "." + split[3];
-        } else {
-            ip = "not4blocks";
-        }
-
         Log.put("incoming connection from ip: " + ip, 12);
 
         try {
@@ -661,18 +654,22 @@ public class ConnectionHandler extends Thread {
             /**
              * Lets search for the Node object for that peer and load it.
              */
-            Node byKademliaId = Node.getByKademliaId(serverContext, peerInHandshake.getIdentity());
-            if (byKademliaId == null) {
-                byKademliaId = new Node(serverContext, peerInHandshake.getNodeId());
-            } else {
-                System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+
+            if (!peerInHandshake.isLightClient()) {
+                Node byKademliaId = Node.getByKademliaId(serverContext, peerInHandshake.getIdentity());
+                if (byKademliaId == null) {
+                    byKademliaId = new Node(serverContext, peerInHandshake.getNodeId());
+                } else {
+                    System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+                }
+                byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
+                peerOrigin.setNode(byKademliaId);
             }
-            byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
-            peerOrigin.setNode(byKademliaId);
 
         } finally {
             writeBufferLock.unlock();
         }
+
     }
 
 
