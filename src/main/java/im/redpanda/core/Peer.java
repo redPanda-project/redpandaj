@@ -4,6 +4,8 @@
  */
 package im.redpanda.core;
 
+import im.redpanda.core.exceptions.PeerProtocolException;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
@@ -364,7 +366,7 @@ public class Peer implements Comparable<Peer> {
         }
     }
 
-    public int decryptInputData(ByteBuffer byteBufferToDecrypt) {
+    public int decryptInputData(ByteBuffer byteBufferToDecrypt) throws PeerProtocolException {
 
         writeBufferLock.lock();
         try {
@@ -381,6 +383,9 @@ public class Peer implements Comparable<Peer> {
 
             if (readBuffer.remaining() < remaining) {
                 int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 60);
+                if (newSize == readBuffer.remaining()) {
+                    throw new PeerProtocolException(String.format("buffer could not be increased, size is %s ", newSize));
+                }
                 Log.put(String.format("get new readBuffer with size: %s", newSize), 5);
                 ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
 

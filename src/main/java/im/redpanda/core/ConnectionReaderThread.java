@@ -9,6 +9,7 @@ package im.redpanda.core;
 import com.google.flatbuffers.FlatBufferBuilder;
 import im.redpanda.commands.FBPeer;
 import im.redpanda.commands.FBPeerList;
+import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMContent;
@@ -23,6 +24,7 @@ import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -70,6 +72,10 @@ public class ConnectionReaderThread extends Thread {
     private boolean run = true;
     private final int timeout;
     private int maxThreads = 30;
+
+    private int peekedAndFound = 0;
+    private int lastThreadSize = 1;
+
 
     /**
      * Timeout in seconds for polling for new work to do.
@@ -261,7 +267,7 @@ public class ConnectionReaderThread extends Thread {
     }
 
 
-    private int readConnection(Peer peer) {
+    private int readConnection(Peer peer) throws PeerProtocolException {
 
 
         ByteBuffer writeBuffer = peer.writeBuffer;
@@ -1452,37 +1458,21 @@ public class ConnectionReaderThread extends Thread {
 
         setName("ReaderThread");
 
-        int peekedAndFound = 0;
-        int lastThreadSize = 1;
-        int threadSize = 1;
 
         while (!Server.shuttingDown && run) {
 
-            threadLock.lock();
-            try {
-                threadSize = threads.size();
-                if (threadSize > maxThreads) {
-                    run = false;
-                    threads.remove(this);
-                    Log.put("threads now: " + threads.size(), -10);
-                    continue;
-                }
 
-            } finally {
-                threadLock.unlock();
+            if (killThreadIfMaxThreadsReached()) {
+                continue;
             }
 
-            if (threadSize != lastThreadSize) {
-                peekedAndFound = 0;
-            }
-
-            Peer poll = null;
+            Peer peer = null;
             try {
 
                 if (timeout == -1) {
-                    poll = ConnectionHandler.peersToReadAndParse.take(); // will never return null element, needed for main thread. Dann ist immer einer am Leben.
+                    peer = ConnectionHandler.peersToReadAndParse.take(); // will never return null element, needed for main thread. Dann ist immer einer am Leben.
                 } else {
-                    poll = ConnectionHandler.peersToReadAndParse.poll(timeout, TimeUnit.SECONDS);
+                    peer = ConnectionHandler.peersToReadAndParse.poll(timeout, TimeUnit.SECONDS);
                 }
 
                 int size = ConnectionHandler.peersToReadAndParse.size();
@@ -1548,9 +1538,8 @@ public class ConnectionReaderThread extends Thread {
                 e.printStackTrace();
             }
 
-            lastThreadSize = threadSize;
 
-            if (poll == null) {
+            if (peer == null) {
                 //this thread can be destroyed, a new one will be started if needed
                 run = false;
                 threadLock.lock();
@@ -1563,7 +1552,10 @@ public class ConnectionReaderThread extends Thread {
             long a = System.currentTimeMillis();
 
             try {
-                readConnection(poll);
+                readConnection(peer);
+            } catch (PeerProtocolException e) {
+                Log.sentry(e);
+                peer.disconnect("PeerProtocolException");
             } catch (Throwable e) {
                 Log.sentry(e);
             }
@@ -1572,16 +1564,39 @@ public class ConnectionReaderThread extends Thread {
             long diff = (System.currentTimeMillis() - a);
 
             if (diff > 5000L) {
-                System.out.println("time: " + diff);
+                Log.sentry(String.format("command took over 5 seconds to parse: %s", diff));
             }
 
-            ConnectionHandler.doneRead.add(poll);
+            ConnectionHandler.doneRead.add(peer);
 
             ConnectionHandler.selector.wakeup();
 
         }
 
 
+    }
+
+
+    private boolean killThreadIfMaxThreadsReached() {
+        int threadSize = 1;
+        threadLock.lock();
+        try {
+            threadSize = threads.size();
+            if (threadSize > maxThreads) {
+                run = false;
+                threads.remove(this);
+                Log.put("threads now: " + threads.size(), -10);
+                return true;
+            }
+        } finally {
+            threadLock.unlock();
+        }
+
+        if (threadSize != lastThreadSize) {
+            peekedAndFound = 0;
+        }
+        lastThreadSize = threads.size();
+        return false;
     }
 
 
