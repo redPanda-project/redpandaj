@@ -1,6 +1,11 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.Node;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
@@ -8,6 +13,7 @@ import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
 
@@ -24,8 +30,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final float DELTA_FAIL = 1;
     public static final long JOB_TIMEOUT = 1000L * 5L;
 
-    private static int countSuccess = 0;
-    private static int countFailed = 0;
+    private static AtomicInteger countSuccess = new AtomicInteger();
+    private static AtomicInteger countFailed = new AtomicInteger();
 
     ArrayList<Node> nodes;
     boolean success = false;
@@ -96,17 +102,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             for (NodeEdge edge : edges) {
                 // if an edge is bad we should only test it rarely
 
-                if (edge.isLastCheckFailed()) {
-                    if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
-                        if (Math.random() < 0.999f)
-                            continue;
-                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
-                        if (Math.random() < 0.95f)
-                            continue;
-                    } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
-                        if (Math.random() < 0.7f)
-                            continue;
-                    }
+                if (dismissCheckRandomlyIfEdgeQualityBad(nodeGraph, edge)) {
+                    continue;
                 }
 
                 Node target = nodeGraph.getEdgeTarget(edge);
@@ -152,6 +149,25 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
 
+    }
+
+    private boolean dismissCheckRandomlyIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
+        if (edge.isLastCheckFailed()) {
+            if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
+                if (Math.random() < 0.999f) {
+                    return true;
+                }
+            } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
+                if (Math.random() < 0.95f) {
+                    return true;
+                }
+            } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
+                if (Math.random() < 0.7f) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
@@ -239,9 +255,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 //        }
 
         if (success) {
-            countSuccess++;
+            countSuccess.incrementAndGet();
         } else {
-            countFailed++;
+            countFailed.incrementAndGet();
         }
 
     }
@@ -253,31 +269,31 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
 
     public static int getCountSuccess() {
-        return countSuccess;
+        return countSuccess.get();
     }
 
 
     public static int getCountFailed() {
-        return countFailed;
+        return countFailed.get();
     }
 
 
     public static double getSuccessRate() {
-        if (countSuccess + countFailed == 0) {
+        if (countSuccess.get() + countFailed.get() == 0) {
             return 0;
         }
-        return (double) countSuccess / (double) (countSuccess + countFailed);
+        return (double) countSuccess.get() / (double) (countSuccess.get() + countFailed.get());
     }
 
 
     public static void decayRates() {
-        countSuccess--;
-        if (countSuccess < 0) {
-            countSuccess = 0;
+        int newCountSuccess = countSuccess.decrementAndGet();
+        if (newCountSuccess < 0) {
+            countSuccess.set(0);
         }
-        countFailed--;
-        if (countFailed < 0) {
-            countFailed = 0;
+        int newCountFailed = countFailed.decrementAndGet();
+        if (newCountFailed < 0) {
+            countFailed.set(0);
         }
     }
 }
