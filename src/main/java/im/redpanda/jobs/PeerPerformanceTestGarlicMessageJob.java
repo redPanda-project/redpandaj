@@ -13,6 +13,7 @@ import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
@@ -27,8 +28,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int MAX_WEIGHT = 15;
     public static final int MIN_WEIGHT = 1;
     public static final float DELTA_SUCCESS = -1;
-    public static final float DELTA_FAIL = 1;
+    public static final float DELTA_FAIL = 1.2f;
     public static final long JOB_TIMEOUT = 1000L * 5L;
+    public static final long WAIT_CURT_HARD = 1000L * 60 * 20;
+    public static final long WAIT_CUT_MID = 1000L * 60 * 5;
+    public static final long WAIT_CUT_LOW = 1000L * 60 * 1;
 
     private static AtomicInteger countSuccess = new AtomicInteger();
     private static AtomicInteger countFailed = new AtomicInteger();
@@ -43,7 +47,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
 
 
-    public byte[] calculateNestedGarlicMessages(ArrayList<Node> nodes, int jobId) {
+    public byte[] calculateNestedGarlicMessages(List<Node> nodes, int jobId) {
         //lets target to ourselves without the private key!
         NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
@@ -62,9 +66,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         }
 
-
-        byte[] content = currentLayer.getContent();
-        return content;
+        return currentLayer.getContent();
     }
 
     @Override
@@ -154,15 +156,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     private boolean dismissCheckRandomlyIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
             if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
-                if (Math.random() < 0.999f) {
+                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD) {
                     return true;
                 }
             } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
-                if (Math.random() < 0.95f) {
+                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID) {
                     return true;
                 }
             } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
-                if (Math.random() < 0.7f) {
+                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW) {
                     return true;
                 }
             }

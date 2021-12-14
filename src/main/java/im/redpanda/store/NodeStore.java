@@ -5,6 +5,7 @@ import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import org.jetbrains.annotations.NotNull;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.nio.csv.CSVExporter;
 import org.jgrapht.nio.csv.CSVFormat;
@@ -17,7 +18,13 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -281,19 +288,9 @@ public class NodeStore {
     }
 
 
-    public void printGraph() {
-        CSVExporter<Node, NodeEdge> exporter = new CSVExporter<>(
-                CSVFormat.MATRIX
-        );
-        exporter.setParameter(CSVFormat.Parameter.EDGE_WEIGHTS, true);
-        exporter.setParameter(CSVFormat.Parameter.MATRIX_FORMAT_ZERO_WHEN_NO_EDGE, true);
-        exporter.setVertexIdProvider(node -> node.toString());
 
-        Writer writer = new StringWriter();
-        exporter.exportGraph(nodeGraph, writer);
-        System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", nodeGraph.edgeSet().size()));
-        System.out.println(writer);
-    }
+
+
 
 
     private void addRandomEdgeIfWaitedEnough() {

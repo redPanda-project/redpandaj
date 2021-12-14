@@ -69,7 +69,7 @@ public class Log {
     }
 
     public static void sentry(Throwable e) {
-        if (!App.SENTRY_ALLOWED) {
+        if (!App.sentryAllowed) {
             logger.warn(e);
             return;
         }
@@ -89,7 +89,7 @@ public class Log {
     }
 
     public static void sentry(String msg) {
-        if (!App.SENTRY_ALLOWED) {
+        if (!App.sentryAllowed) {
             return;
         }
         int currentRating = rating.getAndIncrement();

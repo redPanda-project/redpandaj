@@ -26,7 +26,7 @@ public class App {
     private static final Logger logger = LogManager.getLogger();
 
 
-    public static boolean SENTRY_ALLOWED = false;
+    public static boolean sentryAllowed = false;
 
     public static void main(String[] args) throws IOException {
 
@@ -39,7 +39,7 @@ public class App {
                 "                                              \n" +
                 "                                              ");
 
-        System.out.println("Starting redpanda " + new App().getClass().getPackage().getImplementationVersion());
+        System.out.println("Starting redpanda " + App.class.getPackage().getImplementationVersion());
 
 
         initLogger();
@@ -62,7 +62,7 @@ public class App {
         SentryClient sentryClient;
         if (activateSentry) {
             sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-            SENTRY_ALLOWED = true;
+            sentryAllowed = true;
 
             if (gitRev != null) {
                 Sentry.getContext().addTag("gitRev", gitRev);
