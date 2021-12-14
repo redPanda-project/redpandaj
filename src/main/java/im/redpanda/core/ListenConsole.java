@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.store.helper.GraphAdjacentMatrixPrinter;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
@@ -139,7 +140,8 @@ public class ListenConsole extends Thread {
                 }
 
                 if (serverContext.getNodeStore() != null) {
-                    serverContext.getNodeStore().printGraph();
+                    System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", serverContext.getNodeStore().getNodeGraph().edgeSet().size()));
+                    GraphAdjacentMatrixPrinter.printGraph(serverContext.getNodeStore().getNodeGraph());
                     System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }
 
