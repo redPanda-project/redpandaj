@@ -378,27 +378,27 @@ public class PeerList {
             try {
                 ArrayList<Peer> peerArrayList = getPeerArrayList();
 
-                for (Peer p : peerArrayList) {
+                for (Peer peer : peerArrayList) {
 
                     //do not add the peer if the peer is not connected or the nodeId is unknown!
-                    if (p.getNodeId() == null || !p.isConnected()) {
+                    if (peer.getNodeId() == null || !peer.isConnected()) {
                         continue;
                     }
 
                     //remove all light clients
-                    if (p.isLightClient()) {
+                    if (peer.isLightClient()) {
                         continue;
                     }
 
-                    if (p.getNode() == null) {
+                    if (peer.getNode() == null) {
                         continue;
                     }
 
-                    if (targetId.getDistanceToUs(serverContext) < p.getKademliaId().getDistance(targetId)) {
+                    if (targetId.getDistanceToUs(serverContext) < peer.getKademliaId().getDistance(targetId)) {
                         continue;
                     }
 
-                    peers.add(p);
+                    peers.add(peer);
                 }
             } finally {
                 lock.unlock();
