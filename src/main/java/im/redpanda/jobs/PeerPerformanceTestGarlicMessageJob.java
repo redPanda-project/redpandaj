@@ -133,7 +133,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
 
         Peer closestGoodPeer = serverContext.getPeerList().getClosestGoodPeer(this.nodes.get(0).getNodeId().getKademliaId());
-        if (closestGoodPeer == null) {
+        if (closestGoodPeer == null || closestGoodPeer.getNode() == null) {
             super.done();
             return;
         }
