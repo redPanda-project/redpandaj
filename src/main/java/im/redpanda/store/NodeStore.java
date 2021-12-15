@@ -5,20 +5,14 @@ import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
-import org.jetbrains.annotations.NotNull;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.jgrapht.nio.csv.CSVExporter;
-import org.jgrapht.nio.csv.CSVFormat;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
 import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -240,7 +234,7 @@ public class NodeStore {
         Node randomEdge = getRandomNode(nodeToAdd);
         if (randomEdge != null) {
             NodeEdge defaultEdge = nodeGraph.addEdge(nodeToAdd, randomEdge);
-            nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
+            nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_HARD);
         }
     }
 
@@ -279,18 +273,13 @@ public class NodeStore {
     }
 
     private boolean isOneGoodLinkAvailable(Node node) {
-        for (NodeEdge defaultEdge : nodeGraph.edgesOf(node)) {
-            if (nodeGraph.getEdgeWeight(defaultEdge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
+        for (NodeEdge edge : nodeGraph.edgesOf(node)) {
+            if (nodeGraph.getEdgeWeight(edge) <= PeerPerformanceTestGarlicMessageJob.LINK_FAILED) {
                 return true;
             }
         }
         return false;
     }
-
-
-
-
-
 
 
     private void addRandomEdgeIfWaitedEnough() {
@@ -334,7 +323,7 @@ public class NodeStore {
             NodeEdge defaultEdge = nodeGraph.addEdge(a, b);
 
             if (defaultEdge != null) {
-                nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_MID);
+                nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_HARD);
                 added = true;
                 System.out.println(String.format("added edge: %s -> %s", a.getNodeId(), b.getNodeId()));
             }
