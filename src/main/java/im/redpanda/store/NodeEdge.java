@@ -6,6 +6,7 @@ public class NodeEdge extends DefaultEdge {
 
     boolean lastCheckFailed = false;
     long timeLastCheckFailed = 0;
+    long lastTimeCheckStarted = 0;
 
     public boolean isLastCheckFailed() {
         return lastCheckFailed;
@@ -23,4 +24,11 @@ public class NodeEdge extends DefaultEdge {
     }
 
 
+    public boolean isInLastTimeCheckWindow() {
+        return System.currentTimeMillis() - lastTimeCheckStarted < 5000L;
+    }
+
+    public void touchLastTimeCheckStarted() {
+        lastTimeCheckStarted = System.currentTimeMillis();
+    }
 }

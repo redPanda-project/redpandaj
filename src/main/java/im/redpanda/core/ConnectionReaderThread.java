@@ -24,7 +24,6 @@ import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -498,7 +497,7 @@ public class ConnectionReaderThread extends Thread {
                 int size = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.isConnected()) {
                         continue;
                     }
                     size++;
@@ -514,7 +513,7 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.isConnected()) {
                         continue;
                     }
 
@@ -664,7 +663,7 @@ public class ConnectionReaderThread extends Thread {
 
                             //lets not download another version in the next x seconds, otherwise our RAM may explode!
                             try {
-                                Thread.sleep(10000);
+                                Thread.sleep(60000);
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             }

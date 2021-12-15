@@ -98,6 +98,7 @@ public class ParseCommandTest {
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
+            testpeer1.setConnected(true);
             peerList.add(testpeer1);
         }
 
@@ -162,6 +163,7 @@ public class ParseCommandTest {
         for (i = 0; i < peersToTest; i++) {
             Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i);
             testpeer1.setNodeId(new NodeId());
+            testpeer1.setConnected(true);
 //            System.out.println("node id: " + testpeer1.getNodeId().getKademliaId().toString());
             peerList.add(testpeer1);
         }

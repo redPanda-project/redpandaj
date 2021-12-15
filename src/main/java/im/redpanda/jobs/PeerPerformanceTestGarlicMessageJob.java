@@ -30,9 +30,13 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final float DELTA_SUCCESS = -1;
     public static final float DELTA_FAIL = 1.2f;
     public static final long JOB_TIMEOUT = 1000L * 5L;
-    public static final long WAIT_CURT_HARD = 1000L * 60 * 20;
-    public static final long WAIT_CUT_MID = 1000L * 60 * 5;
-    public static final long WAIT_CUT_LOW = 1000L * 60 * 1;
+    public static final long WAIT_CURT_HARD = 1000L * 60 * 10;
+    public static final long WAIT_CUT_MID = 1000L * 30;
+    public static final long WAIT_CUT_LOW = 1000L * 15;
+
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_RED = "\u001B[31m";
+    public static final String ANSI_GREEN = "\u001B[32m";
 
     private static AtomicInteger countSuccess = new AtomicInteger();
     private static AtomicInteger countFailed = new AtomicInteger();
@@ -104,10 +108,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             for (NodeEdge edge : edges) {
                 // if an edge is bad we should only test it rarely
 
-                if (dismissCheckRandomlyIfEdgeQualityBad(nodeGraph, edge)) {
+
+                if (edge.isInLastTimeCheckWindow() || dismissCheckByTimeoutIfEdgeQualityBad(nodeGraph, edge)) {
                     continue;
                 }
 
+                if (!nodeGraph.containsEdge(edge)) {
+                    continue;
+                }
                 Node target = nodeGraph.getEdgeTarget(edge);
 
                 if (nodes.contains(target)) {
@@ -116,6 +124,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
                 currentNode = target;
                 nodes.add(currentNode);
+                edge.touchLastTimeCheckStarted();
                 currentNode.cleanChecks();
                 break;
             }
@@ -153,7 +162,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     }
 
-    private boolean dismissCheckRandomlyIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
+    private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
             if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
                 if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD) {
@@ -245,7 +254,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 }
                 nodeGraph.setEdgeWeight(edge, newWeight);
                 edge.setLastCheckFailed(!success);
-                pathString += " -(" + String.format("%.1f", newWeight) + ")-> " + node;
+                pathString += " -(" + String.format("%.0f", newWeight) + ")-> " + node;
             } else {
                 pathString += node;
             }
@@ -253,7 +262,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
 //        if (!success) {
-//            System.out.println("path: " + pathString + " hops: " + (nodes.size() - 1) + " (" + (success ? "success" : "failed") + ") " + " inserted to peer: " + flaschenPostInsertPeer.getNode());
+        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET);
 //        }
 
         if (success) {
