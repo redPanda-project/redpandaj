@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.App;
 import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
@@ -9,6 +10,7 @@ import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,15 +75,15 @@ public class ByteBufferPool {
 
             @Override
             public PooledObject<ByteBuffer> wrap(ByteBuffer byteBuffer) {
-                return new DefaultPooledObject<ByteBuffer>(byteBuffer);
+                return new DefaultPooledObject<>(byteBuffer);
             }
         };
 
 
         pool = new GenericKeyedObjectPool<>(pooledObjectFactory);
         pool.setMinIdlePerKey(0);
-        pool.setMinEvictableIdleTimeMillis(1000 * 30); // 30 seconds...
-        pool.setTimeBetweenEvictionRunsMillis(5000); // will only test 3 items
+        pool.setMinEvictableIdle(Duration.ofSeconds(30));
+        pool.setTimeBetweenEvictionRuns(Duration.ofSeconds(5)); // will only test 3 items
         pool.setNumTestsPerEvictionRun(3);
     }
 
@@ -90,11 +92,7 @@ public class ByteBufferPool {
     }
 
     public static ByteBuffer borrowObject(Integer key) {
-
-
         key = keyToKey(key);
-
-//        System.out.println("requested: " + key + " idle: " + pool.getNumIdle(key) + " used: " + pool.getNumActive(key));
 
         ByteBuffer byteBuffer = null;
         try {
@@ -143,12 +141,12 @@ public class ByteBufferPool {
                 out += e.toString() + "\n";
             }
 
-//            Log.sentry("had to invalidate ByteBuffer: " + byteBuffer + " " + out);
-
-            Sentry.getContext().recordBreadcrumb(
-                    new BreadcrumbBuilder().setMessage("bytebuffer: " + byteBuffer).build()
-            );
-            Log.sentry("had to invalidate ByteBuffer: \n" + out);
+            if (App.sentryAllowed) {
+                Sentry.getContext().recordBreadcrumb(
+                        new BreadcrumbBuilder().setMessage("bytebuffer: " + byteBuffer).build()
+                );
+                Log.sentry("had to invalidate ByteBuffer: \n" + out);
+            }
         } else {
             String out = "";
             for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
