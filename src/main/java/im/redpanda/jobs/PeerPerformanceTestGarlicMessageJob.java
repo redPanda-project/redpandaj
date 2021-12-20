@@ -1,11 +1,6 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.Command;
-import im.redpanda.core.Node;
-import im.redpanda.core.NodeId;
-import im.redpanda.core.Peer;
-import im.redpanda.core.Server;
-import im.redpanda.core.ServerContext;
+import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
@@ -38,8 +33,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final String ANSI_RED = "\u001B[31m";
     public static final String ANSI_GREEN = "\u001B[32m";
 
-    private static AtomicInteger countSuccess = new AtomicInteger();
-    private static AtomicInteger countFailed = new AtomicInteger();
+    private static final AtomicInteger countSuccess = new AtomicInteger();
+    private static final AtomicInteger countFailed = new AtomicInteger();
 
     ArrayList<Node> nodes;
     boolean success = false;
@@ -87,7 +82,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             garlicSequenceLength = nodeGraph.vertexSet().size();
         }
 
-        if (getSuccessRate() < 0.5) {
+        if (getSuccessRate() < 0.8) {
             garlicSequenceLength = 1;
         }
 
@@ -165,17 +160,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
             if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
-                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD) {
-                    return true;
-                }
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD;
             } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
-                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID) {
-                    return true;
-                }
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID;
             } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
-                if (System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW) {
-                    return true;
-                }
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW;
             }
         }
         return false;
