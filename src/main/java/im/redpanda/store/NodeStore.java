@@ -13,12 +13,7 @@ import org.mapdb.HTreeMap;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -27,7 +22,7 @@ public class NodeStore {
 
     public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
     public static final int MAX_EDGES_IN_GRAPH = 500;
-    public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 3;
+    public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 5;
     public static final int MAX_NODES_FOR_GRAPH = 20;
     public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
@@ -249,7 +244,7 @@ public class NodeStore {
     private void removeNodeIfNoGoodLinkAvailable() {
 
         Set<Node> nodes = nodeGraph.vertexSet();
-        if (nodes.size() < 5) {
+        if (nodes.size() < 4) {
             return;
         }
 
@@ -311,24 +306,30 @@ public class NodeStore {
         boolean added = false;
         int count = 0;
 
-        while (!added && count < 5) {
+        while (!added && count < 10) {
+            count++;
 
             Collections.shuffle(ids);
-            Node a = ids.get(0);
-            ids.remove(a);
+            Node nodeFrome = ids.get(0);
+            ids.remove(nodeFrome);
             Collections.shuffle(ids);
-            Node b = ids.get(0);
-            ids.add(a);
+            Node nodeTo = ids.get(0);
+            ids.add(nodeFrome);
+            ids.add(nodeTo);
 
-            NodeEdge defaultEdge = nodeGraph.addEdge(a, b);
+            if (nodeFrome.equals(nodeTo)) {
+                continue;
+            }
+
+            NodeEdge defaultEdge = nodeGraph.addEdge(nodeFrome, nodeTo);
 
             if (defaultEdge != null) {
                 nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_HARD);
                 added = true;
-                System.out.println(String.format("added edge: %s -> %s", a.getNodeId(), b.getNodeId()));
+                System.out.println(String.format("added edge: %s -> %s", nodeFrome.getNodeId(), nodeTo.getNodeId()));
             }
 
-            count++;
+
         }
 
 

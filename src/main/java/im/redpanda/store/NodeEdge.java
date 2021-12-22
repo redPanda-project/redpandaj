@@ -2,7 +2,7 @@ package im.redpanda.store;
 
 import org.jgrapht.graph.DefaultEdge;
 
-public class NodeEdge extends DefaultEdge {
+public class NodeEdge extends DefaultEdge implements Comparable<NodeEdge> {
 
     boolean lastCheckFailed = false;
     long timeLastCheckFailed = 0;
@@ -25,10 +25,24 @@ public class NodeEdge extends DefaultEdge {
 
 
     public boolean isInLastTimeCheckWindow() {
-        return System.currentTimeMillis() - lastTimeCheckStarted < 5000L;
+        return System.currentTimeMillis() - lastTimeCheckStarted < 15000L;
     }
 
     public void touchLastTimeCheckStarted() {
         lastTimeCheckStarted = System.currentTimeMillis();
     }
+
+    @Override
+    public int compareTo(NodeEdge o) {
+        long longValue = lastTimeCheckStarted - o.lastTimeCheckStarted;
+        if (longValue > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+
+        if (longValue < Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        return (int) longValue;
+    }
+
 }

@@ -203,6 +203,10 @@ public class OutboundHandler extends Thread {
                         continue;
                     }
 
+                    if (peerList.isBlacklisted(peer.getIp())) {
+                        continue;
+                    }
+
                     if (peer.isConnected()) {
                         continue;
                     }

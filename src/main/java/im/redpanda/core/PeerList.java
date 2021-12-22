@@ -39,7 +39,7 @@ public class PeerList {
     /**
      * Blacklist of ips via HashMap
      */
-    private final HashMap<Integer, Peer> blacklistIp;
+    private final HashMap<String, Peer> blacklistIp;
 
     /**
      * We store each Peer in a ArrayList to obtain a sorted list of Peers where the good peers are on top
@@ -69,6 +69,8 @@ public class PeerList {
         readWriteLock = new ReentrantReadWriteLock();
         buckets = new ArrayList[KademliaId.ID_LENGTH];
         bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
+
+        initBlacklist();
     }
 
     /**
@@ -394,9 +396,9 @@ public class PeerList {
                         continue;
                     }
 
-                    if (targetId.getDistanceToUs(serverContext) < peer.getKademliaId().getDistance(targetId)) {
-                        continue;
-                    }
+//                    if (targetId.getDistanceToUs(serverContext) < peer.getKademliaId().getDistance(targetId)) {
+//                        continue;
+//                    }
 
                     peers.add(peer);
                 }
@@ -418,4 +420,15 @@ public class PeerList {
         return goodPeer;
     }
 
+    private void initBlacklist() {
+        for (String ip : Settings.blacklistIps) {
+            blacklistIp.put(ip, null);
+        }
+
+    }
+
+
+    public boolean isBlacklisted(String ip) {
+        return blacklistIp.containsKey(ip);
+    }
 }

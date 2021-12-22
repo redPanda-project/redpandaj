@@ -4,6 +4,8 @@ import im.redpanda.core.*;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 import java.util.ArrayList;
@@ -35,6 +37,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     private static final AtomicInteger countSuccess = new AtomicInteger();
     private static final AtomicInteger countFailed = new AtomicInteger();
+
+    private static final Logger logger = LogManager.getLogger();
 
     ArrayList<Node> nodes;
     boolean success = false;
@@ -99,10 +103,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         while (currentLength < garlicSequenceLength) {
             ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
-            Collections.shuffle(edges);
+            Collections.sort(edges);
             for (NodeEdge edge : edges) {
                 // if an edge is bad we should only test it rarely
-
 
                 if (edge.isInLastTimeCheckWindow() || dismissCheckByTimeoutIfEdgeQualityBad(nodeGraph, edge)) {
                     continue;
