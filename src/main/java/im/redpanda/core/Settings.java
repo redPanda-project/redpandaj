@@ -40,16 +40,13 @@ public class Settings {
 
     }
 
-    //    public static String[] knownNodes = {"195.201.25.223:59558", "51.15.99.205:59558"};
-//    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558"};
-//    public static String[] knownNodes = {"127.0.0.1:59558"};
-//    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558"};
-    public static String[] knownNodes = {"127.0.0.1:59558", "195.201.25.223:59558", "redpanda.im:59559"};
+    public static String[] knownNodes = {"195.201.25.223:59558", "redpanda.im:59559", "127.0.0.1:59558"};
+
+    public static String[] blacklistIps = {"example.de"};
 
     public static int getStartPort() {
         return STD_PORT;
     }
-
 
     public static boolean isSeedNode() {
         return seedNode;

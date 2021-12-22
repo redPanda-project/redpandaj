@@ -26,7 +26,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
         new PeerPerformanceTestGarlicMessageJob(serverContext).start();
 
 
-        if (PeerPerformanceTestGarlicMessageJob.getSuccessRate() < 0.9 && PeerPerformanceTestGarlicMessageJob.getCountSuccess() + PeerPerformanceTestGarlicMessageJob.getCountFailed() < 10000) {
+        if (PeerPerformanceTestGarlicMessageJob.getCountSuccess() + PeerPerformanceTestGarlicMessageJob.getCountFailed() < 5000) {
             setReRunDelay(100L);
         } else {
             setReRunDelay(2000L);
