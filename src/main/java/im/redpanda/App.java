@@ -115,11 +115,23 @@ public class App {
         Server server = new Server(serverContext, connectionHandler);
         server.start();
 
+        initServerNode(serverContext);
+
         Server.startUpRoutines(serverContext);
 
         Log.init(serverContext);
 
         startPermanentJobsWithServerContext(serverContext);
+    }
+
+    private static void initServerNode(ServerContext serverContext) {
+        Node serverNode = serverContext.getNodeStore().get(serverContext.getNodeId().getKademliaId());
+        if (serverNode == null) {
+            serverNode = new Node(serverContext, serverContext.getNodeId());
+
+        }
+        serverContext.setNode(serverNode);
+        serverContext.getNodeStore().getNodeGraph().addVertex(serverNode);
     }
 
     private static void startPermanentJobsWithServerContext(ServerContext serverContext) {

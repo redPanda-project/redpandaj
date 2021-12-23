@@ -556,4 +556,8 @@ public class Peer implements Comparable<Peer> {
         ip = null;
         port = 0;
     }
+
+    public boolean hasNode() {
+        return getNode() != null;
+    }
 }

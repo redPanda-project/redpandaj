@@ -1,5 +1,6 @@
 package im.redpanda.store;
 
+import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultEdge;
 
 public class NodeEdge extends DefaultEdge implements Comparable<NodeEdge> {
@@ -25,7 +26,7 @@ public class NodeEdge extends DefaultEdge implements Comparable<NodeEdge> {
 
 
     public boolean isInLastTimeCheckWindow() {
-        return System.currentTimeMillis() - lastTimeCheckStarted < 15000L;
+        return System.currentTimeMillis() - lastTimeCheckStarted < PeerPerformanceTestGarlicMessageJob.JOB_TIMEOUT;
     }
 
     public void touchLastTimeCheckStarted() {

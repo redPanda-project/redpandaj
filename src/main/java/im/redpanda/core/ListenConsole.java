@@ -141,6 +141,10 @@ public class ListenConsole extends Thread {
 
                 if (serverContext.getNodeStore() != null) {
                     System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", serverContext.getNodeStore().getNodeGraph().edgeSet().size()));
+                    for (Node node : serverContext.getNodeStore().getNodeGraph().vertexSet()) {
+                        System.out.print(node.toString() + ", ");
+                    }
+                    System.out.println();
                     GraphAdjacentMatrixPrinter.printGraph(serverContext.getNodeStore().getNodeGraph());
                     System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }

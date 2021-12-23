@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Utils;
+import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,6 +20,7 @@ public class Node implements Serializable {
     private ArrayList<ConnectionPoint> connectionPoints;
     private int gmTestsSuccessful = 0;
     private int gmTestsFailed = 0;
+    private long blacklistedSince = 0;
 
     /**
      * Creates a new Node and adds the Node to the NodeStore.
@@ -118,6 +120,10 @@ public class Node implements Serializable {
         return 0;
     }
 
+    public void resetBlacklisted() {
+        blacklistedSince = 0;
+    }
+
     public static class ConnectionPoint implements Serializable {
         String ip;
         int port;
@@ -187,8 +193,12 @@ public class Node implements Serializable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         Node node = (Node) o;
 
@@ -252,6 +262,16 @@ public class Node implements Serializable {
     @Override
     public String toString() {
         return nodeId.getKademliaId().toString();
+    }
+
+    public boolean isBlacklisted() {
+        return blacklistedSince != 0 && System.currentTimeMillis() - blacklistedSince < NodeStore.NODE_BLACKLISTED_FOR_GRAPH;
+    }
+
+    public void touchBlacklisted() {
+        blacklistedSince = System.currentTimeMillis();
+        setGmTestsSuccessful(0);
+        setGmTestsFailed(0);
     }
 }
 
