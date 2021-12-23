@@ -36,5 +36,10 @@ public class PeerPerformanceTestSchedulerJob extends Job {
             PeerPerformanceTestGarlicMessageJob.decayRates();
         }
 
+        if (Math.random() < 0.01) {
+            //lets randomly wait such that multiple edges are ready at once for more hops
+            setReRunDelay(2000L);
+        }
+
     }
 }
