@@ -27,7 +27,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final float DELTA_SUCCESS = -1;
     public static final float DELTA_FAIL = 1.2f;
     public static final long JOB_TIMEOUT = 1000L * 5L;
-    public static final long WAIT_CURT_HARD = 1000L * 60 * 10;
+    public static final long WAIT_CURT_HARD = 1000L * 60 * 2;
     public static final long WAIT_CUT_MID = 1000L * 30;
     public static final long WAIT_CUT_LOW = 1000L * 15;
 

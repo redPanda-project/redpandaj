@@ -789,7 +789,7 @@ public class ConnectionReaderThread extends Thread {
 
                             // only one upload at a time
                             int cnt = 0;
-                            while (cnt < 6) {
+                            while (cnt < 60) {
                                 cnt++;
                                 try {
                                     Thread.sleep(1000);
@@ -813,6 +813,11 @@ public class ConnectionReaderThread extends Thread {
                             e.printStackTrace();
                         }
                     } finally {
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         updateUploadLock.release();
                     }
 
