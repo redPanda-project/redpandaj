@@ -1,6 +1,10 @@
 package im.redpanda.store;
 
-import im.redpanda.core.*;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
+import im.redpanda.core.Node;
+import im.redpanda.core.Peer;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.mapdb.DB;
@@ -10,7 +14,13 @@ import org.mapdb.HTreeMap;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -210,6 +220,9 @@ public class NodeStore {
 
     private void removeBadScoredNode() {
         ArrayList<Node> nodes = new ArrayList<>(nodeGraph.vertexSet());
+        if (nodes.size() < 4) {
+            return;
+        }
         for (Node node : nodes) {
             if (node.equals(serverContext.getServerNode())) {
                 continue;
@@ -240,7 +253,7 @@ public class NodeStore {
 
     private void decayRandomEdge() {
         ArrayList<NodeEdge> nodeEdges = new ArrayList<>(nodeGraph.edgeSet());
-        if (nodeEdges.size() < 4) {
+        if (nodeEdges.size() < 10) {
             return;
         }
         NodeEdge randomEdge = nodeEdges.get(random.nextInt(nodeEdges.size()));
