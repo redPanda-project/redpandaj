@@ -1,6 +1,12 @@
 package im.redpanda.flaschenpost;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
+import im.redpanda.core.Node;
+import im.redpanda.core.Peer;
+import im.redpanda.core.PeerList;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.PeerPerformanceTestFlaschenpostJob;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
@@ -173,7 +179,7 @@ public class GMParser {
                 int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
                 KademliaId kademliaId = peerWithShortestPath.getKademliaId();
                 int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
-                System.out.println("inserting fp to peer " + garlicMessage.getDestination() + "  since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected());
+                Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 80);
 
             }
 

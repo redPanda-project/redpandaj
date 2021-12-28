@@ -233,16 +233,17 @@ public class NodeStore {
                 remove(node.getNodeId().getKademliaId());
             }
 
-            if (node.getScore() < -20) {
+            if (node.getScore() < -50) {
+
                 int veryGoodLinks = 0;
                 for (NodeEdge nodeEdge : nodeGraph.outgoingEdgesOf(node)) {
-                    if (nodeGraph.getEdgeWeight(nodeEdge) < 3) {
+                    if (nodeGraph.getEdgeWeight(nodeEdge) < 5) {
                         veryGoodLinks++;
                     }
                 }
-                if (veryGoodLinks <= 3) {
-                    removeNodeFromGraphAndBlacklist(node);
+                if (veryGoodLinks <= 1) {
                     System.out.println(String.format("remove node %s due to bad score of %s, very good links only %s", node, node.getScore(), veryGoodLinks));
+                    removeNodeFromGraphAndBlacklist(node);
                 }
             }
 

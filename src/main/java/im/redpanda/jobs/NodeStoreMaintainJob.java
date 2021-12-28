@@ -1,5 +1,6 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.Log;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 
@@ -18,8 +19,13 @@ public class NodeStoreMaintainJob extends Job {
     @Override
     public void work() {
 
-        if (serverContext.getNodeStore() != null && !Server.shuttingDown) {
-            serverContext.getNodeStore().maintainNodes();
+        try {
+            if (serverContext.getNodeStore() != null && !Server.shuttingDown) {
+                serverContext.getNodeStore().maintainNodes();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.sentry(e);
         }
 
     }

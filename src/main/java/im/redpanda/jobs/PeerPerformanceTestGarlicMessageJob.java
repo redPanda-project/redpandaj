@@ -1,6 +1,11 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.Node;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
@@ -8,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,9 +31,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int MAX_WEIGHT = 15;
     public static final int MIN_WEIGHT = 1;
     public static final float DELTA_SUCCESS = -1;
-    public static final float DELTA_FAIL = 1.2f;
+    public static final float DELTA_FAIL = 0.4f;
     public static final long JOB_TIMEOUT = 1000L * 1L;
-    public static final long WAIT_CURT_HARD = 1000L * 60 * 2;
+    public static final long WAIT_CURT_HARD = 1000L * 60 * 4;
     public static final long WAIT_CUT_MID = 1000L * 30;
     public static final long WAIT_CUT_LOW = 1000L * 15;
 
@@ -43,6 +49,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     ArrayList<Node> nodes;
     boolean success = false;
     private Peer flaschenPostInsertPeer;
+    boolean includeReversedPath = false;
 
     public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
         super(serverContext, 2500L);
@@ -134,7 +141,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
             currentLength++;
 
-            if (pathWeight > 5) {
+            if (pathWeight > 10) {
+                if (currentLength >= 2) {
+                    addReversePath();
+                }
                 break;
             }
 
@@ -178,13 +188,28 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     }
 
+    private void addReversePath() {
+        includeReversedPath = true;
+        for (int currentNodeIndex = nodes.size() - 1; currentNodeIndex > 1; currentNodeIndex--) {
+            Node currentNode = nodes.get(currentNodeIndex);
+            Node targetNode = nodes.get(currentNodeIndex - 1);
+            serverContext.getNodeStore().getNodeGraph().addEdge(currentNode, targetNode);
+            NodeEdge edge = serverContext.getNodeStore().getNodeGraph().getEdge(currentNode, targetNode);
+            edge.touchLastTimeCheckStarted();
+            nodes.add(targetNode);
+        }
+    }
+
     private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
-            if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
+            double edgeWeight = nodeGraph.getEdgeWeight(edge);
+            if (edgeWeight >= MAX_WEIGHT) {
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD + rand.nextInt((int) Duration.ofSeconds(60).toMillis());
+            } else if (edgeWeight > CUT_HARD) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD;
-            } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
+            } else if (edgeWeight > CUT_MID) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID;
-            } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
+            } else if (edgeWeight > CUT_LOW) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW;
             }
         }
@@ -273,7 +298,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
 //        if (!success) {
-        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET);
+        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET + (includeReversedPath ? " REVERSED" : ""));
 //        }
 
         if (success) {

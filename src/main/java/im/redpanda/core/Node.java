@@ -10,7 +10,7 @@ import java.util.ArrayList;
 
 public class Node implements Serializable {
 
-    static final int MAX_SCORE_VALUE = 15;
+    static final int MAX_SCORE_VALUE = 50;
 
     private static final Logger logger = LogManager.getLogger();
 
@@ -238,7 +238,7 @@ public class Node implements Serializable {
         int score = Math.min(MAX_SCORE_VALUE, gmTestsSuccessful) * 3 - Math.min(MAX_SCORE_VALUE, gmTestsFailed) * 5;
 
         if (System.currentTimeMillis() - lastSeen > 1000L * 60L * 60L) {
-            score -= 50;
+            score -= 20;
         }
 
         return score;
