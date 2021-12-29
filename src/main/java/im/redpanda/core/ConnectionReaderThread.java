@@ -312,7 +312,7 @@ public class ConnectionReaderThread extends Thread {
                 e.printStackTrace();
             }
             Sentry.getContext().recordBreadcrumb(
-                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
+                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer + " current command: " + (myReaderBuffer.remaining() > 0 ? myReaderBuffer.duplicate().get() : "no command")).build()
             );
             Log.sentry("read 0 bytes...");
             return 0;
@@ -466,8 +466,6 @@ public class ConnectionReaderThread extends Thread {
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
 
-            peer.setLastActionOnConnection(System.currentTimeMillis());
-
             if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
                 logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer, peer.getKademliaId()));
                 serverContext.getPeerList().add(peer);
@@ -486,6 +484,7 @@ public class ConnectionReaderThread extends Thread {
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
             peer.ping = (1 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 2;
+            peer.setLastPongReceived(System.currentTimeMillis());
 
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
@@ -497,7 +496,7 @@ public class ConnectionReaderThread extends Thread {
                 int size = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null && peerToWrite.getNodeId().hasKey()) {
                         continue;
                     }
                     size++;
@@ -517,7 +516,7 @@ public class ConnectionReaderThread extends Thread {
                         continue;
                     }
 
-                    if (peerToWrite.getNodeId() != null) {
+                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().hasKey()) {
                         kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
                     } else {
 

@@ -7,15 +7,11 @@ import java.util.concurrent.TimeUnit;
 
 public class JobScheduler extends ScheduledThreadPoolExecutor {
 
-//    public static ScheduledThreadPoolExecutor threadpool = new (1);
-
-
     private static JobScheduler jobScheduler;
 
     static {
-        jobScheduler = new JobScheduler(10, new SimpleNamingThreadFactory());
-        jobScheduler.setKeepAliveTime(2, TimeUnit.MINUTES);
-        jobScheduler.allowCoreThreadTimeOut(true);
+        //ScheduledThreadPoolExecutor only uses a fixed thread pool with size corePoolSize
+        jobScheduler = new JobScheduler(8, new SimpleNamingThreadFactory());
     }
 
     public JobScheduler(int corePoolSize) {

@@ -5,6 +5,8 @@
 package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -32,7 +34,9 @@ public class Peer implements Comparable<Peer> {
     public int protocolVersion;
 
     public int retries = 0;
-    public long lastActionOnConnection = 0;
+    @Getter
+    @Setter
+    private long lastPongReceived = 0;
     int cnt = 0;
     public long connectedSince = 0;
     private NodeId nodeId;
@@ -151,7 +155,7 @@ public class Peer implements Comparable<Peer> {
     }
 
     public long getLastAnswered() {
-        return System.currentTimeMillis() - lastActionOnConnection;
+        return System.currentTimeMillis() - lastPongReceived;
     }
 
     public boolean isConnected() {
@@ -473,8 +477,8 @@ public class Peer implements Comparable<Peer> {
         return new PeerSaveable(ip, port, nodeId, retries);
     }
 
-    public void setLastActionOnConnection(long lastActionOnConnection) {
-        this.lastActionOnConnection = lastActionOnConnection;
+    public void setLastPongReceived(long lastPongReceived) {
+        this.lastPongReceived = lastPongReceived;
     }
 
     public void setPeerChiperStreams(PeerChiperStreams peerChiperStreams) {
@@ -513,7 +517,7 @@ public class Peer implements Comparable<Peer> {
         }
 
         //set up the peer with all data from the peerInHandshake
-        setLastActionOnConnection(System.currentTimeMillis());
+        setLastPongReceived(System.currentTimeMillis());
 
         setSocketChannel(peerInHandshake.getSocketChannel());
         setSelectionKey(peerInHandshake.getKey());

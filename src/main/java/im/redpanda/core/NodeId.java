@@ -199,6 +199,10 @@ public class NodeId implements Serializable {
         return exportPublic(this.keyPair.getPublic());
     }
 
+    public boolean hasKey() {
+        return this.keyPair != null;
+    }
+
 
     public static byte[] exportPublic(PublicKey publicKey) {
         byte[] encoded = publicKey.getEncoded();

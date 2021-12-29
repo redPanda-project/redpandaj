@@ -165,7 +165,7 @@ public class GMParser {
                 }
 
                 if (path == null) {
-                    return;
+                    continue;
                 }
                 double weight = path.getWeight();
                 if (weight < shortestPathWeight) {
@@ -179,7 +179,9 @@ public class GMParser {
                 int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
                 KademliaId kademliaId = peerWithShortestPath.getKademliaId();
                 int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
-                Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 80);
+                if (shortestPathWeight > 3) {
+                    Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 0);
+                }
 
             }
 

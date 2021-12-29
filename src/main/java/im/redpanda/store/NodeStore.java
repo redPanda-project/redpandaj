@@ -258,12 +258,17 @@ public class NodeStore {
             return;
         }
         NodeEdge randomEdge = nodeEdges.get(random.nextInt(nodeEdges.size()));
-        nodeGraph.setEdgeWeight(randomEdge, nodeGraph.getEdgeWeight(randomEdge) + 1);
+        double edgeWeight = nodeGraph.getEdgeWeight(randomEdge);
+        edgeWeight++;
+        if (edgeWeight > PeerPerformanceTestGarlicMessageJob.MAX_WEIGHT) {
+            edgeWeight = PeerPerformanceTestGarlicMessageJob.MAX_WEIGHT;
+        }
+        nodeGraph.setEdgeWeight(randomEdge, edgeWeight);
     }
 
     private void addServerEdges() {
         Node serverNode = serverContext.getServerNode();
-        if (nodeGraph.outgoingEdgesOf(serverNode).size() < 5 || nodeGraph.incomingEdgesOf(serverNode).size() < 5) {
+        if (nodeGraph.outgoingEdgesOf(serverNode).size() < 15 || nodeGraph.incomingEdgesOf(serverNode).size() < 15) {
 
             for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
                 if (!peer.isConnected() || peer.getNode() == null || !nodeGraph.containsVertex(peer.getNode())) {

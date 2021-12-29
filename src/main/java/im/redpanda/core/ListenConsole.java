@@ -65,16 +65,8 @@ public class ListenConsole extends Thread {
                     ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
                     ArrayList<Peer> list = peerArrayList;
-//                    Collections.sort(peerTrustsCloned, new Comparator<PeerTrustData>() {
-//
-//                        @Override
-//                        public int compare(PeerTrustData o1, PeerTrustData o2) {
-//                            return (int) (o2.lastSeen - o1.lastSeen);
-//                        }
-//                    });
                     Collections.sort(list);
 
-//                    System.out.println("IP:PORT \t\t\t\t\t\t Nonce \t\t\t Last Answer \t Alive \t retries \t LoadedMsgs \t Ping \t Authed \t PMSG\n");
                     System.out.format("%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n", "[IP]:PORT", "nonce", "last answer", "conntected", "retries", "ping", "loaded Msg", "bytes out", "bytes in", "bad Msg", "ToSyncM", "RSM", "Rating");
                     for (Peer peer : list) {
 
@@ -82,10 +74,9 @@ public class ListenConsole extends Thread {
                             actCons++;
                         }
 
-                        //System.out.println("Peer: " + InetAddress.getByName(peer.ip) + ":" + peer.port + " Nonce: " + peer.nonce + " Last Answer: " + (System.currentTimeMillis() - peer.lastActionOnConnection) + " Alive: " + peer.isConnected() + " LastGetAllMsgs: " + peer.lastAllMsgsQuerried + " retries: " + peer.retries + " LoadedMsgs: " + peer.loadedMsgs + " ping: " + (Math.round(peer.ping * 100) / 100.));
                         String c;
-                        if (peer.lastActionOnConnection != 0) {
-                            c = "" + (System.currentTimeMillis() - peer.lastActionOnConnection);
+                        if (peer.getLastPongReceived() != 0) {
+                            c = "" + (System.currentTimeMillis() - peer.getLastPongReceived());
                         } else {
                             c = "-";
                         }
@@ -97,10 +88,6 @@ public class ListenConsole extends Thread {
                         } else {
                             nodeId = peer.getNodeId().getKademliaId().toString().substring(0, 10);
                         }
-
-//                        while (c.length() < 15) {
-//                            c += " \t";
-//                        }
 
                         System.out.format("%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n", "[" + peer.ip + "]:" + peer.port, nodeId, c, "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null), peer.retries, (Math.round(peer.ping * 100) / 100.), "-", peer.sendBytes, peer.receivedBytes, peer.removedSendMessages.size());
 

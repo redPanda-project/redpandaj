@@ -37,7 +37,7 @@ public class OutboundHandler extends Thread {
         peer.retries++;
         peer.isConnecting = true;
         peer.isConnectionInitializedByMe = true;
-        peer.lastActionOnConnection = System.currentTimeMillis();
+        peer.setLastPongReceived(System.currentTimeMillis());
 
         Node byKademliaId = Node.getByKademliaId(serverContext, peer.getKademliaId());
 
