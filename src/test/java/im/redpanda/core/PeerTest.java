@@ -1,12 +1,36 @@
 package im.redpanda.core;
 
+import im.redpanda.core.exceptions.PeerProtocolException;
+import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import javax.crypto.Cipher;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.ByteBuffer;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.util.Random;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 public class PeerTest {
 
+    public static final int IVbytelen = 16;
+    public static final String ALGORITHM = "AES/CTR/NoPadding";
+    public static final String PROVIDER = "SunJCE";
+
+    static {
+        ByteBufferPool.init();
+    }
 
     @Test
     public void getNodeId() {
@@ -85,5 +109,97 @@ public class PeerTest {
         assertFalse(peer.peerIsHigher(serverContext));
         assertTrue(peer2.peerIsHigher(serverContext));
 
+    }
+
+    @Test
+    public void decryptInputDataNoBytes() throws PeerProtocolException, InvalidAlgorithmParameterException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException {
+        Peer peer = new Peer("ip", 59558, new NodeId());
+
+        setUpTestCipherStreams(peer);
+
+        peer.readBuffer = ByteBuffer.allocate(80);
+
+        ByteBuffer bufferIn = ByteBuffer.allocate(60);
+        ByteBuffer bufferOut = ByteBuffer.allocate(60);
+        bufferIn.flip();
+        peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+
+        int decryptedBytes = peer.decryptInputData(bufferOut);
+        assertThat(decryptedBytes, equalTo(0));
+    }
+
+    @Test
+    public void decryptInputDataSimpleBytes() throws PeerProtocolException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
+        Peer peer = new Peer("ip", 59558, new NodeId());
+
+        setUpTestCipherStreams(peer);
+
+        peer.readBuffer = ByteBuffer.allocate(80);
+
+        long longToTest = new Random().nextLong();
+
+        ByteBuffer bufferIn = ByteBuffer.allocate(60);
+        bufferIn.putLong(longToTest);
+        ByteBuffer bufferOut = ByteBuffer.allocate(60);
+        bufferIn.flip();
+        peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+
+        int decryptedBytes = peer.decryptInputData(bufferOut);
+        peer.readBuffer.flip();
+        assertThat(decryptedBytes, equalTo(8));
+        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+    }
+
+    @Test
+    public void decryptInputDataTooSmallReadBuffer() throws PeerProtocolException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
+        Peer peer = new Peer("ip", 59558, new NodeId());
+
+        setUpTestCipherStreams(peer);
+
+        peer.readBuffer = ByteBufferPool.borrowObject(16);
+        assertThat(peer.readBuffer.remaining(), equalTo(16));
+
+        long longToTest = new Random().nextLong();
+
+        ByteBuffer bufferIn = ByteBuffer.allocate(60);
+        bufferIn.putLong(longToTest);
+        bufferIn.putLong(longToTest);
+        bufferIn.putLong(longToTest);
+        ByteBuffer bufferOut = ByteBuffer.allocate(60);
+        bufferIn.flip();
+        peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+
+        int decryptedBytes = peer.decryptInputData(bufferOut);
+        peer.readBuffer.flip();
+        assertThat(decryptedBytes, equalTo(24));
+        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+    }
+
+    private void setUpTestCipherStreams(Peer peer) throws NoSuchAlgorithmException, NoSuchProviderException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException {
+        IvParameterSpec zeroIv = new IvParameterSpec(ByteBuffer.allocate(IVbytelen).array());
+
+        ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
+        ByteBuffer bytesForPrivateAESkeyReceive = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
+
+        Sha256Hash sha256HashSend = Sha256Hash.create(bytesForPrivateAESkeySend.array());
+        Sha256Hash sha256HashReceive = Sha256Hash.create(bytesForPrivateAESkeyReceive.array());
+
+        SecretKeySpec sharedSecretSend = new SecretKeySpec(sha256HashSend.getBytes(), "AES");
+        SecretKeySpec sharedSecretReceive = new SecretKeySpec(sha256HashReceive.getBytes(), "AES");
+        PeerOutputStream peerOutputStream = new PeerOutputStream();
+        Cipher cipherSend = Cipher.getInstance(ALGORITHM, PROVIDER);
+        cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, zeroIv);
+        CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream, cipherSend);
+
+
+        //lets set up the receive Cipher
+        PeerInputStream peerInputStream = new PeerInputStream();
+        Cipher cipherReceive = Cipher.getInstance(ALGORITHM, PROVIDER);
+        cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, zeroIv);
+        CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream, cipherReceive);
+
+        peer.setPeerChiperStreams(new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream));
     }
 }

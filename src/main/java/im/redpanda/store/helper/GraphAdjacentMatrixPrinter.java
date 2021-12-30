@@ -36,7 +36,7 @@ public class GraphAdjacentMatrixPrinter {
         exporter.setVertexIdProvider(node -> node.toString());
 
         Writer writer = new StringWriter();
-        exporter.exportGraph(nodeGraph, writer);
+                exporter.exportGraph(nodeGraph, writer);
 
         Writer formattedWriter = postFormatValues(writer);
 

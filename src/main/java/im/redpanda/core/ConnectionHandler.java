@@ -12,7 +12,11 @@ import org.apache.logging.log4j.LogManager;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.CancelledKeyException;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -68,13 +72,21 @@ public class ConnectionHandler extends Thread {
      * @return
      */
     public int bind() {
+
+        String forcedPort = System.getenv("PORT");
+
         int port = -1;
         try {
             ServerSocketChannel serverSocketChannel;
             serverSocketChannel = ServerSocketChannel.open();
             serverSocketChannel.configureBlocking(false);
 
-            port = bindToNextAvailablePort(Settings.getStartPort(), serverSocketChannel);
+            if (forcedPort != null) {
+                port = Integer.parseInt(forcedPort);
+                bindToSpecificPortWithBlocking(port, serverSocketChannel);
+            } else {
+                port = bindToNextAvailablePort(Settings.getStartPort(), serverSocketChannel);
+            }
 
             addServerSocketChannel(serverSocketChannel);
         } catch (IOException ex) {
@@ -98,6 +110,26 @@ public class ConnectionHandler extends Thread {
         }
         logger.info(String.format("bound successfully to port: %s", port));
         return port;
+    }
+
+    private void bindToSpecificPortWithBlocking(int port, ServerSocketChannel serverSocketChannel) {
+        logger.info(String.format("bin to specific port %s ...", port));
+        boolean bound = false;
+        while (!bound) {
+            try {
+                serverSocketChannel.socket().bind(new InetSocketAddress(port));
+                bound = true;
+            } catch (Exception e) {
+                System.out.println(String.format("could not bound to port: %s, retry", port));
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    ex.printStackTrace();
+                }
+            }
+        }
+        logger.info(String.format("bound successfully to port: %s", port));
     }
 
     void addServerSocketChannel(ServerSocketChannel serverSocketChannel) {
@@ -576,16 +608,13 @@ public class ConnectionHandler extends Thread {
                     System.out.println("received first encrypted command...");
 
 
-                    ByteBuffer outBuffer = ByteBufferPool.borrowObject(16);
+                    ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(16);
 
-                    peerInHandshake.getPeerChiperStreams().decrypt(allocate, outBuffer);
+                    peerInHandshake.getPeerChiperStreams().decrypt(allocate, tempHandshakeReadBuffer);
 
-                    outBuffer.flip();
+                    tempHandshakeReadBuffer.flip();
 
-                    byte decryptedCommand = outBuffer.get();
-
-                    outBuffer.compact();
-                    ByteBufferPool.returnObject(outBuffer);
+                    byte decryptedCommand = tempHandshakeReadBuffer.get();
 
                     if (decryptedCommand == Command.PING) {
                         System.out.println("received first ping...");
@@ -594,12 +623,17 @@ public class ConnectionHandler extends Thread {
                          * We can now safely transfer the open connection from the peerInHandshake to the
                          * actual peer
                          */
+                        Peer peer = peerInHandshake.getPeer();
+                        setupConnection(peer, peerInHandshake);
 
-                        setupConnection(peerInHandshake.getPeer(), peerInHandshake);
+                        copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peer);
                     } else {
                         System.out.println("got wrong first command, lets disconnect");
                         peerInHandshake.getSocketChannel().close();
                     }
+
+                    tempHandshakeReadBuffer.compact();
+                    ByteBufferPool.returnObject(tempHandshakeReadBuffer);
 
 
                 }
@@ -615,6 +649,15 @@ public class ConnectionHandler extends Thread {
             Log.sentry(e);
             key.cancel();
 
+        }
+    }
+
+    private void copyRemainingReadBytesToPeerBuffer(ByteBuffer tempHandshakeReadBuffer, Peer peer) {
+        if (tempHandshakeReadBuffer.hasRemaining()) {
+            if (peer.readBuffer == null) {
+                peer.readBuffer = ByteBufferPool.borrowObject(16);
+            }
+            peer.readBuffer.put(tempHandshakeReadBuffer);
         }
     }
 

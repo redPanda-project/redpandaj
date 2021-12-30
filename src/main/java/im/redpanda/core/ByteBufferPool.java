@@ -22,7 +22,11 @@ public class ByteBufferPool {
     private static final Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
 
     public static void init() {
-        BaseKeyedPooledObjectFactory<Integer, ByteBuffer> pooledObjectFactory = new BaseKeyedPooledObjectFactory<Integer, ByteBuffer>() {
+        if (pool != null) {
+            return;
+        }
+
+        BaseKeyedPooledObjectFactory<Integer, ByteBuffer> pooledObjectFactory = new BaseKeyedPooledObjectFactory<>() {
             @Override
             public ByteBuffer create(Integer size) throws Exception {
 

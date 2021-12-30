@@ -1,6 +1,8 @@
 package im.redpanda.flaschenpost;
 
 import im.redpanda.core.Command;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
@@ -103,7 +105,6 @@ public class GMParser {
 
             //todo, put all into a job to handle failing peers and retry send if no ack
 
-            int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
 
             TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
 
@@ -122,7 +123,7 @@ public class GMParser {
                 for (Peer p : peerArrayList) {
 
                     //do not add the peer if the peer is not connected or the nodeId is unknown!
-                    if (p.getNodeId() == null || !p.isConnected()) {
+                    if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
                         continue;
                     }
 
@@ -151,9 +152,6 @@ public class GMParser {
                 return;
             }
 
-            peerToSendFP = peers.first();
-
-
             Node targetNode = serverContext.getNodeStore().get(garlicMessage.destination);
             double shortestPathWeight = 20;
             Peer peerWithShortestPath = null;
@@ -161,13 +159,13 @@ public class GMParser {
 
                 GraphPath<Node, NodeEdge> path = null;
                 try {
-                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(), peer.getNode(), targetNode);
+                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(), serverContext.getServerNode(), targetNode);
                 } catch (IllegalArgumentException e) {
                     //nothing to do
                 }
 
                 if (path == null) {
-                    return;
+                    continue;
                 }
                 double weight = path.getWeight();
                 if (weight < shortestPathWeight) {
@@ -178,10 +176,15 @@ public class GMParser {
             }
             if (peerWithShortestPath != null) {
                 sendFpToPeer(peerWithShortestPath, content);
+                int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
+                KademliaId kademliaId = peerWithShortestPath.getKademliaId();
+                int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
+                if (shortestPathWeight > 3) {
+                    Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 0);
+                }
+
             }
 
-//            int peersDistance = garlicMessage.getDestination().getDistance(peerToSendFP.getKademliaId());
-//            System.out.println("inserting fp to peer " + garlicMessage.getDestination() + "  since we are not directly connected distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerToSendFP.getNode().getNodeId() + " con " + peerToSendFP.isConnected());
 
         } else {
             sendFpToPeer(peerToSendFP, content);

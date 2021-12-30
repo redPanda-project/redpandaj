@@ -10,6 +10,7 @@ public class ServerContext {
     private final KadStoreManager kadStoreManager = new KadStoreManager(this);
     private PeerList peerList = new PeerList(this);
     private NodeStore nodeStore;
+    private Node node;
     private NodeId nodeId;
     private KademliaId nonce;
 
@@ -74,5 +75,13 @@ public class ServerContext {
 
     public KadStoreManager getKadStoreManager() {
         return kadStoreManager;
+    }
+
+    public Node getServerNode() {
+        return node;
+    }
+
+    public void setNode(Node node) {
+        this.node = node;
     }
 }

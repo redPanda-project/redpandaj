@@ -3,8 +3,10 @@ package im.redpanda.store;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Log;
 import im.redpanda.core.Node;
+import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import lombok.Getter;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
@@ -13,14 +15,22 @@ import org.mapdb.HTreeMap;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class NodeStore {
 
-    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 2L;
+    public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 24L;
     public static final int MAX_EDGES_IN_GRAPH = 500;
     public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 5;
     public static final int MAX_NODES_FOR_GRAPH = 20;
@@ -43,12 +53,13 @@ public class NodeStore {
 
     private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
     private long lastTimeEdgeAdded = 0;
-    private final Map<Node, Long> nodeBlacklist;
     private final ServerContext serverContext;
+    private final Random random = new Random();
+    @Getter
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     private NodeStore(ServerContext serverContext) {
         this.serverContext = serverContext;
-        nodeBlacklist = new HashMap<>();
         nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     }
 
@@ -146,6 +157,10 @@ public class NodeStore {
         }
     }
 
+    public void remove(KademliaId kademliaId) {
+        onHeap.remove(kademliaId);
+    }
+
     public void saveToDisk() {
 
         try {
@@ -193,8 +208,87 @@ public class NodeStore {
 
     public void maintainNodes() {
 
+        decayRandomEdge();
+
+        addServerEdges();
+
         removeNodeIfNoGoodLinkAvailable();
 
+        removeBadScoredNode();
+
+        addRandomNodeToGraph();
+
+        if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
+            addRandomEdgeIfWaitedEnough();
+        }
+    }
+
+    private void removeBadScoredNode() {
+        ArrayList<Node> nodes = new ArrayList<>(nodeGraph.vertexSet());
+        if (nodes.size() < 4) {
+            return;
+        }
+        for (Node node : nodes) {
+            if (node.equals(serverContext.getServerNode())) {
+                continue;
+            }
+
+            if (node.getNodeId().getKeyPair() == null) {
+                //this may be an old own server id...
+                remove(node.getNodeId().getKademliaId());
+            }
+
+            if (node.getScore() < -50) {
+
+                int veryGoodLinks = 0;
+                for (NodeEdge nodeEdge : nodeGraph.outgoingEdgesOf(node)) {
+                    if (nodeGraph.getEdgeWeight(nodeEdge) < 5) {
+                        veryGoodLinks++;
+                    }
+                }
+                if (veryGoodLinks <= 1) {
+                    System.out.println(String.format("remove node %s due to bad score of %s, very good links only %s", node, node.getScore(), veryGoodLinks));
+                    removeNodeFromGraphAndBlacklist(node);
+                }
+            }
+
+        }
+
+
+    }
+
+    private void decayRandomEdge() {
+        ArrayList<NodeEdge> nodeEdges = new ArrayList<>(nodeGraph.edgeSet());
+        if (nodeEdges.size() < 10) {
+            return;
+        }
+        NodeEdge randomEdge = nodeEdges.get(random.nextInt(nodeEdges.size()));
+        double edgeWeight = nodeGraph.getEdgeWeight(randomEdge);
+        edgeWeight++;
+        if (edgeWeight > PeerPerformanceTestGarlicMessageJob.MAX_WEIGHT) {
+            edgeWeight = PeerPerformanceTestGarlicMessageJob.MAX_WEIGHT;
+        }
+        nodeGraph.setEdgeWeight(randomEdge, edgeWeight);
+    }
+
+    private void addServerEdges() {
+        Node serverNode = serverContext.getServerNode();
+        if (nodeGraph.outgoingEdgesOf(serverNode).size() < 15 || nodeGraph.incomingEdgesOf(serverNode).size() < 15) {
+
+            for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
+                if (!peer.isConnected() || peer.getNode() == null || !nodeGraph.containsVertex(peer.getNode())) {
+                    continue;
+                }
+                nodeGraph.addEdge(serverNode, peer.getNode());
+                nodeGraph.addEdge(peer.getNode(), serverNode);
+            }
+
+
+        }
+
+    }
+
+    private void addRandomNodeToGraph() {
         int currentNodeCount = nodeGraph.vertexSet().size();
 
         if (currentNodeCount < MAX_NODES_FOR_GRAPH) {
@@ -206,21 +300,16 @@ public class NodeStore {
             for (Map.Entry<KademliaId, Node> o : entries) {
                 Node nodeToAdd = o.getValue();
 
-                if (isNodeStillBlacklisted(nodeToAdd)) {
+                if (nodeToAdd.isBlacklisted()) {
                     continue;
                 }
 
                 if (!nodeGraph.containsVertex(nodeToAdd)) {
                     addNodeWithInitialEdges(nodeToAdd);
-                    return;
+                    break;
                 }
             }
 
-        }
-
-
-        if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
-            addRandomEdgeIfWaitedEnough();
         }
     }
 
@@ -233,17 +322,10 @@ public class NodeStore {
         }
     }
 
-    private boolean isNodeStillBlacklisted(Node node) {
-        return nodeBlacklist.containsKey(node) && System.currentTimeMillis() - nodeBlacklist.get(node) < NODE_BLACKLISTED_FOR_GRAPH;
-    }
-
-    public void clearNodeBlacklist() {
-        nodeBlacklist.clear();
-    }
-
     private void removeNodeIfNoGoodLinkAvailable() {
 
-        Set<Node> nodes = nodeGraph.vertexSet();
+        List<Node> nodes = new ArrayList(nodeGraph.vertexSet());
+        nodes.remove(serverContext.getServerNode());
         if (nodes.size() < 4) {
             return;
         }
@@ -261,10 +343,14 @@ public class NodeStore {
 
         }
         if (nodeToRemove != null) {
-            nodeBlacklist.put(nodeToRemove, System.currentTimeMillis());
-            nodeGraph.removeVertex(nodeToRemove);
-            System.out.println("removed node since no good link available: " + nodeToRemove);
+            removeNodeFromGraphAndBlacklist(nodeToRemove);
         }
+    }
+
+    private void removeNodeFromGraphAndBlacklist(Node nodeToRemove) {
+        nodeToRemove.touchBlacklisted();
+        nodeGraph.removeVertex(nodeToRemove);
+        System.out.println("removed node since no good link available: " + nodeToRemove);
     }
 
     private boolean isOneGoodLinkAvailable(Node node) {
@@ -350,12 +436,12 @@ public class NodeStore {
     }
 
     public void printBlacklist() {
-
-        for (Node node : nodeBlacklist.keySet()) {
-            System.out.println(node.toString());
+        for (Object value : onHeap.getValues()) {
+            Node node = (Node) value;
+            if (node.isBlacklisted()) {
+                System.out.println(node);
+            }
         }
-
-
     }
 
     public void printAllNotBlacklisted() {
@@ -365,7 +451,7 @@ public class NodeStore {
 //            if (nodeBlacklist.containsKey(node)) {
 //                continue;
 //            }
-            System.out.println(node.toString() + " " + (nodeBlacklist.containsKey(node) ? "b" : ""));
+            System.out.println(node.toString() + " " + (node.isBlacklisted() ? "b" : ""));
         }
 
 
@@ -373,5 +459,15 @@ public class NodeStore {
 
     public void clearGraph() {
         nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+        nodeGraph.addVertex(serverContext.getServerNode());
+    }
+
+    public void clearNodeBlacklist() {
+        for (Object value : onHeap.getValues()) {
+            Node node = (Node) value;
+            node.resetBlacklisted();
+            node.setGmTestsSuccessful(0);
+            node.setGmTestsFailed(0);
+        }
     }
 }

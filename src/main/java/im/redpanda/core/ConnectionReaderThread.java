@@ -312,7 +312,7 @@ public class ConnectionReaderThread extends Thread {
                 e.printStackTrace();
             }
             Sentry.getContext().recordBreadcrumb(
-                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer).build()
+                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer + " current command: " + (myReaderBuffer.remaining() > 0 ? myReaderBuffer.duplicate().get() : "no command")).build()
             );
             Log.sentry("read 0 bytes...");
             return 0;
@@ -466,8 +466,6 @@ public class ConnectionReaderThread extends Thread {
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
 
-            peer.setLastActionOnConnection(System.currentTimeMillis());
-
             if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
                 logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer, peer.getKademliaId()));
                 serverContext.getPeerList().add(peer);
@@ -486,6 +484,7 @@ public class ConnectionReaderThread extends Thread {
         if (command == Command.PONG) {
             Log.put("Received pong command", 200);
             peer.ping = (1 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 2;
+            peer.setLastPongReceived(System.currentTimeMillis());
 
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
@@ -497,7 +496,7 @@ public class ConnectionReaderThread extends Thread {
                 int size = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.getNodeId().hasKey()) {
                         continue;
                     }
                     size++;
@@ -513,11 +512,11 @@ public class ConnectionReaderThread extends Thread {
                 int cnt = 0;
                 for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null) {
+                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.getNodeId().hasKey()) {
                         continue;
                     }
 
-                    if (peerToWrite.getNodeId() != null) {
+                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().hasKey()) {
                         kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
                     } else {
 
@@ -1267,6 +1266,7 @@ public class ConnectionReaderThread extends Thread {
             }
 
             byte[] contentBytes = new byte[contentLen];
+            //todo use ByteBufferPool
             readBuffer.get(contentBytes);
 
             if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
@@ -1375,65 +1375,7 @@ public class ConnectionReaderThread extends Thread {
             return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
 
         } else if (command == Command.KADEMLIA_GET_ANSWER) {
-
-
-            if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-                return 0;
-            }
-
-            int ackId = readBuffer.getInt();
-
-            long timestamp = readBuffer.getLong();
-
-            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
-            readBuffer.get(publicKeyBytes);
-
-            int contentLen = readBuffer.getInt();
-
-            if (contentLen > readBuffer.remaining()) {
-                return 0;
-            }
-
-            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
-                peer.disconnect("wrong contentLen for kadcontent");
-                return 0;
-            }
-
-            byte[] contentBytes = new byte[contentLen];
-            readBuffer.get(contentBytes);
-
-            if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-                return 0;
-            }
-
-            byte[] signatureBytes = Utils.readSignature(readBuffer);
-            if (signatureBytes == null) {
-                return 0;
-            }
-            int lenOfSignature = signatureBytes.length;
-
-            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
-
-            if (kadContent.verify()) {
-                boolean saved = serverContext.getKadStoreManager().put(kadContent);
-
-                System.out.println("got KadContent successfully from search!");
-
-                KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
-                if (runningJob != null) {
-                    runningJob.ack(kadContent, peer);
-                }
-
-                //ack to JOB!
-
-            } else {
-                //todo
-                System.out.println("kadContent verification failed!!!");
-            }
-
-
-            return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
-
+            return parseKademliaGetAnswer(readBuffer, peer);
         } else if (command == Command.FLASCHENPOST_PUT) {
 
 
@@ -1455,6 +1397,63 @@ public class ConnectionReaderThread extends Thread {
 
         throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
 
+    }
+
+    private int parseKademliaGetAnswer(ByteBuffer readBuffer, Peer peer) {
+        if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+            return 0;
+        }
+
+        int ackId = readBuffer.getInt();
+
+        long timestamp = readBuffer.getLong();
+
+        byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+        readBuffer.get(publicKeyBytes);
+
+        int contentLen = readBuffer.getInt();
+
+        if (contentLen > readBuffer.remaining()) {
+            return 0;
+        }
+
+        if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+            peer.disconnect("wrong contentLen for kadcontent");
+            return 0;
+        }
+
+        byte[] contentBytes = new byte[contentLen];
+        readBuffer.get(contentBytes);
+
+        if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+            return 0;
+        }
+
+        byte[] signatureBytes = Utils.readSignature(readBuffer);
+        if (signatureBytes == null) {
+            return 0;
+        }
+        int lenOfSignature = signatureBytes.length;
+
+        KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
+
+        if (kadContent.verify()) {
+            boolean saved = serverContext.getKadStoreManager().put(kadContent);
+
+            System.out.println("got KadContent successfully from search!");
+
+            KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
+            if (runningJob != null) {
+                runningJob.ack(kadContent, peer);
+            }
+
+        } else {
+            //todo
+            System.out.println("kadContent verification failed!!!");
+        }
+
+
+        return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
     }
 
     @Override

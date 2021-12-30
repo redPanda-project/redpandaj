@@ -1,6 +1,11 @@
 package im.redpanda.jobs;
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.Node;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
@@ -8,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,9 +31,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     public static final int MAX_WEIGHT = 15;
     public static final int MIN_WEIGHT = 1;
     public static final float DELTA_SUCCESS = -1;
-    public static final float DELTA_FAIL = 1.2f;
+    public static final float DELTA_FAIL = 0.4f;
     public static final long JOB_TIMEOUT = 1000L * 5L;
-    public static final long WAIT_CURT_HARD = 1000L * 60 * 2;
+    public static final long WAIT_CURT_HARD = 1000L * 60 * 4;
     public static final long WAIT_CUT_MID = 1000L * 30;
     public static final long WAIT_CUT_LOW = 1000L * 15;
 
@@ -43,6 +49,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     ArrayList<Node> nodes;
     boolean success = false;
     private Peer flaschenPostInsertPeer;
+    boolean includeReversedPath = false;
 
     public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
         super(serverContext, 2500L);
@@ -59,14 +66,13 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         GarlicMessage currentLayer = new GarlicMessage(serverContext, targetId);
         currentLayer.addGMContent(gmAck);
 
-
-        for (Node node : nodes) {
-
+        //omit own node at position 0 and node.size
+        for (int i = nodes.size() - 2; i > 0; i--) {
+            Node node = nodes.get(i);
             GarlicMessage newLayer = new GarlicMessage(serverContext, node.getNodeId());
             newLayer.addGMContent(currentLayer);
 
             currentLayer = newLayer;
-
         }
 
         return currentLayer.getContent();
@@ -74,10 +80,35 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void init() {
+        serverContext.getNodeStore().getReadWriteLock().writeLock().lock();
+        try {
+            if (calculatePathOrAbort()) {
+                return;
+            }
+        } finally {
+            serverContext.getNodeStore().getReadWriteLock().writeLock().unlock();
+        }
+        byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+
+        flaschenPostInsertPeer.getNode().cleanChecks();
+
+        flaschenPostInsertPeer.getWriteBufferLock().lock();
+        try {
+            flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
+            flaschenPostInsertPeer.getWriteBuffer().putInt(content.length);
+            flaschenPostInsertPeer.getWriteBuffer().put(content);
+            flaschenPostInsertPeer.setWriteBufferFilled();
+        } finally {
+            flaschenPostInsertPeer.getWriteBufferLock().unlock();
+        }
+
+    }
+
+    private boolean calculatePathOrAbort() {
         DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
         if (nodeGraph.vertexSet().isEmpty()) {
             super.done();
-            return;
+            return true;
         }
 
         // nodes = hops + 1
@@ -90,16 +121,13 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             garlicSequenceLength = 1;
         }
 
-
-        ArrayList<Node> values = new ArrayList<>(nodeGraph.vertexSet());
-
-        Collections.shuffle(values);
-        Node startingNode = values.get(0);
+        Node startingNode = serverContext.getServerNode();
 
         this.nodes = new ArrayList<>();
         Node currentNode = startingNode;
         nodes.add(currentNode);
         int currentLength = 0;
+        double pathWeight = 0;
 
         while (currentLength < garlicSequenceLength) {
             ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
@@ -109,6 +137,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
                 if (edge.isInLastTimeCheckWindow() || dismissCheckByTimeoutIfEdgeQualityBad(nodeGraph, edge)) {
                     continue;
+                }
+
+                if (currentLength == 0) {
+                    Node targetNode = serverContext.getNodeStore().getNodeGraph().getEdgeTarget(edge);
+                    Peer targetPeer = serverContext.getPeerList().get(targetNode.getNodeId().getKademliaId());
+                    if (targetPeer == null || !targetPeer.isConnected()) {
+                        continue;
+                    }
                 }
 
                 if (!nodeGraph.containsEdge(edge)) {
@@ -124,49 +160,60 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 nodes.add(currentNode);
                 edge.touchLastTimeCheckStarted();
                 currentNode.cleanChecks();
+                pathWeight += nodeGraph.getEdgeWeight(edge);
                 break;
             }
 
             currentLength++;
+
+            if (pathWeight > 10) {
+                if (currentLength >= 2) {
+                    addReversePath();
+                }
+                break;
+            }
 
 
         }
 
         if (nodes.size() < 2) {
             super.done();
-            return;
+            return true;
         }
 
-        byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+        nodes.add(serverContext.getServerNode());
 
-        Peer closestGoodPeer = serverContext.getPeerList().getClosestGoodPeer(this.nodes.get(0).getNodeId().getKademliaId());
-        if (closestGoodPeer == null || closestGoodPeer.getNode() == null) {
+        flaschenPostInsertPeer = serverContext.getPeerList().get(nodes.get(1).getNodeId().getKademliaId());
+
+        if (flaschenPostInsertPeer == null || flaschenPostInsertPeer.getNode() == null) {
             super.done();
-            return;
+            return true;
         }
-        flaschenPostInsertPeer = closestGoodPeer;
-        flaschenPostInsertPeer.getNode().cleanChecks();
+        return false;
+    }
 
-        flaschenPostInsertPeer.getWriteBufferLock().lock();
-        try {
-            flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-            flaschenPostInsertPeer.getWriteBuffer().putInt(content.length);
-            flaschenPostInsertPeer.getWriteBuffer().put(content);
-            flaschenPostInsertPeer.setWriteBufferFilled();
-        } finally {
-            flaschenPostInsertPeer.getWriteBufferLock().unlock();
+    private void addReversePath() {
+        includeReversedPath = true;
+        for (int currentNodeIndex = nodes.size() - 1; currentNodeIndex > 1; currentNodeIndex--) {
+            Node currentNode = nodes.get(currentNodeIndex);
+            Node targetNode = nodes.get(currentNodeIndex - 1);
+            serverContext.getNodeStore().getNodeGraph().addEdge(currentNode, targetNode);
+            NodeEdge edge = serverContext.getNodeStore().getNodeGraph().getEdge(currentNode, targetNode);
+            edge.touchLastTimeCheckStarted();
+            nodes.add(targetNode);
         }
-
-
     }
 
     private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
-            if (nodeGraph.getEdgeWeight(edge) > CUT_HARD) {
+            double edgeWeight = nodeGraph.getEdgeWeight(edge);
+            if (edgeWeight >= MAX_WEIGHT) {
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD + rand.nextInt((int) Duration.ofSeconds(60).toMillis());
+            } else if (edgeWeight > CUT_HARD) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD;
-            } else if (nodeGraph.getEdgeWeight(edge) > CUT_MID) {
+            } else if (edgeWeight > CUT_MID) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID;
-            } else if (nodeGraph.getEdgeWeight(edge) > CUT_LOW) {
+            } else if (edgeWeight > CUT_LOW) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW;
             }
         }
@@ -213,6 +260,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         float scoreToAdd = 0;
         if (success) {
             flaschenPostInsertPeer.getNode().increaseGmTestsSuccessful();
+            flaschenPostInsertPeer.getNode().seen();
 
             for (Node node : nodes) {
                 node.increaseGmTestsSuccessful();
@@ -254,7 +302,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
 //        if (!success) {
-        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET);
+        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET + (includeReversedPath ? " REVERSED" : ""));
 //        }
 
         if (success) {

@@ -1,8 +1,17 @@
 package im.redpanda;
 
-import im.redpanda.core.*;
+import im.redpanda.core.ByteBufferPool;
+import im.redpanda.core.ConnectionHandler;
+import im.redpanda.core.ListenConsole;
+import im.redpanda.core.LocalSettings;
+import im.redpanda.core.Log;
+import im.redpanda.core.Node;
+import im.redpanda.core.PeerJobs;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.GMManagerCleanJobs;
 import im.redpanda.jobs.KadRefreshJob;
+import im.redpanda.jobs.NodeInfoSetRefreshJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.store.NodeStore;
@@ -115,6 +124,8 @@ public class App {
         Server server = new Server(serverContext, connectionHandler);
         server.start();
 
+        initServerNode(serverContext);
+
         Server.startUpRoutines(serverContext);
 
         Log.init(serverContext);
@@ -122,11 +133,22 @@ public class App {
         startPermanentJobsWithServerContext(serverContext);
     }
 
+    private static void initServerNode(ServerContext serverContext) {
+        Node serverNode = serverContext.getNodeStore().get(serverContext.getNodeId().getKademliaId());
+        if (serverNode == null) {
+            serverNode = new Node(serverContext, serverContext.getNodeId());
+
+        }
+        serverContext.setNode(serverNode);
+        serverContext.getNodeStore().getNodeGraph().addVertex(serverNode);
+    }
+
     private static void startPermanentJobsWithServerContext(ServerContext serverContext) {
         new PeerJobs(serverContext).start();
         new SaveJobs(serverContext).start();
         new GMManagerCleanJobs(serverContext).start();
         new KadRefreshJob(serverContext).start();
+        new NodeInfoSetRefreshJob(serverContext).start();
     }
 
     private static void initLogger() {

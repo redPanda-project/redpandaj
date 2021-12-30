@@ -2,16 +2,11 @@ package im.redpanda.kademlia;
 
 
 import im.redpanda.core.KademliaId;
-import im.redpanda.core.Log;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.crypt.Utils;
-import io.sentry.Sentry;
 
-import java.io.UnsupportedEncodingException;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.security.interfaces.ECKey;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
@@ -22,13 +17,13 @@ public class KadContent {
 
     private KademliaId id; //we store the ID duplicated because of performance reasons (new lookup in the hashmap costs more than a bit of memory)
     private long timestamp; //created at (or updated)
-    private byte[] pubkey;
+    private final byte[] pubkey;
     private byte[] content;
     private byte[] signature;
 
 
     /**
-     * Creates a new KadContent object, please note that the KademliaId will be computed from the timestmap and
+     * Creates a new KadContent object, please note that the KademliaId will be computed from the timestamp and
      * public key to ensure the integrity of the KademliaId and timestamp.
      *
      * @param timestamp
@@ -84,27 +79,21 @@ public class KadContent {
     }
 
     public static KademliaId createKademliaId(long timestamp, byte[] pubkey) {
-        try {
-            SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
-            simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-            //todo lets check if this is the corret time zone for the dart code as well...
-            String date = simpleDateFormat.format(new Date(timestamp));
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
+        simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+        //todo lets check if this is the corret time zone for the dart code as well...
+        String date = simpleDateFormat.format(new Date(timestamp));
 
 //            System.out.println("kadcontent date: " + date);
 
-            byte[] dateBytes = date.getBytes("UTF-8");
+        byte[] dateBytes = date.getBytes(StandardCharsets.UTF_8);
 
-            ByteBuffer byteBuffer = ByteBuffer.allocate(dateBytes.length + pubkey.length);
-            byteBuffer.put(dateBytes);
-            byteBuffer.put(pubkey);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(dateBytes.length + pubkey.length);
+        byteBuffer.put(dateBytes);
+        byteBuffer.put(pubkey);
 
-            byte[] sha256 = Sha256Hash.create(byteBuffer.array()).getBytes();
-            return KademliaId.fromFirstBytes(sha256);
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-            Log.sentry(e);
-        }
-        return null;
+        byte[] sha256 = Sha256Hash.create(byteBuffer.array()).getBytes();
+        return KademliaId.fromFirstBytes(sha256);
     }
 
     public void setId(KademliaId id) {
