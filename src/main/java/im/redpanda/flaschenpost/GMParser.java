@@ -8,19 +8,29 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.PeerPerformanceTestFlaschenpostJob;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
+import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
 import im.redpanda.store.NodeEdge;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 import java.util.TreeSet;
 import java.util.concurrent.locks.Lock;
 
 public class GMParser {
+
+    private Random random = new Random();
 
     public static GMContent parse(ServerContext serverContext, byte[] content) {
 
@@ -103,6 +113,38 @@ public class GMParser {
 
         if (peerToSendFP == null || !peerToSendFP.isConnected()) {
 
+            Node node = serverContext.getNodeStore().get(garlicMessage.destination);
+
+            if (node != null) {
+                KademliaId nodeKademliaId = KadContent.createKademliaId(node.getNodeId());
+                KadContent kadContent = serverContext.getKadStoreManager().get(nodeKademliaId);
+
+                if (kadContent == null) {
+                    System.out.println("no kademlia content for target peer: " + garlicMessage.destination + " and target kademlia id: " + nodeKademliaId);
+                    new KademliaSearchJob(serverContext, nodeKademliaId).start();
+                } else {
+                    if (System.currentTimeMillis() - kadContent.getTimestamp() > Duration.ofMinutes(8).toMillis()) {
+                        new KademliaSearchJob(serverContext, nodeKademliaId).start();
+                    }
+                    String jsonString = new String(kadContent.getContent());
+                    NodeInfoModel nodeInfoModel = NodeInfoModel.importFromString(jsonString);
+                    List<GMEntryPointModel> entryPoints = nodeInfoModel.getEntryPoints();
+                    Collections.shuffle(entryPoints);
+
+                    for (GMEntryPointModel entryPoint : entryPoints) {
+                        Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
+                        if (peer == null || !peer.isConnected()) {
+                            Node.addNodeIfNotPresent(serverContext, entryPoint.getNodeId(), entryPoint.getIp(), entryPoint.getPort());
+                            continue;
+                        }
+                        sendFpToPeer(peer, content);
+                        return;
+                    }
+
+                }
+            }
+
+
             //todo, put all into a job to handle failing peers and retry send if no ack
 
 
@@ -174,6 +216,8 @@ public class GMParser {
                 }
 
             }
+
+
             if (peerWithShortestPath != null) {
                 sendFpToPeer(peerWithShortestPath, content);
                 int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
@@ -182,7 +226,6 @@ public class GMParser {
                 if (shortestPathWeight > 3) {
                     Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 0);
                 }
-
             }
 
 

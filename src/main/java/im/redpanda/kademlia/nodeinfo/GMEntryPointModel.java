@@ -1,14 +1,20 @@
 package im.redpanda.kademlia.nodeinfo;
 
 import im.redpanda.core.NodeId;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
-@AllArgsConstructor
 @Getter
+@Setter
 public class GMEntryPointModel {
 
     private NodeId nodeId;
+    private String ip;
+    private int port;
     //todo add some connection points!!
 
+
+    public GMEntryPointModel(NodeId nodeId) {
+        this.nodeId = nodeId;
+    }
 }

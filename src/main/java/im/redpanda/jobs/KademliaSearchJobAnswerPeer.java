@@ -33,10 +33,7 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
             return null;
         }
 
-        System.out.println("we have to send the search answer to: " + answerTo.getKademliaId());
-
         if (!answerTo.isConnected()) {
-            System.out.println("peer not online, do not answer the KadSearch: " + answerTo.getKademliaId());
             return kadContents;
         }
 
@@ -61,8 +58,6 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
                 answerTo.getWriteBufferLock().unlock();
             }
         }
-
-        System.out.println("wrote search answer to: " + answerTo.getKademliaId());
 
         return kadContents;
     }

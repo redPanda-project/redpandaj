@@ -7,6 +7,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 
 public class Node implements Serializable {
 
@@ -36,6 +38,15 @@ public class Node implements Serializable {
         connectionPoints = new ArrayList<>();
     }
 
+    public static void addNodeIfNotPresent(ServerContext serverContext, NodeId nodeId, String ip, int port) {
+        Node byKademliaId = getByKademliaId(serverContext, nodeId.getKademliaId());
+        if (byKademliaId == null) {
+            Node node = new Node(serverContext, nodeId);
+            if (ip != null) {
+                node.addConnectionPoint(ip, port);
+            }
+        }
+    }
 
     public NodeId getNodeId() {
         return nodeId;
@@ -49,7 +60,14 @@ public class Node implements Serializable {
         this.lastSeen = System.currentTimeMillis();
     }
 
-    //ToDo run seen every once in a while to trigger seen for peers which are permanently connected
+    public ConnectionPoint latestSeenConnectionPoint() {
+        if (connectionPoints.isEmpty()) {
+            return null;
+        }
+        Collections.sort(connectionPoints, Comparator.comparingLong(ConnectionPoint::getLastSeen));
+        return connectionPoints.get(0);
+    }
+
     public void seen(String ip, int port) {
         seen();
         ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);

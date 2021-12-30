@@ -2,6 +2,7 @@ package im.redpanda.kademlia;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Log;
+import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Base58;
@@ -15,7 +16,12 @@ import java.nio.ByteBuffer;
 import java.security.Security;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.TimeZone;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -122,7 +128,11 @@ public class KadStoreManager {
 
     }
 
-    public static KadContent get(KademliaId id) {
+    public KadContent get(Node node) {
+        return get(KadContent.createKademliaId(node.getNodeId()));
+    }
+
+    public KadContent get(KademliaId id) {
         lock.lock();
         try {
             return entries.get(id);

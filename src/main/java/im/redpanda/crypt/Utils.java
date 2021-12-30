@@ -109,4 +109,8 @@ public class Utils {
         readBuffer.get(signature);
         return signature;
     }
+
+    public static boolean isLocalAddress(String string) {
+        return string.equals("127.0.0.1") || string.equals("localhost") || string.startsWith("192.");
+    }
 }
