@@ -229,7 +229,7 @@ public class NodeStore {
             return;
         }
         for (Node node : nodes) {
-            if (node.equals(serverContext.getServerNode())) {
+            if (node.equals(serverContext.getNode())) {
                 continue;
             }
 
@@ -272,7 +272,7 @@ public class NodeStore {
     }
 
     private void addServerEdges() {
-        Node serverNode = serverContext.getServerNode();
+        Node serverNode = serverContext.getNode();
         if (nodeGraph.outgoingEdgesOf(serverNode).size() < 15 || nodeGraph.incomingEdgesOf(serverNode).size() < 15) {
 
             for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
@@ -325,7 +325,7 @@ public class NodeStore {
     private void removeNodeIfNoGoodLinkAvailable() {
 
         List<Node> nodes = new ArrayList(nodeGraph.vertexSet());
-        nodes.remove(serverContext.getServerNode());
+        nodes.remove(serverContext.getNode());
         if (nodes.size() < 4) {
             return;
         }
@@ -459,7 +459,7 @@ public class NodeStore {
 
     public void clearGraph() {
         nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
-        nodeGraph.addVertex(serverContext.getServerNode());
+        nodeGraph.addVertex(serverContext.getNode());
     }
 
     public void clearNodeBlacklist() {

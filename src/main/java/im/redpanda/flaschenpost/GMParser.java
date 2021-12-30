@@ -159,7 +159,7 @@ public class GMParser {
 
                 GraphPath<Node, NodeEdge> path = null;
                 try {
-                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(), serverContext.getServerNode(), targetNode);
+                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(), serverContext.getNode(), targetNode);
                 } catch (IllegalArgumentException e) {
                     //nothing to do
                 }
