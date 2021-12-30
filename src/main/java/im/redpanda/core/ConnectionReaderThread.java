@@ -19,7 +19,6 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.KadStoreManager;
 import io.sentry.Sentry;
 import io.sentry.event.BreadcrumbBuilder;
 import org.apache.logging.log4j.LogManager;
@@ -1347,12 +1346,9 @@ public class ConnectionReaderThread extends Thread {
             KademliaId searchedId = new KademliaId(kadIdBytes);
 
 
-            KadContent kadContent = KadStoreManager.get(searchedId);
+            KadContent kadContent = serverContext.getKadStoreManager().get(searchedId);
 
             if (kadContent != null) {
-
-                System.out.println("found content, send back to node: " + kadContent.getId() + " jobid: " + jobId);
-
 
                 peer.getWriteBufferLock().lock();
                 try {
@@ -1367,9 +1363,7 @@ public class ConnectionReaderThread extends Thread {
                     peer.getWriteBufferLock().unlock();
                 }
 
-
             } else {
-                System.out.println("content not found, lets ask another peer for it...");
                 new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
             }
             return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
@@ -1439,8 +1433,6 @@ public class ConnectionReaderThread extends Thread {
 
         if (kadContent.verify()) {
             boolean saved = serverContext.getKadStoreManager().put(kadContent);
-
-            System.out.println("got KadContent successfully from search!");
 
             KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
             if (runningJob != null) {

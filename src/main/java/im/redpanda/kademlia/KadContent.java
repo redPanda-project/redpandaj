@@ -78,6 +78,10 @@ public class KadContent {
         return id;
     }
 
+    public static KademliaId createKademliaId(NodeId nodeId) {
+        return createKademliaId(System.currentTimeMillis(), nodeId.exportPublic());
+    }
+
     public static KademliaId createKademliaId(long timestamp, byte[] pubkey) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
         simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));

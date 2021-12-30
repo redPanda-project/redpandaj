@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
+import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
 import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
@@ -42,12 +43,22 @@ public class NodeInfoSetRefreshJob extends Job {
 
 
             int cnt = 0;
-            while (iterator.hasNext() && cnt < 5) {
+            while (iterator.hasNext() && cnt < 10) {
                 NodeEdge nodeEdge = iterator.next();
-                System.out.println("best node for me: " + nodeGraph.getEdgeWeight(nodeEdge));
+                double edgeWeight = nodeGraph.getEdgeWeight(nodeEdge);
+                if (edgeWeight > 5) {
+                    continue;
+                }
                 Node edgeSource = nodeGraph.getEdgeSource(nodeEdge);
 
-                nodeInfoModel.addEntryPoint(new GMEntryPointModel(edgeSource.getNodeId()));
+                GMEntryPointModel gmEntryPointModel = new GMEntryPointModel(edgeSource.getNodeId());
+
+                Node.ConnectionPoint connectionPoint = edgeSource.latestSeenConnectionPoint();
+                if (connectionPoint != null && !Utils.isLocalAddress(connectionPoint.getIp())) {
+                    gmEntryPointModel.setIp(connectionPoint.getIp());
+                    gmEntryPointModel.setPort(connectionPoint.getPort());
+                }
+                nodeInfoModel.addEntryPoint(gmEntryPointModel);
                 cnt++;
             }
         } finally {

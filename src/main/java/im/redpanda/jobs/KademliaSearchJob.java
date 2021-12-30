@@ -1,7 +1,11 @@
 package im.redpanda.jobs;
 
 
-import im.redpanda.core.*;
+import im.redpanda.core.Command;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.PeerList;
+import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 
@@ -24,7 +28,7 @@ public class KademliaSearchJob extends Job {
      */
     private static final HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
     private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
-    private static final long BLACKLIST_KEY_FOR = 1000L * 5L;
+    private static final long BLACKLIST_KEY_FOR = 1000L * 30L;
     //todo: we need a housekeeper for this hashmap!
 
     public static final int SEND_TO_NODES = 2;
@@ -56,13 +60,12 @@ public class KademliaSearchJob extends Job {
         kademliaIdSearchBlacklistLock.lock();
         try {
             Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
-            if (blacklistedTill != null)
-                System.out.println("tillasd: " + (currentTimeMillis - blacklistedTill));
             if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
                 kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
             } else {
-                System.out.println("search is blacklisted....");
                 //todo: maybe we should inform the peer that he should retry a KadSearch in some seconds?
+                fail();
+                done();
                 return;
             }
         } finally {
@@ -105,14 +108,14 @@ public class KademliaSearchJob extends Job {
                     continue;
                 }
 
-                /**
-                 * do not add peers which are further or equally away from the key than us
-                 */
-                int peersDistanceToKey = id.getDistance(p.getKademliaId());
-                System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
-                if (myDistanceToKey <= peersDistanceToKey) {
-                    continue;
-                }
+//                /**
+//                 * do not add peers which are further or equally away from the key than us
+//                 */
+//                int peersDistanceToKey = id.getDistance(p.getKademliaId());
+//                System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
+//                if (myDistanceToKey <= peersDistanceToKey) {
+//                    continue;
+//                }
 
 
                 peers.put(p, NONE);
@@ -121,7 +124,6 @@ public class KademliaSearchJob extends Job {
             lock.unlock();
         }
 
-        System.out.println("peers for search found: " + peers.size());
     }
 
     @Override
@@ -132,12 +134,6 @@ public class KademliaSearchJob extends Job {
         if (getEstimatedRuntime() > 1000 * 5) {
             System.out.println("5 second timeout reached for KadSearch... ");
             success();
-            done();
-            return;
-        }
-        if (peers == null) {
-            System.out.println("search blacklisted for KadSearch... ");
-            fail();
             done();
             return;
         }
@@ -184,9 +180,6 @@ public class KademliaSearchJob extends Job {
 
                             peers.put(p, ASKED);
                             askedPeers++;
-
-
-                            System.out.println("search KadId from peer: " + p.getNodeId().toString() + " size: " + peers.size() + " distance: " + id.getDistance(p.getKademliaId()) + " target: " + id);
 
 
                             writeBuffer.put(Command.KADEMLIA_GET);
@@ -243,18 +236,14 @@ public class KademliaSearchJob extends Job {
             }
         });
 
-        System.out.println("newst content found: " + contents.get(0).getTimestamp());
-
         return contents;
     }
 
 
     public void ack(KadContent c, Peer p) {
         //todo: concurrency?
-        //todo: save KadContent in our store?
         contents.add(c);
         peers.put(p, SUCCESS);
-        System.out.println("ack2!!");
     }
 
 
