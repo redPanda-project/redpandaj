@@ -6,7 +6,10 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 public class PeerListTest {
 
@@ -177,10 +180,6 @@ public class PeerListTest {
         peerList.add(new Peer("127.0.0.1", 50558));
         Peer goodPeer = peerList.getGoodPeer();
         assertNotNull(goodPeer);
-    }
-
-    @Test
-    public void clearConnectionDetails() {
     }
 
     @Test

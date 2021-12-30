@@ -94,6 +94,7 @@ public class App {
 
     private static void startServer(ServerContext serverContext) {
         ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
+        serverContext.setConnectionHandler(connectionHandler);
         int port = connectionHandler.bind();
         serverContext.setPort(port);
         serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));

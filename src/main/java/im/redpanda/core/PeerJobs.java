@@ -40,17 +40,12 @@ public class PeerJobs extends Thread {
                 continue;
             }
 
-            ConnectionHandler.peerInHandshakesLock.lock();
+            serverContext.getConnectionHandler().getPeerInHandshakesLock().lock();
             try {
                 long currentTimeMillis = System.currentTimeMillis();
                 ArrayList<PeerInHandshake> toRemove = new ArrayList<>();
                 for (PeerInHandshake peerInHandshake : ConnectionHandler.peerInHandshakes) {
                     if (currentTimeMillis - peerInHandshake.getCreatedAt() > 1000L * 10L) {
-//                        if (peerInHandshake.getIdentity() != null) {
-//                            System.out.println("closing peer in handshake: " + peerInHandshake.getIdentity().toString());
-//                        } else {
-//                            System.out.println("closing peer in handshake: " + peerInHandshake.getIp());
-//                        }
                         try {
                             peerInHandshake.getSocketChannel().close();
                         } catch (IOException e) {
@@ -61,7 +56,7 @@ public class PeerJobs extends Thread {
                 }
                 ConnectionHandler.peerInHandshakes.removeAll(toRemove);
             } finally {
-                ConnectionHandler.peerInHandshakesLock.unlock();
+                serverContext.getConnectionHandler().getPeerInHandshakesLock().unlock();
             }
 
             Lock lock = peerList.getReadWriteLock().readLock();

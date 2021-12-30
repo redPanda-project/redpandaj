@@ -7,6 +7,7 @@ package im.redpanda.core;
 
 
 import im.redpanda.crypt.Utils;
+import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 
 import java.io.IOException;
@@ -38,7 +39,8 @@ public class ConnectionHandler extends Thread {
     public static final ReentrantLock selectorLock = new ReentrantLock();
 
     public static ArrayList<PeerInHandshake> peerInHandshakes = new ArrayList<>();
-    public static ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
+    @Getter
+    private ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
     public static BlockingQueue<Peer> peersToReadAndParse = new LinkedBlockingQueue<>(600);
     public static ArrayList<Peer> workingRead = new ArrayList<>();
     public static BlockingQueue<Peer> doneRead = new LinkedBlockingQueue<>(600);
@@ -76,8 +78,8 @@ public class ConnectionHandler extends Thread {
         String forcedPort = System.getenv("PORT");
 
         int port = -1;
+        ServerSocketChannel serverSocketChannel = null;
         try {
-            ServerSocketChannel serverSocketChannel;
             serverSocketChannel = ServerSocketChannel.open();
             serverSocketChannel.configureBlocking(false);
 
@@ -91,6 +93,13 @@ public class ConnectionHandler extends Thread {
             addServerSocketChannel(serverSocketChannel);
         } catch (IOException ex) {
             ex.printStackTrace();
+            if (serverSocketChannel != null) {
+                try {
+                    serverSocketChannel.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
 
         return port;
@@ -376,12 +385,7 @@ public class ConnectionHandler extends Thread {
             SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
 
             PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
-            ConnectionHandler.peerInHandshakesLock.lock();
-            try {
-                ConnectionHandler.peerInHandshakes.add(peerInHandshake);
-            } finally {
-                ConnectionHandler.peerInHandshakesLock.unlock();
-            }
+            addPeerInHandshake(peerInHandshake);
 
             ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
 
@@ -391,7 +395,15 @@ public class ConnectionHandler extends Thread {
         } catch (IOException ex) {
             ex.printStackTrace();
             Log.putStd("could not init connection....");
-            return;
+        }
+    }
+
+    public void addPeerInHandshake(PeerInHandshake peerInHandshake) {
+        peerInHandshakesLock.lock();
+        try {
+            ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+        } finally {
+            peerInHandshakesLock.unlock();
         }
     }
 
@@ -668,12 +680,7 @@ public class ConnectionHandler extends Thread {
         writeBufferLock.lock();
 
         try {
-            ConnectionHandler.peerInHandshakesLock.lock();
-            try {
-                ConnectionHandler.peerInHandshakes.remove(peerInHandshake);
-            } finally {
-                ConnectionHandler.peerInHandshakesLock.unlock();
-            }
+            removePeerInHandshake(peerInHandshake);
 
             peerOrigin.setupConnectionForPeer(peerInHandshake);
 
@@ -713,6 +720,15 @@ public class ConnectionHandler extends Thread {
             writeBufferLock.unlock();
         }
 
+    }
+
+    public void removePeerInHandshake(PeerInHandshake peerInHandshake) {
+        peerInHandshakesLock.lock();
+        try {
+            peerInHandshakes.remove(peerInHandshake);
+        } finally {
+            peerInHandshakesLock.unlock();
+        }
     }
 
 

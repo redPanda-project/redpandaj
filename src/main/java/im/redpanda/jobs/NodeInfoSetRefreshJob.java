@@ -36,7 +36,7 @@ public class NodeInfoSetRefreshJob extends Job {
         NodeInfoModel nodeInfoModel = new NodeInfoModel();
         serverContext.getNodeStore().getReadWriteLock().readLock().lock();
         try {
-            nodeEdges.addAll(nodeGraph.incomingEdgesOf(serverContext.getServerNode()));
+            nodeEdges.addAll(nodeGraph.incomingEdgesOf(serverContext.getNode()));
             Collections.sort(nodeEdges, Comparator.comparingDouble(nodeGraph::getEdgeWeight));
             Iterator<NodeEdge> iterator = nodeEdges.iterator();
 

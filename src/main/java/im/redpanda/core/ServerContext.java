@@ -2,7 +2,13 @@ package im.redpanda.core;
 
 import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.store.NodeStore;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+@Getter
+@Setter
+@NoArgsConstructor
 public class ServerContext {
 
     private int port;
@@ -13,7 +19,7 @@ public class ServerContext {
     private Node node;
     private NodeId nodeId;
     private KademliaId nonce;
-
+    private ConnectionHandler connectionHandler;
 
     public static ServerContext buildDefaultServerContext() {
         ServerContext serverContext = new ServerContext();
@@ -25,63 +31,4 @@ public class ServerContext {
         return serverContext;
     }
 
-    public int getPort() {
-        return port;
-    }
-
-    public void setPort(int port) {
-        this.port = port;
-    }
-
-    public LocalSettings getLocalSettings() {
-        return localSettings;
-    }
-
-    public void setLocalSettings(LocalSettings localSettings) {
-        this.localSettings = localSettings;
-    }
-
-    public PeerList getPeerList() {
-        return peerList;
-    }
-
-    public void setPeerList(PeerList peerList) {
-        this.peerList = peerList;
-    }
-
-    public NodeStore getNodeStore() {
-        return nodeStore;
-    }
-
-    public void setNodeStore(NodeStore nodeStore) {
-        this.nodeStore = nodeStore;
-    }
-
-    public NodeId getNodeId() {
-        return nodeId;
-    }
-
-    public void setNodeId(NodeId nodeId) {
-        this.nodeId = nodeId;
-    }
-
-    public KademliaId getNonce() {
-        return nonce;
-    }
-
-    public void setNonce(KademliaId nonce) {
-        this.nonce = nonce;
-    }
-
-    public KadStoreManager getKadStoreManager() {
-        return kadStoreManager;
-    }
-
-    public Node getServerNode() {
-        return node;
-    }
-
-    public void setNode(Node node) {
-        this.node = node;
-    }
 }

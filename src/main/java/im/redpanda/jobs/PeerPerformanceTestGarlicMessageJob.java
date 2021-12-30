@@ -121,7 +121,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             garlicSequenceLength = 1;
         }
 
-        Node startingNode = serverContext.getServerNode();
+        Node startingNode = serverContext.getNode();
 
         this.nodes = new ArrayList<>();
         Node currentNode = startingNode;
@@ -181,7 +181,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             return true;
         }
 
-        nodes.add(serverContext.getServerNode());
+        nodes.add(serverContext.getNode());
 
         flaschenPostInsertPeer = serverContext.getPeerList().get(nodes.get(1).getNodeId().getKademliaId());
 
