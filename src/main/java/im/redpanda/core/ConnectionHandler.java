@@ -608,16 +608,13 @@ public class ConnectionHandler extends Thread {
                     System.out.println("received first encrypted command...");
 
 
-                    ByteBuffer outBuffer = ByteBufferPool.borrowObject(16);
+                    ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(16);
 
-                    peerInHandshake.getPeerChiperStreams().decrypt(allocate, outBuffer);
+                    peerInHandshake.getPeerChiperStreams().decrypt(allocate, tempHandshakeReadBuffer);
 
-                    outBuffer.flip();
+                    tempHandshakeReadBuffer.flip();
 
-                    byte decryptedCommand = outBuffer.get();
-
-                    outBuffer.compact();
-                    ByteBufferPool.returnObject(outBuffer);
+                    byte decryptedCommand = tempHandshakeReadBuffer.get();
 
                     if (decryptedCommand == Command.PING) {
                         System.out.println("received first ping...");
@@ -626,12 +623,17 @@ public class ConnectionHandler extends Thread {
                          * We can now safely transfer the open connection from the peerInHandshake to the
                          * actual peer
                          */
+                        Peer peer = peerInHandshake.getPeer();
+                        setupConnection(peer, peerInHandshake);
 
-                        setupConnection(peerInHandshake.getPeer(), peerInHandshake);
+                        copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peer);
                     } else {
                         System.out.println("got wrong first command, lets disconnect");
                         peerInHandshake.getSocketChannel().close();
                     }
+
+                    tempHandshakeReadBuffer.compact();
+                    ByteBufferPool.returnObject(tempHandshakeReadBuffer);
 
 
                 }
@@ -647,6 +649,15 @@ public class ConnectionHandler extends Thread {
             Log.sentry(e);
             key.cancel();
 
+        }
+    }
+
+    private void copyRemainingReadBytesToPeerBuffer(ByteBuffer tempHandshakeReadBuffer, Peer peer) {
+        if (tempHandshakeReadBuffer.hasRemaining()) {
+            if (peer.readBuffer == null) {
+                peer.readBuffer = ByteBufferPool.borrowObject(16);
+            }
+            peer.readBuffer.put(tempHandshakeReadBuffer);
         }
     }
 

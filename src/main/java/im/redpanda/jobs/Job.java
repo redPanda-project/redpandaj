@@ -19,6 +19,7 @@ public abstract class Job implements Runnable {
 
     private long reRunDelay = 500L; //default value
     private boolean permanent = false;
+    private boolean skipImminentRun = false;
 
     private int jobId = -1;
     private int runCounter = 0;
@@ -40,6 +41,13 @@ public abstract class Job implements Runnable {
         this.serverContext = serverContext;
         this.reRunDelay = reRunDelay;
         this.permanent = permanent;
+    }
+
+    public Job(ServerContext serverContext, long reRunDelay, boolean permanent, boolean skipImminentRun) {
+        this.serverContext = serverContext;
+        this.reRunDelay = reRunDelay;
+        this.permanent = permanent;
+        this.skipImminentRun = skipImminentRun;
     }
 
     @Override
@@ -65,9 +73,9 @@ public abstract class Job implements Runnable {
             }
         }
 
-        if (!initilized || done) {
-            //if the init method failed, (protected var set to false),
-            // we retry the init in the next run
+        runCounter++;
+
+        if (!initilized || done || (skipImminentRun && runCounter == 1)) {
             return;
         }
 
@@ -80,7 +88,7 @@ public abstract class Job implements Runnable {
             return;
         }
         //count after doing the work, since the first start of the job is immediately
-        runCounter++;
+
     }
 
     /**

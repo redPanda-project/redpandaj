@@ -6,6 +6,7 @@ import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import lombok.Getter;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
@@ -24,6 +25,8 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class NodeStore {
 
@@ -52,6 +55,8 @@ public class NodeStore {
     private long lastTimeEdgeAdded = 0;
     private final ServerContext serverContext;
     private final Random random = new Random();
+    @Getter
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     private NodeStore(ServerContext serverContext) {
         this.serverContext = serverContext;

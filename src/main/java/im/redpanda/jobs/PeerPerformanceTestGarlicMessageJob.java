@@ -80,10 +80,35 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     @Override
     public void init() {
+        serverContext.getNodeStore().getReadWriteLock().writeLock().lock();
+        try {
+            if (calculatePathOrAbort()) {
+                return;
+            }
+        } finally {
+            serverContext.getNodeStore().getReadWriteLock().writeLock().unlock();
+        }
+        byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+
+        flaschenPostInsertPeer.getNode().cleanChecks();
+
+        flaschenPostInsertPeer.getWriteBufferLock().lock();
+        try {
+            flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
+            flaschenPostInsertPeer.getWriteBuffer().putInt(content.length);
+            flaschenPostInsertPeer.getWriteBuffer().put(content);
+            flaschenPostInsertPeer.setWriteBufferFilled();
+        } finally {
+            flaschenPostInsertPeer.getWriteBufferLock().unlock();
+        }
+
+    }
+
+    private boolean calculatePathOrAbort() {
         DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = serverContext.getNodeStore().getNodeGraph();
         if (nodeGraph.vertexSet().isEmpty()) {
             super.done();
-            return;
+            return true;
         }
 
         // nodes = hops + 1
@@ -153,7 +178,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         if (nodes.size() < 2) {
             super.done();
-            return;
+            return true;
         }
 
         nodes.add(serverContext.getServerNode());
@@ -162,30 +187,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         if (flaschenPostInsertPeer == null || flaschenPostInsertPeer.getNode() == null) {
             super.done();
-            return;
+            return true;
         }
-
-        byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
-
-//        Peer closestGoodPeer = serverContext.getPeerList().getClosestGoodPeer(this.nodes.get(0).getNodeId().getKademliaId());
-//        if (closestGoodPeer == null || closestGoodPeer.getNode() == null) {
-//            super.done();
-//            return;
-//        }
-//        flaschenPostInsertPeer = closestGoodPeer;
-        flaschenPostInsertPeer.getNode().cleanChecks();
-
-        flaschenPostInsertPeer.getWriteBufferLock().lock();
-        try {
-            flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-            flaschenPostInsertPeer.getWriteBuffer().putInt(content.length);
-            flaschenPostInsertPeer.getWriteBuffer().put(content);
-            flaschenPostInsertPeer.setWriteBufferFilled();
-        } finally {
-            flaschenPostInsertPeer.getWriteBufferLock().unlock();
-        }
-
-
+        return false;
     }
 
     private void addReversePath() {

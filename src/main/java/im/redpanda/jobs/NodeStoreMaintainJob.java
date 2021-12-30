@@ -8,7 +8,7 @@ public class NodeStoreMaintainJob extends Job {
 
 
     public NodeStoreMaintainJob(ServerContext serverContext) {
-        super(serverContext, 1000L * 5L * 1L, true);
+        super(serverContext, 1000L * 5L * 1L, true, true);
     }
 
     @Override

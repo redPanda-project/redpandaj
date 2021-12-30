@@ -386,7 +386,7 @@ public class Peer implements Comparable<Peer> {
             }
 
             if (readBuffer.remaining() < remaining) {
-                int newSize = Math.min(2 * readBuffer.position() + 2 * readBuffer.remaining(), 1024 * 1024 * 60);
+                int newSize = Math.min(readBuffer.position() + remaining + 1024, 1024 * 1024 * 60);
                 if (newSize == readBuffer.remaining()) {
                     throw new PeerProtocolException(String.format("buffer could not be increased, size is %s ", newSize));
                 }
