@@ -6,7 +6,7 @@
 
     <groupId>im.redpanda</groupId>
     <artifactId>server</artifactId>
-    <version>0.1.5-SNAPSHOT</version>
+    <version>0.1.6-SNAPSHOT</version>
 
 
     <name>server</name>
@@ -26,6 +26,13 @@
     </properties>
 
     <dependencies>
+
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest</artifactId>
+            <version>2.2</version>
+            <scope>test</scope>
+        </dependency>
 
         <!--        todo, if we are actually using this library we have to include the license-->
         <dependency>
