@@ -72,12 +72,12 @@ public class GMParser {
 
             Job runningJob = Job.getRunningJob(gmAck.getAckid());
 
-            if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
+            if (runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
                 PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
                 perfJob.success();
             }
 
-            if (runningJob != null && runningJob instanceof PeerPerformanceTestGarlicMessageJob) {
+            if (runningJob instanceof PeerPerformanceTestGarlicMessageJob) {
                 PeerPerformanceTestGarlicMessageJob perfJob = (PeerPerformanceTestGarlicMessageJob) runningJob;
                 perfJob.success();
             }
