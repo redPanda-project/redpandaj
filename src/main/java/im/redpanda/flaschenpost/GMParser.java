@@ -16,6 +16,7 @@ import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
 import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
 import im.redpanda.store.NodeEdge;
+import lombok.extern.slf4j.Slf4j;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
 
@@ -24,16 +25,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 import java.util.TreeSet;
 import java.util.concurrent.locks.Lock;
 
+@Slf4j
 public class GMParser {
 
-    private Random random = new Random();
+    private GMParser() {
+    }
 
     public static GMContent parse(ServerContext serverContext, byte[] content) {
-
 
         ByteBuffer buffer = ByteBuffer.wrap(content);
 
@@ -55,8 +56,6 @@ public class GMParser {
 
             garlicMessage.tryParseContent();
 
-//            System.out.println("got new garlic message for me?: " + garlicMessage.isTargetedToUs());
-
             // if the gm is targeted to us the content will be handled by the parseContent routine of the gm
             if (!garlicMessage.isTargetedToUs()) {
                 sendGarlicMessageToPeer(serverContext, garlicMessage);
@@ -71,19 +70,15 @@ public class GMParser {
             GMAck gmAck = new GMAck(content);
             gmAck.parseContent();
 
-//            System.out.println("got ack: " + gmAck.getAckid());
-
             Job runningJob = Job.getRunningJob(gmAck.getAckid());
 
             if (runningJob != null && runningJob instanceof PeerPerformanceTestFlaschenpostJob) {
                 PeerPerformanceTestFlaschenpostJob perfJob = (PeerPerformanceTestFlaschenpostJob) runningJob;
-//                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
                 perfJob.success();
             }
 
             if (runningJob != null && runningJob instanceof PeerPerformanceTestGarlicMessageJob) {
                 PeerPerformanceTestGarlicMessageJob perfJob = (PeerPerformanceTestGarlicMessageJob) runningJob;
-//                System.out.println("GM Test finished in: " + perfJob.getEstimatedRuntime() + " ms");
                 perfJob.success();
             }
 
@@ -94,16 +89,6 @@ public class GMParser {
     }
 
     private static void sendGarlicMessageToPeer(ServerContext serverContext, GarlicMessage garlicMessage) {
-
-//        boolean put = FPStoreManager.put(garlicMessage);
-//
-//        if (put) {
-//            System.out.println("message already handled, do not send again, destination " + garlicMessage.getDestination() + " id " + garlicMessage.getId());
-//            return;
-//        } else {
-//            System.out.println("handle fp with destination " + garlicMessage.getDestination() + " id " + garlicMessage.getId());
-//        }
-
         PeerList peerList = serverContext.getPeerList();
 
         Peer peerToSendFP = peerList.get(garlicMessage.getDestination());
@@ -120,7 +105,7 @@ public class GMParser {
                 KadContent kadContent = serverContext.getKadStoreManager().get(nodeKademliaId);
 
                 if (kadContent == null) {
-                    System.out.println("no kademlia content for target peer: " + garlicMessage.destination + " and target kademlia id: " + nodeKademliaId);
+                    log.info("no kademlia content for target peer: " + garlicMessage.destination + " and target kademlia id: " + nodeKademliaId);
                     new KademliaSearchJob(serverContext, nodeKademliaId).start();
                 } else {
                     if (System.currentTimeMillis() - kadContent.getTimestamp() > Duration.ofMinutes(8).toMillis()) {
@@ -189,7 +174,7 @@ public class GMParser {
                 lock.unlock();
             }
 
-            if (peers.size() == 0) {
+            if (peers.isEmpty()) {
 //                System.out.println(String.format("no peer found for destination %s which is near to target", garlicMessage.getDestination()));
                 return;
             }
@@ -243,7 +228,6 @@ public class GMParser {
             peerToSendFP.writeBuffer.putInt(content.length);
             peerToSendFP.writeBuffer.put(content);
             peerToSendFP.setWriteBufferFilled();
-//            System.out.println("send fp to other peer: " + garlicMessage.getDestination());
         } finally {
             peerToSendFP.getWriteBufferLock().unlock();
         }
