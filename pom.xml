@@ -19,7 +19,7 @@
 
         <smack.version>4.3.5</smack.version>
         <jackson.version>2.13.1</jackson.version>
-        <logback.version>1.2.10</logback.version>
+        <logback.version>1.2.11</logback.version>
 
         <sonar.organization>redpanda-project</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -222,7 +222,7 @@
                 </plugin>
                 <plugin>
                     <artifactId>maven-project-info-reports-plugin</artifactId>
-                    <version>3.1.2</version>
+                    <version>3.2.2</version>
                 </plugin>
                 <plugin>
                     <groupId>org.eluder.coveralls</groupId>
