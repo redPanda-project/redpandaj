@@ -228,13 +228,8 @@ public class KademliaSearchJob extends Job {
         }
 
         //lets get the newest one!
-        contents.sort(new Comparator<KadContent>() {
-            @Override
-            public int compare(KadContent o1, KadContent o2) {
-                return o1.getTimestamp() < o1.getTimestamp() ? -1 :
-                        o1.getTimestamp() > o1.getTimestamp() ? 1 : 0;
-            }
-        });
+        contents.sort((o1, o2) -> o1.getTimestamp() < o1.getTimestamp() ? -1 :
+                o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
 
         return contents;
     }
