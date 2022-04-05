@@ -30,7 +30,7 @@ public class Peer implements Comparable<Peer> {
     public int port;
     public int connectAble = 0;
 
-    public boolean lightClient = false;
+    private boolean lightClient = false;
     public int protocolVersion;
 
     public int retries = 0;
