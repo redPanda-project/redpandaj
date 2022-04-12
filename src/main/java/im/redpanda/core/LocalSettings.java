@@ -1,14 +1,21 @@
 package im.redpanda.core;
 
 import im.redpanda.store.NodeEdge;
+import lombok.extern.slf4j.Slf4j;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.jgrapht.graph.SimpleWeightedGraph;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 
 /**
  * @author Robin Braun
  */
+@Slf4j
 public class LocalSettings implements Serializable {
 
 
@@ -51,10 +58,6 @@ public class LocalSettings implements Serializable {
     }
 
     public void save(int port) {
-
-        FileOutputStream fileOutputStream = null;
-        ObjectOutputStream objectOutputStream = null;
-
         try {
 
             File mkdirs = new File(Settings.SAVE_DIR);
@@ -63,30 +66,14 @@ public class LocalSettings implements Serializable {
             File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
 
             file.createNewFile();
-            fileOutputStream = new FileOutputStream(file);
-            objectOutputStream = new ObjectOutputStream(fileOutputStream);
-            objectOutputStream.writeObject(this);
-            objectOutputStream.close();
-            fileOutputStream.close();
-
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        } finally {
-            try {
-                if (objectOutputStream != null) {
-                    objectOutputStream.close();
-                }
-            } catch (IOException ex) {
-                ex.printStackTrace();
-            } finally {
-                if (fileOutputStream != null) {
-                    try {
-                        fileOutputStream.close();
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
-                    }
+            try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
+                try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+                    objectOutputStream.writeObject(this);
                 }
             }
+
+        } catch (IOException ex) {
+            log.info("error saving local settings", ex);
         }
 
     }
@@ -96,20 +83,17 @@ public class LocalSettings implements Serializable {
         try {
             File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
 
-            FileInputStream fileInputStream = new FileInputStream(file);
-            ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream);
-            Object readObject = objectInputStream.readObject();
-            objectInputStream.close();
-            fileInputStream.close();
+            try (FileInputStream fileInputStream = new FileInputStream(file)) {
+                try (ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
+                    return (LocalSettings) objectInputStream.readObject();
+                }
+            }
 
-            return (LocalSettings) readObject;
-
-
-        } catch (ClassNotFoundException | ClassCastException ex) {
-        } catch (IOException ex) {
+        } catch (ClassNotFoundException | ClassCastException | IOException ex) {
+            log.info("error loading local settings", ex);
         }
 
-        System.out.println("could not load localSettings.dat, generating new LocalSettings");
+        log.info("could not load localSettings.dat, generating new LocalSettings");
 
         LocalSettings localSettings = new LocalSettings();
         localSettings.save(port);
