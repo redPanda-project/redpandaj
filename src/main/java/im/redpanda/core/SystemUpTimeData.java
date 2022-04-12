@@ -1,17 +1,21 @@
 package im.redpanda.core;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.Serializable;
 import java.time.Duration;
 import java.util.Calendar;
+import java.util.SortedSet;
 import java.util.TreeSet;
 
+@Slf4j
 public class SystemUpTimeData implements Serializable {
     private static final int UPTIME_WINDOW_IN_DAYS = 7;
     private static final int MAX_HITS_IN_WINDOW = UPTIME_WINDOW_IN_DAYS * 24;
 
-    private final TreeSet<Long> upHits;
+    private final SortedSet<Long> upHits;
 
-    public SystemUpTimeData(TreeSet<Long> upHits) {
+    public SystemUpTimeData(SortedSet<Long> upHits) {
         this.upHits = upHits;
     }
 
@@ -21,9 +25,9 @@ public class SystemUpTimeData implements Serializable {
 
     public void reportNow() {
         clearTooOldHits();
-        System.out.println("current uptime: " + getUptimePercent());
+        log.info("current uptime: " + getUptimePercent());
         upHits.add(ceilToLastFullHour(System.currentTimeMillis()));
-        System.out.println("current uptime: " + getUptimePercent() + " after update");
+        log.info("current uptime: " + getUptimePercent() + " after update");
     }
 
     public void clearTooOldHits() {
