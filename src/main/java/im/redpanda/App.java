@@ -15,6 +15,7 @@ import im.redpanda.jobs.NodeConnectionPointsSeenJob;
 import im.redpanda.jobs.NodeInfoSetRefreshJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
+import im.redpanda.jobs.UpTimeReporterJob;
 import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
 import io.sentry.SentryClient;
@@ -152,6 +153,7 @@ public class App {
         new KadRefreshJob(serverContext).start();
         new NodeInfoSetRefreshJob(serverContext).start();
         new NodeConnectionPointsSeenJob(serverContext).start();
+        new UpTimeReporterJob(serverContext).start();
     }
 
     private static void initLogger() {

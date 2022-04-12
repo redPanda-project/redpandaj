@@ -24,11 +24,14 @@ public class LocalSettings implements Serializable {
 
     private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
 
+    private SystemUpTimeData systemUpTimeData;
+
     public LocalSettings() {
         myIdentity = new NodeId();
         myIp = "";
         updateTimestamp = -1;
         nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+        systemUpTimeData = new SystemUpTimeData();
     }
 
     public void setUpdateSignature(byte[] updateSignature) {
@@ -135,5 +138,12 @@ public class LocalSettings implements Serializable {
 
     public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {
         return nodeGraph;
+    }
+
+    public SystemUpTimeData getSystemUpTimeData() {
+        if (systemUpTimeData == null) {
+            systemUpTimeData = new SystemUpTimeData();
+        }
+        return systemUpTimeData;
     }
 }

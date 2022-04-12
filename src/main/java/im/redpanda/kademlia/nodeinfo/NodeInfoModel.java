@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import im.redpanda.core.NodeId;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +21,9 @@ public class NodeInfoModel {
     }
 
     private final long timestamp = System.currentTimeMillis();
+    @Setter
+    @Getter
+    private int uptime;
     @Getter
     private final List<GMEntryPointModel> entryPoints = new ArrayList<>();
 
@@ -29,6 +33,10 @@ public class NodeInfoModel {
 
     public void addEntryPoint(GMEntryPointModel entryPointModel) {
         entryPoints.add(entryPointModel);
+    }
+
+    public void addAllEntryPoints(List<GMEntryPointModel> entryPointModels) {
+        entryPoints.addAll(entryPointModels);
     }
 
     public String export() {

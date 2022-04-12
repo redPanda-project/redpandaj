@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 
 public class NodeInfoSetRefreshJob extends Job {
     private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
@@ -33,8 +34,24 @@ public class NodeInfoSetRefreshJob extends Job {
 
         setReRunDelay(Duration.ofMinutes(5).toMillis());
 
-        ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
+
         NodeInfoModel nodeInfoModel = new NodeInfoModel();
+        nodeInfoModel.addAllEntryPoints(getGoodEntryPoints());
+        nodeInfoModel.setUptime(serverContext.getLocalSettings().getSystemUpTimeData().getUptimePercentAsInt());
+
+        System.out.println("string to store: " + nodeInfoModel.export());
+
+        byte[] payload = nodeInfoModel.export().getBytes();
+
+        KadContent kadContent = new KadContent(serverContext.getNodeId().exportPublic(), payload);
+        kadContent.signWith(serverContext.getNodeId());
+        new KademliaInsertJob(serverContext, kadContent).start();
+
+    }
+
+    private List<GMEntryPointModel> getGoodEntryPoints() {
+        ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
+        ArrayList<GMEntryPointModel> gmEntryPointModels = new ArrayList<>();
         serverContext.getNodeStore().getReadWriteLock().readLock().lock();
         try {
             nodeEdges.addAll(nodeGraph.incomingEdgesOf(serverContext.getNode()));
@@ -58,20 +75,14 @@ public class NodeInfoSetRefreshJob extends Job {
                     gmEntryPointModel.setIp(connectionPoint.getIp());
                     gmEntryPointModel.setPort(connectionPoint.getPort());
                 }
-                nodeInfoModel.addEntryPoint(gmEntryPointModel);
+
+                gmEntryPointModels.add(gmEntryPointModel);
                 cnt++;
             }
         } finally {
             serverContext.getNodeStore().getReadWriteLock().readLock().unlock();
         }
 
-        System.out.println("string to store: " + nodeInfoModel.export());
-
-        byte[] payload = nodeInfoModel.export().getBytes();
-
-        KadContent kadContent = new KadContent(serverContext.getNodeId().exportPublic(), payload);
-        kadContent.signWith(serverContext.getNodeId());
-        new KademliaInsertJob(serverContext, kadContent).start();
-
+        return gmEntryPointModels;
     }
 }
