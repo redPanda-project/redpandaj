@@ -80,12 +80,6 @@
             <version>3.0.8</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/com.google.flatbuffers/flatbuffers-java -->
-        <dependency>
-            <groupId>com.google.flatbuffers</groupId>
-            <artifactId>flatbuffers-java</artifactId>
-            <version>2.0.3</version>
-        </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-pool2</artifactId>
