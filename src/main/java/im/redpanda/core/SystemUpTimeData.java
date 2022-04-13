@@ -10,6 +10,8 @@ import java.util.TreeSet;
 
 @Slf4j
 public class SystemUpTimeData implements Serializable {
+
+    private static final long serialVersionUID = 2028364573881956089L;
     private static final int UPTIME_WINDOW_IN_DAYS = 7;
     private static final int MAX_HITS_IN_WINDOW = UPTIME_WINDOW_IN_DAYS * 24;
 

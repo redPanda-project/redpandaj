@@ -82,19 +82,19 @@ public class KadContent {
         return createKademliaId(System.currentTimeMillis(), nodeId.exportPublic());
     }
 
-    public static KademliaId createKademliaId(long timestamp, byte[] pubkey) {
+    public static KademliaId createKademliaId(long timestamp, byte[] publicKey) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
         simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-        //todo lets check if this is the corret time zone for the dart code as well...
+        //todo lets check if this is the correct time zone for the dart code as well...
         String date = simpleDateFormat.format(new Date(timestamp));
 
 //            System.out.println("kadcontent date: " + date);
 
         byte[] dateBytes = date.getBytes(StandardCharsets.UTF_8);
 
-        ByteBuffer byteBuffer = ByteBuffer.allocate(dateBytes.length + pubkey.length);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(dateBytes.length + publicKey.length);
         byteBuffer.put(dateBytes);
-        byteBuffer.put(pubkey);
+        byteBuffer.put(publicKey);
 
         byte[] sha256 = Sha256Hash.create(byteBuffer.array()).getBytes();
         return KademliaId.fromFirstBytes(sha256);
