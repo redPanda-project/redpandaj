@@ -6,9 +6,6 @@
 package im.redpanda.core;
 
 
-import com.google.flatbuffers.FlatBufferBuilder;
-import im.redpanda.commands.FBPeer;
-import im.redpanda.commands.FBPeerList;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
@@ -506,52 +503,58 @@ public class ConnectionReaderThread extends Thread {
                 int[] kademliaIds = new int[size];
                 int[] ips = new int[size];
 
-                FlatBufferBuilder builder = new FlatBufferBuilder(1024 * 200);
 
-                int cnt = 0;
-                for (Peer peerToWrite : peerList.getPeerArrayList()) {
-
-                    if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.getNodeId().hasKey()) {
-                        continue;
-                    }
-
-                    if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().hasKey()) {
-                        kademliaIds[cnt] = builder.createByteVector(peerToWrite.getNodeId().exportPublic());
-                    } else {
-
-                    }
-                    ips[cnt] = builder.createString(peerToWrite.ip);
-                    peers[cnt] = FBPeer.createFBPeer(builder, kademliaIds[cnt], ips[cnt], peerToWrite.getPort());
-                    cnt++;
-                }
+                ByteBuffer byteBuffer = ByteBufferPool.borrowObject(1024 * 200);
 
 
-                int peersVector = FBPeerList.createPeersVector(builder, peers);
+                byteBuffer.putInt(size);
 
-
-                int fbPeerList = FBPeerList.createFBPeerList(builder, peersVector);
-
-                builder.finish(fbPeerList);
-
-                ByteBuffer byteBuffer = builder.dataBuffer();
-
-                peer.getWriteBufferLock().lock();
                 try {
-                    peer.writeBuffer.put(Command.SEND_PEERLIST);
-                    peer.writeBuffer.putInt(byteBuffer.remaining());
-                    peer.writeBuffer.put(byteBuffer);
-                    peer.setWriteBufferFilled();
-                } finally {
-                    peer.getWriteBufferLock().unlock();
-                }
+                    int cnt = 0;
+                    for (Peer peerToWrite : peerList.getPeerArrayList()) {
 
+                        if (peerToWrite.ip == null || peerToWrite.isLightClient() || peerToWrite.getNodeId() == null || !peerToWrite.getNodeId().hasKey()) {
+                            continue;
+                        }
+
+
+                        if (peerToWrite.getNodeId() != null && peerToWrite.getNodeId().hasKey()) {
+                            byteBuffer.putShort((short) 1);
+                            byteBuffer.put(peerToWrite.getNodeId().exportPublic());
+                        } else {
+                            byteBuffer.putShort((short) 0);
+                        }
+
+
+                        byte[] ipStringBytes = peerToWrite.ip.getBytes();
+                        byteBuffer.putInt(ipStringBytes.length);
+                        byteBuffer.put(ipStringBytes);
+
+                        byteBuffer.putInt(peerToWrite.getPort());
+                        cnt++;
+                    }
+
+                    byteBuffer.flip();
+
+                    peer.getWriteBufferLock().lock();
+                    try {
+                        peer.writeBuffer.put(Command.SEND_PEERLIST);
+                        peer.writeBuffer.putInt(byteBuffer.remaining());
+                        peer.writeBuffer.put(byteBuffer);
+                        peer.setWriteBufferFilled();
+                        byteBuffer.compact();
+                    } finally {
+                        peer.getWriteBufferLock().unlock();
+                    }
+                } finally {
+                    ByteBufferPool.returnObject(byteBuffer);
+                }
 
             } finally {
                 peerList.getReadWriteLock().readLock().unlock();
             }
 
             return 1;
-
         } else if (command == Command.SEND_PEERLIST) {
 
             int toRead = readBuffer.getInt();
@@ -562,52 +565,50 @@ public class ConnectionReaderThread extends Thread {
             byte[] bytesForPeerList = new byte[toRead];
             readBuffer.get(bytesForPeerList);
 
-            FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForPeerList));
 
-            Log.put("we obtained a peerlist with " + rootAsFBPeerList.peersLength() + " peers....", 20);
+            ByteBuffer peerListBytes = ByteBuffer.wrap(bytesForPeerList);
 
-            for (int i = 0; i < rootAsFBPeerList.peersLength(); i++) {
+            int peerListSize = peerListBytes.getInt();
 
-                FBPeer fbPeer = rootAsFBPeerList.peers(i);
+            Peer newPeer;
+
+            for (int i = 0; i < peerListSize; i++) {
 
 
-                ByteBuffer nodeIdBuffer = fbPeer.nodeIdAsByteBuffer();
+                NodeId nodeId = null;
+                int booleanNodeIdPresent = peerListBytes.getShort();
+                if (booleanNodeIdPresent == 1) {
+                    byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
+                    peerListBytes.get(bytes);
+                    nodeId = NodeId.importPublic(bytes);
+                }
+                String ip = parseString(peerListBytes);
+                int port = peerListBytes.getInt();
 
-                Peer newPeer = null;
-
-                if (nodeIdBuffer != null) {
-                    byte[] nodeIdBytes = new byte[nodeIdBuffer.remaining()];
-                    nodeIdBuffer.get(nodeIdBytes);
-
-                    NodeId nodeId = NodeId.importPublic(nodeIdBytes);
-
-                    if (nodeId == null) {
-                        System.out.println("could not get nodeId from peerlist....");
-                        continue;
-                    }
-
+                if (nodeId != null) {
                     if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
                         Log.put("found ourselves in the peerlist", 80);
                         continue;
                     }
 
-                    newPeer = new Peer(fbPeer.ip(), fbPeer.port(), nodeId);
-
-                    if (fbPeer.ip() == null) {
+                    if (ip == null) {
                         System.out.println("found a peer with ip null...");
                         continue;
                     }
 
+                    newPeer = new Peer(ip, port, nodeId);
+
+
                     Node byKademliaId = Node.getByKademliaId(serverContext, nodeId.getKademliaId());
                     if (byKademliaId != null) {
-                        byKademliaId.addConnectionPoint(fbPeer.ip(), fbPeer.port());
+                        byKademliaId.addConnectionPoint(ip, port);
                     } else {
                         //this will store the new node in the NodeStore as well
                         new Node(serverContext, nodeId);
                     }
 
                 } else {
-                    newPeer = new Peer(fbPeer.ip(), fbPeer.port());
+                    newPeer = new Peer(ip, port);
                 }
 
                 Peer add = peerList.add(newPeer);
@@ -617,12 +618,10 @@ public class ConnectionReaderThread extends Thread {
                     Log.put("peer was already in peerlist, added new ConnectionPoint: " + newPeer, 50);
                 }
 
-
             }
 
+
             return 1 + 4 + toRead;
-
-
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
             ByteBuffer writeBuffer = peer.getWriteBuffer();
             peer.writeBufferLock.lock();
@@ -1602,6 +1601,22 @@ public class ConnectionReaderThread extends Thread {
         }
         byteBuffer.position(byteBuffer.position() + length);
         return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
+    }
+
+    public static String parseString(ByteBuffer byteBuffer) {
+        int stringByteLength = byteBuffer.getInt();
+
+        ByteBuffer stringBuffer = ByteBufferPool.borrowObject(stringByteLength);
+        try {
+            byteBuffer.get(stringBuffer.array(), 0, stringByteLength);
+            return new String(stringBuffer.array(), 0, stringByteLength);
+        } finally {
+            ByteBufferPool.returnObject(stringBuffer);
+        }
+    }
+
+    public static KademliaId parseKademliaId(ByteBuffer byteBuffer) {
+        return KademliaId.fromBuffer(byteBuffer);
     }
 
 }
