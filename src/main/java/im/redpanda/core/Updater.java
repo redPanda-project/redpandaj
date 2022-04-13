@@ -12,11 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.security.KeyPair;
 import java.security.Security;
 
 public class Updater {
 
+
+    public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "NUVqGoHFTGYRfP1TRHvCji3QkqonrA4fFJpDSbghDwJoBVV3VLNpqzS7nxMeMBfbELknyGvn2JLrNY67tbZqqLw3";
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -24,7 +25,7 @@ public class Updater {
 
     public static NodeId getPublicUpdaterKey() {
         try {
-            return NodeId.importPublic(Base58.decode("NUVqGoHFTGYRfP1TRHvCji3QkqonrA4fFJpDSbghDwJoBVV3VLNpqzS7nxMeMBfbELknyGvn2JLrNY67tbZqqLw3"));
+            return NodeId.importPublic(Base58.decode(PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS));
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
@@ -85,7 +86,6 @@ public class Updater {
         //lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
-//        System.out.println("privKey: '" + keyString + "'");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
@@ -99,9 +99,6 @@ public class Updater {
 
         Path path = Paths.get("target/redpanda.jar");
         byte[] data = Files.readAllBytes(path);
-
-        int updateSize = data.length;
-
 
         ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
         toHash.putLong(timestamp);
@@ -137,7 +134,6 @@ public class Updater {
         //lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
-//        System.out.println("privKey: '" + keyString + "'");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
@@ -184,7 +180,6 @@ public class Updater {
         System.out.println("renaming file to android.apk to be used from the client");
 
         Path source = Paths.get(fileName);
-//        Files.move(source, source.resolveSibling("android.apk"), StandardCopyOption.REPLACE_EXISTING);
         Files.move(source, Paths.get("android.apk"), StandardCopyOption.REPLACE_EXISTING);
     }
 

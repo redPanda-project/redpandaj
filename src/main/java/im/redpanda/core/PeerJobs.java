@@ -62,7 +62,7 @@ public class PeerJobs extends Thread {
             Lock lock = peerList.getReadWriteLock().readLock();
             lock.lock();
             try {
-                for (Peer p : peerList.getPeerArrayList()) {
+                for (Peer peer : peerList.getPeerArrayList()) {
 
                     try {
                         Thread.sleep(20);
@@ -70,55 +70,36 @@ public class PeerJobs extends Thread {
                         e.printStackTrace();
                     }
 
-                    Log.put("running over peer: " + p, 120);
+                    Log.put("running over peer: " + peer, 120);
 
-//                    if (p.getLastAnswered() > 1000 * 60 * 60 * 24 * 7 && PeerList.size() > 3 && p.lastActionOnConnection != 0) {
-//                        PeerList.remove(p);
-//                    }
+                    if ((peer.isConnecting && peer.getLastAnswered() > 10000)
+                            || (!peer.isConnecting && peer.getLastAnswered() > Settings.pingTimeout)) {
 
-//                    if (p.lastPinged - p.lastActionOnConnection > Settings.pingDelay * 2 + 30000
-//                            || (p.isConnecting && p.getLastAnswered() > 10000)
-//                            || (!p.isConnected() && p.getLastAnswered() > Settings.pingDelay)) {
+                        if (peer.isConnected() || peer.isConnecting) {
 
-                    if ((p.isConnecting && p.getLastAnswered() > 10000)
-                            || (!p.isConnecting && p.getLastAnswered() > Settings.pingTimeout)) {
-
-//                        System.out.println("reason: " + p.isConnecting + " " + p.isConnected() + " " + p.getLastAnswered());
-
-                        if (p.isConnected() || p.isConnecting) {
-
-//                            Log.put(Settings.pingTimeout + " sec timeout reached! " + p.ip, 10);
-
-                            p.disconnect("timeout");
-                            if (p.getNodeId() == null) {
-                                Log.put("removed peer from peerList, tried once and peer never connected before: " + p.ip + ":" + p.port, 120);
+                            peer.disconnect("timeout");
+                            if (peer.getNodeId() == null) {
+                                Log.put("removed peer from peerList, tried once and peer never connected before: " + peer.ip + ":" + peer.port, 120);
                             }
 
                             //todo: interrupt outbound thread?
-                        } else if (p.getLastAnswered() > Settings.pingTimeout * 2) {
-                            p.writeBuffer = null;
-                            p.writeBufferCrypted = null;
+                        } else if (peer.getLastAnswered() > Settings.pingTimeout * 2) {
+                            peer.writeBuffer = null;
+                            peer.writeBufferCrypted = null;
                         }
 
-                    } else if (p.isConnected()) {
+                    } else if (peer.isConnected()) {
 
-                        //                                System.out.println("Pinging: " + p.nonce);
-                        //p.ping();
-                        p.cnt++;
-                        if (p.cnt > Settings.peerListRequestDelay * 1000 / (Settings.pingDelay)) {
-                            p.sendPing();
-                            p.cnt = 0;
+                        peer.cnt++;
+                        if (peer.cnt > Settings.peerListRequestDelay * 1000 / (Settings.pingDelay)) {
+                            peer.sendPing();
+                            peer.cnt = 0;
                         } else {
-                            if (p.isConnected() && p.getLastAnswered() > Settings.pingDelay) {
-                                p.sendPing();
-                            } else {
+                            if (peer.isConnected() && peer.getLastAnswered() > Settings.pingDelay) {
+                                peer.sendPing();
                             }
-
-
                         }
                     }
-
-
                 }
             } finally {
                 lock.unlock();

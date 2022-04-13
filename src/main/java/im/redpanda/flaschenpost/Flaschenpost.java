@@ -45,60 +45,8 @@ public abstract class Flaschenpost extends GMContent {
         this.serverContext = serverContext;
     }
 
-    /**
-     * Byte representation of the encrypted content. This should be created after the encryption process and is used
-     * to transmit the Flaschenpost over the wire.
-     */
     public int getId() {
         return id;
-    }
-
-//    public static void put(KademliaId destination, byte[] content) {
-//
-//
-//        //let us get the closest node in our peerlist to the destination
-//
-//        // we only want to find peers which are closer to destination than we are
-//        int nearestDistance = destination.getDistance(Server.NONCE);
-//        Peer nearestPeer = null;
-//
-//        System.out.println("our distance: " + nearestDistance);
-//
-//        PeerList.getReadWriteLock().readLock().lock();
-//        try {
-//            for (Peer p : PeerList.getPeerArrayList()) {
-//
-//                if (p.getNodeId() == null || !p.isIntegrated()) {
-//                    continue;
-//                }
-//
-//                int distance = p.getKademliaId().getDistance(destination);
-//                System.out.println("distance: " + distance);
-//                if (distance < nearestDistance) {
-//                    nearestDistance = distance;
-//                    nearestPeer = p;
-//                }
-//
-//            }
-//
-//
-//            if (nearestPeer == null) {
-//                System.out.println("we are the closest peer!");
-//            } else {
-//                System.out.println("found peer with distance: " + nearestDistance + " peer: " + nearestPeer.getNodeId());
-//            }
-//
-//
-//        } finally {
-//            PeerList.getReadWriteLock().readLock().unlock();
-//        }
-//
-//
-//    }
-
-    @Override
-    protected void computeContent() {
-
     }
 
     public boolean isTargetedToUs() {

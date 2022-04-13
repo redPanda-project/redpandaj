@@ -22,7 +22,6 @@ public class KademliaId implements Serializable {
     public final transient static int ID_LENGTH_BYTES = (ID_LENGTH / 8);
     private final byte[] keyBytes;
     private int nodeDistance = -1;
-//    private BigInteger bigInt;
 
     /**
      * Construct the NodeId from some string
@@ -76,12 +75,6 @@ public class KademliaId implements Serializable {
      * @return The BigInteger representation of the key
      */
     public BigInteger getInt() {
-//        //lets cache that BigInt for performance reasons
-//        if (bigInt == null) {
-//            bigInt = new BigInteger(1, this.getBytes());
-//        }
-//
-//        return bigInt;
         return new BigInteger(1, this.getBytes());
     }
 
@@ -93,8 +86,6 @@ public class KademliaId implements Serializable {
      */
     @Override
     public boolean equals(Object o) {
-
-        //check if same instance!
         if (o == this) {
             return true;
         }
@@ -106,17 +97,14 @@ public class KademliaId implements Serializable {
         if (o instanceof KademliaId) {
             KademliaId nid = (KademliaId) o;
             return this.hashCode() == nid.hashCode();
-//            return Arrays.equals(this.getBytes(), nid.getBytes());
         }
         throw new RuntimeException("do not compare KademliaId to other objects!");
-//        return false;
     }
 
     @Override
     public int hashCode() {
         int hash = 7;
         hash = 83 * hash + Arrays.hashCode(this.keyBytes);
-//        throw new RuntimeException("asdf!!!");
         return hash;
     }
 
