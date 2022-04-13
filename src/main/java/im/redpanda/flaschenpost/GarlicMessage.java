@@ -25,10 +25,7 @@ public class GarlicMessage extends Flaschenpost {
      * and is only used for the creation process.
      */
     private NodeId targetsNodeId;
-    /**
-     * The public key of the target.
-     */
-    private byte[] publicKey;
+    private byte[] targetPublicKey;
     /**
      * The NodeId used for encryption. This NodeId should not be reused!
      * There is always a new NodeId for every new garlic message.
@@ -47,11 +44,10 @@ public class GarlicMessage extends Flaschenpost {
     private byte[] signature;
 
     public GarlicMessage(ServerContext serverContext, NodeId targetsNodeId) {
-        // we create a Flaschenpost with the target KademliaId and a new random integer as id and the current time.
         super(serverContext, targetsNodeId.getKademliaId());
 
         this.targetsNodeId = targetsNodeId;
-        this.publicKey = targetsNodeId.exportPublic();
+        this.targetPublicKey = targetsNodeId.exportPublic();
         this.ackId = Server.secureRandom.nextInt();
         this.nestedMessages = new ArrayList<>();
         this.iv = new byte[16];
@@ -83,9 +79,7 @@ public class GarlicMessage extends Flaschenpost {
         buffer.get(ivBytes);
         iv = ivBytes;
 
-        NodeId pubkeyForEncryption = NodeId.fromBufferGetPublic(buffer);
-        encryptionNodeId = pubkeyForEncryption;
-
+        encryptionNodeId = NodeId.fromBufferGetPublic(buffer);;
 
         int encryptedLength = buffer.getInt();
         encryptedInformation = new byte[encryptedLength];
@@ -94,7 +88,6 @@ public class GarlicMessage extends Flaschenpost {
         signature = Utils.readSignature(buffer);
 
         nestedMessages = new ArrayList<>();
-
     }
 
     public void addGMContent(GMContent gmContent) {
@@ -114,11 +107,6 @@ public class GarlicMessage extends Flaschenpost {
             bytesForContent += 4;
             bytesForContent += c.getContent().length;
         }
-
-//        int dataLen = iv.length + 4 + bytesForContent;
-//        int bufferWithoutSignatureLen = 1 + 4 + KademliaId.ID_LENGTH_BYTES + dataLen;
-//        ByteBuffer contentToEncrypt = ByteBuffer.allocate(bufferWithoutSignatureLen);
-
 
         ByteBuffer contentToEncrypt = ByteBuffer.allocate(4 + bytesForContent);
         contentToEncrypt.putInt(nestedMessages.size());
@@ -185,7 +173,6 @@ public class GarlicMessage extends Flaschenpost {
             throw new RuntimeException("We can not decrypt this garlic message since it is not targeted to us!");
         }
 
-        //lets decrypt the content
         SecretKey sharedSecret = getSharedSecret(serverContext.getNodeId(), encryptionNodeId);
 
         IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
@@ -239,17 +226,13 @@ public class GarlicMessage extends Flaschenpost {
     }
 
 
-    private SecretKey getSharedSecret(NodeId priv, NodeId pub) {
+    private SecretKey getSharedSecret(NodeId privateKey, NodeId pub) {
         try {
             KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
-            keyAgreement.init(priv.getKeyPair().getPrivate());
+            keyAgreement.init(privateKey.getKeyPair().getPrivate());
             keyAgreement.doPhase(pub.getKeyPair().getPublic(), true);
 
-            SecretKey intermediateSharedSecret = keyAgreement.generateSecret("AES");
-
-//            System.out.println("shared secret: " + Utils.bytesToHexString(intermediateSharedSecret.getEncoded()));
-
-            return intermediateSharedSecret;
+            return keyAgreement.generateSecret("AES");
         } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException e) {
             Log.sentry(e);
             e.printStackTrace();
