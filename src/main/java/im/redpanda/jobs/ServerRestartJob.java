@@ -11,21 +11,22 @@ import java.io.IOException;
 public class ServerRestartJob extends Job {
 
     private static final long STARTED_AT = System.currentTimeMillis();
-    public static long RESTART_TIME;
+    private long restartTime;
 
     public ServerRestartJob(ServerContext serverContext) {
         super(serverContext, 1000L * 60L * 60L, true);
-        RESTART_TIME = 1000L * 60L * 60L * 12L * 1L + Server.secureRandom.nextInt(60 * 60 * 8) * 1000L;
+        restartTime = 1000L * 60L * 60L * 12L * 1L + Server.secureRandom.nextInt(60 * 60 * 8) * 1000L;
     }
 
     @Override
     public void init() {
+        //not needed
     }
 
     @Override
     public void work() {
 
-        if (System.currentTimeMillis() - STARTED_AT < RESTART_TIME) {
+        if (System.currentTimeMillis() - STARTED_AT < restartTime) {
             return;
         }
 
