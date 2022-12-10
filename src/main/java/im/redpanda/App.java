@@ -18,7 +18,6 @@ import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
 import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
-import io.sentry.SentryClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -70,17 +69,13 @@ public class App {
 
         String gitRev = readGitProperties();
 
-        SentryClient sentryClient;
         if (activateSentry) {
             Sentry.init(options -> {
                 options.setDsn("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
                 options.setRelease(gitRev);
             });
 
-
-            Sentry.configureScope(scope -> {
-                scope.setContexts("gitRev", gitRev);
-            });
+            Sentry.configureScope(scope -> scope.setContexts("gitRev", gitRev));
 
             sentryAllowed = true;
         }
