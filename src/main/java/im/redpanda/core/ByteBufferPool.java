@@ -1,8 +1,9 @@
 package im.redpanda.core;
 
 import im.redpanda.App;
+import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
-import io.sentry.event.BreadcrumbBuilder;
+import io.sentry.SentryLevel;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
@@ -146,9 +147,11 @@ public class ByteBufferPool {
             }
 
             if (App.sentryAllowed) {
-                Sentry.getContext().recordBreadcrumb(
-                        new BreadcrumbBuilder().setMessage("bytebuffer: " + byteBuffer).build()
-                );
+                Breadcrumb breadcrumb = new Breadcrumb();
+                breadcrumb.setCategory("IO");
+                breadcrumb.setMessage("bytebuffer: " + byteBuffer);
+                breadcrumb.setLevel(SentryLevel.WARNING);
+                Sentry.addBreadcrumb(breadcrumb);
                 Log.sentry("had to invalidate ByteBuffer: \n" + out);
             }
         } else {

@@ -72,13 +72,17 @@ public class App {
 
         SentryClient sentryClient;
         if (activateSentry) {
-            sentryClient = Sentry.init("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-            sentryAllowed = true;
+            Sentry.init(options -> {
+                options.setDsn("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+                options.setRelease(gitRev);
+            });
 
-            if (gitRev != null) {
-                Sentry.getContext().addTag("gitRev", gitRev);
-                sentryClient.setRelease(gitRev);
-            }
+
+            Sentry.configureScope(scope -> {
+                scope.setContexts("gitRev", gitRev);
+            });
+
+            sentryAllowed = true;
         }
 
         if (gitRev != null) {
