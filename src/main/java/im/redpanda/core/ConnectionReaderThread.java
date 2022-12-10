@@ -16,8 +16,9 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
+import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
-import io.sentry.event.BreadcrumbBuilder;
+import io.sentry.SentryLevel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -307,9 +308,11 @@ public class ConnectionReaderThread extends Thread {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            Sentry.getContext().recordBreadcrumb(
-                    new BreadcrumbBuilder().setMessage("myReaderBuffer: " + myReaderBuffer + " current command: " + (myReaderBuffer.remaining() > 0 ? myReaderBuffer.duplicate().get() : "no command")).build()
-            );
+            Breadcrumb breadcrumb = new Breadcrumb();
+            breadcrumb.setCategory("IO");
+            breadcrumb.setMessage("myReaderBuffer: " + myReaderBuffer + " current command: " + (myReaderBuffer.remaining() > 0 ? myReaderBuffer.duplicate().get() : "no command"));
+            breadcrumb.setLevel(SentryLevel.WARNING);
+            Sentry.addBreadcrumb(breadcrumb);
             Log.sentry("read 0 bytes...");
             return 0;
         } else if (read == -1) {

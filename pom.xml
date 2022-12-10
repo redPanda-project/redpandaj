@@ -71,13 +71,13 @@
         <dependency>
             <groupId>io.sentry</groupId>
             <artifactId>sentry</artifactId>
-            <version>[1.7.28,1.8)</version>
+            <version>6.9.2</version>
         </dependency>
 
         <dependency>
             <groupId>org.mapdb</groupId>
             <artifactId>mapdb</artifactId>
-            <version>3.0.8</version>
+            <version>3.0.9</version>
         </dependency>
 
         <dependency>
@@ -279,7 +279,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.3.0</version>
+                <version>3.4.0</version>
                 <executions>
                     <execution>
                         <id>copy-dependencies</id>

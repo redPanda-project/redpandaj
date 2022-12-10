@@ -77,7 +77,7 @@ public class Log {
         if (currentRating < 10) {
             try {
                 logger.error("send to Sentry: " + e);
-                Sentry.capture(e);
+                Sentry.captureException(e);
             } catch (Throwable e2) {
                 e2.printStackTrace();
                 logger.error(e2);
@@ -96,7 +96,7 @@ public class Log {
         if (currentRating < 10) {
             try {
                 System.out.println("send to Sentry: " + msg);
-                Sentry.capture(msg);
+                Sentry.captureMessage(msg);
             } catch (Throwable e) {
                 e.printStackTrace();
             }
