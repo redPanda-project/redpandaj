@@ -10,7 +10,7 @@ BRANCH=dev
 
 if [ ! -d "$DIRECTORY" ]; then
   echo "$DIRECTORY does not exists cloning into $DIRECTORY..."
-  git clone --branch $BRANCH git://github.com/redPanda-project/redpandaj.git $DIRECTORY
+  git clone --branch $BRANCH https://github.com/redPanda-project/redpandaj.git $DIRECTORY
 fi
 
 cd $DIRECTORY
