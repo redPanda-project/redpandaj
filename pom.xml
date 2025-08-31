@@ -234,6 +234,7 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- No broad coverage excludes; we'll improve via tests. -->
 
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
