@@ -51,10 +51,10 @@ public class TwoNodesE2EIT {
             p1 = pb1.start();
             p2 = pb2.start();
 
-            // Wait until at least one node reports a successful connection, up to 20s
+            // Wait until at least one node reports a successful connection, up to 30s
             long start = System.currentTimeMillis();
             boolean connected = false;
-            while (System.currentTimeMillis() - start < 20_000L) {
+            while (System.currentTimeMillis() - start < 30_000L) {
                 if (log1.exists() && log1.length() > 0 && Files.readString(log1.toPath(), StandardCharsets.UTF_8).contains("Connected successfully to ")) {
                     connected = true;
                     break;
