@@ -17,16 +17,25 @@ public class PeerOutputStream extends OutputStream {
 
     @Override
     public void write(int b) throws IOException {
+        if (byteBuffer == null) {
+            throw new IOException("No target ByteBuffer set");
+        }
         byteBuffer.put((byte) b);
     }
 
     @Override
     public void write(@NotNull byte[] b) throws IOException {
+        if (byteBuffer == null) {
+            throw new IOException("No target ByteBuffer set");
+        }
         byteBuffer.put(b);
     }
 
     @Override
     public void write(@NotNull byte[] b, int off, int len) throws IOException {
+        if (byteBuffer == null) {
+            throw new IOException("No target ByteBuffer set");
+        }
         byteBuffer.put(b, off, len);
     }
 }
