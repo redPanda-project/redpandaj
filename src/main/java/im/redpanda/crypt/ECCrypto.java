@@ -157,22 +157,24 @@ public class ECCrypto {
 
     public static String encryptString(SecretKey key, String plainText) {
         try {
-            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+            byte[] localIv = new byte[16];
+            new SecureRandom().nextBytes(localIv);
+            IvParameterSpec ivSpec = new IvParameterSpec(localIv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC");
             byte[] plainTextBytes = plainText.getBytes("UTF-8");
-            byte[] cipherText;
 
             cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
-            cipherText = new byte[cipher.getOutputSize(plainTextBytes.length)];
-            int encryptLength = cipher.update(plainTextBytes, 0,
-                    plainTextBytes.length, cipherText, 0);
-            encryptLength += cipher.doFinal(cipherText, encryptLength);
+            byte[] cipherText = cipher.doFinal(plainTextBytes);
 
-            return bytesToHex(cipherText);
+            byte[] out = new byte[localIv.length + cipherText.length];
+            System.arraycopy(localIv, 0, out, 0, localIv.length);
+            System.arraycopy(cipherText, 0, out, localIv.length, cipherText.length);
+
+            return bytesToHex(out);
         } catch (NoSuchAlgorithmException | NoSuchProviderException
                 | NoSuchPaddingException | InvalidKeyException
                 | InvalidAlgorithmParameterException
-                | UnsupportedEncodingException | ShortBufferException
+                | UnsupportedEncodingException
                 | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
             return null;
@@ -181,25 +183,29 @@ public class ECCrypto {
 
     public static String decryptString(SecretKey key, String cipherText) {
         try {
-            Key decryptionKey = new SecretKeySpec(key.getEncoded(),
-                    key.getAlgorithm());
-            IvParameterSpec ivSpec = new IvParameterSpec(iv);
+            Key decryptionKey = new SecretKeySpec(key.getEncoded(), key.getAlgorithm());
+            byte[] allBytes = hexToBytes(cipherText);
+            if (allBytes == null || allBytes.length < 17) {
+                return null;
+            }
+            byte[] localIv = new byte[16];
+            System.arraycopy(allBytes, 0, localIv, 0, 16);
+            int ctLen = allBytes.length - 16;
+            byte[] ct = new byte[ctLen];
+            System.arraycopy(allBytes, 16, ct, 0, ctLen);
+
+            IvParameterSpec ivSpec = new IvParameterSpec(localIv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC");
-            byte[] cipherTextBytes = hexToBytes(cipherText);
-            byte[] plainText;
 
             cipher.init(Cipher.DECRYPT_MODE, decryptionKey, ivSpec);
-            plainText = new byte[cipher.getOutputSize(cipherTextBytes.length)];
-            int decryptLength = cipher.update(cipherTextBytes, 0,
-                    cipherTextBytes.length, plainText, 0);
-            decryptLength += cipher.doFinal(plainText, decryptLength);
+            byte[] plainText = cipher.doFinal(ct);
 
             return new String(plainText, "UTF-8");
         } catch (NoSuchAlgorithmException | NoSuchProviderException
                 | NoSuchPaddingException | InvalidKeyException
                 | InvalidAlgorithmParameterException
                 | IllegalBlockSizeException | BadPaddingException
-                | ShortBufferException | UnsupportedEncodingException e) {
+                | UnsupportedEncodingException e) {
             e.printStackTrace();
             return null;
         }
