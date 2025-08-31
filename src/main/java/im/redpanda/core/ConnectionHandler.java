@@ -688,6 +688,10 @@ public class ConnectionHandler extends Thread {
             //update the selection key to the actual peer
             peerInHandshake.getKey().attach(peerOrigin);
 
+            // Log a clear success message for e2e and operators
+            logger.info("Connected successfully to {}:{} (KadId: {})",
+                    peerOrigin.getIp(), peerOrigin.getPort(), peerInHandshake.getIdentity());
+
             /**
              * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets add it by KademliaId
              */
