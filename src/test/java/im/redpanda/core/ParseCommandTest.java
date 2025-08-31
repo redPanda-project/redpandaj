@@ -29,7 +29,7 @@ public class ParseCommandTest {
     public void testLoopCommands() {
 
         ServerContext serverContext = new ServerContext();
-        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+        InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
 
 
         //lets check if it is able to parse 3 ping commands in one step
@@ -41,7 +41,7 @@ public class ParseCommandTest {
         Peer peerForDebug = getPeerForDebug();
         serverContext.getPeerList().add(peerForDebug);
         peerForDebug.setConnected(true);
-        connectionReaderThread.loopCommands(peerForDebug, allocate);
+        processor.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -53,7 +53,7 @@ public class ParseCommandTest {
         allocate.put(Command.SEND_PEERLIST);
         allocate.putInt(1);
 
-        connectionReaderThread.loopCommands(peerForDebug, allocate);
+        processor.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -72,7 +72,7 @@ public class ParseCommandTest {
         allocate.putInt(1);
 
         peerForDebug.setConnected(true);
-        connectionReaderThread.loopCommands(peerForDebug, allocate);
+        processor.loopCommands(peerForDebug, allocate);
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
@@ -84,7 +84,7 @@ public class ParseCommandTest {
     @Test
     public void testREQUEST_PEERLIST() {
         ServerContext serverContext = new ServerContext();
-        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+        InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
         PeerList peerList = serverContext.getPeerList();
 
 
@@ -104,7 +104,7 @@ public class ParseCommandTest {
 
         Peer me = getPeerForDebug();
 
-        connectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
+        processor.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
         ByteBuffer writeBuffer = me.getWriteBuffer();
 
@@ -174,7 +174,7 @@ public class ParseCommandTest {
     @Test
     public void testSend_PEERLIST() {
         ServerContext serverContext = ServerContext.buildDefaultServerContext();
-        ConnectionReaderThread connectionReaderThread = new ConnectionReaderThread(serverContext, 5);
+        InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
         PeerList peerList = serverContext.getPeerList();
 
         int peersToTest = 100;
@@ -194,7 +194,7 @@ public class ParseCommandTest {
 
         Peer me = getPeerForDebug();
 
-        connectionReaderThread.parseCommand(Command.REQUEST_PEERLIST, null, me);
+        processor.parseCommand(Command.REQUEST_PEERLIST, null, me);
 
 //        PeerList.getReadWriteLock().writeLock().lock();
 
@@ -214,7 +214,7 @@ public class ParseCommandTest {
 //        System.out.println("" + Utils.bytesToHexString(bytes));
         writeBuffer.position(0);
 
-        connectionReaderThread.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
+        processor.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
 
         assertThat(writeBuffer.hasRemaining(), is(false));
 
