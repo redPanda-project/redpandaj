@@ -33,7 +33,8 @@ public class TwoNodesE2EIT {
         List<String> cmd = Arrays.asList(javaBin, "-cp", classpath, mainClass);
 
         ProcessBuilder pb1 = new ProcessBuilder(cmd);
-        pb1.environment().put("PORT", "60000");
+        // Run node1 on the standard port so seeds target it
+        pb1.environment().put("PORT", String.valueOf(59558));
         pb1.redirectOutput(ProcessBuilder.Redirect.appendTo(log1));
         pb1.redirectError(ProcessBuilder.Redirect.appendTo(log1));
         pb1.directory(node1Dir.toFile());
@@ -50,8 +51,21 @@ public class TwoNodesE2EIT {
             p1 = pb1.start();
             p2 = pb2.start();
 
-            // Let them run for ~10 seconds
-            Thread.sleep(10_000L);
+            // Wait until at least one node reports a successful connection, up to 20s
+            long start = System.currentTimeMillis();
+            boolean connected = false;
+            while (System.currentTimeMillis() - start < 20_000L) {
+                if (log1.exists() && log1.length() > 0 && Files.readString(log1.toPath(), StandardCharsets.UTF_8).contains("Connected successfully to ")) {
+                    connected = true;
+                    break;
+                }
+                if (log2.exists() && log2.length() > 0 && Files.readString(log2.toPath(), StandardCharsets.UTF_8).contains("Connected successfully to ")) {
+                    connected = true;
+                    break;
+                }
+                Thread.sleep(500L);
+            }
+            assertTrue("Expected 'Connected successfully' to appear in at least one node's log within timeout", connected);
         } finally {
             if (p1 != null) {
                 p1.destroy(); // try graceful
@@ -88,6 +102,12 @@ public class TwoNodesE2EIT {
         }
 
         assertTrue("Unexpected errors/warnings in logs:\n" + String.join("\n", offending), offending.isEmpty());
+
+        // Connectivity assertion: the explicit success line should be present in at least one log
+        boolean node1Connected = log1Content.contains("Connected successfully to ");
+        boolean node2Connected = log2Content.contains("Connected successfully to ");
+        assertTrue("Expected explicit 'Connected successfully' in at least one node log",
+                node1Connected || node2Connected);
     }
 
     private static boolean isOffending(String line) {

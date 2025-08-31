@@ -21,7 +21,14 @@ public class CipherInputStreamByteBuffer extends CipherInputStream {
      * @throws IOException
      */
     public void read(ByteBuffer byteBuffer) throws IOException {
-        int read = read(byteBuffer.array(), byteBuffer.position(), byteBuffer.limit());
-        byteBuffer.position(byteBuffer.position() + read);
+        int remaining = byteBuffer.remaining();
+        if (remaining <= 0) {
+            return;
+        }
+        int pos = byteBuffer.position();
+        int read = read(byteBuffer.array(), pos, remaining);
+        if (read > 0) {
+            byteBuffer.position(pos + read);
+        }
     }
 }
