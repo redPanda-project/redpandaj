@@ -289,8 +289,11 @@ public class NodeId implements Serializable {
      * @param keyPair
      */
     public void setKeyPair(KeyPair keyPair) throws KeypairDoesNotMatchException {
-        if (keyPair != null) {
-            throw new RuntimeException("keypair has to be null if you want to set the keypair of a NodeId!");
+        if (this.keyPair != null) {
+            throw new RuntimeException("keypair is already set for this NodeId!");
+        }
+        if (keyPair == null) {
+            throw new RuntimeException("provided keypair must not be null when setting NodeId keypair!");
         }
         if (kademliaId == null) {
             throw new RuntimeException("To check the keypair there has to be already a known KademliaId!");
@@ -416,4 +419,3 @@ public class NodeId implements Serializable {
         return getKademliaId().hashCode();
     }
 }
-
