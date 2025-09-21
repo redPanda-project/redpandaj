@@ -65,7 +65,7 @@ public class Log {
         if (-200 > LEVEL) {
             return;
         }
-        e.printStackTrace();
+        e.printStackTrace(); // NOSONAR (java:S4507): controlled console output; full details also sent to logger/Sentry
     }
 
     public static void sentry(Throwable e) {
@@ -79,7 +79,7 @@ public class Log {
                 logger.error("send to Sentry: " + e);
                 Sentry.captureException(e);
             } catch (Throwable e2) {
-                e2.printStackTrace();
+                e2.printStackTrace(); // NOSONAR (java:S4507): last‑resort diagnostics if logging backend fails
                 logger.error(e2);
             }
         } else {
@@ -98,7 +98,7 @@ public class Log {
                 System.out.println("send to Sentry: " + msg);
                 Sentry.captureMessage(msg);
             } catch (Throwable e) {
-                e.printStackTrace();
+                e.printStackTrace(); // NOSONAR (java:S4507): last‑resort diagnostics if logging backend fails
             }
         } else {
             rating.decrementAndGet();
