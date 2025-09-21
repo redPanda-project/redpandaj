@@ -452,6 +452,61 @@ public class InboundCommandProcessor {
                 new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
             }
             return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
+        } else if (command == Command.KADEMLIA_STORE) {
+            // Read length-prefixed payload: [len][jobId][timestamp][pub(65)][contentLen][content][sigLen][sig]
+            if (readBuffer.remaining() < 4) {
+                return 0;
+            }
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
+                // Wait for full frame
+                readBuffer.position(readBuffer.position() - 4); // rewind len for next round
+                return 0;
+            }
+
+            int jobId = readBuffer.getInt();
+            long timestamp = readBuffer.getLong();
+            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+            readBuffer.get(publicKeyBytes);
+
+            int contentLen = readBuffer.getInt();
+            if (contentLen > readBuffer.remaining()) {
+                return 0;
+            }
+            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
+                peer.disconnect("wrong contentLen for kadcontent");
+                return 0;
+            }
+            byte[] contentBytes = new byte[contentLen];
+            readBuffer.get(contentBytes);
+
+            if (4 > readBuffer.remaining()) {
+                return 0;
+            }
+            int sigLen = readBuffer.getInt();
+            if (sigLen > readBuffer.remaining()) {
+                return 0;
+            }
+            byte[] signatureBytes = new byte[sigLen];
+            readBuffer.get(signatureBytes);
+
+            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
+            if (kadContent.verify()) {
+                serverContext.getKadStoreManager().put(kadContent);
+                peer.getWriteBufferLock().lock();
+                try {
+                    peer.getWriteBuffer().put(Command.JOB_ACK);
+                    peer.getWriteBuffer().putInt(jobId);
+                    if (peer.getSelectionKey() != null) {
+                        peer.setWriteBufferFilled();
+                    }
+                } finally {
+                    peer.getWriteBufferLock().unlock();
+                }
+            } else {
+                System.out.println("kadContent verification failed!!!");
+            }
+            return 1 + 4 + toRead;
         } else if (command == Command.KADEMLIA_GET_ANSWER) {
             return parseKademliaGetAnswer(readBuffer, peer);
         } else if (command == Command.FLASCHENPOST_PUT) {
