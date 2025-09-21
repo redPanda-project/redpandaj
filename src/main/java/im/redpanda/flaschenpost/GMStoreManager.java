@@ -3,14 +3,12 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.Log;
 
-import javax.annotation.concurrent.ThreadSafe;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 
-@ThreadSafe
 public class GMStoreManager {
 
     public static final long REMOVE_AFTER_MILLISECONDS = 1000L * 60L * 5L;

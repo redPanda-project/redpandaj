@@ -11,7 +11,6 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.jobs.JobScheduler;
 import im.redpanda.jobs.KademliaInsertJob;
 
-import javax.annotation.concurrent.ThreadSafe;
 import java.nio.ByteBuffer;
 import java.security.Security;
 import java.text.SimpleDateFormat;
@@ -25,7 +24,6 @@ import java.util.TimeZone;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
-@ThreadSafe
 public class KadStoreManager {
 
     private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; //size of content without key
