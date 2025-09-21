@@ -34,8 +34,9 @@ public class CipherOutputStreamByteBuffer extends CipherOutputStream {
      * @throws IOException
      */
     public void write(ByteBuffer byteBuffer) throws IOException {
-        write(byteBuffer.array(), byteBuffer.position(), byteBuffer.limit());
-        byteBuffer.position(byteBuffer.limit());
+        int len = byteBuffer.remaining();
+        write(byteBuffer.array(), byteBuffer.position(), len);
+        byteBuffer.position(byteBuffer.position() + len);
     }
 
     /**
@@ -45,8 +46,7 @@ public class CipherOutputStreamByteBuffer extends CipherOutputStream {
      * @throws IOException
      */
     public void write(ByteBuffer byteBuffer, int lenToWrite) throws IOException {
-        int newPos = byteBuffer.position() + lenToWrite;
-        write(byteBuffer.array(), byteBuffer.position(), newPos);
-        byteBuffer.position(newPos);
+        write(byteBuffer.array(), byteBuffer.position(), lenToWrite);
+        byteBuffer.position(byteBuffer.position() + lenToWrite);
     }
 }

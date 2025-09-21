@@ -17,7 +17,7 @@ public class PeerOutputStream extends OutputStream {
 
     @Override
     public void write(int b) throws IOException {
-        throw new RuntimeException("unsupported method");
+        byteBuffer.put((byte) b);
     }
 
     @Override
@@ -27,6 +27,6 @@ public class PeerOutputStream extends OutputStream {
 
     @Override
     public void write(@NotNull byte[] b, int off, int len) throws IOException {
-        throw new RuntimeException("unsupported method");
+        byteBuffer.put(b, off, len);
     }
 }
