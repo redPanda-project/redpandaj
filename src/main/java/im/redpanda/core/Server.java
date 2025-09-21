@@ -65,7 +65,7 @@ public class Server {
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            e.printStackTrace(); // NOSONAR (java:S4507): intentional fallback console output during shutdown; replace with logger later
             Thread.currentThread().interrupt();
         }
 
