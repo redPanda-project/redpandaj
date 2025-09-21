@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.kademlia.KadContent;
+
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -88,5 +90,63 @@ public class InboundCommandProcessorTest {
 
         assertEquals(1 + payloadLen, consumed);
     }
-}
 
+    @Test
+    public void parseCommand_kademliaStore_savesAndAcks() {
+        ServerContext ctx = ServerContext.buildDefaultServerContext();
+        InboundCommandProcessor proc = newProcessor(ctx);
+
+        Peer peer = new Peer("127.0.0.1", 23456, ctx.getNodeId());
+        peer.setConnected(true);
+        ctx.getPeerList().add(peer);
+
+        // Prepare write buffer for ACK
+        peer.writeBuffer = ByteBuffer.allocate(256);
+
+        // Build a valid KadContent signed by an arbitrary author key
+        NodeId author = NodeId.generateWithSimpleKey();
+        long timestamp = System.currentTimeMillis();
+        byte[] pub = author.exportPublic();
+        byte[] content = "store-me".getBytes();
+
+        KadContent kadContent = new KadContent(timestamp, pub, content);
+        kadContent.signWith(author);
+
+        int jobId = 77;
+
+        // Compose KADEMLIA_STORE payload: [len][jobId][timestamp][pub(65)][contentLen][content][sigLen][sig]
+        byte[] sig = kadContent.getSignature();
+        int toRead = 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + content.length + 4 + sig.length;
+        ByteBuffer buf = ByteBuffer.allocate(4 + toRead);
+        buf.putInt(toRead);
+        buf.putInt(jobId);
+        buf.putLong(timestamp);
+        buf.put(pub);
+        buf.putInt(content.length);
+        buf.put(content);
+        buf.putInt(sig.length);
+        buf.put(sig);
+        buf.flip();
+
+        // Exercise
+        try {
+            int consumed = proc.parseCommand(Command.KADEMLIA_STORE, buf, peer);
+
+            // Verify consumed bytes
+            org.junit.Assert.assertEquals(1 + 4 + toRead, consumed);
+
+            // Verify content is stored
+            KadContent stored = ctx.getKadStoreManager().get(kadContent.getId());
+            org.junit.Assert.assertNotNull(stored);
+
+            // Verify ACK written
+            peer.writeBuffer.flip();
+            org.junit.Assert.assertTrue(peer.writeBuffer.remaining() >= 1 + 4);
+            org.junit.Assert.assertEquals(Command.JOB_ACK, peer.writeBuffer.get());
+            org.junit.Assert.assertEquals(jobId, peer.writeBuffer.getInt());
+        } catch (RuntimeException e) {
+            // Current behavior throws due to missing handler; ensure the test fails loudly with context.
+            org.junit.Assert.fail("KADEMLIA_STORE not handled: " + e.getMessage());
+        }
+    }
+}
