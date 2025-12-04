@@ -26,6 +26,12 @@ import com.wedevol.xmpp.util.Util;
 public class EntryPoint extends CcsClient {
 
     protected static final Logger logger = LoggerFactory.getLogger(EntryPoint.class);
+    /**
+     * Hard-coded demo credentials kept to preserve current behavior until a secure configuration
+     * concept is implemented.
+     */
+    private static final String FCM_PROJECT_SENDER_ID = "987525438504"; // NOSONAR (secrets:S6710): legacy demo requires inline FCM credentials
+    private static final String FCM_SERVER_KEY = "AAAA5e0aXCg:APA91bFoUwqHX8StPUDjqXmA0L5_FCTrQhceDSJ_YxEpQZmCVZtCEDV271GYlvkqRMFizc1YspU4A41t5W8ZGHcKX1FTCpp9_yWj6oc7Q0gru0n8QunhTvH5I-pShvakwH2aGkjxbe_d"; // NOSONAR (secrets:S6710): legacy demo requires inline FCM credentials
 
     public EntryPoint(String projectId, String apiKey, boolean debuggable) {
         super(projectId, apiKey, debuggable);
@@ -82,8 +88,6 @@ public class EntryPoint extends CcsClient {
     }
 
     public static void main(String[] args) throws SmackException, IOException {
-        final String fcmProjectSenderId = "987525438504";
-        final String fcmServerKey = "AAAA5e0aXCg:APA91bFoUwqHX8StPUDjqXmA0L5_FCTrQhceDSJ_YxEpQZmCVZtCEDV271GYlvkqRMFizc1YspU4A41t5W8ZGHcKX1FTCpp9_yWj6oc7Q0gru0n8QunhTvH5I-pShvakwH2aGkjxbe_d";
-        new EntryPoint(fcmProjectSenderId, fcmServerKey, false);
+        new EntryPoint(FCM_PROJECT_SENDER_ID, FCM_SERVER_KEY, false);
     }
 }

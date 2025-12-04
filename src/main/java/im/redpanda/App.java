@@ -25,6 +25,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 
 /**
@@ -162,22 +163,22 @@ public class App {
 
     public static String readGitProperties() throws IOException {
         String gitRev = null;
-        InputStream is = App.class.getResourceAsStream("/git.properties");
-        if (is == null) {
-            return null;
-        }
-        InputStreamReader isr = new InputStreamReader(is);
-        BufferedReader br = new BufferedReader(isr);
-        String line;
-        while ((line = br.readLine()) != null) {
-
-            if (line.startsWith("git.commit.id.abbrev=")) {
-                gitRev = line.split("=")[1];
+        try (InputStream is = App.class.getResourceAsStream("/git.properties")) {
+            if (is == null) {
+                return null;
+            }
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.startsWith("git.commit.id.abbrev=")) {
+                        int separatorIndex = line.indexOf('=');
+                        if (separatorIndex >= 0 && separatorIndex + 1 < line.length()) {
+                            gitRev = line.substring(separatorIndex + 1);
+                        }
+                    }
+                }
             }
         }
-        br.close();
-        isr.close();
-        is.close();
         return gitRev;
     }
 
