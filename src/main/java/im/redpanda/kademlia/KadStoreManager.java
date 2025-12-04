@@ -27,7 +27,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class KadStoreManager {
 
     private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; //size of content without key
-    private static final int MAX_SIZE = 1024 * 1024 * 50; //size of content without key
     private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; //7 days
 
     private static final Map<KademliaId, KadContent> entries = new HashMap<>();
