@@ -7,7 +7,6 @@ import org.junit.Test;
 
 import java.io.File;
 import java.security.Security;
-import java.util.Arrays;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
@@ -63,4 +62,3 @@ public class LocalSettingsPersistenceTest {
         assertNotNull(loaded.getSystemUpTimeData());
     }
 }
-
