@@ -8,6 +8,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.Assert.*;
 
@@ -43,7 +46,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     }
 
     @Test
-    public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws Exception {
+    public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws IOException {
         // Prepare a small jar file at default path
         byte[] data = "jar".getBytes();
         try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
@@ -63,14 +66,12 @@ public class InboundCommandProcessorAsyncUpdatesTest {
         int consumed = proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
         assertEquals(1, consumed);
 
-        // Runnable sleeps 200ms before writing; wait a bit and assert buffer filled
-        Thread.sleep(400);
-        assertTrue(peer.writeBuffer.position() > 0);
+        awaitCondition(() -> peer.writeBuffer.position() > 0, 2000);
         assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
     }
 
     @Test
-    public void androidUpdateRequestContent_doesNotSend_whenSignatureInvalid() throws IOException, InterruptedException {
+    public void androidUpdateRequestContent_doesNotSend_whenSignatureInvalid() throws IOException {
         // Prepare android.apk data
         byte[] data = "apk".getBytes();
         try (FileOutputStream fos = new FileOutputStream(ConnectionReaderThread.ANDROID_UPDATE_FILE)) {
@@ -90,12 +91,12 @@ public class InboundCommandProcessorAsyncUpdatesTest {
         assertEquals(1, consumed);
 
         // Wait briefly; verify no bytes were written due to failed verification
-        Thread.sleep(200);
+        parkFor(300);
         assertEquals(0, peer.writeBuffer.position());
     }
 
     @Test
-    public void updateAnswerContent_writesTempJar_whenNewer() throws Exception {
+    public void updateAnswerContent_writesTempJar_whenNewer() {
         Peer peer = new Peer("127.0.0.1", 7777, ctx.getNodeId());
         peer.setConnected(true);
         ctx.getPeerList().add(peer);
@@ -118,5 +119,19 @@ public class InboundCommandProcessorAsyncUpdatesTest {
         assertTrue(tmp.exists());
         assertEquals(data.length, tmp.length());
     }
-}
 
+    private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        while (System.nanoTime() < deadlineNanos) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            parkFor(10);
+        }
+        fail("Condition not met within " + timeoutMillis + "ms");
+    }
+
+    private static void parkFor(long millis) {
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(millis));
+    }
+}

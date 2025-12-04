@@ -101,10 +101,9 @@ public final class TestNodeProcess implements AutoCloseable {
         } catch (IOException ignored) {
             // process may already be tearing down
         }
-        boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        if (!exited && process.isAlive()) {
+        if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS) && process.isAlive()) {
             process.destroy();
-            exited = process.waitFor(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS);
+            process.waitFor(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS);
         }
         if (process.isAlive()) {
             process.destroyForcibly();

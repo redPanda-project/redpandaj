@@ -126,7 +126,7 @@ public class InboundCommandProcessorMoreCoverageTest {
     }
 
     @Test
-    public void androidUpdateAnswerContent_updatesFileAndSettings() throws IOException {
+    public void androidUpdateAnswerContent_updatesFileAndSettings() {
         Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
         peer.setConnected(true);
         ctx.getPeerList().add(peer);
