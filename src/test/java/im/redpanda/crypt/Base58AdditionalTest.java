@@ -2,7 +2,6 @@ package im.redpanda.crypt;
 
 import org.junit.Test;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
 
 public class Base58AdditionalTest {
@@ -40,4 +39,3 @@ public class Base58AdditionalTest {
         }
     }
 }
-
