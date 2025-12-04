@@ -230,11 +230,7 @@ public class NodeId implements Serializable {
 
             KeyPair keyPair = new KeyPair(newPublicKey, null);
             return new NodeId(keyPair);
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (NoSuchProviderException e) {
-            e.printStackTrace();
-        } catch (InvalidKeySpecException e) {
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeySpecException e) {
             e.printStackTrace();
         }
 

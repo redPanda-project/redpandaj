@@ -1,11 +1,10 @@
 package im.redpanda.crypt;
 
 
-import java.io.UnsupportedEncodingException;
 import java.security.*;
-import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Enumeration;
+import java.nio.charset.StandardCharsets;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -22,7 +21,7 @@ import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 public class ECCrypto {
     public static byte[] iv = new SecureRandom().generateSeed(16);
 
-    public static void main(String[] args) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, UnsupportedEncodingException, SignatureException {
+    public static void main(String[] args) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, SignatureException {
 
         try {
             Provider p[] = Security.getProviders();
@@ -98,7 +97,7 @@ public class ECCrypto {
         ecdsa.initSign(priv);
 
         String str = "This is string to sign";
-        byte[] strByte = str.getBytes("UTF-8");
+        byte[] strByte = str.getBytes(StandardCharsets.UTF_8);
         ecdsa.update(strByte);
 
         /*
@@ -160,7 +159,7 @@ public class ECCrypto {
             new SecureRandom().nextBytes(localIv);
             IvParameterSpec ivSpec = new IvParameterSpec(localIv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC");
-            byte[] plainTextBytes = plainText.getBytes("UTF-8");
+            byte[] plainTextBytes = plainText.getBytes(StandardCharsets.UTF_8);
 
             cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
             byte[] cipherText = cipher.doFinal(plainTextBytes);
@@ -173,7 +172,6 @@ public class ECCrypto {
         } catch (NoSuchAlgorithmException | NoSuchProviderException
                 | NoSuchPaddingException | InvalidKeyException
                 | InvalidAlgorithmParameterException
-                | UnsupportedEncodingException
                 | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
             return null;
@@ -199,12 +197,11 @@ public class ECCrypto {
             cipher.init(Cipher.DECRYPT_MODE, decryptionKey, ivSpec);
             byte[] plainText = cipher.doFinal(ct);
 
-            return new String(plainText, "UTF-8");
+            return new String(plainText, StandardCharsets.UTF_8);
         } catch (NoSuchAlgorithmException | NoSuchProviderException
                 | NoSuchPaddingException | InvalidKeyException
                 | InvalidAlgorithmParameterException
-                | IllegalBlockSizeException | BadPaddingException
-                | UnsupportedEncodingException e) {
+                | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
             return null;
         }

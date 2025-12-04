@@ -84,14 +84,7 @@ public class ConnectionReaderThread extends Thread {
         threadLock.unlock();
         Log.putStd("wwoooo");
 
-        Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
-
-            public void uncaughtException(Thread thread, Throwable thrwbl) {
-
-                Log.putCritical(thrwbl);
-
-            }
-        });
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
 
 
     }

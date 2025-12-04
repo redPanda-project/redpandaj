@@ -76,7 +76,6 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
     public void sendPeerList_parsesEntries_addsPeers_skipsInvalidIpAndSelf() {
         // Build a SEND_PEERLIST payload with two entries
         NodeId otherNode = NodeId.generateWithSimpleKey();
-        NodeId selfNode = ctx.getNodeId();
 
         ByteBuffer payload = ByteBuffer.allocate(1024);
         int countPos = payload.position();

@@ -3,6 +3,11 @@ package im.redpanda.crypt;
 import org.junit.Test;
 
 import java.security.Security;
+import java.security.KeyPair;
+import javax.crypto.SecretKey;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 public class ECCryptoMainSmokeTest {
     static {
@@ -13,6 +18,18 @@ public class ECCryptoMainSmokeTest {
     public void main_executesWithoutException() throws Exception {
         // Exercise the demo main method to improve coverage of example code paths.
         ECCrypto.main(new String[]{});
+
+        KeyPair keyPairA = ECCrypto.generateECKeys();
+        KeyPair keyPairB = ECCrypto.generateECKeys();
+        assertNotNull(keyPairA);
+        assertNotNull(keyPairB);
+
+        SecretKey secretKeyA = ECCrypto.generateSharedSecret(keyPairA.getPrivate(), keyPairB.getPublic());
+        SecretKey secretKeyB = ECCrypto.generateSharedSecret(keyPairB.getPrivate(), keyPairA.getPublic());
+        assertNotNull(secretKeyA);
+        assertNotNull(secretKeyB);
+
+        String cipherText = ECCrypto.encryptString(secretKeyA, "hello");
+        assertEquals("hello", ECCrypto.decryptString(secretKeyB, cipherText));
     }
 }
-
