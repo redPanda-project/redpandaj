@@ -1,6 +1,5 @@
 package im.redpanda.core;
 
-import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
