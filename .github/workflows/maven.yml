@@ -36,6 +36,12 @@ jobs:
       run: mvn -B clean
     - name: coverage
       run: mvn -B jacoco:prepare-agent install jacoco:report
+    - name: Verify Sonar token presence
+      run: |
+        if [ -z "${{ secrets.SONAR_TOKEN }}" ]; then
+          echo "SONAR_TOKEN is not configured; Sonar analysis cannot run. Please add the secret."
+          exit 1
+        fi
     - name: Build and analyze
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
