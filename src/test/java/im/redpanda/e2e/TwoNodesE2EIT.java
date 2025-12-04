@@ -6,10 +6,12 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.net.ServerSocket;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,8 +47,20 @@ public class TwoNodesE2EIT {
             nodeA.stop(Duration.ofSeconds(10));
             nodeB.stop(Duration.ofSeconds(10));
 
-            assertEquals("Node A exit code", 0, nodeA.exitCode());
-            assertEquals("Node B exit code", 0, nodeB.exitCode());
+            String nodeAOutput = nodeA.getCombinedOutput();
+            String nodeBOutput = nodeB.getCombinedOutput();
+
+            if (nodeA.exitCode() != 0 || nodeB.exitCode() != 0) {
+                System.out.println("Node A output:\n" + nodeAOutput);
+                System.out.println("Node B output:\n" + nodeBOutput);
+                Path logDir = Paths.get("target", "e2e-logs");
+                Files.createDirectories(logDir);
+                Files.writeString(logDir.resolve("nodeA.log"), nodeAOutput);
+                Files.writeString(logDir.resolve("nodeB.log"), nodeBOutput);
+            }
+
+            assertEquals("Node A exit code\n" + nodeAOutput, 0, nodeA.exitCode());
+            assertEquals("Node B exit code\n" + nodeBOutput, 0, nodeB.exitCode());
 
             assertNoUnexpectedLogIssues("nodeA", nodeA.getCombinedOutput());
             assertNoUnexpectedLogIssues("nodeB", nodeB.getCombinedOutput());
@@ -70,6 +84,9 @@ public class TwoNodesE2EIT {
     private boolean isAllowedNoise(String line) {
         String lower = line.toLowerCase();
         if (lower.contains("error loading local settings")) {
+            return true;
+        }
+        if (lower.contains("filenotfoundexception") && lower.contains("localsettings")) {
             return true;
         }
         if (line.contains("ListenConsole") && line.contains("NullPointerException")) {

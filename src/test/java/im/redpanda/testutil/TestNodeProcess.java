@@ -97,10 +97,15 @@ public final class TestNodeProcess implements AutoCloseable {
         try {
             stdinWriter.write("stop\n");
             stdinWriter.flush();
+            stdinWriter.close(); // also signal EOF so the launcher unblocks even if the stop line is missed
         } catch (IOException ignored) {
             // process may already be tearing down
         }
-        process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        if (!exited && process.isAlive()) {
+            process.destroy();
+            exited = process.waitFor(Duration.ofSeconds(5).toMillis(), TimeUnit.MILLISECONDS);
+        }
         if (process.isAlive()) {
             process.destroyForcibly();
             process.waitFor(5, TimeUnit.SECONDS);

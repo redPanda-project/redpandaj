@@ -81,6 +81,7 @@ public final class TestNodeLauncher {
 
         waitForStopSignal();
         shutdown(serverContext, connectionHandler);
+        System.exit(0);
     }
 
     private static void configureSettings() {
