@@ -6,6 +6,8 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -37,7 +39,8 @@ public class TwoNodesE2EIT {
             assertTrue("Node A failed to announce readiness", nodeA.awaitReady(Duration.ofSeconds(30)));
             assertTrue("Node B failed to announce readiness", nodeB.awaitReady(Duration.ofSeconds(30)));
 
-            Thread.sleep(2000L);
+            CountDownLatch pause = new CountDownLatch(1);
+            pause.await(2, TimeUnit.SECONDS);
 
             nodeA.stop(Duration.ofSeconds(10));
             nodeB.stop(Duration.ofSeconds(10));
