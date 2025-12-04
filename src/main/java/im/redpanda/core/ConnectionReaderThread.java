@@ -8,12 +8,8 @@ package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GMContent;
-import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
 import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
