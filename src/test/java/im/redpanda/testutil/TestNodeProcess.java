@@ -73,7 +73,10 @@ public final class TestNodeProcess implements AutoCloseable {
                     readyLatch.countDown();
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            if (watchReady) {
+                readyLatch.countDown(); // stream closed before readiness marker
+            }
         }
     }
 
