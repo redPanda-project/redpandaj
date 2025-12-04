@@ -52,9 +52,9 @@ public class EntryPoint extends CcsClient {
         while (cnt < 1) {
             cnt++;
             final String messageId = Util.getUniqueMessageId();
-            final Map<String, String> dataPayload = new HashMap<String, String>();
+            final Map<String, String> dataPayload = new HashMap<>();
 
-            final Map<String, String> notificationPayload = new HashMap<String, String>();
+            final Map<String, String> notificationPayload = new HashMap<>();
             notificationPayload.put("title", "New Message");
             notificationPayload.put("body", "Message could not be decrypted...");
             notificationPayload.put("tag","default");
