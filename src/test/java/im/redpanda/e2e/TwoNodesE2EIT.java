@@ -16,9 +16,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -78,7 +76,9 @@ public class TwoNodesE2EIT {
                 offenders.add(line);
             }
         }
-        assertThat(nodeLabel + " had unexpected WARN/ERROR lines: " + offenders, offenders, is(empty()));
+        assertThat(offenders)
+                .as(nodeLabel + " had unexpected WARN/ERROR lines: " + offenders)
+                .isEmpty();
     }
 
     private boolean isAllowedNoise(String line) {

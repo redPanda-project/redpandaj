@@ -13,8 +13,7 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.equalTo;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class CipherStreamsEdgeCaseTest {
 
@@ -45,9 +44,9 @@ public class CipherStreamsEdgeCaseTest {
         cos.flush();
 
         // Only 2 bytes should have been written downstream
-        assertThat(outBuf.position(), equalTo(2));
+        assertThat(outBuf.position()).isEqualTo(2);
         // And input buffer position advanced by 2
-        assertThat(inBuf.position(), equalTo(8));
+        assertThat(inBuf.position()).isEqualTo(8);
     }
 
     @Test
@@ -82,6 +81,6 @@ public class CipherStreamsEdgeCaseTest {
         // Read into the buffer; should only fill remaining bytes (4)
         cis.read(out);
 
-        assertThat(out.position(), equalTo(7));
+        assertThat(out.position()).isEqualTo(7);
     }
 }

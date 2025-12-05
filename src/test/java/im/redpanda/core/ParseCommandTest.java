@@ -5,8 +5,7 @@ import org.junit.Test;
 import java.nio.ByteBuffer;
 import java.security.Security;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class ParseCommandTest {
 
@@ -45,7 +44,7 @@ public class ParseCommandTest {
 
         //lets go to read mode and check for remaining bytes
         allocate.flip();
-        assertThat(allocate.hasRemaining(), is(false));
+        assertThat(allocate.hasRemaining()).isFalse();
 
 
         //lets check a not complete SEND PEERLIST command
@@ -58,8 +57,8 @@ public class ParseCommandTest {
         //lets go to read mode and check for remaining bytes
         allocate.flip();
 
-        assertThat(allocate.get() == Command.SEND_PEERLIST, is(true));
-        assertThat(allocate.getInt() == 1, is(true));
+        assertThat(allocate.get()).isEqualTo(Command.SEND_PEERLIST);
+        assertThat(allocate.getInt()).isEqualTo(1);
 
 
         //lets combine both from above
@@ -77,8 +76,8 @@ public class ParseCommandTest {
         //lets go to read mode and check for remaining bytes
         allocate.flip();
 
-        assertThat(allocate.get(), is(Command.SEND_PEERLIST));
-        assertThat(allocate.getInt(), is(1));
+        assertThat(allocate.get()).isEqualTo(Command.SEND_PEERLIST);
+        assertThat(allocate.getInt()).isEqualTo(1);
     }
 
     @Test
@@ -114,7 +113,7 @@ public class ParseCommandTest {
 
         byte cmd = writeBuffer.get();
 
-        assertThat(cmd, is(Command.SEND_PEERLIST));
+        assertThat(cmd).isEqualTo(Command.SEND_PEERLIST);
 
         int bytesforBuffer = writeBuffer.getInt();
 
@@ -128,7 +127,7 @@ public class ParseCommandTest {
         int peerListSize = peerListBytes.getInt();
 
 
-        assertThat(peerListSize, is(peerList.size()));
+        assertThat(peerListSize).isEqualTo(peerList.size());
 
 
         for (int j = 0; j < peerListSize; j++) {
@@ -142,8 +141,8 @@ public class ParseCommandTest {
             String ip = ConnectionReaderThread.parseString(peerListBytes);
             int port = peerListBytes.getInt();
 
-            assertThat(ip, is("rand_rewrewR_testip" + j));
-            assertThat(port, is(j));
+            assertThat(ip).isEqualTo("rand_rewrewR_testip" + j);
+            assertThat(port).isEqualTo(j);
         }
 
 //        FBPeerList rootAsFBPeerList = FBPeerList.getRootAsFBPeerList(ByteBuffer.wrap(bytesForFBPeerList));
@@ -158,7 +157,7 @@ public class ParseCommandTest {
 
 //        assertTrue(foundPeer.ip().equals("rand_rewrewR_testip" + (i - 1)));
 
-        assertThat(writeBuffer.remaining(), is(0));
+        assertThat(writeBuffer.remaining()).isZero();
 
 
         //cleanup
@@ -166,7 +165,7 @@ public class ParseCommandTest {
             peerList.removeIpPort("rand_rewrewR_testip" + i, i);
         }
 
-        assertThat(startingPeerListSize, is(peerList.size()));
+        assertThat(startingPeerListSize).isEqualTo(peerList.size());
 
 
     }
@@ -216,9 +215,9 @@ public class ParseCommandTest {
 
         processor.parseCommand(writeBuffer.get(), writeBuffer, getPeerForDebug());
 
-        assertThat(writeBuffer.hasRemaining(), is(false));
+        assertThat(writeBuffer.hasRemaining()).isFalse();
 
-        assertThat(peerList.size() - initPeerListSize, is(peersToTest));
+        assertThat(peerList.size() - initPeerListSize).isEqualTo(peersToTest);
 
 
     }
