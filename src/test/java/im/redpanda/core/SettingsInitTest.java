@@ -7,7 +7,6 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
 
 public class SettingsInitTest {
@@ -42,8 +41,8 @@ public class SettingsInitTest {
 
         Settings.init(ctx);
 
-        assertThat(Settings.isLoadUpdates(), is(true));
-        assertThat(Settings.isSeedNode(), is(false));
+        assertTrue(Settings.isLoadUpdates());
+        assertFalse(Settings.isSeedNode());
     }
 
     @Test
@@ -67,8 +66,8 @@ public class SettingsInitTest {
 
         Settings.init(ctx);
 
-        assertThat(Settings.isLoadUpdates(), is(false));
-        assertThat(Settings.isSeedNode(), is(true));
+        assertFalse(Settings.isLoadUpdates());
+        assertTrue(Settings.isSeedNode());
 
         // cleanup placeholder
         assertTrue(packaged.delete());
