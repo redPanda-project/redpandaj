@@ -16,8 +16,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.util.Random;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.equalTo;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -125,7 +124,7 @@ public class PeerTest {
         peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
 
         int decryptedBytes = peer.decryptInputData(bufferOut);
-        assertThat(decryptedBytes, equalTo(0));
+        assertThat(decryptedBytes).isZero();
     }
 
     @Test
@@ -146,8 +145,8 @@ public class PeerTest {
 
         int decryptedBytes = peer.decryptInputData(bufferOut);
         peer.readBuffer.flip();
-        assertThat(decryptedBytes, equalTo(8));
-        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+        assertThat(decryptedBytes).isEqualTo(8);
+        assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
     }
 
     @Test
@@ -157,7 +156,7 @@ public class PeerTest {
         setUpTestCipherStreams(peer);
 
         peer.readBuffer = ByteBufferPool.borrowObject(16);
-        assertThat(peer.readBuffer.remaining(), equalTo(16));
+        assertThat(peer.readBuffer.remaining()).isEqualTo(16);
 
         long longToTest = new Random().nextLong();
 
@@ -171,10 +170,10 @@ public class PeerTest {
 
         int decryptedBytes = peer.decryptInputData(bufferOut);
         peer.readBuffer.flip();
-        assertThat(decryptedBytes, equalTo(24));
-        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
-        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
-        assertThat(peer.readBuffer.getLong(), equalTo(longToTest));
+        assertThat(decryptedBytes).isEqualTo(24);
+        assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
+        assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
+        assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
     }
 
     private void setUpTestCipherStreams(Peer peer) throws NoSuchAlgorithmException, NoSuchProviderException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException {

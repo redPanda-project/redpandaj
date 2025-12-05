@@ -8,7 +8,7 @@ import org.junit.Test;
 import java.io.File;
 import java.security.Security;
 
-import static org.hamcrest.CoreMatchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
 
 public class LocalSettingsPersistenceTest {
@@ -53,9 +53,9 @@ public class LocalSettingsPersistenceTest {
 
         LocalSettings loaded = LocalSettings.load(port);
         assertNotNull(loaded);
-        assertThat(loaded.getUpdateTimestamp(), is(123456789L));
+        assertThat(loaded.getUpdateTimestamp()).isEqualTo(123456789L);
         assertArrayEquals(sig, loaded.getUpdateSignature());
-        assertThat(loaded.getUpdateAndroidTimestamp(), is(222L));
+        assertThat(loaded.getUpdateAndroidTimestamp()).isEqualTo(222L);
         assertArrayEquals(asig, loaded.getUpdateAndroidSignature());
         assertNotNull(loaded.getMyIdentity());
         assertNotNull(loaded.getNodeGraph());

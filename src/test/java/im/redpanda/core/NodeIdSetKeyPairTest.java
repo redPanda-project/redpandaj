@@ -4,8 +4,7 @@ import org.junit.Test;
 
 import java.security.KeyPair;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 
@@ -21,7 +20,7 @@ public class NodeIdSetKeyPairTest {
 
         assertSame(keyPair, nodeId.getKeyPair());
         RuntimeException second = assertThrows(RuntimeException.class, () -> nodeId.setKeyPair(keyPair));
-        assertThat(second.getMessage(), is("keypair is already set for this NodeId!"));
+        assertThat(second).hasMessage("keypair is already set for this NodeId!");
     }
 
     @Test
@@ -31,7 +30,7 @@ public class NodeIdSetKeyPairTest {
         NodeId nodeId = new NodeId(kademliaId);
 
         RuntimeException thrown = assertThrows(RuntimeException.class, () -> nodeId.setKeyPair(null));
-        assertThat(thrown.getMessage(), is("provided keypair must not be null when setting NodeId keypair!"));
+        assertThat(thrown).hasMessage("provided keypair must not be null when setting NodeId keypair!");
     }
 
     @Test

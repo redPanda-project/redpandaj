@@ -5,12 +5,11 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMEchoTest;
 import im.redpanda.flaschenpost.GMType;
 import im.redpanda.flaschenpost.GarlicMessage;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.security.Security;
 
-import static org.hamcrest.CoreMatchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class FlaschenpostTest {
 
@@ -23,8 +22,8 @@ public class FlaschenpostTest {
         GMEchoTest gmEchoTest = new GMEchoTest();
         byte[] content = gmEchoTest.getContent();
 
-        Assert.assertNotNull(content);
-        Assert.assertThat(content[0], is(GMType.ECHO.getId()));
+        assertThat(content).isNotNull();
+        assertThat(content[0]).isEqualTo(GMType.ECHO.getId());
     }
 
 
