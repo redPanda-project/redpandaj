@@ -1,11 +1,10 @@
 package im.redpanda.core;
 
-import org.hamcrest.Matchers;
 import org.junit.Test;
 
 import java.util.TreeSet;
 
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 
 public class SystemUpTimeDataTest {
@@ -15,7 +14,7 @@ public class SystemUpTimeDataTest {
     public void testCeilToLastFullHour_simple() {
         long current = System.currentTimeMillis();
         System.out.println(current);
-        assertThat(SystemUpTimeData.ceilToLastFullHour(current), Matchers.lessThan(current));
+        assertThat(SystemUpTimeData.ceilToLastFullHour(current)).isLessThan(current);
     }
 
     @Test
@@ -24,7 +23,7 @@ public class SystemUpTimeDataTest {
         long timeFiveMinutesLater = timeOne - 1000 * 60 * 5;
         long timeOneCeil = SystemUpTimeData.ceilToLastFullHour(timeOne);
         long timeFiveMinutesLaterCeil = SystemUpTimeData.ceilToLastFullHour(timeFiveMinutesLater);
-        assertThat(timeOneCeil, Matchers.is(timeFiveMinutesLaterCeil));
+        assertThat(timeOneCeil).isEqualTo(timeFiveMinutesLaterCeil);
     }
 
 
@@ -33,7 +32,7 @@ public class SystemUpTimeDataTest {
         SystemUpTimeData systemUpTimeData = new SystemUpTimeData();
         systemUpTimeData.reportNow();
         systemUpTimeData.clearTooOldHits();
-        assertThat(systemUpTimeData.getUptimePercent(), Matchers.greaterThan(0d));
+        assertThat(systemUpTimeData.getUptimePercent()).isGreaterThan(0d);
     }
 
     @Test
@@ -43,7 +42,7 @@ public class SystemUpTimeDataTest {
         longs.add(0L);
         SystemUpTimeData systemUpTimeData = new SystemUpTimeData(longs);
         systemUpTimeData.clearTooOldHits();
-        assertThat(systemUpTimeData.getUptimePercent(), Matchers.is(0d));
+        assertThat(systemUpTimeData.getUptimePercent()).isEqualTo(0d);
     }
 
 

@@ -9,8 +9,7 @@ import java.security.KeyPair;
 import java.security.Security;
 import java.util.Arrays;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.not;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
@@ -31,7 +30,7 @@ public class ECCryptoTest {
         String cipherOne = ECCrypto.encryptString(shared, "hello");
         String cipherTwo = ECCrypto.encryptString(shared, "hello");
 
-        assertThat(cipherOne, not(cipherTwo));
+        assertThat(cipherOne).isNotEqualTo(cipherTwo);
         assertEquals("hello", ECCrypto.decryptString(shared, cipherOne));
         assertEquals("hello", ECCrypto.decryptString(shared, cipherTwo));
     }
