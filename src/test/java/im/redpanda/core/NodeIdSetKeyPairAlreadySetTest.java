@@ -15,7 +15,7 @@ public class NodeIdSetKeyPairAlreadySetTest {
     }
 
     @Test
-    public void setKeyPair_rejectsWhenAlreadyInitialized() throws Exception {
+    public void setKeyPair_rejectsWhenAlreadyInitialized() {
         // NodeId with existing keyPair
         NodeId withKey = NodeId.generateWithSimpleKey();
         KeyPair another = NodeId.generateECKeys();
