@@ -4,7 +4,6 @@ import org.junit.Test;
 
 import java.nio.ByteBuffer;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
 
 public class UtilsAdditionalTest {
@@ -14,13 +13,13 @@ public class UtilsAdditionalTest {
         byte[] input = "hello".getBytes();
         byte[] dd = Utils.doubleDigest(input);
         String hex = Utils.bytesToHexString(dd);
-        assertThat(hex, is("9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50"));
+        assertEquals("9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50", hex);
     }
 
     @Test
     public void testBytesToHexString() {
         byte[] arr = new byte[]{0x00, 0x0f, (byte) 0xff};
-        assertThat(Utils.bytesToHexString(arr), is("000fff"));
+        assertEquals("000fff", Utils.bytesToHexString(arr));
     }
 
     @Test
@@ -48,4 +47,3 @@ public class UtilsAdditionalTest {
         assertNull(Utils.readSignature(shortBuf));
     }
 }
-

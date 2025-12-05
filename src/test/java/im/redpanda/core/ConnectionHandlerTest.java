@@ -100,7 +100,7 @@ public class ConnectionHandlerTest {
             for (SelectionKey key : ConnectionHandler.selector.keys()) {
                 if (key.channel() == channel) {
                     found = true;
-                    assertTrue((key.interestOps() & SelectionKey.OP_ACCEPT) != 0);
+                    assertNotEquals(0, key.interestOps() & SelectionKey.OP_ACCEPT);
                     break;
                 }
             }
