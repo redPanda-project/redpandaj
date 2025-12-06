@@ -429,14 +429,7 @@
             <plugin>
                 <groupId>org.sonarsource.scanner.maven</groupId>
                 <artifactId>sonar-maven-plugin</artifactId>
-                <version>4.0.0.4121</version>
-                <dependencies>
-                    <dependency>
-                        <groupId>org.bouncycastle</groupId>
-                        <artifactId>bcprov-jdk18on</artifactId>
-                        <version>${bcprov.version}</version>
-                    </dependency>
-                </dependencies>
+                <version>5.5.0.6356</version>
             </plugin>
 
         </plugins>
