@@ -8,6 +8,7 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
+import im.redpanda.proto.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,7 +62,8 @@ public class InboundCommandProcessor {
         if (command == Command.PING) {
             Log.put("Received ping command", 200);
             if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
-                logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer, peer.getKademliaId()));
+                logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer,
+                        peer.getKademliaId()));
                 serverContext.getPeerList().add(peer);
                 return 0;
             }
@@ -80,52 +82,29 @@ public class InboundCommandProcessor {
             return 1;
         } else if (command == Command.REQUEST_PEERLIST) {
             serverContext.getPeerList().getReadWriteLock().readLock().lock();
-            ByteBuffer byteBuffer = ByteBufferPool.borrowObject(1024 * 1024);
             try {
+                SendPeerList.Builder builder = SendPeerList.newBuilder();
+                for (Peer peerToCheck : serverContext.getPeerList().getPeerArrayList()) {
+                    PeerInfoProto.Builder peerBuilder = PeerInfoProto.newBuilder()
+                            .setIp(peerToCheck.ip)
+                            .setPort(peerToCheck.getPort());
+                    if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
+                        peerBuilder.setNodeId(NodeIdProto.newBuilder()
+                                .setPublicKeyBytes(
+                                        com.google.protobuf.ByteString.copyFrom(peerToCheck.getNodeId().exportPublic()))
+                                .build());
+                    }
+                    builder.addPeers(peerBuilder.build());
+                }
+                byte[] data = builder.build().toByteArray();
+                peer.getWriteBufferLock().lock();
                 try {
-                    int size = 0;
-                    ArrayList<Peer> peerToWrite = new ArrayList<>();
-                    for (Peer peerToCheck : serverContext.getPeerList().getPeerArrayList()) {
-                        size += 4; // len of ip string
-                        if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
-                            size += 2 + NodeId.PUBLIC_KEYLEN; // bool + pubkey
-                        } else {
-                            size += 2; // bool false
-                        }
-                        size += 4; // port
-                        peerToWrite.add(peerToCheck);
-                    }
-                    int maxLen = 1024 * 1024 - 64; // keep slack
-                    int cnt = 0;
-                    byteBuffer.putInt(0); // placeholder for count
-                    for (Peer peerToWriteObj : peerToWrite) {
-                        if (byteBuffer.position() > maxLen) break;
-                        if (peerToWriteObj.getNodeId() != null && peerToWriteObj.getNodeId().hasKey()) {
-                            byteBuffer.putShort((short) 1);
-                            byteBuffer.put(peerToWriteObj.getNodeId().exportPublic());
-                        } else {
-                            byteBuffer.putShort((short) 0);
-                        }
-                        byte[] ipStringBytes = peerToWriteObj.ip.getBytes();
-                        byteBuffer.putInt(ipStringBytes.length);
-                        byteBuffer.put(ipStringBytes);
-                        byteBuffer.putInt(peerToWriteObj.getPort());
-                        cnt++;
-                    }
-                    byteBuffer.putInt(0, cnt);
-                    byteBuffer.flip();
-                    peer.getWriteBufferLock().lock();
-                    try {
-                        peer.writeBuffer.put(Command.SEND_PEERLIST);
-                        peer.writeBuffer.putInt(byteBuffer.remaining());
-                        peer.writeBuffer.put(byteBuffer);
-                        peer.setWriteBufferFilled();
-                        byteBuffer.compact();
-                    } finally {
-                        peer.getWriteBufferLock().unlock();
-                    }
+                    peer.writeBuffer.put(Command.SEND_PEERLIST);
+                    peer.writeBuffer.putInt(data.length);
+                    peer.writeBuffer.put(data);
+                    peer.setWriteBufferFilled();
                 } finally {
-                    ByteBufferPool.returnObject(byteBuffer);
+                    peer.getWriteBufferLock().unlock();
                 }
             } finally {
                 serverContext.getPeerList().getReadWriteLock().readLock().unlock();
@@ -138,38 +117,38 @@ public class InboundCommandProcessor {
             }
             byte[] bytesForPeerList = new byte[toRead];
             readBuffer.get(bytesForPeerList);
-            ByteBuffer peerListBytes = ByteBuffer.wrap(bytesForPeerList);
-            int peerListSize = peerListBytes.getInt();
-            for (int i = 0; i < peerListSize; i++) {
-                NodeId nodeId = null;
-                int booleanNodeIdPresent = peerListBytes.getShort();
-                if (booleanNodeIdPresent == 1) {
-                    byte[] bytes = new byte[NodeId.PUBLIC_KEYLEN];
-                    peerListBytes.get(bytes);
-                    nodeId = NodeId.importPublic(bytes);
-                }
-                String ip = parseString(peerListBytes);
-                int port = peerListBytes.getInt();
-                if (nodeId != null) {
-                    if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
-                        Log.put("found ourselves in the peerlist", 80);
-                        continue;
+            try {
+                SendPeerList sendPeerList = SendPeerList.parseFrom(bytesForPeerList);
+                for (PeerInfoProto peerProto : sendPeerList.getPeersList()) {
+                    NodeId nodeId = null;
+                    if (peerProto.hasNodeId()) {
+                        nodeId = NodeId.importPublic(peerProto.getNodeId().getPublicKeyBytes().toByteArray());
                     }
-                    if (ip == null) {
-                        System.out.println("found a peer with ip null...");
-                        continue;
-                    }
-                    Peer newPeer = new Peer(ip, port, nodeId);
-                    Node byKademliaId = Node.getByKademliaId(serverContext, nodeId.getKademliaId());
-                    if (byKademliaId != null) {
-                        byKademliaId.addConnectionPoint(ip, port);
+                    String ip = peerProto.getIp();
+                    int port = peerProto.getPort();
+                    if (nodeId != null) {
+                        if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
+                            Log.put("found ourselves in the peerlist", 80);
+                            continue;
+                        }
+                        if (ip == null) {
+                            System.out.println("found a peer with ip null...");
+                            continue;
+                        }
+                        Peer newPeer = new Peer(ip, port, nodeId);
+                        Node byKademliaId = Node.getByKademliaId(serverContext, nodeId.getKademliaId());
+                        if (byKademliaId != null) {
+                            byKademliaId.addConnectionPoint(ip, port);
+                        } else {
+                            new Node(serverContext, nodeId);
+                        }
+                        serverContext.getPeerList().add(newPeer);
                     } else {
-                        new Node(serverContext, nodeId);
+                        serverContext.getPeerList().add(new Peer(ip, port));
                     }
-                    serverContext.getPeerList().add(newPeer);
-                } else {
-                    serverContext.getPeerList().add(new Peer(ip, port));
                 }
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse SendPeerList protobuf", e);
             }
             return 1 + 4 + toRead;
         } else if (command == Command.UPDATE_REQUEST_TIMESTAMP) {
@@ -200,7 +179,10 @@ public class InboundCommandProcessor {
                         peer.getWriteBuffer().put(Command.UPDATE_REQUEST_CONTENT);
                         peer.writeBufferLock.unlock();
                         peer.setWriteBufferFilled();
-                        try { Thread.sleep(60000); } catch (InterruptedException ignored) {}
+                        try {
+                            Thread.sleep(60000);
+                        } catch (InterruptedException ignored) {
+                        }
                     } finally {
                         System.out.println("we can now download it from another peer...");
                         ConnectionReaderThread.updateDownloadLock.unlock();
@@ -220,12 +202,16 @@ public class InboundCommandProcessor {
             Runnable runnable = () -> {
                 ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
                 try {
-                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException ignored) {
+                    }
                     Path path = Settings.isSeedNode() ? Paths.get("target/redpanda.jar") : Paths.get("redpanda.jar");
                     try {
                         System.out.println("we send the update to a peer!");
                         byte[] data = Files.readAllBytes(path);
-                        ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + serverContext.getLocalSettings().getUpdateSignature().length + data.length);
+                        ByteBuffer a = ByteBuffer.allocate(
+                                1 + 8 + 4 + serverContext.getLocalSettings().getUpdateSignature().length + data.length);
                         a.put(Command.UPDATE_ANSWER_CONTENT);
                         a.putLong(serverContext.getLocalSettings().getUpdateTimestamp());
                         a.putInt(data.length);
@@ -235,7 +221,8 @@ public class InboundCommandProcessor {
                         peer.writeBufferLock.lock();
                         try {
                             if (peer.writeBuffer.remaining() < a.remaining()) {
-                                ByteBuffer allocate = ByteBuffer.allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
+                                ByteBuffer allocate = ByteBuffer
+                                        .allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
                                 peer.writeBuffer.flip();
                                 allocate.put(peer.writeBuffer);
                                 peer.writeBuffer = allocate;
@@ -298,7 +285,8 @@ public class InboundCommandProcessor {
                 return 0;
             }
             long othersTimestamp = readBuffer.getLong();
-            Log.put("Update found from: " + new Date(othersTimestamp) + " our version is from: " + new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()), 70);
+            Log.put("Update found from: " + new Date(othersTimestamp) + " our version is from: "
+                    + new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()), 70);
             if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                 System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
             }
@@ -309,12 +297,16 @@ public class InboundCommandProcessor {
                         if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
                             return;
                         }
-                        System.out.println("our android.apk version is outdated, we try to download it from this peer!");
+                        System.out
+                                .println("our android.apk version is outdated, we try to download it from this peer!");
                         peer.writeBufferLock.lock();
                         peer.writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_CONTENT);
                         peer.writeBufferLock.unlock();
                         peer.setWriteBufferFilled();
-                        try { Thread.sleep(60000); } catch (InterruptedException ignored) {}
+                        try {
+                            Thread.sleep(60000);
+                        } catch (InterruptedException ignored) {
+                        }
                     } finally {
                         System.out.println("we can now download it from another peer...");
                         ConnectionReaderThread.updateUploadLock.release();
@@ -326,13 +318,17 @@ public class InboundCommandProcessor {
             return 1 + 8;
         } else if (command == Command.ANDROID_UPDATE_REQUEST_CONTENT) {
             if (serverContext.getLocalSettings().getUpdateAndroidSignature() == null) {
-                System.out.println("we dont have an official signature to upload that android.apk update to other peers!");
+                System.out.println(
+                        "we dont have an official signature to upload that android.apk update to other peers!");
                 return 1;
             }
             Runnable runnable = () -> {
                 ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
                 try {
-                    try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException ignored) {
+                    }
                     Path path = Paths.get(ConnectionReaderThread.ANDROID_UPDATE_FILE);
                     try {
                         System.out.println("we send the android.apk update to a peer!");
@@ -341,9 +337,11 @@ public class InboundCommandProcessor {
                         ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
                         bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                         bytesToHash.put(data);
-                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(), serverContext.getLocalSettings().getUpdateAndroidSignature());
+                        boolean verify = publicUpdaterKey.verify(bytesToHash.array(),
+                                serverContext.getLocalSettings().getUpdateAndroidSignature());
                         if (!verify) {
-                            System.out.println("################################ update not verified " + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+                            System.out.println("################################ update not verified "
+                                    + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                             return;
                         }
                         byte[] androidSignature = serverContext.getLocalSettings().getUpdateAndroidSignature();
@@ -357,7 +355,8 @@ public class InboundCommandProcessor {
                         peer.writeBufferLock.lock();
                         try {
                             if (peer.writeBuffer.remaining() < a.remaining()) {
-                                ByteBuffer allocate = ByteBuffer.allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
+                                ByteBuffer allocate = ByteBuffer
+                                        .allocate(peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
                                 peer.writeBuffer.flip();
                                 allocate.put(peer.writeBuffer);
                                 peer.writeBuffer = allocate;
@@ -370,10 +369,14 @@ public class InboundCommandProcessor {
                         int cnt = 0;
                         while (cnt < 6) {
                             cnt++;
-                            try { Thread.sleep(10000); } catch (InterruptedException ignored) {}
+                            try {
+                                Thread.sleep(10000);
+                            } catch (InterruptedException ignored) {
+                            }
                             peer.writeBufferLock.lock();
                             try {
-                                if (!peer.isConnected() || (peer.writeBuffer.position() == 0 && peer.writeBufferCrypted.position() == 0)) {
+                                if (!peer.isConnected() || (peer.writeBuffer.position() == 0
+                                        && peer.writeBufferCrypted.position() == 0)) {
                                     break;
                                 }
                             } finally {
@@ -417,108 +420,141 @@ public class InboundCommandProcessor {
             }
             return 1 + 8 + 4 + signatureLen + data.length;
         } else if (command == Command.JOB_ACK) {
-            int jobId = readBuffer.getInt();
-            Job runningJob = Job.getRunningJob(jobId);
-            if (runningJob instanceof KademliaInsertJob) {
-                KademliaInsertJob job = (KademliaInsertJob) runningJob;
-                job.ack(peer);
-                System.out.println("ACK from peer: " + peer.getNodeId().toString());
-            }
-            return 1 + 4;
-        } else if (command == Command.KADEMLIA_GET) {
-            if (readBuffer.remaining() < 4 + KademliaId.ID_LENGTH_BYTES) {
-                return 0;
-            }
-            int jobId = readBuffer.getInt();
-            byte[] kadIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
-            readBuffer.get(kadIdBytes);
-            KademliaId searchedId = new KademliaId(kadIdBytes);
-            KadContent kadContent = serverContext.getKadStoreManager().get(searchedId);
-            if (kadContent != null) {
-                peer.getWriteBufferLock().lock();
-                try {
-                    peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
-                    peer.getWriteBuffer().putInt(jobId);
-                    peer.getWriteBuffer().putLong(kadContent.getTimestamp());
-                    peer.getWriteBuffer().put(kadContent.getPubkey());
-                    peer.getWriteBuffer().putInt(kadContent.getContent().length);
-                    peer.getWriteBuffer().put(kadContent.getContent());
-                    peer.getWriteBuffer().put(kadContent.getSignature());
-                } finally {
-                    peer.getWriteBufferLock().unlock();
-                }
-            } else {
-                new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
-            }
-            return 1 + 4 + KademliaId.ID_LENGTH_BYTES;
-        } else if (command == Command.KADEMLIA_STORE) {
-            // Read length-prefixed payload: [len][jobId][timestamp][pub(65)][contentLen][content][sigLen][sig]
-            if (readBuffer.remaining() < 4) {
-                return 0;
-            }
             int toRead = readBuffer.getInt();
             if (readBuffer.remaining() < toRead) {
-                // Wait for full frame
-                readBuffer.position(readBuffer.position() - 4); // rewind len for next round
                 return 0;
             }
-
-            int jobId = readBuffer.getInt();
-            long timestamp = readBuffer.getLong();
-            byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
-            readBuffer.get(publicKeyBytes);
-
-            int contentLen = readBuffer.getInt();
-            if (contentLen > readBuffer.remaining()) {
-                return 0;
-            }
-            if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
-                peer.disconnect("wrong contentLen for kadcontent");
-                return 0;
-            }
-            byte[] contentBytes = new byte[contentLen];
-            readBuffer.get(contentBytes);
-
-            if (4 > readBuffer.remaining()) {
-                return 0;
-            }
-            int sigLen = readBuffer.getInt();
-            if (sigLen > readBuffer.remaining()) {
-                return 0;
-            }
-            byte[] signatureBytes = new byte[sigLen];
-            readBuffer.get(signatureBytes);
-
-            KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
-            if (kadContent.verify()) {
-                serverContext.getKadStoreManager().put(kadContent);
-                peer.getWriteBufferLock().lock();
-                try {
-                    peer.getWriteBuffer().put(Command.JOB_ACK);
-                    peer.getWriteBuffer().putInt(jobId);
-                    if (peer.getSelectionKey() != null) {
-                        peer.setWriteBufferFilled();
-                    }
-                } finally {
-                    peer.getWriteBufferLock().unlock();
+            byte[] bytes = new byte[toRead];
+            readBuffer.get(bytes);
+            try {
+                JobAck ackMsg = JobAck.parseFrom(bytes);
+                int jobId = ackMsg.getJobId();
+                Job runningJob = Job.getRunningJob(jobId);
+                if (runningJob instanceof KademliaInsertJob) {
+                    ((KademliaInsertJob) runningJob).ack(peer);
+                    System.out.println("ACK from peer: " + peer.getNodeId().toString());
                 }
-            } else {
-                System.out.println("kadContent verification failed!!!");
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse JobAck protobuf", e);
+            }
+            return 1 + 4 + toRead;
+        } else if (command == Command.KADEMLIA_GET) {
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
+                return 0;
+            }
+            byte[] bytes = new byte[toRead];
+            readBuffer.get(bytes);
+            try {
+                KademliaGet getMsg = KademliaGet.parseFrom(bytes);
+                int jobId = getMsg.getJobId();
+                KademliaId searchedId = new KademliaId(getMsg.getSearchedId().getKeyBytes().toByteArray());
+                KadContent kadContent = serverContext.getKadStoreManager().get(searchedId);
+                if (kadContent != null) {
+                    peer.getWriteBufferLock().lock();
+                    try {
+                        KademliaGetAnswer answerMsg = KademliaGetAnswer.newBuilder()
+                                .setAckId(jobId)
+                                .setTimestamp(kadContent.getTimestamp())
+                                .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
+                                .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
+                                .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                                .build();
+                        byte[] answerData = answerMsg.toByteArray();
+                        peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
+                        peer.getWriteBuffer().putInt(answerData.length);
+                        peer.getWriteBuffer().put(answerData);
+                        peer.setWriteBufferFilled();
+                    } finally {
+                        peer.getWriteBufferLock().unlock();
+                    }
+                } else {
+                    new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
+                }
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse KademliaGet protobuf", e);
+            }
+            return 1 + 4 + toRead;
+        } else if (command == Command.KADEMLIA_STORE) {
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
+                return 0;
+            }
+            byte[] bytes = new byte[toRead];
+            readBuffer.get(bytes);
+            try {
+                KademliaStore storeMsg = KademliaStore.parseFrom(bytes);
+                int jobId = storeMsg.getJobId();
+                KadContent kadContent = new KadContent(
+                        storeMsg.getTimestamp(),
+                        storeMsg.getPublicKey().toByteArray(),
+                        storeMsg.getContent().toByteArray(),
+                        storeMsg.getSignature().toByteArray());
+                if (kadContent.verify()) {
+                    serverContext.getKadStoreManager().put(kadContent);
+                    if (jobId != 0) {
+                        peer.getWriteBufferLock().lock();
+                        try {
+                            JobAck ackMsg = JobAck.newBuilder().setJobId(jobId).build();
+                            byte[] ackData = ackMsg.toByteArray();
+                            peer.getWriteBuffer().put(Command.JOB_ACK);
+                            peer.getWriteBuffer().putInt(ackData.length);
+                            peer.getWriteBuffer().put(ackData);
+                            peer.setWriteBufferFilled();
+                        } finally {
+                            peer.getWriteBufferLock().unlock();
+                        }
+                    }
+                } else {
+                    logger.error("Kademlia content verification failed!");
+                }
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse KademliaStore protobuf", e);
             }
             return 1 + 4 + toRead;
         } else if (command == Command.KADEMLIA_GET_ANSWER) {
-            return parseKademliaGetAnswer(readBuffer, peer);
-        } else if (command == Command.FLASCHENPOST_PUT) {
-            int contentLen = readBuffer.getInt();
-            if (readBuffer.remaining() < contentLen) {
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
                 return 0;
             }
-            byte[] content = new byte[contentLen];
-            readBuffer.get(content);
-            GMContent gmContent = GMParser.parse(serverContext, content);
-            return 1 + 4 + contentLen;
+            byte[] bytes = new byte[toRead];
+            readBuffer.get(bytes);
+            try {
+                KademliaGetAnswer answerMsg = KademliaGetAnswer.parseFrom(bytes);
+                KadContent kadContent = new KadContent(
+                        answerMsg.getTimestamp(),
+                        answerMsg.getPublicKey().toByteArray(),
+                        answerMsg.getContent().toByteArray(),
+                        answerMsg.getSignature().toByteArray());
+                if (kadContent.verify()) {
+                    Job byId = Job.getRunningJob(answerMsg.getAckId());
+                    if (byId instanceof KademliaSearchJob) {
+                        ((KademliaSearchJob) byId).ack(kadContent, peer);
+                    }
+                } else {
+                    logger.error("Kademlia content verification failed!");
+                }
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse KademliaGetAnswer protobuf", e);
+            }
+            return 1 + 4 + toRead;
+        } else if (command == Command.FLASCHENPOST_PUT) {
+            int toRead = readBuffer.getInt();
+            if (readBuffer.remaining() < toRead) {
+                return 0;
+            }
+            byte[] bytes = new byte[toRead];
+            readBuffer.get(bytes);
+            try {
+                FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(bytes);
+                GMContent gmContent = GMParser.parse(serverContext, putMsg.getContent().toByteArray());
+            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+                logger.error("Failed to parse FlaschenpostPut protobuf", e);
+            }
+            return 1 + 4 + toRead;
         }
-        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand + " lightClient: " + peer.isLightClient());
+        throw new RuntimeException("Got unknown command from peer: " + command + " last cmd: " + peer.lastCommand
+                + " lightClient: " + peer.isLightClient());
     }
 
     private int parseKademliaGetAnswer(ByteBuffer readBuffer, Peer peer) {

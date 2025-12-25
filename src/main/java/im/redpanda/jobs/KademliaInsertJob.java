@@ -1,10 +1,10 @@
 package im.redpanda.jobs;
 
-
 import im.redpanda.core.*;
 import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.proto.KademliaStore;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -22,7 +22,6 @@ public class KademliaInsertJob extends Job {
     private final KadContent kadContent;
     private TreeMap<Peer, Integer> peers = null;
 
-
     public KademliaInsertJob(ServerContext serverContext, KadContent kadContent) {
         super(serverContext);
         this.kadContent = kadContent;
@@ -31,17 +30,16 @@ public class KademliaInsertJob extends Job {
     @Override
     public void init() {
 
-
         PeerList peerList = serverContext.getPeerList();
 
-        //We first save the KadContent in our StoreManager, we use "dht-caching"
+        // We first save the KadContent in our StoreManager, we use "dht-caching"
         // such that too far away entries will be removed faster
         serverContext.getKadStoreManager().put(kadContent);
 
-        //lets sort the peers by the destination key
+        // lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(kadContent.getId()));
 
-        //insert all nodes
+        // insert all nodes
         Lock lock = peerList.getReadWriteLock().readLock();
         lock.lock();
         try {
@@ -68,11 +66,9 @@ public class KademliaInsertJob extends Job {
     @Override
     public void work() {
 
-
         int askedPeers = 0;
         int successfullPeers = 0;
         for (Peer p : peers.keySet()) {
-
 
             Integer status = peers.get(p);
             if (status == SUCCESS) {
@@ -83,22 +79,19 @@ public class KademliaInsertJob extends Job {
                 continue;
             }
 
-
             if (successfullPeers >= SEND_TO_NODES) {
                 done();
                 break;
             }
 
-
             if (askedPeers >= SEND_TO_NODES) {
                 break;
             }
 
-
             if (p.isConnected() && p.isIntegrated()) {
 
                 try {
-                    //lets not wait too long for a lock, since this job may timeout otherwise
+                    // lets not wait too long for a lock, since this job may timeout otherwise
                     boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
                     if (lockedByMe) {
                         try {
@@ -112,37 +105,34 @@ public class KademliaInsertJob extends Job {
                             peers.put(p, ASKED);
                             askedPeers++;
 
-
-                            System.out.println("putKadCmd to peer: " + p.getNodeId().toString() + " size: " + peers.size() + " distance: " + kadContent.getId().getDistance(p.getKademliaId()) + " target: " + kadContent.getId());
+                            System.out.println("putKadCmd to peer: " + p.getNodeId().toString() + " size: "
+                                    + peers.size() + " distance: " + kadContent.getId().getDistance(p.getKademliaId())
+                                    + " target: " + kadContent.getId());
 
                             int toWriteBytes = writeBuffer.position() + kadContent.getContent().length + 1024;
 
-//                            if (p.writeBuffer.remaining() < toWriteBytes) {
-//                                ByteBuffer allocate = ByteBuffer.allocate(toWriteBytes);
-//                                p.writeBuffer.flip();
-//                                allocate.put(p.writeBuffer);
-//                                p.writeBuffer = allocate;
-//                                writeBuffer = allocate;
-//                            }
+                            // if (p.writeBuffer.remaining() < toWriteBytes) {
+                            // ByteBuffer allocate = ByteBuffer.allocate(toWriteBytes);
+                            // p.writeBuffer.flip();
+                            // allocate.put(p.writeBuffer);
+                            // p.writeBuffer = allocate;
+                            // writeBuffer = allocate;
+                            // }
 
+                            KademliaStore storeMsg = KademliaStore.newBuilder()
+                                    .setJobId(getJobId())
+                                    .setTimestamp(kadContent.getTimestamp())
+                                    .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
+                                    .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
+                                    .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                                    .build();
+                            byte[] data = storeMsg.toByteArray();
 
                             writeBuffer.put(Command.KADEMLIA_STORE);
+                            writeBuffer.putInt(data.length);
+                            writeBuffer.put(data);
 
-                            writeBuffer.putInt(4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + kadContent.getContent().length + 4 + kadContent.getSignature().length);
-
-                            writeBuffer.putInt(getJobId());
-//                            writeBuffer.put(kadContent.getId().getBytes());
-                            writeBuffer.putLong(kadContent.getTimestamp());
-                            writeBuffer.put(kadContent.getPubkey());
-
-                            writeBuffer.putInt(kadContent.getContent().length);
-                            writeBuffer.put(kadContent.getContent());
-
-
-                            writeBuffer.putInt(kadContent.getSignature().length);
-                            writeBuffer.put(kadContent.getSignature());
-
-                            //for debug only
+                            // for debug only
                             ByteBuffer allocate = ByteBuffer.allocate(kadContent.getSignature().length);
                             allocate.put(kadContent.getSignature());
                             allocate.flip();
@@ -151,7 +141,6 @@ public class KademliaInsertJob extends Job {
                                 throw new RuntimeException("could not read own signature......" + bytes.length);
                             }
                             ////////
-
 
                             p.setWriteBufferFilled();
 
@@ -165,25 +154,21 @@ public class KademliaInsertJob extends Job {
                     e.printStackTrace();
                 }
 
-
             }
-
 
         }
 
-//        System.out.println("successfullPeers: " + successfullPeers + " askedPeers: " + askedPeers);
+        // System.out.println("successfullPeers: " + successfullPeers + " askedPeers: "
+        // + askedPeers);
         if (successfullPeers >= SEND_TO_NODES) {
             done();
         }
 
-
     }
-
 
     public void ack(Peer p) {
-        //todo: concurrency?
+        // todo: concurrency?
         peers.put(p, SUCCESS);
     }
-
 
 }

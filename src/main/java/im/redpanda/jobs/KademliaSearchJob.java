@@ -1,6 +1,5 @@
 package im.redpanda.jobs;
 
-
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
@@ -8,6 +7,8 @@ import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.proto.KademliaGet;
+import im.redpanda.proto.KademliaIdProto;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -21,15 +22,17 @@ import java.util.concurrent.locks.ReentrantLock;
 public class KademliaSearchJob extends Job {
 
     /**
-     * Here we use a blacklist to block search request for the same KademliaId in short time intervals.
-     * If a search is initialized from a node and the next nodes also have to start a search request,
+     * Here we use a blacklist to block search request for the same KademliaId in
+     * short time intervals.
+     * If a search is initialized from a node and the next nodes also have to start
+     * a search request,
      * it is possible that two nodes request the same search from us.
      * This blacklist will block any duplicated request for the same search.
      */
     private static final HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
     private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
     private static final long BLACKLIST_KEY_FOR = 1000L * 30L;
-    //todo: we need a housekeeper for this hashmap!
+    // todo: we need a housekeeper for this hashmap!
 
     public static final int SEND_TO_NODES = 2;
     private static final int NONE = 0;
@@ -48,11 +51,13 @@ public class KademliaSearchJob extends Job {
     @Override
     public void init() {
 
-
         /**
-         * Lets check if this KademliaId was already searched in the last seconds such that no search loops occur.
-         * Each Key is blacklisted for 5 seconds after a search and only direct searches will be returned for that key.
-         * TODO: Maybe we should create a list of "requesters" for each search such that we can send an answers to all "requesters".
+         * Lets check if this KademliaId was already searched in the last seconds such
+         * that no search loops occur.
+         * Each Key is blacklisted for 5 seconds after a search and only direct searches
+         * will be returned for that key.
+         * TODO: Maybe we should create a list of "requesters" for each search such that
+         * we can send an answers to all "requesters".
          */
 
         long currentTimeMillis = System.currentTimeMillis();
@@ -63,7 +68,8 @@ public class KademliaSearchJob extends Job {
             if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
                 kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
             } else {
-                //todo: maybe we should inform the peer that he should retry a KadSearch in some seconds?
+                // todo: maybe we should inform the peer that he should retry a KadSearch in
+                // some seconds?
                 fail();
                 done();
                 return;
@@ -72,20 +78,18 @@ public class KademliaSearchJob extends Job {
             kademliaIdSearchBlacklistLock.unlock();
         }
 
-
         int myDistanceToKey = id.getDistance(serverContext.getNonce());
 
-//        BigInteger key = id.getInt();
-//        BigInteger me = Server.NONCE.getInt();
-//        BigInteger myDistanceToKey = me.xor(key).abs();
+        // BigInteger key = id.getInt();
+        // BigInteger me = Server.NONCE.getInt();
+        // BigInteger myDistanceToKey = me.xor(key).abs();
 
-
-        //key is not blacklisted, lets sort the peers by the destination key
+        // key is not blacklisted, lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(id));
 
         PeerList peerList = serverContext.getPeerList();
 
-        //insert all nodes
+        // insert all nodes
         Lock lock = peerList.getReadWriteLock().readLock();
         lock.lock();
         try {
@@ -98,25 +102,25 @@ public class KademliaSearchJob extends Job {
 
             for (Peer p : peerArrayList) {
 
-                //do not add the peer if the peer is not connected or the nodeId is unknown!
+                // do not add the peer if the peer is not connected or the nodeId is unknown!
                 if (p.getNodeId() == null || !p.isConnected()) {
                     continue;
                 }
 
-                //do not ask light clients for kad entries...
+                // do not ask light clients for kad entries...
                 if (p.isLightClient()) {
                     continue;
                 }
 
-//                /**
-//                 * do not add peers which are further or equally away from the key than us
-//                 */
-//                int peersDistanceToKey = id.getDistance(p.getKademliaId());
-//                System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
-//                if (myDistanceToKey <= peersDistanceToKey) {
-//                    continue;
-//                }
-
+                // /**
+                // * do not add peers which are further or equally away from the key than us
+                // */
+                // int peersDistanceToKey = id.getDistance(p.getKademliaId());
+                // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
+                // peersDistanceToKey);
+                // if (myDistanceToKey <= peersDistanceToKey) {
+                // continue;
+                // }
 
                 peers.put(p, NONE);
             }
@@ -142,7 +146,6 @@ public class KademliaSearchJob extends Job {
         int successfullPeers = 0;
         for (Peer p : peers.keySet()) {
 
-
             Integer status = peers.get(p);
             if (status == SUCCESS) {
                 successfullPeers++;
@@ -152,22 +155,19 @@ public class KademliaSearchJob extends Job {
                 continue;
             }
 
-
             if (successfullPeers >= SEND_TO_NODES) {
                 break;
             }
 
-
             if (askedPeers >= SEND_TO_NODES) {
-                //the check for done will be made below the loop
+                // the check for done will be made below the loop
                 break;
             }
-
 
             if (p.isConnected() && p.isIntegrated()) {
 
                 try {
-                    //lets not wait too long for a lock, since this job may timeout otherwise
+                    // lets not wait too long for a lock, since this job may timeout otherwise
                     boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
                     if (lockedByMe) {
                         try {
@@ -181,10 +181,17 @@ public class KademliaSearchJob extends Job {
                             peers.put(p, ASKED);
                             askedPeers++;
 
+                            KademliaGet getMsg = KademliaGet.newBuilder()
+                                    .setJobId(getJobId())
+                                    .setSearchedId(KademliaIdProto.newBuilder()
+                                            .setKeyBytes(com.google.protobuf.ByteString.copyFrom(id.getBytes()))
+                                            .build())
+                                    .build();
+                            byte[] data = getMsg.toByteArray();
 
                             writeBuffer.put(Command.KADEMLIA_GET);
-                            writeBuffer.putInt(getJobId());
-                            writeBuffer.put(id.getBytes());
+                            writeBuffer.putInt(data.length);
+                            writeBuffer.put(data);
 
                             p.setWriteBufferFilled();
 
@@ -198,14 +205,13 @@ public class KademliaSearchJob extends Job {
                     e.printStackTrace();
                 }
 
-
             }
-
 
         }
 
         /**
-         * Lets check if already SEND_TO_NODES peers answered and check if all peers list answered,
+         * Lets check if already SEND_TO_NODES peers answered and check if all peers
+         * list answered,
          * the peers list may be small if we are near the search key...
          */
         if (successfullPeers >= SEND_TO_NODES || successfullPeers == peers.size()) {
@@ -213,13 +219,10 @@ public class KademliaSearchJob extends Job {
             done();
         }
 
-
     }
-
 
     protected void fail() {
     }
-
 
     protected ArrayList<KadContent> success() {
 
@@ -227,20 +230,18 @@ public class KademliaSearchJob extends Job {
             return null;
         }
 
-        //lets get the newest one!
-        contents.sort((o1, o2) -> o1.getTimestamp() < o1.getTimestamp() ? -1 :
-                o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
+        // lets get the newest one!
+        contents.sort(
+                (o1, o2) -> o1.getTimestamp() < o1.getTimestamp() ? -1 : o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
 
         return contents;
     }
 
-
     public void ack(KadContent c, Peer p) {
-        //todo: concurrency?
+        // todo: concurrency?
         contents.add(c);
         peers.put(p, SUCCESS);
     }
-
 
     public static HashMap<KademliaId, Long> getKademliaIdSearchBlacklist() {
         return kademliaIdSearchBlacklist;

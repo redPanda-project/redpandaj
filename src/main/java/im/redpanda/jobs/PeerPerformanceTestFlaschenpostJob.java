@@ -24,8 +24,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
         System.out.println("we are creating a Flaschenpost to monitor other peers...");
 
-
-        //lets target to ourselves without the private key!
+        // lets target to ourselves without the private key!
         NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(getJobId());
@@ -41,17 +40,20 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
         peer.getWriteBufferLock().lock();
         try {
+            im.redpanda.proto.FlaschenpostPut putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
+                    .setContent(com.google.protobuf.ByteString.copyFrom(content))
+                    .build();
+            byte[] data = putMsg.toByteArray();
+
             peer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-            peer.getWriteBuffer().putInt(content.length);
-            peer.getWriteBuffer().put(content);
+            peer.getWriteBuffer().putInt(data.length);
+            peer.getWriteBuffer().put(data);
             peer.setWriteBufferFilled();
         } finally {
             peer.getWriteBufferLock().unlock();
         }
 
-
     }
-
 
     @Override
     public void work() {
