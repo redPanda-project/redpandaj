@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadContent;
-import com.google.protobuf.ByteString;
+import static com.google.protobuf.ByteString.copyFrom;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.proto.KademliaGetAnswer;
 import im.redpanda.proto.KademliaStore;
@@ -84,9 +84,9 @@ public class InboundCommandProcessorTest {
         KademliaGetAnswer answerMsg = KademliaGetAnswer.newBuilder()
                 .setAckId(ackId)
                 .setTimestamp(timestamp)
-                .setPublicKey(ByteString.copyFrom(pub))
-                .setContent(ByteString.copyFrom(content))
-                .setSignature(ByteString.copyFrom(sig))
+                .setPublicKey(copyFrom(pub))
+                .setContent(copyFrom(content))
+                .setSignature(copyFrom(sig))
                 .build();
 
         byte[] payload = answerMsg.toByteArray();
@@ -127,9 +127,9 @@ public class InboundCommandProcessorTest {
         KademliaStore storeMsg = KademliaStore.newBuilder()
                 .setJobId(jobId)
                 .setTimestamp(kadContent.getTimestamp())
-                .setPublicKey(ByteString.copyFrom(kadContent.getPubkey()))
-                .setContent(ByteString.copyFrom(kadContent.getContent()))
-                .setSignature(ByteString.copyFrom(kadContent.getSignature()))
+                .setPublicKey(copyFrom(kadContent.getPubkey()))
+                .setContent(copyFrom(kadContent.getContent()))
+                .setSignature(copyFrom(kadContent.getSignature()))
                 .build();
 
         byte[] payload = storeMsg.toByteArray();
