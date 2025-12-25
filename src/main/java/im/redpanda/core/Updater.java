@@ -16,8 +16,7 @@ import java.security.Security;
 
 public class Updater {
 
-
-    public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "NUVqGoHFTGYRfP1TRHvCji3QkqonrA4fFJpDSbghDwJoBVV3VLNpqzS7nxMeMBfbELknyGvn2JLrNY67tbZqqLw3";
+    public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "Pu6kn8E5ZpazhJZRDuhAbtrtAwirGi9ssWaW4eYCqUkxuLqVhnLeDJbAXe4KHRavks3n7pKquczkBzJpRr6JxJKd";
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -38,7 +37,7 @@ public class Updater {
      * @param args
      */
     public static void main(String[] args) {
-//        createNewKeys();
+        // createNewKeys();
 
         if (!Paths.get("privateSigningKey.txt").toFile().exists()) {
             System.out.println("No private key for signing found, skipping insert update into network.");
@@ -56,10 +55,10 @@ public class Updater {
             e.printStackTrace();
         }
 
-
         try {
             insertNewAndroidUpdate();
-            System.out.println("Update of android.apk was successfully signed and inserted in the defaul client for upload.");
+            System.out.println(
+                    "Update of android.apk was successfully signed and inserted in the defaul client for upload.");
         } catch (java.nio.file.NoSuchFileException e) {
             System.out.println("No android.apk found, not inserting any android update...");
         } catch (IOException e) {
@@ -67,7 +66,6 @@ public class Updater {
         } catch (AddressFormatException e) {
             e.printStackTrace();
         }
-
 
     }
 
@@ -82,8 +80,7 @@ public class Updater {
 
     public static void insertNewUpdate() throws IOException, AddressFormatException {
 
-
-        //lets test if we have the priv key before generating update
+        // lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
 
@@ -104,7 +101,6 @@ public class Updater {
         toHash.putLong(timestamp);
         toHash.put(data);
 
-
         byte[] signature = nodeId.sign(toHash.array());
 
         System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
@@ -124,14 +120,12 @@ public class Updater {
 
         System.out.println("hash: " + Sha256Hash.create(toHash.array()));
 
-
     }
-
 
     public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
 
         System.out.println("inserting android.apk as android update...");
-        //lets test if we have the priv key before generating update
+        // lets test if we have the priv key before generating update
         String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
 
@@ -152,11 +146,9 @@ public class Updater {
 
         int updateSize = data.length;
 
-
         ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
         toHash.putLong(timestamp);
         toHash.put(data);
-
 
         byte[] signature = nodeId.sign(toHash.array());
 
