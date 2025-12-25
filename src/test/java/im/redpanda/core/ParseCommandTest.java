@@ -1,6 +1,9 @@
 package im.redpanda.core;
 
 import org.junit.Test;
+import com.google.protobuf.InvalidProtocolBufferException;
+import im.redpanda.proto.SendPeerList;
+import im.redpanda.proto.PeerInfoProto;
 
 import java.nio.ByteBuffer;
 import java.security.Security;
@@ -115,14 +118,14 @@ public class ParseCommandTest {
         writeBuffer.get(bytesForProtoPeerList);
 
         try {
-            im.redpanda.proto.SendPeerList sendPeerList = im.redpanda.proto.SendPeerList
+            SendPeerList sendPeerList = SendPeerList
                     .parseFrom(bytesForProtoPeerList);
             int peerListSize = sendPeerList.getPeersCount();
             assertThat(peerListSize).isEqualTo(peerList.size());
 
             // Check content of a few entries
             for (int k = 0; k < peerListSize; k++) {
-                im.redpanda.proto.PeerInfoProto peerProto = sendPeerList.getPeers(k);
+                PeerInfoProto peerProto = sendPeerList.getPeers(k);
                 // Note: The order isn't guaranteed to be strictly predictable unless we sort,
                 // but for this test setup
                 // the peerList implementation might return them in order or not.
@@ -136,7 +139,7 @@ public class ParseCommandTest {
                 }
             }
 
-        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        } catch (InvalidProtocolBufferException e) {
             org.junit.Assert.fail("Failed to parse SendPeerList protobuf: " + e.getMessage());
         }
 

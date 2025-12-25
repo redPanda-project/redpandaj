@@ -8,6 +8,8 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.proto.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -91,7 +93,7 @@ public class InboundCommandProcessor {
                     if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
                         peerBuilder.setNodeId(NodeIdProto.newBuilder()
                                 .setPublicKeyBytes(
-                                        com.google.protobuf.ByteString.copyFrom(peerToCheck.getNodeId().exportPublic()))
+                                        ByteString.copyFrom(peerToCheck.getNodeId().exportPublic()))
                                 .build());
                     }
                     builder.addPeers(peerBuilder.build());
@@ -147,7 +149,7 @@ public class InboundCommandProcessor {
                         serverContext.getPeerList().add(new Peer(ip, port));
                     }
                 }
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse SendPeerList protobuf", e);
             }
             return 1 + 4 + toRead;
@@ -434,7 +436,7 @@ public class InboundCommandProcessor {
                     ((KademliaInsertJob) runningJob).ack(peer);
                     System.out.println("ACK from peer: " + peer.getNodeId().toString());
                 }
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse JobAck protobuf", e);
             }
             return 1 + 4 + toRead;
@@ -456,9 +458,9 @@ public class InboundCommandProcessor {
                         KademliaGetAnswer answerMsg = KademliaGetAnswer.newBuilder()
                                 .setAckId(jobId)
                                 .setTimestamp(kadContent.getTimestamp())
-                                .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
-                                .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
-                                .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                                .setPublicKey(ByteString.copyFrom(kadContent.getPubkey()))
+                                .setContent(ByteString.copyFrom(kadContent.getContent()))
+                                .setSignature(ByteString.copyFrom(kadContent.getSignature()))
                                 .build();
                         byte[] answerData = answerMsg.toByteArray();
                         peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
@@ -471,7 +473,7 @@ public class InboundCommandProcessor {
                 } else {
                     new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
                 }
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse KademliaGet protobuf", e);
             }
             return 1 + 4 + toRead;
@@ -508,7 +510,7 @@ public class InboundCommandProcessor {
                 } else {
                     logger.error("Kademlia content verification failed!");
                 }
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse KademliaStore protobuf", e);
             }
             return 1 + 4 + toRead;
@@ -534,7 +536,7 @@ public class InboundCommandProcessor {
                 } else {
                     logger.error("Kademlia content verification failed!");
                 }
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse KademliaGetAnswer protobuf", e);
             }
             return 1 + 4 + toRead;
@@ -548,7 +550,7 @@ public class InboundCommandProcessor {
             try {
                 FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(bytes);
                 GMContent gmContent = GMParser.parse(serverContext, putMsg.getContent().toByteArray());
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 logger.error("Failed to parse FlaschenpostPut protobuf", e);
             }
             return 1 + 4 + toRead;
