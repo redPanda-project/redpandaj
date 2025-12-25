@@ -1,6 +1,11 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadContent;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import im.redpanda.proto.KademliaGetAnswer;
+import im.redpanda.proto.KademliaStore;
+import im.redpanda.proto.JobAck;
 
 import org.junit.Test;
 
@@ -76,12 +81,12 @@ public class InboundCommandProcessorTest {
         for (int i = 2; i < sigLen; i++)
             sig[i] = (byte) i;
 
-        im.redpanda.proto.KademliaGetAnswer answerMsg = im.redpanda.proto.KademliaGetAnswer.newBuilder()
+        KademliaGetAnswer answerMsg = KademliaGetAnswer.newBuilder()
                 .setAckId(ackId)
                 .setTimestamp(timestamp)
-                .setPublicKey(com.google.protobuf.ByteString.copyFrom(pub))
-                .setContent(com.google.protobuf.ByteString.copyFrom(content))
-                .setSignature(com.google.protobuf.ByteString.copyFrom(sig))
+                .setPublicKey(ByteString.copyFrom(pub))
+                .setContent(ByteString.copyFrom(content))
+                .setSignature(ByteString.copyFrom(sig))
                 .build();
 
         byte[] payload = answerMsg.toByteArray();
@@ -119,12 +124,12 @@ public class InboundCommandProcessorTest {
 
         int jobId = 77;
 
-        im.redpanda.proto.KademliaStore storeMsg = im.redpanda.proto.KademliaStore.newBuilder()
+        KademliaStore storeMsg = KademliaStore.newBuilder()
                 .setJobId(jobId)
                 .setTimestamp(kadContent.getTimestamp())
-                .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
-                .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
-                .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                .setPublicKey(ByteString.copyFrom(kadContent.getPubkey()))
+                .setContent(ByteString.copyFrom(kadContent.getContent()))
+                .setSignature(ByteString.copyFrom(kadContent.getSignature()))
                 .build();
 
         byte[] payload = storeMsg.toByteArray();
@@ -153,9 +158,9 @@ public class InboundCommandProcessorTest {
         peer.writeBuffer.get(ackBytes);
 
         try {
-            im.redpanda.proto.JobAck ackProto = im.redpanda.proto.JobAck.parseFrom(ackBytes);
+            JobAck ackProto = JobAck.parseFrom(ackBytes);
             org.junit.Assert.assertEquals(jobId, ackProto.getJobId());
-        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        } catch (InvalidProtocolBufferException e) {
             org.junit.Assert.fail("Failed to parse ACK protobuf: " + e.getMessage());
         }
     }

@@ -6,6 +6,8 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
+import com.google.protobuf.ByteString;
+import im.redpanda.proto.FlaschenpostPut;
 
 public class PeerPerformanceTestFlaschenpostJob extends Job {
 
@@ -40,8 +42,8 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
         peer.getWriteBufferLock().lock();
         try {
-            im.redpanda.proto.FlaschenpostPut putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
-                    .setContent(com.google.protobuf.ByteString.copyFrom(content))
+            FlaschenpostPut putMsg = FlaschenpostPut.newBuilder()
+                    .setContent(ByteString.copyFrom(content))
                     .build();
             byte[] data = putMsg.toByteArray();
 
