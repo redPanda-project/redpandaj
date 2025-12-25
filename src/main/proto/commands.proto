@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package im.redpanda.proto;
+
+option java_package = "im.redpanda.proto";
+option java_multiple_files = true;
+
+message KademliaIdProto {
+    bytes key_bytes = 1; // 20 bytes
+}
+
+message NodeIdProto {
+    bytes public_key_bytes = 1; // 65 bytes
+}
+
+message PeerInfoProto {
+    string ip = 1;
+    int32 port = 2;
+    NodeIdProto node_id = 3; // optional if not known
+}
+
+message SendPeerList {
+    repeated PeerInfoProto peers = 1;
+}
+
+message Ping {
+}
+
+message Pong {
+}
+
+message RequestPeerList {
+}
+
+message KademliaGet {
+    int32 job_id = 1;
+    KademliaIdProto searched_id = 2;
+}
+
+message KademliaGetAnswer {
+    int32 ack_id = 1;
+    int64 timestamp = 2;
+    bytes public_key = 3;
+    bytes content = 4;
+    bytes signature = 5;
+}
+
+message KademliaStore {
+    int32 job_id = 1;
+    int64 timestamp = 2;
+    bytes public_key = 3;
+    bytes content = 4;
+    bytes signature = 5;
+}
+
+message JobAck {
+    int32 job_id = 1;
+}
+
+message FlaschenpostPut {
+    bytes content = 1;
+}
+
+// Unified envelope for future-proofing or batching, 
+// though we currently use a 1-byte header for dispatch.
+message PandaMessage {
+    oneof content {
+        Ping ping = 1;
+        Pong pong = 2;
+        RequestPeerList request_peer_list = 3;
+        SendPeerList send_peer_list = 4;
+        KademliaGet kademlia_get = 5;
+        KademliaGetAnswer kademlia_get_answer = 6;
+        KademliaStore kademlia_store = 7;
+        JobAck job_ack = 8;
+        FlaschenpostPut flaschenpost_put = 9;
+    }
+}
