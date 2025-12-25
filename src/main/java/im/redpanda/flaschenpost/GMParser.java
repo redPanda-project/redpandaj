@@ -40,7 +40,6 @@ public class GMParser {
 
         byte type = buffer.get();
 
-
         if (type == GMType.GARLIC_MESSAGE.getId()) {
 
             GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
@@ -56,16 +55,15 @@ public class GMParser {
 
             garlicMessage.tryParseContent();
 
-            // if the gm is targeted to us the content will be handled by the parseContent routine of the gm
+            // if the gm is targeted to us the content will be handled by the parseContent
+            // routine of the gm
             if (!garlicMessage.isTargetedToUs()) {
                 sendGarlicMessageToPeer(serverContext, garlicMessage);
             }
 
-
             return garlicMessage;
 
         } else if (type == GMType.ACK.getId()) {
-
 
             GMAck gmAck = new GMAck(content);
             gmAck.parseContent();
@@ -95,7 +93,6 @@ public class GMParser {
 
         byte[] content = garlicMessage.getContent();
 
-
         if (peerToSendFP == null || !peerToSendFP.isConnected()) {
 
             Node node = serverContext.getNodeStore().get(garlicMessage.destination);
@@ -105,7 +102,8 @@ public class GMParser {
                 KadContent kadContent = serverContext.getKadStoreManager().get(nodeKademliaId);
 
                 if (kadContent == null) {
-                    log.info("no kademlia content for target peer: " + garlicMessage.destination + " and target kademlia id: " + nodeKademliaId);
+                    log.info("no kademlia content for target peer: " + garlicMessage.destination
+                            + " and target kademlia id: " + nodeKademliaId);
                     new KademliaSearchJob(serverContext, nodeKademliaId).start();
                 } else {
                     if (System.currentTimeMillis() - kadContent.getTimestamp() > Duration.ofMinutes(8).toMillis()) {
@@ -119,7 +117,8 @@ public class GMParser {
                     for (GMEntryPointModel entryPoint : entryPoints) {
                         Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
                         if (peer == null || !peer.isConnected()) {
-                            Node.addNodeIfNotPresent(serverContext, entryPoint.getNodeId(), entryPoint.getIp(), entryPoint.getPort());
+                            Node.addNodeIfNotPresent(serverContext, entryPoint.getNodeId(), entryPoint.getIp(),
+                                    entryPoint.getPort());
                             continue;
                         }
                         sendFpToPeer(peer, content);
@@ -129,15 +128,13 @@ public class GMParser {
                 }
             }
 
-
-            //todo, put all into a job to handle failing peers and retry send if no ack
-
+            // todo, put all into a job to handle failing peers and retry send if no ack
 
             TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
 
-            //todo use best route for this flaschenpost by network graph
+            // todo use best route for this flaschenpost by network graph
 
-            //insert all nodes
+            // insert all nodes
             Lock lock = peerList.getReadWriteLock().readLock();
             lock.lock();
             try {
@@ -149,24 +146,26 @@ public class GMParser {
 
                 for (Peer p : peerArrayList) {
 
-                    //do not add the peer if the peer is not connected or the nodeId is unknown!
+                    // do not add the peer if the peer is not connected or the nodeId is unknown!
                     if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
                         continue;
                     }
 
-                    //do not send fps to light clients
+                    // do not send fps to light clients
                     if (p.isLightClient()) {
                         continue;
                     }
 
-//                    /**
-//                     * do not add peers which are further or equally away from the key than us
-//                     */
-//                    int peersDistanceToKey = garlicMessage.getDestination().getDistance(p.getKademliaId());
-//                    if (myDistanceToKey <= peersDistanceToKey) {
-//                        continue;
-//                    }
-//                    System.out.println("my distance: " + myDistanceToKey + " theirs distance: " + peersDistanceToKey);
+                    // /**
+                    // * do not add peers which are further or equally away from the key than us
+                    // */
+                    // int peersDistanceToKey =
+                    // garlicMessage.getDestination().getDistance(p.getKademliaId());
+                    // if (myDistanceToKey <= peersDistanceToKey) {
+                    // continue;
+                    // }
+                    // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
+                    // peersDistanceToKey);
 
                     peers.add(p);
                 }
@@ -175,7 +174,8 @@ public class GMParser {
             }
 
             if (peers.isEmpty()) {
-//                System.out.println(String.format("no peer found for destination %s which is near to target", garlicMessage.getDestination()));
+                // System.out.println(String.format("no peer found for destination %s which is
+                // near to target", garlicMessage.getDestination()));
                 return;
             }
 
@@ -186,9 +186,10 @@ public class GMParser {
 
                 GraphPath<Node, NodeEdge> path = null;
                 try {
-                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(), serverContext.getNode(), targetNode);
+                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(),
+                            serverContext.getNode(), targetNode);
                 } catch (IllegalArgumentException e) {
-                    //nothing to do
+                    // nothing to do
                 }
 
                 if (path == null) {
@@ -202,31 +203,38 @@ public class GMParser {
 
             }
 
-
             if (peerWithShortestPath != null) {
                 sendFpToPeer(peerWithShortestPath, content);
                 int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
                 KademliaId kademliaId = peerWithShortestPath.getKademliaId();
                 int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
                 if (shortestPathWeight > 3) {
-                    Log.put("inserting fp to peer " + garlicMessage.getDestination() + " since we are not directly connected shortest path " + shortestPathWeight + " " + " distance " + peersDistance + " our distance " + myDistanceToKey + " last " + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: " + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(), 0);
+                    Log.put("inserting fp to peer " + garlicMessage.getDestination()
+                            + " since we are not directly connected shortest path " + shortestPathWeight + " "
+                            + " distance " + peersDistance + " our distance " + myDistanceToKey + " last "
+                            + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: "
+                            + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(),
+                            0);
                 }
             }
-
 
         } else {
             sendFpToPeer(peerToSendFP, content);
         }
-
 
     }
 
     private static void sendFpToPeer(Peer peerToSendFP, byte[] content) {
         peerToSendFP.getWriteBufferLock().lock();
         try {
+            var putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
+                    .setContent(com.google.protobuf.ByteString.copyFrom(content))
+                    .build();
+            byte[] data = putMsg.toByteArray();
+
             peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
-            peerToSendFP.writeBuffer.putInt(content.length);
-            peerToSendFP.writeBuffer.put(content);
+            peerToSendFP.writeBuffer.putInt(data.length);
+            peerToSendFP.writeBuffer.put(data);
             peerToSendFP.setWriteBufferFilled();
         } finally {
             peerToSendFP.getWriteBufferLock().unlock();
