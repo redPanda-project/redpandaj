@@ -1,6 +1,5 @@
 package im.redpanda.jobs;
 
-
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
@@ -11,7 +10,6 @@ import java.util.ArrayList;
 
 public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
-
     private final Peer answerTo;
     private final int ackID;
 
@@ -20,7 +18,6 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
         this.answerTo = answerTo;
         this.ackID = ackID;
     }
-
 
     @Override
     protected ArrayList<KadContent> success() {
@@ -46,14 +43,18 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
             answerTo.getWriteBufferLock().lock();
             try {
+                im.redpanda.proto.KademliaGetAnswer answerMsg = im.redpanda.proto.KademliaGetAnswer.newBuilder()
+                        .setAckId(ackID)
+                        .setTimestamp(kadContent.getTimestamp())
+                        .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
+                        .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
+                        .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                        .build();
+                byte[] data = answerMsg.toByteArray();
+
                 answerTo.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
-                answerTo.getWriteBuffer().putInt(ackID);
-//            answerTo.getWriteBuffer().put(kadContent.getId().getBytes());
-                answerTo.getWriteBuffer().putLong(kadContent.getTimestamp());
-                answerTo.getWriteBuffer().put(kadContent.getPubkey());
-                answerTo.getWriteBuffer().putInt(kadContent.getContent().length);
-                answerTo.getWriteBuffer().put(kadContent.getContent());
-                answerTo.getWriteBuffer().put(kadContent.getSignature());
+                answerTo.getWriteBuffer().putInt(data.length);
+                answerTo.getWriteBuffer().put(data);
             } finally {
                 answerTo.getWriteBufferLock().unlock();
             }
@@ -62,11 +63,10 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
         return kadContents;
     }
 
-
     @Override
     protected void fail() {
         super.fail();
-        //todo: send fail to light client
+        // todo: send fail to light client
 
     }
 }
