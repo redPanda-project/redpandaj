@@ -9,7 +9,7 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaIdProto;
-import com.google.protobuf.ByteString;
+import static com.google.protobuf.ByteString.copyFrom;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -182,10 +182,10 @@ public class KademliaSearchJob extends Job {
                             peers.put(p, ASKED);
                             askedPeers++;
 
-                            KademliaGet getMsg = KademliaGet.newBuilder()
+                            var getMsg = KademliaGet.newBuilder()
                                     .setJobId(getJobId())
                                     .setSearchedId(KademliaIdProto.newBuilder()
-                                            .setKeyBytes(ByteString.copyFrom(id.getBytes()))
+                                            .setKeyBytes(copyFrom(id.getBytes()))
                                             .build())
                                     .build();
                             byte[] data = getMsg.toByteArray();

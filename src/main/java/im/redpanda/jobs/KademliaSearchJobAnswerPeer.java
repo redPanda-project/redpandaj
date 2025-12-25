@@ -5,7 +5,7 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
-import com.google.protobuf.ByteString;
+import static com.google.protobuf.ByteString.copyFrom;
 import im.redpanda.proto.KademliaGetAnswer;
 
 import java.util.ArrayList;
@@ -45,12 +45,12 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
             answerTo.getWriteBufferLock().lock();
             try {
-                KademliaGetAnswer answerMsg = KademliaGetAnswer.newBuilder()
+                var answerMsg = KademliaGetAnswer.newBuilder()
                         .setAckId(ackID)
                         .setTimestamp(kadContent.getTimestamp())
-                        .setPublicKey(ByteString.copyFrom(kadContent.getPubkey()))
-                        .setContent(ByteString.copyFrom(kadContent.getContent()))
-                        .setSignature(ByteString.copyFrom(kadContent.getSignature()))
+                        .setPublicKey(copyFrom(kadContent.getPubkey()))
+                        .setContent(copyFrom(kadContent.getContent()))
+                        .setSignature(copyFrom(kadContent.getSignature()))
                         .build();
                 byte[] data = answerMsg.toByteArray();
 
