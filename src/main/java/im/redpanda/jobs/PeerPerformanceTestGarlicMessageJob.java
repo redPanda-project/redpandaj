@@ -56,9 +56,8 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         nodes = new ArrayList<>();
     }
 
-
     public byte[] calculateNestedGarlicMessages(List<Node> nodes, int jobId) {
-        //lets target to ourselves without the private key!
+        // lets target to ourselves without the private key!
         NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
         GMAck gmAck = new GMAck(jobId);
@@ -66,7 +65,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         GarlicMessage currentLayer = new GarlicMessage(serverContext, targetId);
         currentLayer.addGMContent(gmAck);
 
-        //omit own node at position 0 and node.size
+        // omit own node at position 0 and node.size
         for (int i = nodes.size() - 2; i > 0; i--) {
             Node node = nodes.get(i);
             GarlicMessage newLayer = new GarlicMessage(serverContext, node.getNodeId());
@@ -94,9 +93,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
         flaschenPostInsertPeer.getWriteBufferLock().lock();
         try {
+            var putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
+                    .setContent(com.google.protobuf.ByteString.copyFrom(content))
+                    .build();
+            byte[] data = putMsg.toByteArray();
+
             flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-            flaschenPostInsertPeer.getWriteBuffer().putInt(content.length);
-            flaschenPostInsertPeer.getWriteBuffer().put(content);
+            flaschenPostInsertPeer.getWriteBuffer().putInt(data.length);
+            flaschenPostInsertPeer.getWriteBuffer().put(data);
             flaschenPostInsertPeer.setWriteBufferFilled();
         } finally {
             flaschenPostInsertPeer.getWriteBufferLock().unlock();
@@ -173,7 +177,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 break;
             }
 
-
         }
 
         if (nodes.size() < 2) {
@@ -204,11 +207,13 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
     }
 
-    private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
+    private boolean dismissCheckByTimeoutIfEdgeQualityBad(DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph,
+            NodeEdge edge) {
         if (edge.isLastCheckFailed()) {
             double edgeWeight = nodeGraph.getEdgeWeight(edge);
             if (edgeWeight >= MAX_WEIGHT) {
-                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD + rand.nextInt((int) Duration.ofSeconds(60).toMillis());
+                return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD
+                        + rand.nextInt((int) Duration.ofSeconds(60).toMillis());
             } else if (edgeWeight > CUT_HARD) {
                 return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD;
             } else if (edgeWeight > CUT_MID) {
@@ -223,9 +228,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     @Override
     public void work() {
         if (getEstimatedRuntime() > JOB_TIMEOUT) {
-//            System.out.println("garlic check failed " + getEstimatedRuntime() + ", path: " +
-//                    printPath());
-
+            // System.out.println("garlic check failed " + getEstimatedRuntime() + ", path:
+            // " +
+            // printPath());
 
             if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
                 done();
@@ -301,9 +306,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             nodeBefore = node;
         }
 
-//        if (!success) {
-        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1) + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET + (includeReversedPath ? " REVERSED" : ""));
-//        }
+        // if (!success) {
+        System.out.println((success ? ANSI_GREEN : ANSI_RED) + "path: " + pathString + " hops: " + (nodes.size() - 1)
+                + " inserted to peer: " + flaschenPostInsertPeer.getNode() + ANSI_RESET
+                + (includeReversedPath ? " REVERSED" : ""));
+        // }
 
         if (success) {
             countSuccess.incrementAndGet();
@@ -312,7 +319,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
 
     }
-
 
     public void success() {
         success = true;
@@ -323,11 +329,9 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         return countSuccess.get();
     }
 
-
     public static int getCountFailed() {
         return countFailed.get();
     }
-
 
     public static double getSuccessRate() {
         if (countSuccess.get() + countFailed.get() == 0) {
@@ -335,7 +339,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         }
         return (double) countSuccess.get() / (double) (countSuccess.get() + countFailed.get());
     }
-
 
     public static void decayRates() {
         int newCountSuccess = countSuccess.decrementAndGet();
