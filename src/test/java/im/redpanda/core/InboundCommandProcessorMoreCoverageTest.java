@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadContent;
-import com.google.protobuf.ByteString;
+import static com.google.protobuf.ByteString.copyFrom;
 import im.redpanda.proto.*;
 import org.junit.After;
 import org.junit.Before;
@@ -58,7 +58,7 @@ public class InboundCommandProcessorMoreCoverageTest {
         KademliaGet getMsg = KademliaGet.newBuilder()
                 .setJobId(jobId)
                 .setSearchedId(KademliaIdProto.newBuilder()
-                        .setKeyBytes(ByteString.copyFrom(stored.getId().getBytes())).build())
+                        .setKeyBytes(copyFrom(stored.getId().getBytes())).build())
                 .build();
         byte[] getData = getMsg.toByteArray();
 

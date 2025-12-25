@@ -2,7 +2,7 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.kademlia.KadContent;
-import com.google.protobuf.ByteString;
+import static com.google.protobuf.ByteString.copyFrom;
 import im.redpanda.proto.*;
 import org.junit.After;
 import org.junit.Before;
@@ -84,7 +84,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
                 .setIp("10.10.0.1")
                 .setPort(1111)
                 .setNodeId(NodeIdProto.newBuilder()
-                        .setPublicKeyBytes(ByteString.copyFrom(otherNode.exportPublic())).build())
+                        .setPublicKeyBytes(copyFrom(otherNode.exportPublic())).build())
                 .build();
 
         // Entry 2: no nodeId + valid ip
@@ -170,7 +170,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         KademliaGet getMsg = KademliaGet.newBuilder()
                 .setJobId(123456)
                 .setSearchedId(KademliaIdProto.newBuilder()
-                        .setKeyBytes(ByteString.copyFrom(randomId)).build())
+                        .setKeyBytes(copyFrom(randomId)).build())
                 .build();
         byte[] getData = getMsg.toByteArray();
 
@@ -200,7 +200,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         ack.get(ackBytes);
 
         FlaschenpostPut putMsg = FlaschenpostPut.newBuilder()
-                .setContent(ByteString.copyFrom(ackBytes))
+                .setContent(copyFrom(ackBytes))
                 .build();
         byte[] putData = putMsg.toByteArray();
 
