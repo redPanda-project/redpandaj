@@ -53,24 +53,37 @@ public class InboundCommandProcessorMoreCoverageTest {
         ctx.getKadStoreManager().put(stored);
 
         int jobId = 101;
-        ByteBuffer in = ByteBuffer.allocate(4 + KademliaId.ID_LENGTH_BYTES);
-        in.putInt(jobId);
-        in.put(stored.getId().getBytes());
+        im.redpanda.proto.KademliaGet getMsg = im.redpanda.proto.KademliaGet.newBuilder()
+                .setJobId(jobId)
+                .setSearchedId(im.redpanda.proto.KademliaIdProto.newBuilder()
+                        .setKeyBytes(com.google.protobuf.ByteString.copyFrom(stored.getId().getBytes())).build())
+                .build();
+        byte[] getData = getMsg.toByteArray();
+
+        ByteBuffer in = ByteBuffer.allocate(4 + getData.length);
+        in.putInt(getData.length);
+        in.put(getData);
         in.flip();
 
         int consumed = proc.parseCommand(Command.KADEMLIA_GET, in, peer);
-        assertEquals(1 + 4 + KademliaId.ID_LENGTH_BYTES, consumed);
+        assertEquals(1 + 4 + getData.length, consumed);
 
         peer.writeBuffer.flip();
         assertEquals(Command.KADEMLIA_GET_ANSWER, peer.writeBuffer.get());
-        assertEquals(jobId, peer.writeBuffer.getInt());
-        long tsWritten = peer.writeBuffer.getLong();
-        assertEquals(ts, tsWritten);
-        byte[] pub = new byte[NodeId.PUBLIC_KEYLEN];
-        peer.writeBuffer.get(pub);
-        assertArrayEquals(author.exportPublic(), pub);
+
         int len = peer.writeBuffer.getInt();
-        assertEquals(content.length, len);
+        byte[] answerBytes = new byte[len];
+        peer.writeBuffer.get(answerBytes);
+
+        try {
+            im.redpanda.proto.KademliaGetAnswer answer = im.redpanda.proto.KademliaGetAnswer.parseFrom(answerBytes);
+            assertEquals(jobId, answer.getAckId());
+            assertEquals(ts, answer.getTimestamp());
+            assertArrayEquals(author.exportPublic(), answer.getPublicKey().toByteArray());
+            assertEquals(content.length, answer.getContent().size());
+        } catch (Exception e) {
+            fail(e.getMessage());
+        }
     }
 
     @Test
@@ -92,14 +105,16 @@ public class InboundCommandProcessorMoreCoverageTest {
     @Test
     public void androidUpdateRequestTimestamp_behavesDependingOnFilePresence() throws IOException {
         Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
-        // Avoid NPE in setWriteBufferFilled by marking as not connected (still writes to buffer)
+        // Avoid NPE in setWriteBufferFilled by marking as not connected (still writes
+        // to buffer)
         peer.setConnected(false);
         ctx.getPeerList().add(peer);
         peer.writeBuffer = ByteBuffer.allocate(32);
 
         // Ensure apk does not exist
         File f = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
-        if (f.exists()) f.delete();
+        if (f.exists())
+            f.delete();
 
         int consumedNoFile = proc.parseCommand(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), peer);
         assertEquals(1, consumedNoFile);
@@ -121,7 +136,8 @@ public class InboundCommandProcessorMoreCoverageTest {
         byte[] sig = new byte[totalLen];
         sig[0] = 0x30; // SEQUENCE
         sig[1] = (byte) (totalLen - 2); // remaining length
-        for (int i = 2; i < totalLen; i++) sig[i] = (byte) i;
+        for (int i = 2; i < totalLen; i++)
+            sig[i] = (byte) i;
         return sig;
     }
 
@@ -159,7 +175,7 @@ public class InboundCommandProcessorMoreCoverageTest {
         ctx.getPeerList().add(peer);
 
         long notNewerTs = ctx.getLocalSettings().getUpdateTimestamp();
-        byte[] data = new byte[]{1,2,3,4,5};
+        byte[] data = new byte[] { 1, 2, 3, 4, 5 };
         byte[] sig = derSignature(70);
 
         ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);

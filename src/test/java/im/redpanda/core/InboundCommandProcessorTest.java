@@ -68,27 +68,32 @@ public class InboundCommandProcessorTest {
         byte[] pub = ctx.getNodeId().exportPublic();
         byte[] content = "hello".getBytes();
 
-        // Build a simple DER-like signature: 0x30, len, followed by padding bytes
+        // Build a simple DER-like signature
         int sigLen = 72;
         byte[] sig = new byte[sigLen];
         sig[0] = 0x30;
         sig[1] = (byte) (sigLen - 2);
-        for (int i = 2; i < sigLen; i++) sig[i] = (byte) i;
+        for (int i = 2; i < sigLen; i++)
+            sig[i] = (byte) i;
 
-        int payloadLen = 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + content.length + sig.length;
+        im.redpanda.proto.KademliaGetAnswer answerMsg = im.redpanda.proto.KademliaGetAnswer.newBuilder()
+                .setAckId(ackId)
+                .setTimestamp(timestamp)
+                .setPublicKey(com.google.protobuf.ByteString.copyFrom(pub))
+                .setContent(com.google.protobuf.ByteString.copyFrom(content))
+                .setSignature(com.google.protobuf.ByteString.copyFrom(sig))
+                .build();
 
-        ByteBuffer buf = ByteBuffer.allocate(payloadLen);
-        buf.putInt(ackId);
-        buf.putLong(timestamp);
-        buf.put(pub);
-        buf.putInt(content.length);
-        buf.put(content);
-        buf.put(sig);
+        byte[] payload = answerMsg.toByteArray();
+
+        ByteBuffer buf = ByteBuffer.allocate(4 + payload.length);
+        buf.putInt(payload.length);
+        buf.put(payload);
         buf.flip();
 
         int consumed = proc.parseCommand(Command.KADEMLIA_GET_ANSWER, buf, peer);
 
-        assertEquals(1 + payloadLen, consumed);
+        assertEquals(1 + 4 + payload.length, consumed);
     }
 
     @Test
@@ -114,39 +119,44 @@ public class InboundCommandProcessorTest {
 
         int jobId = 77;
 
-        // Compose KADEMLIA_STORE payload: [len][jobId][timestamp][pub(65)][contentLen][content][sigLen][sig]
-        byte[] sig = kadContent.getSignature();
-        int toRead = 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + content.length + 4 + sig.length;
-        ByteBuffer buf = ByteBuffer.allocate(4 + toRead);
-        buf.putInt(toRead);
-        buf.putInt(jobId);
-        buf.putLong(timestamp);
-        buf.put(pub);
-        buf.putInt(content.length);
-        buf.put(content);
-        buf.putInt(sig.length);
-        buf.put(sig);
+        im.redpanda.proto.KademliaStore storeMsg = im.redpanda.proto.KademliaStore.newBuilder()
+                .setJobId(jobId)
+                .setTimestamp(kadContent.getTimestamp())
+                .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
+                .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
+                .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                .build();
+
+        byte[] payload = storeMsg.toByteArray();
+        ByteBuffer buf = ByteBuffer.allocate(4 + payload.length);
+        buf.putInt(payload.length);
+        buf.put(payload);
         buf.flip();
 
         // Exercise
+        int consumed = proc.parseCommand(Command.KADEMLIA_STORE, buf, peer);
+
+        // Verify consumed bytes
+        org.junit.Assert.assertEquals(1 + 4 + payload.length, consumed);
+
+        // Verify content is stored
+        KadContent stored = ctx.getKadStoreManager().get(kadContent.getId());
+        org.junit.Assert.assertNotNull(stored);
+
+        // Verify ACK written
+        peer.writeBuffer.flip();
+        org.junit.Assert.assertTrue(peer.writeBuffer.remaining() >= 1 + 4);
+        org.junit.Assert.assertEquals(Command.JOB_ACK, peer.writeBuffer.get());
+
+        int ackLen = peer.writeBuffer.getInt();
+        byte[] ackBytes = new byte[ackLen];
+        peer.writeBuffer.get(ackBytes);
+
         try {
-            int consumed = proc.parseCommand(Command.KADEMLIA_STORE, buf, peer);
-
-            // Verify consumed bytes
-            org.junit.Assert.assertEquals(1 + 4 + toRead, consumed);
-
-            // Verify content is stored
-            KadContent stored = ctx.getKadStoreManager().get(kadContent.getId());
-            org.junit.Assert.assertNotNull(stored);
-
-            // Verify ACK written
-            peer.writeBuffer.flip();
-            org.junit.Assert.assertTrue(peer.writeBuffer.remaining() >= 1 + 4);
-            org.junit.Assert.assertEquals(Command.JOB_ACK, peer.writeBuffer.get());
-            org.junit.Assert.assertEquals(jobId, peer.writeBuffer.getInt());
-        } catch (RuntimeException e) {
-            // Current behavior throws due to missing handler; ensure the test fails loudly with context.
-            org.junit.Assert.fail("KADEMLIA_STORE not handled: " + e.getMessage());
+            im.redpanda.proto.JobAck ackProto = im.redpanda.proto.JobAck.parseFrom(ackBytes);
+            org.junit.Assert.assertEquals(jobId, ackProto.getJobId());
+        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            org.junit.Assert.fail("Failed to parse ACK protobuf: " + e.getMessage());
         }
     }
 }
