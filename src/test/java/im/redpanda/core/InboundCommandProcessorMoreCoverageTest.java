@@ -1,6 +1,8 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadContent;
+import com.google.protobuf.ByteString;
+import im.redpanda.proto.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -53,10 +55,10 @@ public class InboundCommandProcessorMoreCoverageTest {
         ctx.getKadStoreManager().put(stored);
 
         int jobId = 101;
-        im.redpanda.proto.KademliaGet getMsg = im.redpanda.proto.KademliaGet.newBuilder()
+        KademliaGet getMsg = KademliaGet.newBuilder()
                 .setJobId(jobId)
-                .setSearchedId(im.redpanda.proto.KademliaIdProto.newBuilder()
-                        .setKeyBytes(com.google.protobuf.ByteString.copyFrom(stored.getId().getBytes())).build())
+                .setSearchedId(KademliaIdProto.newBuilder()
+                        .setKeyBytes(ByteString.copyFrom(stored.getId().getBytes())).build())
                 .build();
         byte[] getData = getMsg.toByteArray();
 
@@ -76,7 +78,7 @@ public class InboundCommandProcessorMoreCoverageTest {
         peer.writeBuffer.get(answerBytes);
 
         try {
-            im.redpanda.proto.KademliaGetAnswer answer = im.redpanda.proto.KademliaGetAnswer.parseFrom(answerBytes);
+            KademliaGetAnswer answer = KademliaGetAnswer.parseFrom(answerBytes);
             assertEquals(jobId, answer.getAckId());
             assertEquals(ts, answer.getTimestamp());
             assertArrayEquals(author.exportPublic(), answer.getPublicKey().toByteArray());

@@ -5,6 +5,7 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaStore;
+import com.google.protobuf.ByteString;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -122,9 +123,9 @@ public class KademliaInsertJob extends Job {
                             KademliaStore storeMsg = KademliaStore.newBuilder()
                                     .setJobId(getJobId())
                                     .setTimestamp(kadContent.getTimestamp())
-                                    .setPublicKey(com.google.protobuf.ByteString.copyFrom(kadContent.getPubkey()))
-                                    .setContent(com.google.protobuf.ByteString.copyFrom(kadContent.getContent()))
-                                    .setSignature(com.google.protobuf.ByteString.copyFrom(kadContent.getSignature()))
+                                    .setPublicKey(ByteString.copyFrom(kadContent.getPubkey()))
+                                    .setContent(ByteString.copyFrom(kadContent.getContent()))
+                                    .setSignature(ByteString.copyFrom(kadContent.getSignature()))
                                     .build();
                             byte[] data = storeMsg.toByteArray();
 

@@ -2,6 +2,8 @@ package im.redpanda.core;
 
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.kademlia.KadContent;
+import com.google.protobuf.ByteString;
+import im.redpanda.proto.*;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -78,20 +80,20 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         NodeId otherNode = NodeId.generateWithSimpleKey();
 
         // Entry 1: nodeId present + valid ip
-        im.redpanda.proto.PeerInfoProto p1 = im.redpanda.proto.PeerInfoProto.newBuilder()
+        PeerInfoProto p1 = PeerInfoProto.newBuilder()
                 .setIp("10.10.0.1")
                 .setPort(1111)
-                .setNodeId(im.redpanda.proto.NodeIdProto.newBuilder()
-                        .setPublicKeyBytes(com.google.protobuf.ByteString.copyFrom(otherNode.exportPublic())).build())
+                .setNodeId(NodeIdProto.newBuilder()
+                        .setPublicKeyBytes(ByteString.copyFrom(otherNode.exportPublic())).build())
                 .build();
 
         // Entry 2: no nodeId + valid ip
-        im.redpanda.proto.PeerInfoProto p2 = im.redpanda.proto.PeerInfoProto.newBuilder()
+        PeerInfoProto p2 = PeerInfoProto.newBuilder()
                 .setIp("10.10.0.2")
                 .setPort(2222)
                 .build();
 
-        im.redpanda.proto.SendPeerList spl = im.redpanda.proto.SendPeerList.newBuilder()
+        SendPeerList spl = SendPeerList.newBuilder()
                 .addPeers(p1)
                 .addPeers(p2)
                 .build();
@@ -136,7 +138,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         job.start();
         int jobId = job.getJobId();
 
-        im.redpanda.proto.JobAck ackMsg = im.redpanda.proto.JobAck.newBuilder()
+        JobAck ackMsg = JobAck.newBuilder()
                 .setJobId(jobId)
                 .build();
         byte[] ackData = ackMsg.toByteArray();
@@ -165,10 +167,10 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         System.arraycopy(ctx.getNonce().getBytes(), 0, randomId, 0, randomId.length);
         randomId[0] ^= 0x7F; // mutate to be different
 
-        im.redpanda.proto.KademliaGet getMsg = im.redpanda.proto.KademliaGet.newBuilder()
+        KademliaGet getMsg = KademliaGet.newBuilder()
                 .setJobId(123456)
-                .setSearchedId(im.redpanda.proto.KademliaIdProto.newBuilder()
-                        .setKeyBytes(com.google.protobuf.ByteString.copyFrom(randomId)).build())
+                .setSearchedId(KademliaIdProto.newBuilder()
+                        .setKeyBytes(ByteString.copyFrom(randomId)).build())
                 .build();
         byte[] getData = getMsg.toByteArray();
 
@@ -197,8 +199,8 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         byte[] ackBytes = new byte[ack.remaining()];
         ack.get(ackBytes);
 
-        im.redpanda.proto.FlaschenpostPut putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
-                .setContent(com.google.protobuf.ByteString.copyFrom(ackBytes))
+        FlaschenpostPut putMsg = FlaschenpostPut.newBuilder()
+                .setContent(ByteString.copyFrom(ackBytes))
                 .build();
         byte[] putData = putMsg.toByteArray();
 
