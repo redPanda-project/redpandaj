@@ -77,39 +77,30 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         // Build a SEND_PEERLIST payload with two entries
         NodeId otherNode = NodeId.generateWithSimpleKey();
 
-        ByteBuffer payload = ByteBuffer.allocate(1024);
-        int countPos = payload.position();
-        payload.putInt(0); // placeholder for count
-
-        int count = 0;
-
         // Entry 1: nodeId present + valid ip
-        payload.putShort((short) 1);
-        payload.put(otherNode.exportPublic());
-        byte[] ip1 = "10.10.0.1".getBytes();
-        payload.putInt(ip1.length);
-        payload.put(ip1);
-        payload.putInt(1111);
-        count++;
+        im.redpanda.proto.PeerInfoProto p1 = im.redpanda.proto.PeerInfoProto.newBuilder()
+                .setIp("10.10.0.1")
+                .setPort(1111)
+                .setNodeId(im.redpanda.proto.NodeIdProto.newBuilder()
+                        .setPublicKeyBytes(com.google.protobuf.ByteString.copyFrom(otherNode.exportPublic())).build())
+                .build();
 
         // Entry 2: no nodeId + valid ip
-        payload.putShort((short) 0);
-        byte[] ip2 = "10.10.0.2".getBytes();
-        payload.putInt(ip2.length);
-        payload.put(ip2);
-        payload.putInt(2222);
-        count++;
+        im.redpanda.proto.PeerInfoProto p2 = im.redpanda.proto.PeerInfoProto.newBuilder()
+                .setIp("10.10.0.2")
+                .setPort(2222)
+                .build();
 
-        // (Skip the invalid IP entry for stability)
+        im.redpanda.proto.SendPeerList spl = im.redpanda.proto.SendPeerList.newBuilder()
+                .addPeers(p1)
+                .addPeers(p2)
+                .build();
 
-        // fix count and wrap
-        int endPos = payload.position();
-        payload.putInt(countPos, count);
-        payload.flip();
+        byte[] payloadData = spl.toByteArray();
 
-        ByteBuffer frame = ByteBuffer.allocate(4 + payload.remaining());
-        frame.putInt(payload.remaining());
-        frame.put(payload);
+        ByteBuffer frame = ByteBuffer.allocate(4 + payloadData.length);
+        frame.putInt(payloadData.length);
+        frame.put(payloadData);
         frame.flip();
 
         Peer peer = new Peer("127.0.0.1", 5555, ctx.getNodeId());
@@ -117,7 +108,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         ctx.getPeerList().add(peer);
 
         int consumed = proc.parseCommand(Command.SEND_PEERLIST, frame, peer);
-        assertEquals(1 + 4 + (endPos), consumed);
+        assertEquals(1 + 4 + (payloadData.length), consumed);
 
         // Should have added two peers (one with id, one without).
         assertNotNull(ctx.getPeerList().get(otherNode.getKademliaId()));
@@ -145,8 +136,14 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         job.start();
         int jobId = job.getJobId();
 
-        ByteBuffer in = ByteBuffer.allocate(4);
-        in.putInt(jobId);
+        im.redpanda.proto.JobAck ackMsg = im.redpanda.proto.JobAck.newBuilder()
+                .setJobId(jobId)
+                .build();
+        byte[] ackData = ackMsg.toByteArray();
+
+        ByteBuffer in = ByteBuffer.allocate(4 + ackData.length);
+        in.putInt(ackData.length);
+        in.put(ackData);
         in.flip();
 
         Peer peer = new Peer("127.0.0.3", 7777, ctx.getNodeId());
@@ -154,7 +151,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         ctx.getPeerList().add(peer);
 
         int consumed = proc.parseCommand(Command.JOB_ACK, in, peer);
-        assertEquals(1 + 4, consumed);
+        assertEquals(1 + 4 + ackData.length, consumed);
     }
 
     @Test
@@ -168,13 +165,20 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         System.arraycopy(ctx.getNonce().getBytes(), 0, randomId, 0, randomId.length);
         randomId[0] ^= 0x7F; // mutate to be different
 
-        ByteBuffer in = ByteBuffer.allocate(4 + KademliaId.ID_LENGTH_BYTES);
-        in.putInt(123456);
-        in.put(randomId);
+        im.redpanda.proto.KademliaGet getMsg = im.redpanda.proto.KademliaGet.newBuilder()
+                .setJobId(123456)
+                .setSearchedId(im.redpanda.proto.KademliaIdProto.newBuilder()
+                        .setKeyBytes(com.google.protobuf.ByteString.copyFrom(randomId)).build())
+                .build();
+        byte[] getData = getMsg.toByteArray();
+
+        ByteBuffer in = ByteBuffer.allocate(4 + getData.length);
+        in.putInt(getData.length);
+        in.put(getData);
         in.flip();
 
         int consumed = proc.parseCommand(Command.KADEMLIA_GET, in, peer);
-        assertEquals(1 + 4 + KademliaId.ID_LENGTH_BYTES, consumed);
+        assertEquals(1 + 4 + getData.length, consumed);
     }
 
     @Test
@@ -190,12 +194,20 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
         ack.putInt(42);
         ack.flip();
 
-        ByteBuffer in = ByteBuffer.allocate(4 + ack.remaining());
-        in.putInt(ack.remaining());
-        in.put(ack);
+        byte[] ackBytes = new byte[ack.remaining()];
+        ack.get(ackBytes);
+
+        im.redpanda.proto.FlaschenpostPut putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
+                .setContent(com.google.protobuf.ByteString.copyFrom(ackBytes))
+                .build();
+        byte[] putData = putMsg.toByteArray();
+
+        ByteBuffer in = ByteBuffer.allocate(4 + putData.length);
+        in.putInt(putData.length);
+        in.put(putData);
         in.flip();
 
         int consumed = proc.parseCommand(Command.FLASCHENPOST_PUT, in, peer);
-        assertEquals(1 + 4 + (1 + 4 + 4), consumed);
+        assertEquals(1 + 4 + putData.length, consumed);
     }
 }
