@@ -4,38 +4,35 @@ import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
-import org.junit.Test;
-
 import java.security.Security;
 import java.util.ArrayList;
+import org.junit.Test;
 
 public class PeerPerformanceTestGarlicMessageJobTest {
 
-    private final static ServerContext serverContext = ServerContext.buildDefaultServerContext();
+  private static final ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
-    static {
-        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+  static {
+    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+  }
 
-    }
+  @Test
+  public void calculateNestedGarlicMessagesTest() {
 
+    ArrayList<Node> nodes = new ArrayList<Node>();
 
-    @Test
-    public void calculateNestedGarlicMessagesTest() {
+    Node nodeA = new Node(serverContext, serverContext.getNodeId());
+    nodes.add(nodeA);
 
+    Node nodeB = new Node(serverContext, serverContext.getNodeId());
+    nodes.add(nodeB);
 
-        ArrayList<Node> nodes = new ArrayList<Node>();
+    PeerPerformanceTestGarlicMessageJob peerPerformanceTestGarlicMessageJob =
+        new PeerPerformanceTestGarlicMessageJob(serverContext);
 
-        Node nodeA = new Node(serverContext, serverContext.getNodeId());
-        nodes.add(nodeA);
+    byte[] bytes = peerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
 
-        Node nodeB = new Node(serverContext, serverContext.getNodeId());
-        nodes.add(nodeB);
-
-        PeerPerformanceTestGarlicMessageJob peerPerformanceTestGarlicMessageJob = new PeerPerformanceTestGarlicMessageJob(serverContext);
-
-        byte[] bytes = peerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
-
-        GMContent parse = GMParser.parse(serverContext, bytes);
-        //todo assert?
-    }
+    GMContent parse = GMParser.parse(serverContext, bytes);
+    // todo assert?
+  }
 }

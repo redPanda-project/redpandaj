@@ -16,10 +16,6 @@ import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
 import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
 import im.redpanda.store.NodeEdge;
-import lombok.extern.slf4j.Slf4j;
-import org.jgrapht.GraphPath;
-import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
-
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,216 +23,232 @@ import java.util.Collections;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.concurrent.locks.Lock;
+import lombok.extern.slf4j.Slf4j;
+import org.jgrapht.GraphPath;
+import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
 
 @Slf4j
 public class GMParser {
 
-    private GMParser() {
+  private GMParser() {}
+
+  public static GMContent parse(ServerContext serverContext, byte[] content) {
+
+    ByteBuffer buffer = ByteBuffer.wrap(content);
+
+    byte type = buffer.get();
+
+    if (type == GMType.GARLIC_MESSAGE.getId()) {
+
+      GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
+
+      if (!garlicMessage.isSignedCorrectly()) {
+        return null;
+      }
+      boolean alreadyPresent = GMStoreManager.put(garlicMessage);
+
+      if (alreadyPresent) {
+        return null;
+      }
+
+      garlicMessage.tryParseContent();
+
+      // if the gm is targeted to us the content will be handled by the parseContent
+      // routine of the gm
+      if (!garlicMessage.isTargetedToUs()) {
+        sendGarlicMessageToPeer(serverContext, garlicMessage);
+      }
+
+      return garlicMessage;
+
+    } else if (type == GMType.ACK.getId()) {
+
+      GMAck gmAck = new GMAck(content);
+      gmAck.parseContent();
+
+      Job runningJob = Job.getRunningJob(gmAck.getAckid());
+
+      if (runningJob instanceof PeerPerformanceTestFlaschenpostJob perfJob) {
+        perfJob.success();
+      }
+
+      if (runningJob instanceof PeerPerformanceTestGarlicMessageJob perfJob) {
+        perfJob.success();
+      }
+
+      return gmAck;
     }
 
-    public static GMContent parse(ServerContext serverContext, byte[] content) {
+    throw new RuntimeException("Unknown GMType at parsing: " + type);
+  }
 
-        ByteBuffer buffer = ByteBuffer.wrap(content);
+  private static void sendGarlicMessageToPeer(
+      ServerContext serverContext, GarlicMessage garlicMessage) {
+    PeerList peerList = serverContext.getPeerList();
 
-        byte type = buffer.get();
+    Peer peerToSendFP = peerList.get(garlicMessage.getDestination());
 
-        if (type == GMType.GARLIC_MESSAGE.getId()) {
+    byte[] content = garlicMessage.getContent();
 
-            GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
+    if (peerToSendFP == null || !peerToSendFP.isConnected()) {
 
-            if (!garlicMessage.isSignedCorrectly()) {
-                return null;
-            }
-            boolean alreadyPresent = GMStoreManager.put(garlicMessage);
+      Node node = serverContext.getNodeStore().get(garlicMessage.destination);
 
-            if (alreadyPresent) {
-                return null;
-            }
+      if (node != null) {
+        KademliaId nodeKademliaId = KadContent.createKademliaId(node.getNodeId());
+        KadContent kadContent = serverContext.getKadStoreManager().get(nodeKademliaId);
 
-            garlicMessage.tryParseContent();
-
-            // if the gm is targeted to us the content will be handled by the parseContent
-            // routine of the gm
-            if (!garlicMessage.isTargetedToUs()) {
-                sendGarlicMessageToPeer(serverContext, garlicMessage);
-            }
-
-            return garlicMessage;
-
-        } else if (type == GMType.ACK.getId()) {
-
-            GMAck gmAck = new GMAck(content);
-            gmAck.parseContent();
-
-            Job runningJob = Job.getRunningJob(gmAck.getAckid());
-
-            if (runningJob instanceof PeerPerformanceTestFlaschenpostJob perfJob) {
-                perfJob.success();
-            }
-
-            if (runningJob instanceof PeerPerformanceTestGarlicMessageJob perfJob) {
-                perfJob.success();
-            }
-
-            return gmAck;
-        }
-
-        throw new RuntimeException("Unknown GMType at parsing: " + type);
-    }
-
-    private static void sendGarlicMessageToPeer(ServerContext serverContext, GarlicMessage garlicMessage) {
-        PeerList peerList = serverContext.getPeerList();
-
-        Peer peerToSendFP = peerList.get(garlicMessage.getDestination());
-
-        byte[] content = garlicMessage.getContent();
-
-        if (peerToSendFP == null || !peerToSendFP.isConnected()) {
-
-            Node node = serverContext.getNodeStore().get(garlicMessage.destination);
-
-            if (node != null) {
-                KademliaId nodeKademliaId = KadContent.createKademliaId(node.getNodeId());
-                KadContent kadContent = serverContext.getKadStoreManager().get(nodeKademliaId);
-
-                if (kadContent == null) {
-                    log.info("no kademlia content for target peer: " + garlicMessage.destination
-                            + " and target kademlia id: " + nodeKademliaId);
-                    new KademliaSearchJob(serverContext, nodeKademliaId).start();
-                } else {
-                    if (System.currentTimeMillis() - kadContent.getTimestamp() > Duration.ofMinutes(8).toMillis()) {
-                        new KademliaSearchJob(serverContext, nodeKademliaId).start();
-                    }
-                    String jsonString = new String(kadContent.getContent());
-                    NodeInfoModel nodeInfoModel = NodeInfoModel.importFromString(jsonString);
-                    List<GMEntryPointModel> entryPoints = nodeInfoModel.getEntryPoints();
-                    Collections.shuffle(entryPoints);
-
-                    for (GMEntryPointModel entryPoint : entryPoints) {
-                        Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
-                        if (peer == null || !peer.isConnected()) {
-                            Node.addNodeIfNotPresent(serverContext, entryPoint.getNodeId(), entryPoint.getIp(),
-                                    entryPoint.getPort());
-                            continue;
-                        }
-                        sendFpToPeer(peer, content);
-                        return;
-                    }
-
-                }
-            }
-
-            // todo, put all into a job to handle failing peers and retry send if no ack
-
-            TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
-
-            // todo use best route for this flaschenpost by network graph
-
-            // insert all nodes
-            Lock lock = peerList.getReadWriteLock().readLock();
-            lock.lock();
-            try {
-                ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
-
-                if (peerArrayList == null) {
-                    return;
-                }
-
-                for (Peer p : peerArrayList) {
-
-                    // do not add the peer if the peer is not connected or the nodeId is unknown!
-                    if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
-                        continue;
-                    }
-
-                    // do not send fps to light clients
-                    if (p.isLightClient()) {
-                        continue;
-                    }
-
-                    // /**
-                    // * do not add peers which are further or equally away from the key than us
-                    // */
-                    // int peersDistanceToKey =
-                    // garlicMessage.getDestination().getDistance(p.getKademliaId());
-                    // if (myDistanceToKey <= peersDistanceToKey) {
-                    // continue;
-                    // }
-                    // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
-                    // peersDistanceToKey);
-
-                    peers.add(p);
-                }
-            } finally {
-                lock.unlock();
-            }
-
-            if (peers.isEmpty()) {
-                // System.out.println(String.format("no peer found for destination %s which is
-                // near to target", garlicMessage.getDestination()));
-                return;
-            }
-
-            Node targetNode = serverContext.getNodeStore().get(garlicMessage.destination);
-            double shortestPathWeight = 20;
-            Peer peerWithShortestPath = null;
-            for (Peer peer : peers) {
-
-                GraphPath<Node, NodeEdge> path = null;
-                try {
-                    path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(),
-                            serverContext.getNode(), targetNode);
-                } catch (IllegalArgumentException ignored) {
-                    // nothing to do
-                }
-
-                if (path == null) {
-                    continue;
-                }
-                double weight = path.getWeight();
-                if (weight < shortestPathWeight) {
-                    shortestPathWeight = weight;
-                    peerWithShortestPath = peer;
-                }
-
-            }
-
-            if (peerWithShortestPath != null) {
-                sendFpToPeer(peerWithShortestPath, content);
-                int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
-                KademliaId kademliaId = peerWithShortestPath.getKademliaId();
-                int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
-                if (shortestPathWeight > 3) {
-                    Log.put("inserting fp to peer " + garlicMessage.getDestination()
-                            + " since we are not directly connected shortest path " + shortestPathWeight + " "
-                            + " distance " + peersDistance + " our distance " + myDistanceToKey + " last "
-                            + garlicMessage.getDestination().getDistance(peers.last().getKademliaId()) + " node: "
-                            + peerWithShortestPath.getNode().getNodeId() + " con " + peerWithShortestPath.isConnected(),
-                            0);
-                }
-            }
-
+        if (kadContent == null) {
+          log.info(
+              "no kademlia content for target peer: "
+                  + garlicMessage.destination
+                  + " and target kademlia id: "
+                  + nodeKademliaId);
+          new KademliaSearchJob(serverContext, nodeKademliaId).start();
         } else {
-            sendFpToPeer(peerToSendFP, content);
+          if (System.currentTimeMillis() - kadContent.getTimestamp()
+              > Duration.ofMinutes(8).toMillis()) {
+            new KademliaSearchJob(serverContext, nodeKademliaId).start();
+          }
+          String jsonString = new String(kadContent.getContent());
+          NodeInfoModel nodeInfoModel = NodeInfoModel.importFromString(jsonString);
+          List<GMEntryPointModel> entryPoints = nodeInfoModel.getEntryPoints();
+          Collections.shuffle(entryPoints);
+
+          for (GMEntryPointModel entryPoint : entryPoints) {
+            Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
+            if (peer == null || !peer.isConnected()) {
+              Node.addNodeIfNotPresent(
+                  serverContext, entryPoint.getNodeId(), entryPoint.getIp(), entryPoint.getPort());
+              continue;
+            }
+            sendFpToPeer(peer, content);
+            return;
+          }
+        }
+      }
+
+      // todo, put all into a job to handle failing peers and retry send if no ack
+
+      TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(garlicMessage.getDestination()));
+
+      // todo use best route for this flaschenpost by network graph
+
+      // insert all nodes
+      Lock lock = peerList.getReadWriteLock().readLock();
+      lock.lock();
+      try {
+        ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
+
+        if (peerArrayList == null) {
+          return;
         }
 
-    }
+        for (Peer p : peerArrayList) {
 
-    private static void sendFpToPeer(Peer peerToSendFP, byte[] content) {
-        peerToSendFP.getWriteBufferLock().lock();
+          // do not add the peer if the peer is not connected or the nodeId is unknown!
+          if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
+            continue;
+          }
+
+          // do not send fps to light clients
+          if (p.isLightClient()) {
+            continue;
+          }
+
+          // /**
+          // * do not add peers which are further or equally away from the key than us
+          // */
+          // int peersDistanceToKey =
+          // garlicMessage.getDestination().getDistance(p.getKademliaId());
+          // if (myDistanceToKey <= peersDistanceToKey) {
+          // continue;
+          // }
+          // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
+          // peersDistanceToKey);
+
+          peers.add(p);
+        }
+      } finally {
+        lock.unlock();
+      }
+
+      if (peers.isEmpty()) {
+        // System.out.println(String.format("no peer found for destination %s which is
+        // near to target", garlicMessage.getDestination()));
+        return;
+      }
+
+      Node targetNode = serverContext.getNodeStore().get(garlicMessage.destination);
+      double shortestPathWeight = 20;
+      Peer peerWithShortestPath = null;
+      for (Peer peer : peers) {
+
+        GraphPath<Node, NodeEdge> path = null;
         try {
-            var putMsg = im.redpanda.proto.FlaschenpostPut.newBuilder()
-                    .setContent(com.google.protobuf.ByteString.copyFrom(content))
-                    .build();
-            byte[] data = putMsg.toByteArray();
-
-            peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
-            peerToSendFP.writeBuffer.putInt(data.length);
-            peerToSendFP.writeBuffer.put(data);
-            peerToSendFP.setWriteBufferFilled();
-        } finally {
-            peerToSendFP.getWriteBufferLock().unlock();
+          path =
+              DijkstraShortestPath.findPathBetween(
+                  serverContext.getNodeStore().getNodeGraph(), serverContext.getNode(), targetNode);
+        } catch (IllegalArgumentException ignored) {
+          // nothing to do
         }
-    }
 
+        if (path == null) {
+          continue;
+        }
+        double weight = path.getWeight();
+        if (weight < shortestPathWeight) {
+          shortestPathWeight = weight;
+          peerWithShortestPath = peer;
+        }
+      }
+
+      if (peerWithShortestPath != null) {
+        sendFpToPeer(peerWithShortestPath, content);
+        int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
+        KademliaId kademliaId = peerWithShortestPath.getKademliaId();
+        int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
+        if (shortestPathWeight > 3) {
+          Log.put(
+              "inserting fp to peer "
+                  + garlicMessage.getDestination()
+                  + " since we are not directly connected shortest path "
+                  + shortestPathWeight
+                  + " "
+                  + " distance "
+                  + peersDistance
+                  + " our distance "
+                  + myDistanceToKey
+                  + " last "
+                  + garlicMessage.getDestination().getDistance(peers.last().getKademliaId())
+                  + " node: "
+                  + peerWithShortestPath.getNode().getNodeId()
+                  + " con "
+                  + peerWithShortestPath.isConnected(),
+              0);
+        }
+      }
+
+    } else {
+      sendFpToPeer(peerToSendFP, content);
+    }
+  }
+
+  private static void sendFpToPeer(Peer peerToSendFP, byte[] content) {
+    peerToSendFP.getWriteBufferLock().lock();
+    try {
+      var putMsg =
+          im.redpanda.proto.FlaschenpostPut.newBuilder()
+              .setContent(com.google.protobuf.ByteString.copyFrom(content))
+              .build();
+      byte[] data = putMsg.toByteArray();
+
+      peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
+      peerToSendFP.writeBuffer.putInt(data.length);
+      peerToSendFP.writeBuffer.put(data);
+      peerToSendFP.setWriteBufferFilled();
+    } finally {
+      peerToSendFP.getWriteBufferLock().unlock();
+    }
+  }
 }

@@ -2,9 +2,7 @@ package com.wedevol.xmpp.bean;
 
 import java.util.Map;
 
-/**
- * Represents an incoming message from FCM CCS
- */
+/** Represents an incoming message from FCM CCS */
 public class CcsInMessage {
 
   // Sender registration ID
@@ -16,7 +14,8 @@ public class CcsInMessage {
   // Payload data. A String in JSON format
   private Map<String, String> dataPayload;
 
-  public CcsInMessage(String from, String category, String messageId, Map<String, String> dataPayload) {
+  public CcsInMessage(
+      String from, String category, String messageId, Map<String, String> dataPayload) {
     this.from = from;
     this.category = category;
     this.messageId = messageId;

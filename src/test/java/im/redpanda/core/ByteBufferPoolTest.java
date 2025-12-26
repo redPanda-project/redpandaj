@@ -1,68 +1,62 @@
 package im.redpanda.core;
 
+import static org.junit.Assert.*;
+
+import java.nio.ByteBuffer;
 import org.junit.Ignore;
 import org.junit.Test;
 
-import java.nio.ByteBuffer;
-
-import static org.junit.Assert.*;
-
 public class ByteBufferPoolTest {
 
-    static {
-        ByteBufferPool.init();
+  static {
+    ByteBufferPool.init();
+  }
+
+  @Test
+  @Ignore("Does not work if too many RAM available?")
+  public void testLimits() {
+
+    boolean limit = false;
+
+    for (int i = 0; i < 15; i++) {
+      ByteBuffer byteBuffer = ByteBufferPool.borrowObject(20 * 1024 * 1024);
+      limit = ByteBufferPool.getPool().getMaxTotalPerKey() < 10;
+      if (limit) {
+        break;
+      }
     }
 
-    @Test
-    @Ignore("Does not work if too many RAM available?")
-    public void testLimits() {
+    assertTrue(limit);
+  }
 
+  @Test
+  public void borrowTest() {
+    ByteBuffer byteBufferFirst = ByteBufferPool.borrowObject(512);
+    ByteBuffer byteBufferSecond = ByteBufferPool.borrowObject(512);
 
-        boolean limit = false;
+    byteBufferFirst.putInt(5);
 
+    assertNotEquals(byteBufferFirst, byteBufferSecond);
 
-        for (int i = 0; i < 15; i++) {
-            ByteBuffer byteBuffer = ByteBufferPool.borrowObject(20 * 1024 * 1024);
-            limit = ByteBufferPool.getPool().getMaxTotalPerKey() < 10;
-            if (limit) {
-                break;
-            }
-        }
+    byteBufferFirst.flip();
+    byteBufferFirst.getInt();
+    byteBufferFirst.compact();
 
-        assertTrue(limit);
-    }
+    ByteBufferPool.returnObject(byteBufferFirst);
+    ByteBuffer byteBufferReturned = ByteBufferPool.borrowObject(512);
 
-    @Test
-    public void borrowTest() {
-        ByteBuffer byteBufferFirst = ByteBufferPool.borrowObject(512);
-        ByteBuffer byteBufferSecond = ByteBufferPool.borrowObject(512);
+    assertEquals(byteBufferFirst, byteBufferReturned);
+  }
 
+  @Test
+  public void defectReturnedObject() {
 
-        byteBufferFirst.putInt(5);
+    ByteBuffer buffer = ByteBufferPool.borrowObject(512);
+    buffer.putInt(1);
+    ByteBufferPool.returnObject(buffer);
 
-        assertNotEquals(byteBufferFirst, byteBufferSecond);
+    buffer = ByteBufferPool.borrowObject(512);
 
-        byteBufferFirst.flip();
-        byteBufferFirst.getInt();
-        byteBufferFirst.compact();
-
-        ByteBufferPool.returnObject(byteBufferFirst);
-        ByteBuffer byteBufferReturned = ByteBufferPool.borrowObject(512);
-
-        assertEquals(byteBufferFirst, byteBufferReturned);
-    }
-
-    @Test
-    public void defectReturnedObject() {
-
-        ByteBuffer buffer = ByteBufferPool.borrowObject(512);
-        buffer.putInt(1);
-        ByteBufferPool.returnObject(buffer);
-
-        buffer = ByteBufferPool.borrowObject(512);
-
-        assertEquals(0, buffer.position());
-
-    }
-
+    assertEquals(0, buffer.position());
+  }
 }

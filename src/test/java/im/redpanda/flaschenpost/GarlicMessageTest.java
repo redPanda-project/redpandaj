@@ -1,127 +1,120 @@
 package im.redpanda.flaschenpost;
 
+import static org.junit.Assert.*;
+
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
-import org.junit.Test;
-
 import java.security.Security;
-
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 public class GarlicMessageTest {
 
-    private static final ServerContext serverContext;
+  private static final ServerContext serverContext;
 
-    static {
-        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-        serverContext = ServerContext.buildDefaultServerContext();
-    }
+  static {
+    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    serverContext = ServerContext.buildDefaultServerContext();
+  }
 
-    @Test
-    public void simpleCreationTest() {
+  @Test
+  public void simpleCreationTest() {
 
-        //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
+    // lets target to ourselves without the private key!
+    NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
-        GMAck gmAck = new GMAck(123);
+    GMAck gmAck = new GMAck(123);
 
-        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
-        garlicMessage.addGMContent(gmAck);
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(gmAck);
 
-        byte[] content = garlicMessage.getContent();
+    byte[] content = garlicMessage.getContent();
 
-        GMContent parse = GMParser.parse(serverContext, content);
+    GMContent parse = GMParser.parse(serverContext, content);
 
-        assertNotNull(parse);
+    assertNotNull(parse);
 
-        assertEquals(parse.getClass(), GarlicMessage.class);
+    assertEquals(parse.getClass(), GarlicMessage.class);
+  }
 
+  @Test
+  public void parseTestAckGarlicMessage() {
 
-    }
+    // lets target to ourselves without the private key!
+    NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
-    @Test
-    public void parseTestAckGarlicMessage() {
+    GMAck gmAck = new GMAck(456);
 
-        //lets target to ourselves without the private key!
-        NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(gmAck);
 
-        GMAck gmAck = new GMAck(456);
+    byte[] content = garlicMessage.getContent();
 
-        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
-        garlicMessage.addGMContent(gmAck);
+    GMContent parse = GMParser.parse(serverContext, content);
 
-        byte[] content = garlicMessage.getContent();
+    assertNotNull(parse);
 
-        GMContent parse = GMParser.parse(serverContext, content);
+    assertEquals(parse.getClass(), GarlicMessage.class);
 
-        assertNotNull(parse);
+    GarlicMessage parsedGM = (GarlicMessage) parse;
 
-        assertEquals(parse.getClass(), GarlicMessage.class);
+    assertEquals(serverContext.getNodeId().getKademliaId(), parsedGM.destination);
 
-        GarlicMessage parsedGM = (GarlicMessage) parse;
+    assertEquals(true, parsedGM.isTargetedToUs());
 
-        assertEquals(serverContext.getNodeId().getKademliaId(), parsedGM.destination);
+    assertEquals(1, parsedGM.getGMContent().size());
 
-        assertEquals(true, parsedGM.isTargetedToUs());
+    GMContent gmContent = parsedGM.getGMContent().getFirst();
 
-        assertEquals(1, parsedGM.getGMContent().size());
+    assertEquals(gmContent.getClass(), GMAck.class);
 
-        GMContent gmContent = parsedGM.getGMContent().getFirst();
+    GMAck parsedAck = (GMAck) gmContent;
 
-        assertEquals(gmContent.getClass(), GMAck.class);
+    assertEquals(456, parsedAck.getAckid());
+  }
 
-        GMAck parsedAck = (GMAck) gmContent;
+  @Test
+  public void parseTestRandomDestinationGarlicMessage() {
+    // lets target to a random node id!
+    NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
 
-        assertEquals(456, parsedAck.getAckid());
+    GMAck gmAck = new GMAck(456);
 
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(gmAck);
 
-    }
+    byte[] content = garlicMessage.getContent();
 
-    @Test
-    public void parseTestRandomDestinationGarlicMessage() {
-        //lets target to a random node id!
-        NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
+    assertEquals(GMType.GARLIC_MESSAGE.getId(), content[0]);
 
-        GMAck gmAck = new GMAck(456);
+    GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(serverContext, content);
 
-        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
-        garlicMessage.addGMContent(gmAck);
+    assertEquals(GarlicMessage.class, parsedGM.getClass());
 
-        byte[] content = garlicMessage.getContent();
+    assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
-        assertEquals(GMType.GARLIC_MESSAGE.getId(), content[0]);
+    assertEquals(false, parsedGM.isTargetedToUs());
 
-        GarlicMessage parsedGM = (GarlicMessage) GMParser.parse(serverContext, content);
+    assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
-        assertEquals(GarlicMessage.class, parsedGM.getClass());
+    assertThrows(RuntimeException.class, () -> parsedGM.parseContent());
+  }
 
-        assertEquals(targetId.getKademliaId(), parsedGM.destination);
+  @Test
+  public void parseTestSecondParse() {
+    // lets target to a random node id!
+    NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
 
-        assertEquals(false, parsedGM.isTargetedToUs());
+    GMAck gmAck = new GMAck(456);
 
-        assertEquals(targetId.getKademliaId(), parsedGM.destination);
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(gmAck);
 
-        assertThrows(RuntimeException.class, () -> parsedGM.parseContent());
-    }
+    byte[] content = garlicMessage.getContent();
 
-    @Test
-    public void parseTestSecondParse() {
-        //lets target to a random node id!
-        NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
+    GMParser.parse(serverContext, content);
 
-        GMAck gmAck = new GMAck(456);
+    GarlicMessage parsedAgainGarlicMessage = (GarlicMessage) GMParser.parse(serverContext, content);
 
-        GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
-        garlicMessage.addGMContent(gmAck);
-
-        byte[] content = garlicMessage.getContent();
-
-        GMParser.parse(serverContext, content);
-
-        GarlicMessage parsedAgainGarlicMessage = (GarlicMessage) GMParser.parse(serverContext, content);
-
-        assertNull(parsedAgainGarlicMessage);
-    }
-
-
+    assertNull(parsedAgainGarlicMessage);
+  }
 }

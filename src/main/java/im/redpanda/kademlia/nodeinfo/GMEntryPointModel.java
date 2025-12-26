@@ -8,13 +8,13 @@ import lombok.Setter;
 @Setter
 public class GMEntryPointModel {
 
-    private NodeId nodeId;
-    private String ip;
-    private int port;
-    //todo add some connection points!!
+  private NodeId nodeId;
+  private String ip;
+  private int port;
 
+  // todo add some connection points!!
 
-    public GMEntryPointModel(NodeId nodeId) {
-        this.nodeId = nodeId;
-    }
+  public GMEntryPointModel(NodeId nodeId) {
+    this.nodeId = nodeId;
+  }
 }

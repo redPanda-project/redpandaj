@@ -2,9 +2,7 @@ package com.wedevol.xmpp.bean;
 
 import com.wedevol.xmpp.util.Util;
 
-/**
- * Represents a message for the sync and pending list
- */
+/** Represents a message for the sync and pending list */
 public class Message {
 
   private Long timestamp; // in millis
@@ -46,24 +44,16 @@ public class Message {
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj)
-      return true;
-    if (obj == null)
-      return false;
-    if (getClass() != obj.getClass())
-      return false;
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
     Message other = (Message) obj;
     if (jsonRequest == null) {
-      if (other.jsonRequest != null)
-        return false;
-    } else if (!jsonRequest.equals(other.jsonRequest))
-      return false;
+      if (other.jsonRequest != null) return false;
+    } else if (!jsonRequest.equals(other.jsonRequest)) return false;
     if (timestamp == null) {
-      if (other.timestamp != null)
-        return false;
-    } else if (!timestamp.equals(other.timestamp))
-      return false;
+      if (other.timestamp != null) return false;
+    } else if (!timestamp.equals(other.timestamp)) return false;
     return true;
   }
-
 }

@@ -11,23 +11,22 @@ import java.io.Serializable;
  */
 public class PeerSaveable implements Serializable {
 
-    String ip;
-    int port;
-    NodeId nodeId;
-    int retries;
+  String ip;
+  int port;
+  NodeId nodeId;
+  int retries;
 
+  public PeerSaveable(String ip, int port, NodeId nodeId, int retries) {
+    this.ip = ip;
+    this.port = port;
+    this.nodeId = nodeId;
+    this.retries = retries;
+  }
 
-    public PeerSaveable(String ip, int port, NodeId nodeId, int retries) {
-        this.ip = ip;
-        this.port = port;
-        this.nodeId = nodeId;
-        this.retries = retries;
-    }
-
-    public Peer toPeer() {
-        Peer out = new Peer(ip, port);
-        out.setNodeId(nodeId);
-        out.retries = retries;
-        return out;
-    }
+  public Peer toPeer() {
+    Peer out = new Peer(ip, port);
+    out.setNodeId(nodeId);
+    out.retries = retries;
+    return out;
+  }
 }

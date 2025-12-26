@@ -21,216 +21,208 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class KademliaSearchJob extends Job {
 
+  /**
+   * Here we use a blacklist to block search request for the same KademliaId in short time
+   * intervals. If a search is initialized from a node and the next nodes also have to start a
+   * search request, it is possible that two nodes request the same search from us. This blacklist
+   * will block any duplicated request for the same search.
+   */
+  private static final HashMap<KademliaId, Long> kademliaIdSearchBlacklist =
+      new HashMap<KademliaId, Long>();
+
+  private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
+  private static final long BLACKLIST_KEY_FOR = 1000L * 30L;
+  // todo: we need a housekeeper for this hashmap!
+
+  public static final int SEND_TO_NODES = 2;
+  private static final int NONE = 0;
+  private static final int ASKED = 2;
+  private static final int SUCCESS = 1;
+
+  private final KademliaId id;
+  private TreeMap<Peer, Integer> peers = null;
+  private final ArrayList<KadContent> contents = new ArrayList<>();
+
+  public KademliaSearchJob(ServerContext serverContext, KademliaId id) {
+    super(serverContext);
+    this.id = id;
+  }
+
+  @Override
+  public void init() {
+
     /**
-     * Here we use a blacklist to block search request for the same KademliaId in
-     * short time intervals.
-     * If a search is initialized from a node and the next nodes also have to start
-     * a search request,
-     * it is possible that two nodes request the same search from us.
-     * This blacklist will block any duplicated request for the same search.
+     * Lets check if this KademliaId was already searched in the last seconds such that no search
+     * loops occur. Each Key is blacklisted for 5 seconds after a search and only direct searches
+     * will be returned for that key. TODO: Maybe we should create a list of "requesters" for each
+     * search such that we can send an answers to all "requesters".
      */
-    private static final HashMap<KademliaId, Long> kademliaIdSearchBlacklist = new HashMap<KademliaId, Long>();
-    private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
-    private static final long BLACKLIST_KEY_FOR = 1000L * 30L;
-    // todo: we need a housekeeper for this hashmap!
+    long currentTimeMillis = System.currentTimeMillis();
 
-    public static final int SEND_TO_NODES = 2;
-    private static final int NONE = 0;
-    private static final int ASKED = 2;
-    private static final int SUCCESS = 1;
-
-    private final KademliaId id;
-    private TreeMap<Peer, Integer> peers = null;
-    private final ArrayList<KadContent> contents = new ArrayList<>();
-
-    public KademliaSearchJob(ServerContext serverContext, KademliaId id) {
-        super(serverContext);
-        this.id = id;
+    kademliaIdSearchBlacklistLock.lock();
+    try {
+      Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
+      if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
+        kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
+      } else {
+        // todo: maybe we should inform the peer that he should retry a KadSearch in
+        // some seconds?
+        fail();
+        done();
+        return;
+      }
+    } finally {
+      kademliaIdSearchBlacklistLock.unlock();
     }
 
-    @Override
-    public void init() {
+    // key is not blacklisted, lets sort the peers by the destination key
+    peers = new TreeMap<>(new PeerComparator(id));
 
-        /**
-         * Lets check if this KademliaId was already searched in the last seconds such
-         * that no search loops occur.
-         * Each Key is blacklisted for 5 seconds after a search and only direct searches
-         * will be returned for that key.
-         * TODO: Maybe we should create a list of "requesters" for each search such that
-         * we can send an answers to all "requesters".
-         */
+    PeerList peerList = serverContext.getPeerList();
 
-        long currentTimeMillis = System.currentTimeMillis();
+    // insert all nodes
+    Lock lock = peerList.getReadWriteLock().readLock();
+    lock.lock();
+    try {
+      ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
 
-        kademliaIdSearchBlacklistLock.lock();
+      if (peerArrayList == null) {
+        initilized = false;
+        return;
+      }
+
+      for (Peer p : peerArrayList) {
+
+        // do not add the peer if the peer is not connected or the nodeId is unknown!
+        if (p.getNodeId() == null || !p.isConnected()) {
+          continue;
+        }
+
+        // do not ask light clients for kad entries...
+        if (p.isLightClient()) {
+          continue;
+        }
+
+        peers.put(p, NONE);
+      }
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  @Override
+  public void work() {
+    /** check for timeout, maybe we already got an answer but not SEND_TO_NODES */
+    if (getEstimatedRuntime() > 1000 * 5) {
+      System.out.println("5 second timeout reached for KadSearch... ");
+      success();
+      done();
+      return;
+    }
+
+    int askedPeers = 0;
+    int successfullPeers = 0;
+    for (Peer p : peers.keySet()) {
+
+      Integer status = peers.get(p);
+      if (status == SUCCESS) {
+        successfullPeers++;
+        askedPeers++;
+        continue;
+      } else if (status == ASKED) {
+        continue;
+      }
+
+      if (successfullPeers >= SEND_TO_NODES) {
+        break;
+      }
+
+      if (askedPeers >= SEND_TO_NODES) {
+        // the check for done will be made below the loop
+        break;
+      }
+
+      if (p.isConnected() && p.isIntegrated()) {
+
         try {
-            Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
-            if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
-                kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
-            } else {
-                // todo: maybe we should inform the peer that he should retry a KadSearch in
-                // some seconds?
-                fail();
-                done();
-                return;
-            }
-        } finally {
-            kademliaIdSearchBlacklistLock.unlock();
-        }
+          // lets not wait too long for a lock, since this job may timeout otherwise
+          boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
+          if (lockedByMe) {
+            try {
 
-        // key is not blacklisted, lets sort the peers by the destination key
-        peers = new TreeMap<>(new PeerComparator(id));
+              ByteBuffer writeBuffer = p.getWriteBuffer();
 
-        PeerList peerList = serverContext.getPeerList();
-
-        // insert all nodes
-        Lock lock = peerList.getReadWriteLock().readLock();
-        lock.lock();
-        try {
-            ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
-
-            if (peerArrayList == null) {
-                initilized = false;
-                return;
-            }
-
-            for (Peer p : peerArrayList) {
-
-                // do not add the peer if the peer is not connected or the nodeId is unknown!
-                if (p.getNodeId() == null || !p.isConnected()) {
-                    continue;
-                }
-
-                // do not ask light clients for kad entries...
-                if (p.isLightClient()) {
-                    continue;
-                }
-
-                peers.put(p, NONE);
-            }
-        } finally {
-            lock.unlock();
-        }
-
-    }
-
-    @Override
-    public void work() {
-        /**
-         * check for timeout, maybe we already got an answer but not SEND_TO_NODES
-         */
-        if (getEstimatedRuntime() > 1000 * 5) {
-            System.out.println("5 second timeout reached for KadSearch... ");
-            success();
-            done();
-            return;
-        }
-
-        int askedPeers = 0;
-        int successfullPeers = 0;
-        for (Peer p : peers.keySet()) {
-
-            Integer status = peers.get(p);
-            if (status == SUCCESS) {
-                successfullPeers++;
-                askedPeers++;
+              if (writeBuffer == null) {
                 continue;
-            } else if (status == ASKED) {
-                continue;
+              }
+
+              peers.put(p, ASKED);
+              askedPeers++;
+
+              var getMsg =
+                  KademliaGet.newBuilder()
+                      .setJobId(getJobId())
+                      .setSearchedId(
+                          KademliaIdProto.newBuilder().setKeyBytes(copyFrom(id.getBytes())).build())
+                      .build();
+              byte[] data = getMsg.toByteArray();
+
+              writeBuffer.put(Command.KADEMLIA_GET);
+              writeBuffer.putInt(data.length);
+              writeBuffer.put(data);
+
+              p.setWriteBufferFilled();
+
+            } finally {
+              p.getWriteBufferLock().unlock();
             }
+          }
 
-            if (successfullPeers >= SEND_TO_NODES) {
-                break;
-            }
-
-            if (askedPeers >= SEND_TO_NODES) {
-                // the check for done will be made below the loop
-                break;
-            }
-
-            if (p.isConnected() && p.isIntegrated()) {
-
-                try {
-                    // lets not wait too long for a lock, since this job may timeout otherwise
-                    boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
-                    if (lockedByMe) {
-                        try {
-
-                            ByteBuffer writeBuffer = p.getWriteBuffer();
-
-                            if (writeBuffer == null) {
-                                continue;
-                            }
-
-                            peers.put(p, ASKED);
-                            askedPeers++;
-
-                            var getMsg = KademliaGet.newBuilder()
-                                    .setJobId(getJobId())
-                                    .setSearchedId(KademliaIdProto.newBuilder()
-                                            .setKeyBytes(copyFrom(id.getBytes()))
-                                            .build())
-                                    .build();
-                            byte[] data = getMsg.toByteArray();
-
-                            writeBuffer.put(Command.KADEMLIA_GET);
-                            writeBuffer.putInt(data.length);
-                            writeBuffer.put(data);
-
-                            p.setWriteBufferFilled();
-
-                        } finally {
-                            p.getWriteBufferLock().unlock();
-                        }
-                    }
-
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-            }
-
+        } catch (InterruptedException e) {
+          e.printStackTrace();
         }
-
-        /**
-         * Lets check if already SEND_TO_NODES peers answered and check if all peers
-         * list answered,
-         * the peers list may be small if we are near the search key...
-         */
-        if (successfullPeers >= SEND_TO_NODES || successfullPeers == peers.size()) {
-            success();
-            done();
-        }
-
+      }
     }
 
-    protected void fail() {
+    /**
+     * Lets check if already SEND_TO_NODES peers answered and check if all peers list answered, the
+     * peers list may be small if we are near the search key...
+     */
+    if (successfullPeers >= SEND_TO_NODES || successfullPeers == peers.size()) {
+      success();
+      done();
+    }
+  }
+
+  protected void fail() {}
+
+  protected ArrayList<KadContent> success() {
+
+    if (contents.isEmpty()) {
+      return null;
     }
 
-    protected ArrayList<KadContent> success() {
+    // lets get the newest one!
+    contents.sort(
+        (o1, o2) ->
+            o1.getTimestamp() < o1.getTimestamp()
+                ? -1
+                : o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
 
-        if (contents.isEmpty()) {
-            return null;
-        }
+    return contents;
+  }
 
-        // lets get the newest one!
-        contents.sort(
-                (o1, o2) -> o1.getTimestamp() < o1.getTimestamp() ? -1 : o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
+  public void ack(KadContent c, Peer p) {
+    // todo: concurrency?
+    contents.add(c);
+    peers.put(p, SUCCESS);
+  }
 
-        return contents;
-    }
+  public static HashMap<KademliaId, Long> getKademliaIdSearchBlacklist() {
+    return kademliaIdSearchBlacklist;
+  }
 
-    public void ack(KadContent c, Peer p) {
-        // todo: concurrency?
-        contents.add(c);
-        peers.put(p, SUCCESS);
-    }
-
-    public static HashMap<KademliaId, Long> getKademliaIdSearchBlacklist() {
-        return kademliaIdSearchBlacklist;
-    }
-
-    public static ReentrantLock getKademliaIdSearchBlacklistLock() {
-        return kademliaIdSearchBlacklistLock;
-    }
+  public static ReentrantLock getKademliaIdSearchBlacklistLock() {
+    return kademliaIdSearchBlacklistLock;
+  }
 }

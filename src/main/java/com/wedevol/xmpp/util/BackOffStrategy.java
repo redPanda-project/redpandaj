@@ -4,10 +4,7 @@ import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Util class for back off strategy
- */
-
+/** Util class for back off strategy */
 public class BackOffStrategy {
 
   protected static final Logger logger = LoggerFactory.getLogger(BackOffStrategy.class);
@@ -43,7 +40,11 @@ public class BackOffStrategy {
     numberOfTriesLeft--;
     if (!shouldRetry()) {
       throw new Exception(
-          "Retry Failed: Total of attempts: " + numberOfRetries + ". Total waited time: " + timeToWait + "ms.");
+          "Retry Failed: Total of attempts: "
+              + numberOfRetries
+              + ". Total waited time: "
+              + timeToWait
+              + "ms.");
     }
     waitUntilNextTry();
     timeToWait *= 2;
@@ -54,7 +55,10 @@ public class BackOffStrategy {
   public void errorOccured() {
     numberOfTriesLeft--;
     if (!shouldRetry()) {
-      logger.info("Retry Failed: Total of attempts: {}. Total waited time: {} ms.", numberOfRetries, timeToWait);
+      logger.info(
+          "Retry Failed: Total of attempts: {}. Total waited time: {} ms.",
+          numberOfRetries,
+          timeToWait);
     }
     waitUntilNextTry();
     timeToWait *= 2;
@@ -66,7 +70,8 @@ public class BackOffStrategy {
     try {
       Thread.sleep(timeToWait);
     } catch (InterruptedException e) {
-      logger.info("Error waiting until next try for the backoff strategy. Error: {}", e.getMessage());
+      logger.info(
+          "Error waiting until next try for the backoff strategy. Error: {}", e.getMessage());
     }
   }
 
@@ -74,19 +79,17 @@ public class BackOffStrategy {
     return this.timeToWait;
   }
 
-  /**
-   * Use this method when the call was successful otherwise it will continue in an infinite loop
-   */
+  /** Use this method when the call was successful otherwise it will continue in an infinite loop */
   public void doNotRetry() {
     numberOfTriesLeft = 0;
   }
 
   /**
-   * Reset back off state. Call this method after successful attempts if you want to reuse the class.
+   * Reset back off state. Call this method after successful attempts if you want to reuse the
+   * class.
    */
   public void reset() {
     this.numberOfTriesLeft = numberOfRetries;
     this.timeToWait = defaultTimeToWait;
   }
-
 }

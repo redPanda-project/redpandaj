@@ -11,321 +11,319 @@ import java.util.concurrent.locks.ReadWriteLock;
 
 public class OutboundHandler extends Thread {
 
-    long lastAddedKnownNodes;
-    Random random = new Random();
-    private final PeerList peerList;
-    private final ServerContext serverContext;
+  long lastAddedKnownNodes;
+  Random random = new Random();
+  private final PeerList peerList;
+  private final ServerContext serverContext;
 
-    public OutboundHandler(ServerContext serverContext) {
-        this.peerList = serverContext.getPeerList();
-        this.serverContext = serverContext;
+  public OutboundHandler(ServerContext serverContext) {
+    this.peerList = serverContext.getPeerList();
+    this.serverContext = serverContext;
+  }
+
+  boolean allowInterrupt = false;
+
+  public void tryInterrupt() {
+    // System.out.println("try interrupt");
+  }
+
+  private static boolean connectTo(ServerContext serverContext, final Peer peer) {
+
+    peer.retries++;
+    peer.isConnecting = true;
+    peer.isConnectionInitializedByMe = true;
+    peer.setLastPongReceived(System.currentTimeMillis());
+
+    Node byKademliaId = Node.getByKademliaId(serverContext, peer.getKademliaId());
+
+    int retries = 0;
+    if (byKademliaId != null) {
+      retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
+      peer.retries = retries;
+      // todo if retries to high disconnect?
     }
 
-    boolean allowInterrupt = false;
+    try {
+      SocketChannel open = SocketChannel.open();
+      open.configureBlocking(false);
 
-    public void tryInterrupt() {
-        // System.out.println("try interrupt");
+      boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
+
+      PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
+      serverContext.getConnectionHandler().addPeerInHandshake(peerInHandshake);
+
+      /** Lets check if we have a nodeId and add it to the PeerInHandShake */
+      if (peer.getNodeId() != null) {
+        peerInHandshake.setNodeId(peer.getNodeId());
+      }
+
+      peerInHandshake.addConnection(alreadyConnected);
+
+      return true;
+    } catch (UnknownHostException ex) {
+      System.out.println("outgoing con failed, unknown host...");
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      Log.put("outgoing con failed... " + peer.ip, 0);
+    }
+    return false;
+  }
+
+  private void reseed() {
+
+    if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
+      return;
     }
 
-    private static boolean connectTo(ServerContext serverContext, final Peer peer) {
+    lastAddedKnownNodes = System.currentTimeMillis();
 
-        peer.retries++;
-        peer.isConnecting = true;
-        peer.isConnectionInitializedByMe = true;
-        peer.setLastPongReceived(System.currentTimeMillis());
-
-        Node byKademliaId = Node.getByKademliaId(serverContext, peer.getKademliaId());
-
-        int retries = 0;
-        if (byKademliaId != null) {
-            retries = byKademliaId.incrRetry(peer.getIp(), peer.getPort());
-            peer.retries = retries;
-            // todo if retries to high disconnect?
+    Lock lock = peerList.getReadWriteLock().writeLock();
+    lock.lock();
+    try {
+      for (String hostport : Settings.knownNodes) {
+        if (hostport.contains("[")) {
+          // todo add port
+          String[] split = hostport.split("]");
+          String ipv6 = split[0].substring(1);
+          peerList.add(new Peer(ipv6, 59558));
+          continue;
         }
 
+        String[] split = hostport.split(":");
+        String host = split[0];
+        int port = Integer.parseInt(split[1]);
+
+        peerList.add(new Peer(host, port));
+      }
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  @Override
+  public void run() {
+
+    final String orgName = getName();
+    setName(orgName + " - OutboundThread");
+
+    ReadWriteLock peerListLock = peerList.getReadWriteLock();
+    ArrayList<Peer> peerListArray = peerList.getPeerArrayList();
+
+    ArrayList<Peer> peersToRemove = new ArrayList<>();
+
+    while (!Server.shuttingDown) {
+
+      // System.out.println("Peers: " + PeerList.size());
+
+      if (peerList.size() < 5) {
+        reseed();
+      }
+
+      try {
+        peerListLock.writeLock().lock();
+        Collections.sort(peerListArray);
+      } catch (IllegalArgumentException e) {
         try {
-            SocketChannel open = SocketChannel.open();
-            open.configureBlocking(false);
-
-            boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
-
-            PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
-            serverContext.getConnectionHandler().addPeerInHandshake(peerInHandshake);
-
-            /**
-             * Lets check if we have a nodeId and add it to the PeerInHandShake
-             */
-            if (peer.getNodeId() != null) {
-                peerInHandshake.setNodeId(peer.getNodeId());
-            }
-
-            peerInHandshake.addConnection(alreadyConnected);
-
-            return true;
-        } catch (UnknownHostException ex) {
-            System.out.println("outgoing con failed, unknown host...");
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            Log.put("outgoing con failed... " + peer.ip, 0);
+          sleep(200);
+        } catch (InterruptedException ex) {
+          Log.putCritical(ex);
         }
-        return false;
-    }
+        continue;
+      } finally {
+        peerListLock.writeLock().unlock();
+      }
 
-    private void reseed() {
+      peerListLock.readLock().lock();
+      try {
+        int actCons = 0;
+        int connectingCons = 0;
+        int newConnections = 0;
+        for (Peer peer : peerListArray) {
+          if (peer.isConnected()) {
+            actCons++;
+          } else if (peer.isConnecting) {
+            connectingCons++;
+          }
 
-        if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
-            return;
+          // if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis()
+          // - peer.lastActionOnConnection > 30000)) {
+          // peer.disconnect("timeout ...");
+          // }
+
         }
 
-        lastAddedKnownNodes = System.currentTimeMillis();
+        actCons += connectingCons;
+        int cnt = 0;
+        for (Peer peer : peerListArray) {
 
-        Lock lock = peerList.getReadWriteLock().writeLock();
-        lock.lock();
-        try {
-            for (String hostport : Settings.knownNodes) {
-                if (hostport.contains("[")) {
-                    // todo add port
-                    String[] split = hostport.split("]");
-                    String ipv6 = split[0].substring(1);
-                    peerList.add(new Peer(ipv6, 59558));
-                    continue;
+          cnt++;
+
+          if (newConnections >= 10) {
+            break;
+          }
+
+          if (actCons >= Settings.MIN_CONNECTIONS) {
+
+            Log.put("peers " + actCons + " are enough...", 300);
+
+            if (cnt == 1 && actCons >= Settings.MAX_CONNECTIONS) {
+              for (Peer p1 : peerListArray) {
+                if (p1.isConnected()) {
+                  p1.disconnect("max cons");
+
+                  System.out.println("closed one connection...");
+
+                  break;
                 }
-
-                String[] split = hostport.split(":");
-                String host = split[0];
-                int port = Integer.parseInt(split[1]);
-
-                peerList.add(new Peer(host, port));
+              }
             }
-        } finally {
-            lock.unlock();
-        }
+            break;
+          }
 
-    }
+          if (peer.port == 0) {
+            continue;
+          }
 
-    @Override
-    public void run() {
+          if (peerList.isBlacklisted(peer.getIp())) {
+            continue;
+          }
 
-        final String orgName = getName();
-        setName(orgName + " - OutboundThread");
+          if (peer.isConnected()) {
+            continue;
+          }
 
-        ReadWriteLock peerListLock = peerList.getReadWriteLock();
-        ArrayList<Peer> peerListArray = peerList.getPeerArrayList();
-
-        ArrayList<Peer> peersToRemove = new ArrayList<>();
-
-        while (!Server.shuttingDown) {
-
-            // System.out.println("Peers: " + PeerList.size());
-
-            if (peerList.size() < 5) {
-                reseed();
+          boolean alreadyConnectedToSameIpandPort = false;
+          for (Peer p2 : peerListArray) {
+            if (peer.equalsIpAndPort(p2) && (peer.isConnected() || peer.isConnecting)) {
+              alreadyConnectedToSameIpandPort = true;
+              break;
             }
+          }
 
-            try {
-                peerListLock.writeLock().lock();
-                Collections.sort(peerListArray);
-            } catch (IllegalArgumentException e) {
-                try {
-                    sleep(200);
-                } catch (InterruptedException ex) {
-                    Log.putCritical(ex);
-                }
+          if (alreadyConnectedToSameIpandPort) {
+            continue;
+          }
+
+          if (Settings.IPV6_ONLY && peer.ip.length() <= 15) {
+            peersToRemove.add(peer);
+            Log.put(
+                "removed peer from peerList, no ipv6 address: " + peer.ip + ":" + peer.port, 200);
+            continue;
+          }
+
+          if (Settings.IPV4_ONLY && peer.ip.length() > 15) {
+            peersToRemove.add(peer);
+            Log.put(
+                "removed peer from peerList, no ipv4 address: " + peer.ip + ":" + peer.port, 200);
+            continue;
+          }
+
+          boolean alreadyConnectedToSameNodeId = false;
+          if (peer.getKademliaId() != null) {
+            // already connected to same trusted node?
+            for (Peer p2 : peerListArray) {
+
+              if (alreadyConnectedToSameNodeId) {
+                break;
+              }
+
+              if (!p2.isConnected() && !p2.isConnecting) {
                 continue;
-            } finally {
-                peerListLock.writeLock().unlock();
+              }
+
+              if (peer.equalsNonce(p2)) {
+                alreadyConnectedToSameNodeId = true;
+                break;
+              }
+            }
+          }
+
+          if (alreadyConnectedToSameNodeId) {
+            Log.put("Do not connect to this peer, already connected to same KadId...", 70);
+            continue;
+          }
+
+          if (peer.isConnected() || peer.isConnecting) {
+            continue;
+            // peer.disconnect();
+            // if (DEBUG) {
+            // System.out.println("closing con, cuz i wanna connect...");
+            // }
+          }
+
+          // if (peerList.size() > 20) {
+          // (System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 *
+          // 4)
+          if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5))
+              && peer.ping != -1) {
+            // peerList.remove(peer);
+            peersToRemove.add(peer);
+
+            if (peer.retries < 200) {
+
+              // Test.messageStore.insertPeerConnectionInformation(peer.ip, peer.port, 0, 0);
+              // Test.messageStore.setStatusForPeerConnectionInformation(peer.ip, peer.port,
+              // peer.retries, System.currentTimeMillis() + 1000L * 60L * peer.retries);
+              // Test.messageStore.setStatusForPeerConnectionInformation(peer.ip, peer.port,
+              // peer.retries, System.currentTimeMillis() + 1000L * 60L * 5L);
+
+              Log.put(
+                  "removed peer from peerList, too many retries: " + peer.ip + ":" + peer.port, 20);
+
+            } else {
+              // we do not have to remove peers here because every peer in peerlist should not
+              // be in the db!
+
+              Log.put(
+                  "removed peer permanently, too many retries: " + peer.ip + ":" + peer.port, 20);
             }
 
-            peerListLock.readLock().lock();
-            try {
-                int actCons = 0;
-                int connectingCons = 0;
-                int newConnections = 0;
-                for (Peer peer : peerListArray) {
-                    if (peer.isConnected()) {
-                        actCons++;
-                    } else if (peer.isConnecting) {
-                        connectingCons++;
-                    }
+            continue;
+          }
+          peer.ping = 0;
 
-                    // if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis()
-                    // - peer.lastActionOnConnection > 30000)) {
-                    // peer.disconnect("timeout ...");
-                    // }
+          if (peer.connectAble != -1) {
 
-                }
+            Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 150);
 
-                actCons += connectingCons;
-                int cnt = 0;
-                for (Peer peer : peerListArray) {
-
-                    cnt++;
-
-                    if (newConnections >= 10) {
-                        break;
-                    }
-
-                    if (actCons >= Settings.MIN_CONNECTIONS) {
-
-                        Log.put("peers " + actCons + " are enough...", 300);
-
-                        if (cnt == 1 && actCons >= Settings.MAX_CONNECTIONS) {
-                            for (Peer p1 : peerListArray) {
-                                if (p1.isConnected()) {
-                                    p1.disconnect("max cons");
-
-                                    System.out.println("closed one connection...");
-
-                                    break;
-                                }
-                            }
-                        }
-                        break;
-                    }
-
-                    if (peer.port == 0) {
-                        continue;
-                    }
-
-                    if (peerList.isBlacklisted(peer.getIp())) {
-                        continue;
-                    }
-
-                    if (peer.isConnected()) {
-                        continue;
-                    }
-
-                    boolean alreadyConnectedToSameIpandPort = false;
-                    for (Peer p2 : peerListArray) {
-                        if (peer.equalsIpAndPort(p2) && (peer.isConnected() || peer.isConnecting)) {
-                            alreadyConnectedToSameIpandPort = true;
-                            break;
-                        }
-                    }
-
-                    if (alreadyConnectedToSameIpandPort) {
-                        continue;
-                    }
-
-                    if (Settings.IPV6_ONLY && peer.ip.length() <= 15) {
-                        peersToRemove.add(peer);
-                        Log.put("removed peer from peerList, no ipv6 address: " + peer.ip + ":" + peer.port, 200);
-                        continue;
-                    }
-
-                    if (Settings.IPV4_ONLY && peer.ip.length() > 15) {
-                        peersToRemove.add(peer);
-                        Log.put("removed peer from peerList, no ipv4 address: " + peer.ip + ":" + peer.port, 200);
-                        continue;
-                    }
-
-                    boolean alreadyConnectedToSameNodeId = false;
-                    if (peer.getKademliaId() != null) {
-                        // already connected to same trusted node?
-                        for (Peer p2 : peerListArray) {
-
-                            if (alreadyConnectedToSameNodeId) {
-                                break;
-                            }
-
-                            if (!p2.isConnected() && !p2.isConnecting) {
-                                continue;
-                            }
-
-                            if (peer.equalsNonce(p2)) {
-                                alreadyConnectedToSameNodeId = true;
-                                break;
-                            }
-
-                        }
-                    }
-
-                    if (alreadyConnectedToSameNodeId) {
-                        Log.put("Do not connect to this peer, already connected to same KadId...", 70);
-                        continue;
-                    }
-
-                    if (peer.isConnected() || peer.isConnecting) {
-                        continue;
-                        // peer.disconnect();
-                        // if (DEBUG) {
-                        // System.out.println("closing con, cuz i wanna connect...");
-                        // }
-                    }
-
-                    // if (peerList.size() > 20) {
-                    // (System.currentTimeMillis() - peer.lastActionOnConnection > 1000 * 60 * 60 *
-                    // 4)
-                    if ((peer.retries > 10 || (peer.getKademliaId() == null && peer.retries >= 5)) && peer.ping != -1) {
-                        // peerList.remove(peer);
-                        peersToRemove.add(peer);
-
-                        if (peer.retries < 200) {
-
-                            // Test.messageStore.insertPeerConnectionInformation(peer.ip, peer.port, 0, 0);
-                            // Test.messageStore.setStatusForPeerConnectionInformation(peer.ip, peer.port,
-                            // peer.retries, System.currentTimeMillis() + 1000L * 60L * peer.retries);
-                            // Test.messageStore.setStatusForPeerConnectionInformation(peer.ip, peer.port,
-                            // peer.retries, System.currentTimeMillis() + 1000L * 60L * 5L);
-
-                            Log.put("removed peer from peerList, too many retries: " + peer.ip + ":" + peer.port, 20);
-
-                        } else {
-                            // we do not have to remove peers here because every peer in peerlist should not
-                            // be in the db!
-
-                            Log.put("removed peer permanently, too many retries: " + peer.ip + ":" + peer.port, 20);
-
-                        }
-
-                        continue;
-                    }
-                    peer.ping = 0;
-
-                    if (peer.connectAble != -1) {
-
-                        Log.put("try to connect to new node: " + peer.ip + ":" + peer.port, 150);
-
-                        boolean success = connectTo(serverContext, peer);
-                        actCons++;
-                        newConnections++;
-                        if (!success) {
-                            // if the connect method was not successful we had to wait longer than normally,
-                            // thus we should release the peerlist lock sooner...
-                            newConnections += 5;
-                        }
-                        // try {
-                        // sleep(200);
-                        // } catch (InterruptedException ex) {
-                        // }
-
-                    } else {
-                        System.out.println("connect state: " + peer.connectAble + " -- " + peer.ip + ":" + peer.port);
-                    }
-
-                }
-            } finally {
-                peerListLock.readLock().unlock();
+            boolean success = connectTo(serverContext, peer);
+            actCons++;
+            newConnections++;
+            if (!success) {
+              // if the connect method was not successful we had to wait longer than normally,
+              // thus we should release the peerlist lock sooner...
+              newConnections += 5;
             }
+            // try {
+            // sleep(200);
+            // } catch (InterruptedException ex) {
+            // }
 
-            for (Peer toRemove : peersToRemove) {
-                // System.out.println("removing peer from OH: " + toRemove.getKademliaId());
-                peerList.remove(toRemove);
-            }
-            peersToRemove.clear();
-
-            try {
-                allowInterrupt = true;
-
-                sleep(1000 + random.nextInt(3000));
-
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            } finally {
-                allowInterrupt = false;
-            }
-
+          } else {
+            System.out.println(
+                "connect state: " + peer.connectAble + " -- " + peer.ip + ":" + peer.port);
+          }
         }
-    }
+      } finally {
+        peerListLock.readLock().unlock();
+      }
 
+      for (Peer toRemove : peersToRemove) {
+        // System.out.println("removing peer from OH: " + toRemove.getKademliaId());
+        peerList.remove(toRemove);
+      }
+      peersToRemove.clear();
+
+      try {
+        allowInterrupt = true;
+
+        sleep(1000 + random.nextInt(3000));
+
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+      } finally {
+        allowInterrupt = false;
+      }
+    }
+  }
 }
