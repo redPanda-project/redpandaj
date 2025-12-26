@@ -1,6 +1,5 @@
 package im.redpanda.core;
 
-
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -34,11 +33,11 @@ public class HTTPServer extends Thread {
             System.out.println("starting HTTP server...");
             HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 10);
             server.createContext("/android.apk.signed", new HHandler());
-            //server.setExecutor(null); // creates a default executor
+            server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
             server.start();
         } catch (IOException e) {
-//            Log.sentry(e);
-//            e.printStackTrace();
+            // Log.sentry(e);
+            // e.printStackTrace();
         }
     }
 
@@ -47,10 +46,8 @@ public class HTTPServer extends Thread {
         public void handle(HttpExchange t) throws IOException {
             Headers h = t.getResponseHeaders();
 
-
             Path path = Path.of("android.apk");
             byte[] data = Files.readAllBytes(path);
-
 
             long timestamp = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
             byte[] signature = serverContext.getLocalSettings().getUpdateAndroidSignature();
@@ -63,8 +60,7 @@ public class HTTPServer extends Thread {
 
             data = buffer.array();
 
-
-//            h.add("Content-Type", "application/json");
+            // h.add("Content-Type", "application/json");
             h.add("Content-Type", "application/octet-stream");
 
             t.sendResponseHeaders(200, data.length);
@@ -74,4 +70,3 @@ public class HTTPServer extends Thread {
         }
     }
 }
-
