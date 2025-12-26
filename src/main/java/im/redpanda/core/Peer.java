@@ -6,7 +6,6 @@ package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
 import lombok.Getter;
-import lombok.Setter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -34,12 +33,10 @@ public class Peer implements Comparable<Peer> {
 
     public int retries = 0;
     @Getter
-    @Setter
     private long lastPongReceived = 0;
     int cnt = 0;
     public long connectedSince = 0;
     private NodeId nodeId;
-    private ArrayList<String> filterAdresses;
     private SocketChannel socketChannel;
     public ByteBuffer readBuffer;
     public ByteBuffer writeBuffer;
@@ -121,7 +118,7 @@ public class Peer implements Comparable<Peer> {
 
         if (obj instanceof Peer n2) {
 
-            return (ip.equals(n2.ip) && port == n2.port);
+            return ip.equals(n2.ip) && port == n2.port;
 
         } else {
             return false;

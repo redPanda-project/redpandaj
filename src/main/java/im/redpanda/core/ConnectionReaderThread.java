@@ -6,15 +6,9 @@
 package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
-import im.redpanda.crypt.Utils;
-import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.kademlia.KadContent;
 import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
 import io.sentry.SentryLevel;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.BufferOverflowException;
@@ -32,7 +26,6 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class ConnectionReaderThread implements Runnable {
 
-    private static final Logger logger = LogManager.getLogger();
     public static final String ANDROID_UPDATE_FILE = "android.apk";
 
     public static final int STD_TIMEOUT = 10;
@@ -46,7 +39,6 @@ public class ConnectionReaderThread implements Runnable {
      */
     static final Semaphore updateUploadLock = new Semaphore(1);
     static final ReentrantLock updateDownloadLock = new ReentrantLock();
-    private final PeerList peerList;
     private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
     private final ServerContext serverContext;
     private final InboundCommandProcessor inboundProcessor;
@@ -67,7 +59,6 @@ public class ConnectionReaderThread implements Runnable {
     public ConnectionReaderThread(ServerContext serverContext, int timeout) {
         this.serverContext = serverContext;
         this.timeout = timeout;
-        this.peerList = serverContext.getPeerList();
         this.inboundProcessor = new InboundCommandProcessor(serverContext);
         Log.putStd("########################## spawned new connectionReaderThread!!!!");
         Thread.ofVirtual().name("ReaderThread").start(this);
@@ -253,7 +244,6 @@ public class ConnectionReaderThread implements Runnable {
 
     private int readConnection(Peer peer) throws PeerProtocolException {
 
-        ByteBuffer writeBuffer = peer.writeBuffer;
         SelectionKey key = peer.selectionKey;
 
         // if (myReaderBuffer.position() != 0) {
@@ -419,60 +409,6 @@ public class ConnectionReaderThread implements Runnable {
         return inboundProcessor.parseCommand(command, readBuffer, peer);
     }
 
-    private int parseKademliaGetAnswer(ByteBuffer readBuffer, Peer peer) {
-        if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-            return 0;
-        }
-
-        int ackId = readBuffer.getInt();
-
-        long timestamp = readBuffer.getLong();
-
-        byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
-        readBuffer.get(publicKeyBytes);
-
-        int contentLen = readBuffer.getInt();
-
-        if (contentLen > readBuffer.remaining()) {
-            return 0;
-        }
-
-        if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
-            peer.disconnect("wrong contentLen for kadcontent");
-            return 0;
-        }
-
-        byte[] contentBytes = new byte[contentLen];
-        readBuffer.get(contentBytes);
-
-        if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-            return 0;
-        }
-
-        byte[] signatureBytes = Utils.readSignature(readBuffer);
-        if (signatureBytes == null) {
-            return 0;
-        }
-        int lenOfSignature = signatureBytes.length;
-
-        KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
-
-        if (kadContent.verify()) {
-            boolean saved = serverContext.getKadStoreManager().put(kadContent);
-
-            KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
-            if (runningJob != null) {
-                runningJob.ack(kadContent, peer);
-            }
-
-        } else {
-            // todo
-            System.out.println("kadContent verification failed!!!");
-        }
-
-        return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
-    }
-
     @Override
     public void run() {
 
@@ -578,7 +514,7 @@ public class ConnectionReaderThread implements Runnable {
                 Log.sentry(e);
             }
 
-            long diff = (System.currentTimeMillis() - a);
+            long diff = System.currentTimeMillis() - a;
 
             if (diff > 5000L) {
                 Log.sentry("command took over 5 seconds to parse: %s".formatted(diff));
@@ -621,18 +557,6 @@ public class ConnectionReaderThread implements Runnable {
         }
         byteBuffer.position(byteBuffer.position() + length);
         return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
-    }
-
-    public static String parseString(ByteBuffer byteBuffer) {
-        int stringByteLength = byteBuffer.getInt();
-
-        ByteBuffer stringBuffer = ByteBufferPool.borrowObject(stringByteLength);
-        try {
-            byteBuffer.get(stringBuffer.array(), 0, stringByteLength);
-            return new String(stringBuffer.array(), 0, stringByteLength);
-        } finally {
-            ByteBufferPool.returnObject(stringBuffer);
-        }
     }
 
     public static KademliaId parseKademliaId(ByteBuffer byteBuffer) {

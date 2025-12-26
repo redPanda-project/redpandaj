@@ -26,15 +26,14 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class KadStoreManager {
 
-    private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; //size of content without key
-    private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; //7 days
+    private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; // size of content without key
+    private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; // 7 days
 
     private static final Map<KademliaId, KadContent> entries = new HashMap<>();
     private static final ReentrantLock lock = new ReentrantLock();
     private static long lastCleanup = 0;
     private static int size = 0;
     private final ServerContext serverContext;
-
 
     public KadStoreManager(ServerContext serverContext) {
         this.serverContext = serverContext;
@@ -67,19 +66,17 @@ public class KadStoreManager {
         try {
             KadContent foundContent = entries.get(id);
 
-
             if (foundContent == null || content.getTimestamp() > foundContent.getTimestamp()) {
                 entries.put(id, content);
                 size += content.getContent().length;
                 if (foundContent != null) {
                     size -= foundContent.getContent().length;
                 }
-//                System.out.println("stored");
+                // System.out.println("stored");
                 saved = true;
             }
 
-
-            //todo max size!
+            // todo max size!
             if (size > MIN_SIZE && currTime > lastCleanup + 1000L * 10L * 1L) {
                 lastCleanup = currTime;
 
@@ -87,24 +84,24 @@ public class KadStoreManager {
 
                 for (KadContent c : entries.values()) {
 
-
                     int distance = serverContext.getNonce().getDistance(c.getId());
 
-
-//                    long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
+                    // long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
                     long keepTime = (long) Math.ceil(1000L * 60L * 60L * 24L * (long) (160 - distance));
 
-                    keepTime = Math.max(keepTime, 1000L * 60L * 61L); //at least 61 mins such that the maintenance routine can spread the entry
+                    keepTime = Math.max(keepTime, 1000L * 60L * 61L); // at least 61 mins such that the maintenance
+                                                                      // routine can spread the entry
                     keepTime = Math.min(keepTime, MAX_KEEP_TIME); // max time
 
-//                    System.out.println("keep time: " + formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
-//                    System.out.println("id: " + Server.NONCE);
-//                    System.out.println("id: " + c.getId());
+                    // System.out.println("keep time: " +
+                    // formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
+                    // System.out.println("id: " + Server.NONCE);
+                    // System.out.println("id: " + c.getId());
 
-                    //todo: shorter times for key far away from our id
+                    // todo: shorter times for key far away from our id
                     if (c.getTimestamp() < currTime - keepTime) {
                         kademliaIds.add(c.getId());
-//                        entries.remove(c.getId());
+                        // entries.remove(c.getId());
                         size -= c.getContent().length;
                     }
                 }
@@ -115,13 +112,11 @@ public class KadStoreManager {
 
             }
 
-
         } finally {
             lock.unlock();
         }
 
         return saved;
-
 
     }
 
@@ -142,16 +137,15 @@ public class KadStoreManager {
 
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
-        //lets create a keypair for a DHT destination key, should be included in channel later
+        // lets create a keypair for a DHT destination key, should be included in
+        // channel later
 
         NodeId nodeId = new NodeId();
 
-
-        //lets calculate the destination
+        // lets calculate the destination
         byte[] pubKey = nodeId.exportPublic();
 
         System.out.println("pubkey len: " + pubKey.length);
-
 
         Date date = new Date();
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
@@ -166,40 +160,36 @@ public class KadStoreManager {
 
         Sha256Hash dhtKey = Sha256Hash.create(buffer.array());
 
-        System.out.println("" + Base58.encode((dhtKey.getBytes())) + " byteLen: " + dhtKey.getBytes().length);
+        System.out.println("" + Base58.encode(dhtKey.getBytes()) + " byteLen: " + dhtKey.getBytes().length);
 
         KademliaId kademliaId = KademliaId.fromFirstBytes(dhtKey.getBytes());
 
-//        System.out.println("kadid: " + kademliaId.hexRepresentation());
-//        System.out.println("kadid: " + Utils.bytesToHexString(dhtKey.getBytes()));
+        // System.out.println("kadid: " + kademliaId.hexRepresentation());
+        // System.out.println("kadid: " + Utils.bytesToHexString(dhtKey.getBytes()));
 
         System.out.println("kadid: " + kademliaId);
 
-        //random content
+        // random content
         byte[] payload = new byte[1024];
         new Random().nextBytes(payload);
-
 
         KadContent kadContent = new KadContent(nodeId.exportPublic(), payload);
 
         kadContent.signWith(nodeId);
 
-        System.out.println("signature: " + Utils.bytesToHexString(kadContent.getSignature()) + " len: " + kadContent.getSignature().length);
+        System.out.println("signature: " + Utils.bytesToHexString(kadContent.getSignature()) + " len: "
+                + kadContent.getSignature().length);
 
-
-        //lets check the signature
+        // lets check the signature
 
         System.out.println("verified: " + kadContent.verify());
 
-
-        //assoziate an command pointer to the job
+        // assoziate an command pointer to the job
         HashMap<Integer, ScheduledFuture> runningJobs = new HashMap<>();
-
 
         final int pointer = new Random().nextInt();
 
         Job job = new Job(runningJobs, pointer);
-
 
         ScheduledFuture future = JobScheduler.insert(job, 500);
         runningJobs.put(pointer, future);
@@ -217,8 +207,8 @@ public class KadStoreManager {
         boolean couldCancel = scheduledFuture.cancel(false);
         System.out.println("cancel: " + couldCancel);
 
-
-        //if we are able to cancel the runnable, we have to transmit the new data to the runnable
+        // if we are able to cancel the runnable, we have to transmit the new data to
+        // the runnable
         if (couldCancel) {
             r.setData("new data");
             r.run();
@@ -235,7 +225,8 @@ public class KadStoreManager {
             for (KademliaId id : entries.keySet()) {
 
                 Duration duration = Duration.ofMillis(System.currentTimeMillis() - entries.get(id).getTimestamp());
-                System.out.println("id: " + id.toString() + " " + formatDuration(duration) + " " + Base58.encode(entries.get(id).createHash().getBytes()));
+                System.out.println("id: " + id.toString() + " " + formatDuration(duration) + " "
+                        + Base58.encode(entries.get(id).createHash().getBytes()));
                 size += entries.get(id).getContent().length;
             }
         } finally {
@@ -243,7 +234,6 @@ public class KadStoreManager {
         }
         System.out.println("size in kb: " + size / 1024.);
     }
-
 
     public static void maintain(ServerContext serverContext) {
         lock.lock();
@@ -255,7 +245,6 @@ public class KadStoreManager {
             lock.unlock();
         }
     }
-
 
     static class Job implements Runnable {
 
@@ -274,7 +263,6 @@ public class KadStoreManager {
         @Override
         public void run() {
 
-
             System.out.println("asdf " + data + " done: " + done);
 
             if (done) {
@@ -290,13 +278,12 @@ public class KadStoreManager {
         }
     }
 
-
     public static String formatDuration(Duration duration) {
         long seconds = duration.getSeconds();
         long absSeconds = Math.abs(seconds);
         String positive = "%d:%02d:%02d".formatted(
                 absSeconds / 3600,
-                (absSeconds % 3600) / 60,
+                absSeconds % 3600 / 60,
                 absSeconds % 60);
         return seconds < 0 ? "-" + positive : positive;
     }

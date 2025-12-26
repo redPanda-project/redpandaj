@@ -16,9 +16,12 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
 /**
- * This class represents a NodeId for every Peer in the network. This is an ellipic curve diffie hellman key,
- * where the public key is required and the private key is optional. The associated KademliaId is computed from a SHA256
- * hash of the public key. We use HashCash to make the computation of many valid keys expensive.
+ * This class represents a NodeId for every Peer in the network. This is an
+ * ellipic curve diffie hellman key,
+ * where the public key is required and the private key is optional. The
+ * associated KademliaId is computed from a SHA256
+ * hash of the public key. We use HashCash to make the computation of many valid
+ * keys expensive.
  * <p>
  * The curve 'brainpoolp256r1' may change later
  * as well as the import and export methods.
@@ -38,7 +41,8 @@ public class NodeId implements Serializable {
     KademliaId kademliaId;
 
     /**
-     * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically computed when calling the get method.
+     * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically
+     * computed when calling the get method.
      *
      * @param keyPair
      */
@@ -55,7 +59,6 @@ public class NodeId implements Serializable {
         this.kademliaId = kademliaId;
     }
 
-
     public static NodeId generateWithSimpleKey() {
         return new NodeId(generateECKeys());
     }
@@ -64,23 +67,20 @@ public class NodeId implements Serializable {
      * Generates a new NodeId with a new random key.
      */
     public NodeId() {
-        if (!Log.isJUnitTest()) {
-//            System.out.println("generating new node id, this may take some time");
-        }
         while (true) {
-//            System.out.print(".");
+            // System.out.print(".");
             keyPair = generateECKeys();
             Sha256Hash sha256Hash = Sha256Hash.createDouble(keyPair.getPublic().getEncoded());
             byte[] bytes = sha256Hash.getBytes();
 
-//            if (bytes[0] == 0 && bytes[1] == 0) {
+            // if (bytes[0] == 0 && bytes[1] == 0) {
 
             if (Log.isJUnitTest()) {
                 break;
             }
 
             if (bytes[0] == 0) {
-                //todo change later for prod to more 0's
+                // todo change later for prod to more 0's
                 /**
                  * This key is valid
                  */
@@ -96,7 +96,6 @@ public class NodeId implements Serializable {
         return keyPair.getPrivate() != null;
     }
 
-
     /**
      * Checks if this NodeId satisfies the required property
      * (first byte from SHA256-double from public key bytes should be zero).
@@ -108,7 +107,6 @@ public class NodeId implements Serializable {
         byte[] bytes = sha256Hash.getBytes();
         return bytes[0] == 0;
     }
-
 
     public static KeyPair generateECKeys() {
         try {
@@ -129,14 +127,12 @@ public class NodeId implements Serializable {
 
     public static NodeId importWithPrivate(byte[] bytes) {
 
-
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         int len = buffer.getInt();
         byte[] privateKeyBytes = new byte[len];
         buffer.get(privateKeyBytes);
         EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-
 
         len = buffer.getInt();
         byte[] publicKeyBytes = new byte[len];
@@ -171,7 +167,7 @@ public class NodeId implements Serializable {
     }
 
     public static KademliaId fromPublicKey(PublicKey key) {
-        Sha256Hash sha256Hash = Sha256Hash.create(NodeId.exportPublic(key));
+        Sha256Hash sha256Hash = Sha256Hash.create(exportPublic(key));
 
         byte[] bytes = sha256Hash.getBytes();
 
@@ -191,7 +187,7 @@ public class NodeId implements Serializable {
     }
 
     public byte[] exportPublic() {
-        //Todo: save the value after first creation... speeed!
+        // Todo: save the value after first creation... speeed!
         return exportPublic(this.keyPair.getPublic());
     }
 
@@ -199,11 +195,11 @@ public class NodeId implements Serializable {
         return this.keyPair != null;
     }
 
-
     public static byte[] exportPublic(PublicKey publicKey) {
         byte[] encoded = publicKey.getEncoded();
 
-        //we need only the last 65 bytes since the first bytes are already given by the curve!
+        // we need only the last 65 bytes since the first bytes are already given by the
+        // curve!
 
         ByteBuffer buffer = ByteBuffer.wrap(encoded);
         byte[] bytes = new byte[PUBLIC_KEYLEN];
@@ -219,7 +215,6 @@ public class NodeId implements Serializable {
         ByteBuffer.wrap(bytesFull)
                 .put(getCurveParametersForASN1Format())
                 .put(bytes);
-
 
         EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(bytesFull);
 
@@ -239,7 +234,7 @@ public class NodeId implements Serializable {
 
     public static byte[] getCurveParametersForASN1Format() {
         if (curveParametersASN1 == null) {
-            //generate the first bytes for the X209 ASN1 format
+            // generate the first bytes for the X209 ASN1 format
             PublicKey aPublic = generateECKeys().getPublic();
             ByteBuffer wrap = ByteBuffer.wrap(aPublic.getEncoded());
             byte[] bytes = new byte[PUBLIC_KEYLEN_LONG - PUBLIC_KEYLEN];
@@ -248,7 +243,6 @@ public class NodeId implements Serializable {
         }
         return curveParametersASN1;
     }
-
 
     /**
      * Two NodeId are equal if their KademliaId is equal.
@@ -275,7 +269,8 @@ public class NodeId implements Serializable {
     }
 
     /**
-     * Sets the keypair of this object if not already provided and will check against the KademliaId that this
+     * Sets the keypair of this object if not already provided and will check
+     * against the KademliaId that this
      * keypair fits to the already provided KademliaId.
      *
      * @param keyPair
@@ -306,7 +301,8 @@ public class NodeId implements Serializable {
     }
 
     /**
-     * Hashes the bytes with SHA256 and computes the signature in ASN.1 format, for more info see:
+     * Hashes the bytes with SHA256 and computes the signature in ASN.1 format, for
+     * more info see:
      * https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
      *
      * @param bytesToSign
@@ -333,7 +329,7 @@ public class NodeId implements Serializable {
              */
 
             byte[] realSig = ecdsa.sign();
-//            System.out.println("Signature: " + Utils.bytesToHexString(realSig));
+            // System.out.println("Signature: " + Utils.bytesToHexString(realSig));
 
             return realSig;
 
@@ -347,7 +343,8 @@ public class NodeId implements Serializable {
     }
 
     /**
-     * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes should not be
+     * Verifies the bytes with the signature, this method uses SHA256withECDSA such
+     * that the bytes should not be
      * hashed by sha256 before using this method!
      *
      * @param bytesToVerify
@@ -398,12 +395,11 @@ public class NodeId implements Serializable {
         return getKademliaId().toString();
     }
 
-
     public static NodeId fromBufferGetPublic(ByteBuffer buffer) {
-        byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
+        byte[] publicKeyBytes = new byte[PUBLIC_KEYLEN];
         buffer.get(publicKeyBytes);
 
-        return NodeId.importPublic(publicKeyBytes);
+        return importPublic(publicKeyBytes);
     }
 
     @Override
