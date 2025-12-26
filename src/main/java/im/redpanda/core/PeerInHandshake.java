@@ -27,7 +27,6 @@ public class PeerInHandshake {
     public static final String ALGORITHM = "AES/CTR/NoPadding";
     public static final String PROVIDER = "SunJCE";
 
-
     String ip;
     int port = 0;
     int status = 0;
@@ -45,7 +44,7 @@ public class PeerInHandshake {
     boolean awaitingEncryption = false;
     boolean encryptionActive = false;
 
-    //Secret key and iv used for AES encryption
+    // Secret key and iv used for AES encryption
     SecretKey sharedSecretSend;
     SecretKey sharedSecretReceive;
     IvParameterSpec ivSend;
@@ -53,7 +52,6 @@ public class PeerInHandshake {
     private PeerChiperStreams peerChiperStreams;
 
     private long createdAt;
-
 
     public PeerInHandshake(String ip, SocketChannel socketChannel) {
         this.ip = ip;
@@ -70,11 +68,14 @@ public class PeerInHandshake {
 
     /**
      * 0 default value, before any handshake was parsed.
-     * <p></p>
-     * 1 first handshake was parsed, here we are waiting to obtain more information of the peer like the public key
+     * <p>
+     * </p>
+     * 1 first handshake was parsed, here we are waiting to obtain more information
+     * of the peer like the public key
      * to finish the complete handshake.
      * 2 do not connect, connected to ourselves or blacklisted
-     * -1 handshake finished from our site, we do not expect more data before switching to encryption.
+     * -1 handshake finished from our site, we do not expect more data before
+     * switching to encryption.
      * We are waiting for the switching byte to start the encryption.
      *
      * @param status
@@ -110,11 +111,10 @@ public class PeerInHandshake {
                 ConnectionHandler.selectorLock.unlock();
             }
 
-
             key.attach(this);
             this.key = key;
 
-//            peer.setSelectionKey(key);
+            // peer.setSelectionKey(key);
             ConnectionHandler.selector.wakeup();
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -182,7 +182,6 @@ public class PeerInHandshake {
         return randomFromUs;
     }
 
-
     public byte[] getRandomFromThem() {
         return randomFromThem;
     }
@@ -210,8 +209,8 @@ public class PeerInHandshake {
 
             byte[] encoded = intermediateSharedSecret.getEncoded();
 
-//            System.out.println("intermediateSharedSecret: " + Utils.bytesToHexString(encoded));
-
+            // System.out.println("intermediateSharedSecret: " +
+            // Utils.bytesToHexString(encoded));
 
             ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
             ByteBuffer bytesForPrivateAESkeyReceive = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
@@ -219,18 +218,15 @@ public class PeerInHandshake {
             bytesForPrivateAESkeySend.put(encoded);
             bytesForPrivateAESkeyReceive.put(encoded);
 
-
             bytesForPrivateAESkeySend.put(randomFromUs);
             bytesForPrivateAESkeySend.put(randomFromThem);
 
             bytesForPrivateAESkeyReceive.put(randomFromThem);
             bytesForPrivateAESkeyReceive.put(randomFromUs);
 
-
             if (bytesForPrivateAESkeySend.remaining() != 0) {
                 throw new RuntimeException("here is something wrong with the random bytes length!");
             }
-
 
             Sha256Hash sha256HashSend = Sha256Hash.create(bytesForPrivateAESkeySend.array());
             Sha256Hash sha256HashReceive = Sha256Hash.create(bytesForPrivateAESkeyReceive.array());
@@ -238,8 +234,8 @@ public class PeerInHandshake {
             sharedSecretSend = new SecretKeySpec(sha256HashSend.getBytes(), "AES");
             sharedSecretReceive = new SecretKeySpec(sha256HashReceive.getBytes(), "AES");
 
-//            System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + " " + Base58.encode(sharedSecretReceive.getEncoded()));
-
+            // System.out.println("asf " + Base58.encode(sharedSecretSend.getEncoded()) + "
+            // " + Base58.encode(sharedSecretReceive.getEncoded()));
 
             ByteBuffer bytesForIVsend = ByteBuffer.allocate(IVbytelen);
             ByteBuffer bytesForIVreceive = ByteBuffer.allocate(IVbytelen);
@@ -249,18 +245,18 @@ public class PeerInHandshake {
             bytesForIVreceive.put(randomFromThem);
             bytesForIVreceive.put(randomFromUs);
 
-            //todo: iv are just the way around for send/receive, is this a security risk?
+            // todo: iv are just the way around for send/receive, is this a security risk?
             ivSend = new IvParameterSpec(bytesForIVsend.array());
-//            System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
+            // System.out.println("send iv: " + Base58.encode(bytesForIVsend.array()));
             ivReceive = new IvParameterSpec(bytesForIVreceive.array());
-//            System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
+            // System.out.println("rec iv: " + Base58.encode(bytesForIVreceive.array()));
 
-            //todo we have to change this here for the real crypto algo
+            // todo we have to change this here for the real crypto algo
 
-//            ivSend = new IvParameterSpec(randomFromUs);
-//            System.out.println("send iv: " + Base58.encode(randomFromUs));
-//            ivReceive = new IvParameterSpec(randomFromThem);
-//            System.out.println("rec iv: " + Base58.encode(randomFromThem));
+            // ivSend = new IvParameterSpec(randomFromUs);
+            // System.out.println("send iv: " + Base58.encode(randomFromUs));
+            // ivReceive = new IvParameterSpec(randomFromThem);
+            // System.out.println("rec iv: " + Base58.encode(randomFromThem));
 
         } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchProviderException e) {
             e.printStackTrace();
@@ -305,74 +301,75 @@ public class PeerInHandshake {
              * maybe we should go for the chacha20-poly, but how to start a new round?
              */
 
-
-            //lets set up the send Cipher
+            // lets set up the send Cipher
             PeerOutputStream peerOutputStream = new PeerOutputStream();
             Cipher cipherSend = Cipher.getInstance(ALGORITHM, PROVIDER);
             cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, ivSend);
-            CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream, cipherSend);
+            CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream,
+                    cipherSend);
 
-
-            //lets set up the receive Cipher
+            // lets set up the receive Cipher
             PeerInputStream peerInputStream = new PeerInputStream();
             Cipher cipherReceive = Cipher.getInstance(ALGORITHM, PROVIDER);
             cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, ivReceive);
-            CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream, cipherReceive);
+            CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream,
+                    cipherReceive);
 
-            peerChiperStreams = new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream);
+            peerChiperStreams = new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream,
+                    cipherInputStream, cipherOutputStream);
 
-
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | NoSuchProviderException e) {
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
+                | InvalidAlgorithmParameterException | NoSuchProviderException e) {
             e.printStackTrace();
         }
     }
 
-//    public byte[] encrypt(byte[] toEncrypt) {
-//
-//        try {
-//
-//            byte[] outputEncryptedBytes;
-//
-//            outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
-//            int encryptLength = cipherSend.update(toEncrypt, 0,
-//                    toEncrypt.length, outputEncryptedBytes, 0);
-//            encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
-//
-//
-//            return outputEncryptedBytes;
-//        } catch (ShortBufferException
-//                | IllegalBlockSizeException | BadPaddingException e) {
-//            e.printStackTrace();
-//            return null;
-//        }
-//    }
-//
-//    public byte[] decrypt(byte[] bytesToDecrypt) {
-//        try {
-//            byte[] outPlain;
-//
-////            System.out.println("len to decrypt: " + bytesToDecrypt.length);
-//
-//            outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
-//            int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
-//                    bytesToDecrypt.length, outPlain, 0);
-//            decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
-//
-//            return outPlain;
-//        } catch (IllegalBlockSizeException | BadPaddingException
-//                | ShortBufferException e) {
-//            e.printStackTrace();
-//            return null;
-//        }
-//    }
-//
-//    public Cipher getCipherSend() {
-//        return cipherSend;
-//    }
-//
-//    public Cipher getCipherReceive() {
-//        return cipherReceive;
-//    }
+    // public byte[] encrypt(byte[] toEncrypt) {
+    //
+    // try {
+    //
+    // byte[] outputEncryptedBytes;
+    //
+    // outputEncryptedBytes = new byte[cipherSend.getOutputSize(toEncrypt.length)];
+    // int encryptLength = cipherSend.update(toEncrypt, 0,
+    // toEncrypt.length, outputEncryptedBytes, 0);
+    // encryptLength += cipherSend.doFinal(outputEncryptedBytes, encryptLength);
+    //
+    //
+    // return outputEncryptedBytes;
+    // } catch (ShortBufferException
+    // | IllegalBlockSizeException | BadPaddingException e) {
+    // e.printStackTrace();
+    // return null;
+    // }
+    // }
+    //
+    // public byte[] decrypt(byte[] bytesToDecrypt) {
+    // try {
+    // byte[] outPlain;
+    //
+    //// System.out.println("len to decrypt: " + bytesToDecrypt.length);
+    //
+    // outPlain = new byte[cipherReceive.getOutputSize(bytesToDecrypt.length)];
+    // int decryptLength = cipherReceive.update(bytesToDecrypt, 0,
+    // bytesToDecrypt.length, outPlain, 0);
+    // decryptLength += cipherReceive.doFinal(outPlain, decryptLength);
+    //
+    // return outPlain;
+    // } catch (IllegalBlockSizeException | BadPaddingException
+    // | ShortBufferException e) {
+    // e.printStackTrace();
+    // return null;
+    // }
+    // }
+    //
+    // public Cipher getCipherSend() {
+    // return cipherSend;
+    // }
+    //
+    // public Cipher getCipherReceive() {
+    // return cipherReceive;
+    // }
 
     public PeerChiperStreams getPeerChiperStreams() {
         return peerChiperStreams;
@@ -384,12 +381,6 @@ public class PeerInHandshake {
 
     public String getIp() {
         return ip;
-    }
-
-    @Override
-    protected void finalize() throws Throwable {
-//        System.out.println("Peer in handshake will be gcd...");
-        super.finalize();
     }
 
     public void setLightClient(boolean lightClient) {

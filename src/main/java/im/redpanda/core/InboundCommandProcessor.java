@@ -1,7 +1,6 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.KademliaInsertJob;
@@ -21,7 +20,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Date;
 import java.nio.file.StandardCopyOption;
 
@@ -673,58 +671,7 @@ public class InboundCommandProcessor {
 
     private void handleFlaschenpostPut(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
         FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(payload);
-        GMContent gmContent = GMParser.parse(serverContext, putMsg.getContent().toByteArray());
+        GMParser.parse(serverContext, putMsg.getContent().toByteArray());
     }
 
-    private int parseKademliaGetAnswer(ByteBuffer readBuffer, Peer peer) {
-        if (4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-            return 0;
-        }
-        int ackId = readBuffer.getInt();
-        long timestamp = readBuffer.getLong();
-        byte[] publicKeyBytes = new byte[NodeId.PUBLIC_KEYLEN];
-        readBuffer.get(publicKeyBytes);
-        int contentLen = readBuffer.getInt();
-        if (contentLen > readBuffer.remaining()) {
-            return 0;
-        }
-        if (contentLen < 0 && contentLen > 1024 * 1024 * 10) {
-            peer.disconnect("wrong contentLen for kadcontent");
-            return 0;
-        }
-        byte[] contentBytes = new byte[contentLen];
-        readBuffer.get(contentBytes);
-        if (MIN_SIGNATURE_LEN > readBuffer.remaining()) {
-            return 0;
-        }
-        byte[] signatureBytes = Utils.readSignature(readBuffer);
-        if (signatureBytes == null) {
-            return 0;
-        }
-        int lenOfSignature = signatureBytes.length;
-        KadContent kadContent = new KadContent(timestamp, publicKeyBytes, contentBytes, signatureBytes);
-        if (kadContent.verify()) {
-            boolean saved = serverContext.getKadStoreManager().put(kadContent);
-            KademliaSearchJob runningJob = (KademliaSearchJob) Job.getRunningJob(ackId);
-            if (runningJob != null) {
-                runningJob.ack(kadContent, peer);
-            }
-        } else {
-            System.out.println("kadContent verification failed!!!");
-        }
-        return 1 + 4 + 8 + NodeId.PUBLIC_KEYLEN + 4 + contentLen + lenOfSignature;
-    }
-
-    private static String parseString(ByteBuffer buffer) {
-        if (buffer.remaining() < 4) {
-            return null;
-        }
-        int stringSize = buffer.getInt();
-        if (buffer.remaining() < stringSize) {
-            return null;
-        }
-        byte[] bytes = new byte[stringSize];
-        buffer.get(bytes);
-        return new String(bytes);
-    }
 }

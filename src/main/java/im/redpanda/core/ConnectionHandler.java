@@ -5,7 +5,6 @@
  */
 package im.redpanda.core;
 
-
 import im.redpanda.crypt.Utils;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
@@ -64,9 +63,7 @@ public class ConnectionHandler extends Thread {
             ex.printStackTrace();
         }
 
-
     }
-
 
     /**
      * Returns the port which the ServerSocketChannel was bound to.
@@ -131,9 +128,9 @@ public class ConnectionHandler extends Thread {
             } catch (Exception e) {
                 System.out.println("could not bound to port: %s, retry".formatted(port));
                 try {
-                    Thread.sleep(1000L);
+                    sleep(1000L);
                 } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
+                    currentThread().interrupt();
                     ex.printStackTrace();
                 }
             }
@@ -157,12 +154,12 @@ public class ConnectionHandler extends Thread {
     @Override
     public void run() {
 
-        final String orgName = Thread.currentThread().getName();
+        final String orgName = currentThread().getName();
         if (!orgName.contains(" ")) {
-            Thread.currentThread().setName("IncomingHandler");
+            currentThread().setName("IncomingHandler");
         }
 
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
+        setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
 
         ConnectionReaderThread.init(serverContext);
 
@@ -182,7 +179,7 @@ public class ConnectionHandler extends Thread {
                     System.out.println("exception in selector");
                 } catch (InterruptedException ex) {
                     ex.printStackTrace();
-                    Thread.currentThread().interrupt();
+                    currentThread().interrupt();
                 }
                 continue;
             }
@@ -246,7 +243,7 @@ public class ConnectionHandler extends Thread {
         } catch (IOException e) {
             key.cancel();
             if (key.attachment() instanceof PeerInHandshake) {
-                PeerInHandshake peerInHandshake = ((PeerInHandshake) key.attachment());
+                PeerInHandshake peerInHandshake = (PeerInHandshake) key.attachment();
                 Log.putStd("error! " + peerInHandshake.ip);
                 try {
                     peerInHandshake.getSocketChannel().close();
@@ -254,7 +251,7 @@ public class ConnectionHandler extends Thread {
                     ex.printStackTrace();
                 }
             } else if (key.attachment() instanceof Peer) {
-                Peer peer = ((Peer) key.attachment());
+                Peer peer = (Peer) key.attachment();
                 Log.putStd("error! " + peer.ip);
                 peer.disconnect("IOException");
             }
@@ -295,12 +292,11 @@ public class ConnectionHandler extends Thread {
              */
             peer.encrypteOutputdata();
 
-
             peer.writeBufferCrypted.flip();
             remainingBytes = peer.writeBufferCrypted.hasRemaining();
             peer.writeBufferCrypted.compact();
 
-            //switch buffer for reading
+            // switch buffer for reading
             if (!remainingBytes) {
                 key.interestOps(SelectionKey.OP_READ);
             } else {
@@ -327,9 +323,9 @@ public class ConnectionHandler extends Thread {
         Peer peer = (Peer) key.attachment();
         int interestOps = key.interestOps();
 
-        if ((interestOps == (SelectionKey.OP_WRITE | SelectionKey.OP_READ))) {
+        if (interestOps == (SelectionKey.OP_WRITE | SelectionKey.OP_READ)) {
             key.interestOps(SelectionKey.OP_WRITE);
-        } else if (interestOps == (SelectionKey.OP_READ)) {
+        } else if (interestOps == SelectionKey.OP_READ) {
             key.interestOps(0);
         } else {
             System.out.println("Error code 45354824173 " + interestOps);
@@ -340,7 +336,8 @@ public class ConnectionHandler extends Thread {
             workingRead.add(peer);
             peersToReadAndParse.add(peer);
         } else {
-            Log.putStd("Error code 1429172674 " + ConnectionHandler.workingRead.size() + " " + ConnectionHandler.doneRead.size() + " " + ConnectionHandler.peersToReadAndParse.size());
+            Log.putStd("Error code 1429172674 " + workingRead.size() + " " + doneRead.size() + " "
+                    + peersToReadAndParse.size());
         }
     }
 
@@ -401,7 +398,7 @@ public class ConnectionHandler extends Thread {
     public void addPeerInHandshake(PeerInHandshake peerInHandshake) {
         peerInHandshakesLock.lock();
         try {
-            ConnectionHandler.peerInHandshakes.add(peerInHandshake);
+            peerInHandshakes.add(peerInHandshake);
         } finally {
             peerInHandshakesLock.unlock();
         }
@@ -411,7 +408,7 @@ public class ConnectionHandler extends Thread {
         try {
             workingRead.remove(p);
 
-            //ToDo: optimize
+            // ToDo: optimize
             p.writeBufferLock.lock();
             try {
                 p.setWriteBufferFilled();
@@ -435,8 +432,8 @@ public class ConnectionHandler extends Thread {
                 boolean connected = false;
                 try {
                     connected = peerInHandshake.getSocketChannel().finishConnect();
-                } catch (IOException | SecurityException e) {
-                    //ignore exceptions here
+                } catch (IOException | SecurityException ignored) {
+                    // connection could not be established, will be handled by !connected check
                 }
 
                 if (!connected) {
@@ -445,7 +442,7 @@ public class ConnectionHandler extends Thread {
                     return;
                 }
 
-                //we have to remove the OP_CONNECT interest or the selection key will be faulty
+                // we have to remove the OP_CONNECT interest or the selection key will be faulty
                 key.interestOps(SelectionKey.OP_READ);
 
                 Log.putStd("Connection established...");
@@ -474,14 +471,17 @@ public class ConnectionHandler extends Thread {
                     Log.put("read: " + read + " " + key.interestOps(), 150);
                     if (peerInHandshake.getStatus() == 0) {
                         /**
-                         * The status indicates that no handshake was parsed before for this PeerInHandshake
+                         * The status indicates that no handshake was parsed before for this
+                         * PeerInHandshake
                          */
                         ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
                     } else {
 
                         /**
-                         * The status indicates that the first handshake was already parsed before for this
-                         * PeerInHandshake. Here we are providing more data for the other Peer like the public key.
+                         * The status indicates that the first handshake was already parsed before for
+                         * this
+                         * PeerInHandshake. Here we are providing more data for the other Peer like the
+                         * public key.
                          */
                         byte command = allocate.get();
                         if (command == Command.REQUEST_PUBLIC_KEY) {
@@ -521,12 +521,12 @@ public class ConnectionHandler extends Thread {
 
                         } else if (command == Command.ACTIVATE_ENCRYPTION) {
 
-
                             /**
-                             * We received the byte to activate the encryption and we are awaiting the encryption activation byte
+                             * We received the byte to activate the encryption and we are awaiting the
+                             * encryption activation byte
                              */
 
-                            //lets read the random bytes from them
+                            // lets read the random bytes from them
 
                             if (allocate.remaining() < PeerInHandshake.IVbytelen / 2.) {
                                 System.out.println("not enough bytes for encryption... " + allocate.remaining());
@@ -545,9 +545,7 @@ public class ConnectionHandler extends Thread {
 
                         }
 
-
                     }
-
 
                     /**
                      * Lets check if we are ready to start the encryption for this handshaking peer
@@ -565,7 +563,8 @@ public class ConnectionHandler extends Thread {
                         peerInHandshake.setWeSendOurRandom(true);
                     }
 
-                    if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption() && peerInHandshake.hasPublicKey()) {
+                    if (peerInHandshake.getStatus() == -1 && peerInHandshake.isAwaitingEncryption()
+                            && peerInHandshake.hasPublicKey()) {
                         peerInHandshake.setAwaitingEncryption(false);
 
                         Log.put("lets generate the shared secret", 80);
@@ -579,7 +578,6 @@ public class ConnectionHandler extends Thread {
 
                         peerInHandshake.activateEncryption();
 
-
                         /**
                          * lets send the first ping
                          */
@@ -588,14 +586,13 @@ public class ConnectionHandler extends Thread {
                         bytesSendToPing.put(Command.PING);
                         bytesSendToPing.flip();
 
-
                         ByteBuffer byteBuffer = ByteBufferPool.borrowObject(16);
-
 
                         peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing, byteBuffer);
 
-//                                    byte[] encrypt = peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing);
-//                                    ByteBuffer wrap = ByteBuffer.wrap(encrypt);
+                        // byte[] encrypt =
+                        // peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing);
+                        // ByteBuffer wrap = ByteBuffer.wrap(encrypt);
 
                         byteBuffer.flip();
 
@@ -609,16 +606,13 @@ public class ConnectionHandler extends Thread {
                         byteBuffer.compact();
                         ByteBufferPool.returnObject(byteBuffer);
 
-
                     }
-
 
                 } else {
                     /**
                      * The encryption is active in this section, lets check that first ping
                      */
                     System.out.println("received first encrypted command...");
-
 
                     ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(16);
 
@@ -632,7 +626,8 @@ public class ConnectionHandler extends Thread {
                         System.out.println("received first ping...");
 
                         /**
-                         * We can now safely transfer the open connection from the peerInHandshake to the
+                         * We can now safely transfer the open connection from the peerInHandshake to
+                         * the
                          * actual peer
                          */
                         Peer peer = peerInHandshake.getPeer();
@@ -647,11 +642,9 @@ public class ConnectionHandler extends Thread {
                     tempHandshakeReadBuffer.compact();
                     ByteBufferPool.returnObject(tempHandshakeReadBuffer);
 
-
                 }
 
             }
-
 
         } catch (IOException e) {
             Log.put("caught io exception in handshake...", 20);
@@ -673,7 +666,6 @@ public class ConnectionHandler extends Thread {
         }
     }
 
-
     public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
 
         ReentrantLock writeBufferLock = peerOrigin.getWriteBufferLock();
@@ -684,8 +676,7 @@ public class ConnectionHandler extends Thread {
 
             peerOrigin.setupConnectionForPeer(peerInHandshake);
 
-
-            //update the selection key to the actual peer
+            // update the selection key to the actual peer
             peerInHandshake.getKey().attach(peerOrigin);
 
             // Log a clear success message for e2e and operators
@@ -693,7 +684,8 @@ public class ConnectionHandler extends Thread {
                     peerOrigin.getIp(), peerOrigin.getPort(), peerInHandshake.getIdentity());
 
             /**
-             * If this is a new connection not initialzed by us this peer might not be in our PeerList, lets add it by KademliaId
+             * If this is a new connection not initialzed by us this peer might not be in
+             * our PeerList, lets add it by KademliaId
              */
             Peer oldPeer = peerList.add(peerOrigin);
             if (oldPeer != null && oldPeer.isConnected()) {
@@ -714,7 +706,8 @@ public class ConnectionHandler extends Thread {
                 if (byKademliaId == null) {
                     byKademliaId = new Node(serverContext, peerInHandshake.getNodeId());
                 } else {
-                    System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: " + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
+                    System.out.println("found node in db: " + byKademliaId.getNodeId().getKademliaId() + " last seen: "
+                            + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
                 }
                 byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
                 peerOrigin.setNode(byKademliaId);
@@ -734,6 +727,5 @@ public class ConnectionHandler extends Thread {
             peerInHandshakesLock.unlock();
         }
     }
-
 
 }

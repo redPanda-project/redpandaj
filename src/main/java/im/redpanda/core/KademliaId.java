@@ -19,7 +19,7 @@ import java.util.BitSet;
 public class KademliaId implements Serializable {
 
     public final transient static int ID_LENGTH = 160;
-    public final transient static int ID_LENGTH_BYTES = (ID_LENGTH / 8);
+    public final transient static int ID_LENGTH_BYTES = ID_LENGTH / 8;
     private final byte[] keyBytes;
     private int nodeDistance = -1;
 
@@ -31,7 +31,8 @@ public class KademliaId implements Serializable {
     public KademliaId(String data) {
         keyBytes = data.getBytes();
         if (keyBytes.length != ID_LENGTH / 8) {
-            throw new IllegalArgumentException("Specified Data need to be " + (ID_LENGTH / 8) + " characters long. Byte len is: " + keyBytes.length);
+            throw new IllegalArgumentException("Specified Data need to be " + (ID_LENGTH / 8)
+                    + " characters long. Byte len is: " + keyBytes.length);
         }
     }
 
@@ -50,7 +51,8 @@ public class KademliaId implements Serializable {
      */
     public KademliaId(byte[] bytes) {
         if (bytes.length != ID_LENGTH / 8) {
-            throw new IllegalArgumentException("Specified Data need to be " + (ID_LENGTH / 8) + " characters long. Data Given: '" + new String(bytes) + "'");
+            throw new IllegalArgumentException("Specified Data need to be " + (ID_LENGTH / 8)
+                    + " characters long. Data Given: '" + new String(bytes) + "'");
         }
         this.keyBytes = bytes;
     }
@@ -65,7 +67,6 @@ public class KademliaId implements Serializable {
 
         return new KademliaId(bytesToUse);
     }
-
 
     public byte[] getBytes() {
         return this.keyBytes;
@@ -135,7 +136,10 @@ public class KademliaId implements Serializable {
     public KademliaId generateNodeIdByDistance(int distance) {
         byte[] result = new byte[ID_LENGTH / 8];
 
-        /* Since distance = ID_LENGTH - prefixLength, we need to fill that amount with 0's */
+        /*
+         * Since distance = ID_LENGTH - prefixLength, we need to fill that amount with
+         * 0's
+         */
         int numByteZeroes = (ID_LENGTH - distance) / 8;
         int numBitZeroes = 8 - (distance % 8);
 
@@ -152,7 +156,7 @@ public class KademliaId implements Serializable {
             /* Shift 1 zero into the start of the value */
             bits.clear(i);
         }
-        bits.flip(0, 8);        // Flip the bits since they're in reverse order
+        bits.flip(0, 8); // Flip the bits since they're in reverse order
         result[numByteZeroes] = bits.toByteArray()[0];
 
         /* Set the remaining bytes to Maximum value */
@@ -182,7 +186,7 @@ public class KademliaId implements Serializable {
                     if (a) {
                         count++;
                     } else {
-                        break;   // Reset the count if we encounter a non-zero number
+                        break; // Reset the count if we encounter a non-zero number
                     }
                 }
 
@@ -210,7 +214,6 @@ public class KademliaId implements Serializable {
          */
         return ID_LENGTH - this.xor(to).getFirstSetBitIndex();
     }
-
 
     public String hexRepresentation() {
         /* Returns the hex format of this NodeId */

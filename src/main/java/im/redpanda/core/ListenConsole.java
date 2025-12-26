@@ -3,7 +3,6 @@ package im.redpanda.core;
 import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.kademlia.KadStoreManager;
 import im.redpanda.store.helper.GraphAdjacentMatrixPrinter;
-import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -15,8 +14,6 @@ import java.lang.management.ThreadMXBean;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 
 public class ListenConsole extends Thread {
     private final PeerList peerList;
@@ -55,7 +52,8 @@ public class ListenConsole extends Thread {
 
             if (readLine.equals("")) {
 
-                System.out.println("Status listenPort: " + serverContext.getPort() + " NONCE: " + serverContext.getNonce() + "\n");
+                System.out.println(
+                        "Status listenPort: " + serverContext.getPort() + " NONCE: " + serverContext.getNonce() + "\n");
 
                 int actCons = 0;
 
@@ -67,7 +65,9 @@ public class ListenConsole extends Thread {
                     ArrayList<Peer> list = peerArrayList;
                     Collections.sort(list);
 
-                    System.out.format("%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n", "[IP]:PORT", "nonce", "last answer", "conntected", "retries", "ping", "loaded Msg", "bytes out", "bytes in", "bad Msg", "ToSyncM", "RSM", "Rating");
+                    System.out.format("%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n", "[IP]:PORT",
+                            "nonce", "last answer", "conntected", "retries", "ping", "loaded Msg", "bytes out",
+                            "bytes in", "bad Msg", "ToSyncM", "RSM", "Rating");
                     for (Peer peer : list) {
 
                         if (peer.isConnected()) {
@@ -89,32 +89,29 @@ public class ListenConsole extends Thread {
                             nodeId = peer.getNodeId().getKademliaId().toString().substring(0, 10);
                         }
 
-                        System.out.format("%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n", "[" + peer.ip + "]:" + peer.port, nodeId, c, "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null), peer.retries, (Math.round(peer.ping * 100) / 100.), "-", peer.sendBytes, peer.receivedBytes, peer.removedSendMessages.size());
-
+                        System.out.format("%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n",
+                                "[" + peer.ip + "]:" + peer.port, nodeId, c,
+                                "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null),
+                                peer.retries, Math.round(peer.ping * 100) / 100., "-", peer.sendBytes,
+                                peer.receivedBytes, peer.removedSendMessages.size());
 
                     }
 
+                    // System.out.format("%12s %25s %12s %12s\n", "ID", "Last Seen", "SyncedMsgs",
+                    // "ToSync");
 
-//                    System.out.format("%12s %25s %12s %12s\n", "ID", "Last Seen", "SyncedMsgs", "ToSync");
+                    System.out.println("Connected to " + actCons + " peers. (NAT type: "
+                            + (Settings.NAT_OPEN ? "open" : "closed") + ")");
+                    System.out.println(
+                            "Traffic: " + Server.inBytes / 1024. + " kb / " + Server.outBytes / 1024. + " kb.");
 
-
-                    System.out.println("Connected to " + actCons + " peers. (NAT type: " + (Settings.NAT_OPEN ? "open" : "closed") + ")");
-                    System.out.println("Traffic: " + Server.inBytes / 1024. + " kb / " + Server.outBytes / 1024. + " kb.");
-
-//                    System.out.println("Services last run: ConnectionHandler: " + (System.currentTimeMillis() - ConnectionHandler.lastRun) + " MessageDownloader: " + (System.currentTimeMillis() - MessageDownloader.lastRun) + " MessageVerifierHsqlDb: " + (System.currentTimeMillis() - MessageVerifierHsqlDb.lastRun));
-//                    System.out.println("Livetime socketio connections: " + Stats.getSocketioConnectionsLiveTime());
-
-                    Map<String, List<DefaultPooledObjectInfo>> stringListMap = ByteBufferPool.getPool().listAllObjects();
-
-                    String out = "";
-
-                    for (String s : stringListMap.keySet()) {
-                        out += "key: " + s + " size: " + stringListMap.get(s).size() + "\n";
-                    }
-
-
-//                    System.out.println("\n\nList of ByteBufferPool: \n" + out + "\n\n");
-
+                    // System.out.println("Services last run: ConnectionHandler: " +
+                    // (System.currentTimeMillis() - ConnectionHandler.lastRun) + "
+                    // MessageDownloader: " + (System.currentTimeMillis() -
+                    // MessageDownloader.lastRun) + " MessageVerifierHsqlDb: " +
+                    // (System.currentTimeMillis() - MessageVerifierHsqlDb.lastRun));
+                    // System.out.println("Livetime socketio connections: " +
+                    // Stats.getSocketioConnectionsLiveTime());
 
                     System.out.println("KadStore entries: ");
                     KadStoreManager.printStatus();
@@ -127,13 +124,17 @@ public class ListenConsole extends Thread {
                 }
 
                 if (serverContext.getNodeStore() != null) {
-                    System.out.println(String.format("Current Network Graph with weights representing the performance for garlic routing with %s edges.", serverContext.getNodeStore().getNodeGraph().edgeSet().size()));
+                    System.out.println(String.format(
+                            "Current Network Graph with weights representing the performance for garlic routing with %s edges.",
+                            serverContext.getNodeStore().getNodeGraph().edgeSet().size()));
                     for (Node node : serverContext.getNodeStore().getNodeGraph().vertexSet()) {
                         System.out.print(node.toString() + ", ");
                     }
                     System.out.println();
                     GraphAdjacentMatrixPrinter.printGraph(serverContext.getNodeStore().getNodeGraph());
-                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate() + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: " + PeerPerformanceTestGarlicMessageJob.getCountFailed());
+                    System.out.println("Test success rate: " + PeerPerformanceTestGarlicMessageJob.getSuccessRate()
+                            + " success: " + PeerPerformanceTestGarlicMessageJob.getCountSuccess() + " failed: "
+                            + PeerPerformanceTestGarlicMessageJob.getCountFailed());
                 }
 
             } else if (readLine.equals("ll")) {
@@ -177,16 +178,13 @@ public class ListenConsole extends Thread {
                 }
                 peerList.getReadWriteLock().writeLock().unlock();
 
-
             } else if (readLine.equals("alloc")) {
                 System.out.println("allocating buffers by pool");
 
                 ByteBufferPool.returnObject(ByteBufferPool.borrowObject(1024 * 1024 * 4));
 
-
             } else if (readLine.equals("a")) {
                 System.out.println("add ip:port");
-
 
                 String readLine2 = bufferedReader.readLine();
                 String[] split = readLine2.split(":");
