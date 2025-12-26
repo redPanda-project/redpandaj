@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.Duration;
 import java.util.Calendar;
