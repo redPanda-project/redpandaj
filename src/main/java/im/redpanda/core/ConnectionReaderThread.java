@@ -583,7 +583,7 @@ public class ConnectionReaderThread extends Thread {
             long diff = (System.currentTimeMillis() - a);
 
             if (diff > 5000L) {
-                Log.sentry(String.format("command took over 5 seconds to parse: %s", diff));
+                Log.sentry("command took over 5 seconds to parse: %s".formatted(diff));
             }
 
             ConnectionHandler.doneRead.add(peer);

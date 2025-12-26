@@ -19,6 +19,7 @@ import java.io.Serializable;
 public class LocalSettings implements Serializable {
 
 
+    @Serial
     private static final long serialVersionUID = 639L;
 
     private NodeId myIdentity;

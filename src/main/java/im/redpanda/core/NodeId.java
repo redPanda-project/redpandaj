@@ -263,8 +263,8 @@ public class NodeId implements Serializable {
             return true;
         }
 
-        if (obj instanceof NodeId) {
-            return getKademliaId().equals(((NodeId) obj).getKademliaId());
+        if (obj instanceof NodeId id) {
+            return getKademliaId().equals(id.getKademliaId());
         }
 
         return false;
