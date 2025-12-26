@@ -1,11 +1,11 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Command;
+import im.redpanda.core.Log;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 
 public class RequestPeerListJob extends Job {
-
 
     public RequestPeerListJob(ServerContext serverContext) {
         super(serverContext, 1000L * 30L * 1L, true);
@@ -15,12 +15,10 @@ public class RequestPeerListJob extends Job {
     public void init() {
     }
 
-
     @Override
     public void work() {
 
-
-        //todo request and send peers over garlic messages...
+        // todo request and send peers over garlic messages...
 
         try {
             Peer peer = serverContext.getPeerList().getGoodPeer(1.0f);
@@ -32,9 +30,9 @@ public class RequestPeerListJob extends Job {
                 peer.getWriteBufferLock().unlock();
             }
         } catch (Exception e) {
+            Log.put("Error requesting peerlist", 100);
         }
 
     }
-
 
 }

@@ -20,8 +20,6 @@ public class PeerJobs extends Thread {
         final String orgName = Thread.currentThread().getName();
         Thread.currentThread().setName(orgName + " - ChronJobs for peer communication");
 
-        long lastSaved = System.currentTimeMillis();
-
         try {
             sleep(3000);
         } catch (InterruptedException ex) {
@@ -79,10 +77,11 @@ public class PeerJobs extends Thread {
 
                             peer.disconnect("timeout");
                             if (peer.getNodeId() == null) {
-                                Log.put("removed peer from peerList, tried once and peer never connected before: " + peer.ip + ":" + peer.port, 120);
+                                Log.put("removed peer from peerList, tried once and peer never connected before: "
+                                        + peer.ip + ":" + peer.port, 120);
                             }
 
-                            //todo: interrupt outbound thread?
+                            // todo: interrupt outbound thread?
                         } else if (peer.getLastAnswered() > Settings.pingTimeout * 2) {
                             peer.writeBuffer = null;
                             peer.writeBufferCrypted = null;
@@ -107,5 +106,3 @@ public class PeerJobs extends Thread {
         }
     }
 }
-
-

@@ -96,11 +96,13 @@ public class PeerTest {
         Peer peer = new Peer("1.1.1.1", 123);
         Peer peer2 = new Peer("1.1.1.1", 123);
 
-        KademliaId kademliaId = KademliaId.fromFirstBytes(Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000"));
-        KademliaId kademliaId2 = KademliaId.fromFirstBytes(Utils.parseAsHexOrBase58("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
+        KademliaId kademliaId = KademliaId.fromFirstBytes(
+                Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000"));
+        KademliaId kademliaId2 = KademliaId.fromFirstBytes(
+                Utils.parseAsHexOrBase58("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
 
-        byte[] bytes = Utils.parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000");
-
+        byte[] bytes = Utils
+                .parseAsHexOrBase58("000000000000000000000000000000000000000000000000000000000000000000000000");
 
         peer.setNodeId(new NodeId(kademliaId));
         peer2.setNodeId(new NodeId(kademliaId2));
@@ -111,7 +113,8 @@ public class PeerTest {
     }
 
     @Test
-    public void decryptInputDataNoBytes() throws PeerProtocolException, InvalidAlgorithmParameterException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException {
+    public void decryptInputDataNoBytes() throws PeerProtocolException, InvalidAlgorithmParameterException,
+            NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException {
         Peer peer = new Peer("ip", 59558, new NodeId());
 
         setUpTestCipherStreams(peer);
@@ -128,7 +131,8 @@ public class PeerTest {
     }
 
     @Test
-    public void decryptInputDataSimpleBytes() throws PeerProtocolException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
+    public void decryptInputDataSimpleBytes() throws PeerProtocolException, NoSuchPaddingException,
+            NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
         Peer peer = new Peer("ip", 59558, new NodeId());
 
         setUpTestCipherStreams(peer);
@@ -150,7 +154,8 @@ public class PeerTest {
     }
 
     @Test
-    public void decryptInputDataTooSmallReadBuffer() throws PeerProtocolException, NoSuchPaddingException, NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
+    public void decryptInputDataTooSmallReadBuffer() throws PeerProtocolException, NoSuchPaddingException,
+            NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, InvalidKeyException {
         Peer peer = new Peer("ip", 59558, new NodeId());
 
         setUpTestCipherStreams(peer);
@@ -176,7 +181,8 @@ public class PeerTest {
         assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
     }
 
-    private void setUpTestCipherStreams(Peer peer) throws NoSuchAlgorithmException, NoSuchProviderException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException {
+    private void setUpTestCipherStreams(Peer peer) throws NoSuchAlgorithmException, NoSuchProviderException,
+            NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException {
         IvParameterSpec zeroIv = new IvParameterSpec(ByteBuffer.allocate(IVbytelen).array());
 
         ByteBuffer bytesForPrivateAESkeySend = ByteBuffer.allocate(32 + PeerInHandshake.IVbytelen);
@@ -190,15 +196,16 @@ public class PeerTest {
         PeerOutputStream peerOutputStream = new PeerOutputStream();
         Cipher cipherSend = Cipher.getInstance(ALGORITHM, PROVIDER);
         cipherSend.init(Cipher.ENCRYPT_MODE, sharedSecretSend, zeroIv);
-        CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream, cipherSend);
+        CipherOutputStreamByteBuffer cipherOutputStream = new CipherOutputStreamByteBuffer(peerOutputStream,
+                cipherSend);
 
-
-        //lets set up the receive Cipher
+        // lets set up the receive Cipher
         PeerInputStream peerInputStream = new PeerInputStream();
         Cipher cipherReceive = Cipher.getInstance(ALGORITHM, PROVIDER);
         cipherReceive.init(Cipher.DECRYPT_MODE, sharedSecretReceive, zeroIv);
         CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream, cipherReceive);
 
-        peer.setPeerChiperStreams(new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream));
+        peer.setPeerChiperStreams(
+                new PeerChiperStreams(peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream));
     }
 }

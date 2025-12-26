@@ -9,8 +9,6 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 import java.time.Duration;
@@ -43,8 +41,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
     private static final AtomicInteger countSuccess = new AtomicInteger();
     private static final AtomicInteger countFailed = new AtomicInteger();
-
-    private static final Logger logger = LogManager.getLogger();
 
     ArrayList<Node> nodes;
     boolean success = false;
@@ -228,30 +224,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     @Override
     public void work() {
         if (getEstimatedRuntime() > JOB_TIMEOUT) {
-            // System.out.println("garlic check failed " + getEstimatedRuntime() + ", path:
-            // " +
-            // printPath());
 
             if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
                 done();
             }
         }
-    }
-
-    private String printPath() {
-        DefaultDirectedWeightedGraph<Node, NodeEdge> g = serverContext.getNodeStore().getNodeGraph();
-
-        String a = "";
-        Node nodeBefore = null;
-        for (Node node : nodes) {
-            if (nodeBefore != null) {
-                a += " -(" + "%.1f".formatted(g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
-            } else {
-                a += node;
-            }
-            nodeBefore = node;
-        }
-        return a;
     }
 
     @Override

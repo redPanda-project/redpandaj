@@ -186,7 +186,7 @@ public class GMParser {
                 try {
                     path = DijkstraShortestPath.findPathBetween(serverContext.getNodeStore().getNodeGraph(),
                             serverContext.getNode(), targetNode);
-                } catch (IllegalArgumentException e) {
+                } catch (IllegalArgumentException ignored) {
                     // nothing to do
                 }
 

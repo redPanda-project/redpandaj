@@ -21,20 +21,16 @@ public class GarlicMessage extends Flaschenpost {
     public static final int IV_LEN = 16;
 
     /**
-     * This is the {@link NodeId} containing the public key of the target {@link im.redpanda.core.Peer}/{@link im.redpanda.core.Node}
+     * This is the {@link NodeId} containing the public key of the target
+     * {@link im.redpanda.core.Peer}/{@link im.redpanda.core.Node}
      * and is only used for the creation process.
      */
     private NodeId targetsNodeId;
-    private byte[] targetPublicKey;
     /**
      * The NodeId used for encryption. This NodeId should not be reused!
      * There is always a new NodeId for every new garlic message.
      */
     private final NodeId encryptionNodeId;
-    /**
-     * ackId which should be encrypted as well. This ackId is used to acknowledge the Flaschenpost.
-     */
-    private int ackId;
     /**
      * The Content of the GarlicMessage is a List of other GMContent objects.
      */
@@ -47,15 +43,12 @@ public class GarlicMessage extends Flaschenpost {
         super(serverContext, targetsNodeId.getKademliaId());
 
         this.targetsNodeId = targetsNodeId;
-        this.targetPublicKey = targetsNodeId.exportPublic();
-        this.ackId = Server.secureRandom.nextInt();
         this.nestedMessages = new ArrayList<>();
         this.iv = new byte[16];
         Server.secureRandom.nextBytes(this.iv);
 
         this.encryptionNodeId = NodeId.generateWithSimpleKey();
     }
-
 
     public GarlicMessage(ServerContext serverContext, byte[] bytes) {
         super(serverContext);
@@ -64,22 +57,22 @@ public class GarlicMessage extends Flaschenpost {
 
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
-        byte gmType = buffer.get();
+        buffer.get(); // Skip gmType
 
         int overallByteLen = buffer.getInt();
 
         if (overallByteLen != buffer.remaining()) {
-            throw new RuntimeException("Warning, length of gm content wrong: " + overallByteLen + " " + buffer.remaining());
+            throw new RuntimeException(
+                    "Warning, length of gm content wrong: " + overallByteLen + " " + buffer.remaining());
         }
 
         destination = KademliaId.fromBuffer(buffer);
-
 
         byte[] ivBytes = new byte[IV_LEN];
         buffer.get(ivBytes);
         iv = ivBytes;
 
-        encryptionNodeId = NodeId.fromBufferGetPublic(buffer);;
+        encryptionNodeId = NodeId.fromBufferGetPublic(buffer);
 
         int encryptedLength = buffer.getInt();
         encryptedInformation = new byte[encryptedLength];
@@ -98,7 +91,6 @@ public class GarlicMessage extends Flaschenpost {
         return nestedMessages;
     }
 
-
     @Override
     protected void computeContent() {
 
@@ -116,9 +108,9 @@ public class GarlicMessage extends Flaschenpost {
             contentToEncrypt.put(content);
         }
 
-
         if (contentToEncrypt.position() != contentToEncrypt.limit()) {
-            throw new RuntimeException("contentToEncrypt has wrong size: " + contentToEncrypt.position() + " " + contentToEncrypt.limit());
+            throw new RuntimeException(
+                    "contentToEncrypt has wrong size: " + contentToEncrypt.position() + " " + contentToEncrypt.limit());
         }
 
         SecretKey sharedSecret = getSharedSecret(encryptionNodeId, targetsNodeId);
@@ -132,7 +124,8 @@ public class GarlicMessage extends Flaschenpost {
 
             byte[] signature = encryptionNodeId.sign(encryptedBytes);
 
-            int overallLength = 1 + 4 + KademliaId.ID_LENGTH_BYTES + IV_LEN + NodeId.PUBLIC_KEYLEN + 4 + encryptedBytes.length + signature.length;
+            int overallLength = 1 + 4 + KademliaId.ID_LENGTH_BYTES + IV_LEN + NodeId.PUBLIC_KEYLEN + 4
+                    + encryptedBytes.length + signature.length;
 
             ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(overallLength);
             encryptedAndSignedBytes.put(getGMType().getId());
@@ -145,13 +138,14 @@ public class GarlicMessage extends Flaschenpost {
             encryptedAndSignedBytes.put(signature);
 
             if (encryptedAndSignedBytes.position() != encryptedAndSignedBytes.limit()) {
-                throw new RuntimeException("contentToEncrypt has wrong size: " + encryptedAndSignedBytes.position() + " " + encryptedAndSignedBytes.limit());
+                throw new RuntimeException("contentToEncrypt has wrong size: " + encryptedAndSignedBytes.position()
+                        + " " + encryptedAndSignedBytes.limit());
             }
 
             setContent(encryptedAndSignedBytes.array());
 
-
-        } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException
+                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             Log.sentry(e);
             e.printStackTrace();
         }
@@ -185,7 +179,6 @@ public class GarlicMessage extends Flaschenpost {
             ByteBuffer decryptedBuffer = ByteBuffer.wrap(decryptedBytes);
             int numberOfNeastedMessages = decryptedBuffer.getInt();
 
-
             for (int i = 0; i < numberOfNeastedMessages; i++) {
 
                 int toParseBytes = decryptedBuffer.getInt();
@@ -204,7 +197,8 @@ public class GarlicMessage extends Flaschenpost {
 
             }
 
-        } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+        } catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException
+                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             Log.sentry(e);
             e.printStackTrace();
         }
@@ -225,7 +219,6 @@ public class GarlicMessage extends Flaschenpost {
         return verified;
     }
 
-
     private SecretKey getSharedSecret(NodeId privateKey, NodeId pub) {
         try {
             KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
@@ -244,7 +237,6 @@ public class GarlicMessage extends Flaschenpost {
     public GMType getGMType() {
         return GMType.GARLIC_MESSAGE;
     }
-
 
     @Override
     public boolean equals(Object o) {

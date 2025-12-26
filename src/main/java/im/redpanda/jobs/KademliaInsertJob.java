@@ -110,16 +110,6 @@ public class KademliaInsertJob extends Job {
                                     + peers.size() + " distance: " + kadContent.getId().getDistance(p.getKademliaId())
                                     + " target: " + kadContent.getId());
 
-                            int toWriteBytes = writeBuffer.position() + kadContent.getContent().length + 1024;
-
-                            // if (p.writeBuffer.remaining() < toWriteBytes) {
-                            // ByteBuffer allocate = ByteBuffer.allocate(toWriteBytes);
-                            // p.writeBuffer.flip();
-                            // allocate.put(p.writeBuffer);
-                            // p.writeBuffer = allocate;
-                            // writeBuffer = allocate;
-                            // }
-
                             var storeMsg = KademliaStore.newBuilder()
                                     .setJobId(getJobId())
                                     .setTimestamp(kadContent.getTimestamp())
@@ -148,9 +138,8 @@ public class KademliaInsertJob extends Job {
                         } finally {
                             p.getWriteBufferLock().unlock();
                         }
-                    } else {
-
                     }
+
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

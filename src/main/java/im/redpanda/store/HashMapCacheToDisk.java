@@ -17,8 +17,8 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
     public final long TTL_IN_MEMORY_OFF_HEAP = 10L * 60L * 1000L;
 
     LinkedBlockingQueue<K> evictionQueue = new LinkedBlockingQueue<>();
-    private final HTreeMap onDisk;
-    private final HTreeMap inMemory;
+    private final HTreeMap<K, V> onDisk;
+    private final HTreeMap<K, V> inMemory;
 
     public HashMapCacheToDisk() {
 
@@ -40,19 +40,23 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
 
         // Big map populated with data expired from cache
 
-        onDisk = dbDisk
+        @SuppressWarnings("unchecked")
+        HTreeMap<K, V> onDiskTemp = (HTreeMap<K, V>) dbDisk
                 .hashMap("onDisk")
                 .expireAfterCreate(TTL_ON_DISK) // time to keep on disk
                 .expireExecutor(Executors.newScheduledThreadPool(2))
                 .createOrOpen();
+        onDisk = onDiskTemp;
 
-        inMemory = DBMaker
+        @SuppressWarnings("unchecked")
+        HTreeMap<K, V> inMemoryTemp = (HTreeMap<K, V>) DBMaker
                 .memoryShardedHashMap(16)
                 .expireExecutor(
                         Executors.newScheduledThreadPool(3))
                 .expireAfterCreate(TTL_IN_MEMORY_OFF_HEAP) // keep TTL_IN_MEMORY_OFF_HEAP mins in off-heap serialized
-                .expireOverflow(onDisk)
+                .expireOverflow((Map) onDisk)
                 .create();
+        inMemory = inMemoryTemp;
 
         // inMemory.put("test", 2);
         //
@@ -96,7 +100,9 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
             o = inMemory.get(key);
         }
 
-        return (V) o;
+        @SuppressWarnings("unchecked")
+        V result = (V) o;
+        return result;
     }
 
     @Override
@@ -109,7 +115,9 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
             remove = inMemory.remove(key);
         }
 
-        return (V) remove;
+        @SuppressWarnings("unchecked")
+        V result = (V) remove;
+        return result;
     }
 
     public Object getNative(Object key) {
@@ -170,7 +178,7 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
                 }
 
                 try {
-                    Object take = evictionQueue.take();
+                    K take = evictionQueue.take();
 
                     // Object hasCreationTime = get(take);
                     // if (hasCreationTime == null) {
@@ -192,7 +200,7 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
                     // }
 
                     // we now can remove that object and store it on mem/disk
-                    Object o = removeNative(take);
+                    V o = (V) removeNative(take);
                     if (o != null) {
                         inMemory.put(take, o);
                     }

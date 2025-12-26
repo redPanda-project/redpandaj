@@ -1,7 +1,5 @@
 package im.redpanda.jobs;
 
-
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
@@ -12,19 +10,14 @@ import java.util.concurrent.locks.Lock;
 
 public class KademliaPeerLookupJob extends Job {
 
-
-    private final KademliaId destination;
     private final TreeMap<Peer, Integer> peers = new TreeMap<>();
 
-
-    public KademliaPeerLookupJob(ServerContext serverContext, KademliaId destination) {
+    public KademliaPeerLookupJob(ServerContext serverContext) {
         super(serverContext);
-
-        this.destination = destination;
 
         PeerList peerList = serverContext.getPeerList();
 
-        //insert all nodes
+        // insert all nodes
         Lock lock = peerList.getReadWriteLock().readLock();
         lock.lock();
         try {
@@ -50,16 +43,8 @@ public class KademliaPeerLookupJob extends Job {
 
         for (Peer p : peers.keySet()) {
 
-
-            if (!p.isConnected() && !p.isConnecting) {
-
-            }
-
-
         }
 
-
     }
-
 
 }

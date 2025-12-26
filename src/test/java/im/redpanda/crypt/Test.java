@@ -1,10 +1,6 @@
 package im.redpanda.crypt;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-
-import java.security.Security;
 import java.security.spec.AlgorithmParameterSpec;
-import java.util.Base64;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -13,13 +9,14 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public class Test {
-//    static String plainText = "This is a plain text which will be encrypted by ChaCha20 Poly1305 Algorithm";
+    // static String plainText = "This is a plain text which will be encrypted by
+    // ChaCha20 Poly1305 Algorithm";
 
     public static void main(String[] args) throws Exception {
 
-     byte[] b = new byte[] { (byte)1, (byte)2, (byte)3 };
+        byte[] b = new byte[] { (byte) 1, (byte) 2, (byte) 3 };
 
-//        Security.addProvider(new BouncyCastleProvider());
+        // Security.addProvider(new BouncyCastleProvider());
 
         KeyGenerator keyGenerator = KeyGenerator.getInstance("ChaCha20");
         keyGenerator.init(256);
@@ -32,7 +29,7 @@ public class Test {
         byte[] cipherText = encrypt(b, key);
         System.out.println("Encrypted Text : " + cipherText.length);
 
-//        cipherText[4] = 2;
+        // cipherText[4] = 2;
 
         byte[] decrypt = decrypt(cipherText, key);
         System.out.println("DeCrypted Text : " + decrypt.length);

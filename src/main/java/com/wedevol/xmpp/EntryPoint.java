@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 
-import im.redpanda.crypt.Base58;
 import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.XMPPException;
 import org.slf4j.Logger;
@@ -27,25 +26,35 @@ public class EntryPoint extends CcsClient {
 
     protected static final Logger logger = LoggerFactory.getLogger(EntryPoint.class);
     /**
-     * Hard-coded demo credentials kept to preserve current behavior until a secure configuration
+     * Hard-coded demo credentials kept to preserve current behavior until a secure
+     * configuration
      * concept is implemented.
      */
-    private static final String FCM_PROJECT_SENDER_ID = "987525438504"; // NOSONAR (secrets:S6710): legacy demo requires inline FCM credentials
-    private static final String FCM_SERVER_KEY = "AAAA5e0aXCg:APA91bFoUwqHX8StPUDjqXmA0L5_FCTrQhceDSJ_YxEpQZmCVZtCEDV271GYlvkqRMFizc1YspU4A41t5W8ZGHcKX1FTCpp9_yWj6oc7Q0gru0n8QunhTvH5I-pShvakwH2aGkjxbe_d"; // NOSONAR (secrets:S6710): legacy demo requires inline FCM credentials
+    private static final String FCM_PROJECT_SENDER_ID = "987525438504"; // NOSONAR (secrets:S6710): legacy demo requires
+                                                                        // inline FCM credentials
+    private static final String FCM_SERVER_KEY = "AAAA5e0aXCg:APA91bFoUwqHX8StPUDjqXmA0L5_FCTrQhceDSJ_YxEpQZmCVZtCEDV271GYlvkqRMFizc1YspU4A41t5W8ZGHcKX1FTCpp9_yWj6oc7Q0gru0n8QunhTvH5I-pShvakwH2aGkjxbe_d"; // NOSONAR
+                                                                                                                                                                                                             // (secrets:S6710):
+                                                                                                                                                                                                             // legacy
+                                                                                                                                                                                                             // demo
+                                                                                                                                                                                                             // requires
+                                                                                                                                                                                                             // inline
+                                                                                                                                                                                                             // FCM
+                                                                                                                                                                                                             // credentials
 
     public EntryPoint(String projectId, String apiKey, boolean debuggable) {
         super(projectId, apiKey, debuggable);
 
         try {
             connect();
-        } catch (XMPPException | InterruptedException | KeyManagementException | NoSuchAlgorithmException | SmackException
+        } catch (XMPPException | InterruptedException | KeyManagementException | NoSuchAlgorithmException
+                | SmackException
                 | IOException e) {
             logger.error("Error trying to connect. Error: {}", e.getMessage());
         }
 
-//        String toRegId = "eJ7JgnPaR-m2ng_anT5Kty:APA91bH0q04VtYWhBzXd5N1GPvVFZ-5Op2mQkH8k38JtNFRmi5ibkA9nmjOQUWN9jf9fXcvpK6ZxwM7wAvwgZ5fdg3A0Q6ibv2V31WwAz_aadodFM9xBeCrGCBN0HP40xPDCB52Vpwd_";
+        // String toRegId =
+        // "eJ7JgnPaR-m2ng_anT5Kty:APA91bH0q04VtYWhBzXd5N1GPvVFZ-5Op2mQkH8k38JtNFRmi5ibkA9nmjOQUWN9jf9fXcvpK6ZxwM7wAvwgZ5fdg3A0Q6ibv2V31WwAz_aadodFM9xBeCrGCBN0HP40xPDCB52Vpwd_";
         String toRegId = "exYJbkeSRsmgDXPlfDne4f:APA91bEqPu4sth0fQ83-HtJtI7YzYE0Dbede33DfOiSwcxQUPVo_XnUCmw-0MIcLXzuZpl7_td43UyMRQ-t-6JMI-GMFgOEXf2ZNAvZ-Ho62VwmhLu305By4vUCoKZymbBO34yXatp4_";
-
 
         // Send a sample downstream message to a device
         int cnt = 0;
@@ -57,9 +66,7 @@ public class EntryPoint extends CcsClient {
             final Map<String, String> notificationPayload = new HashMap<>();
             notificationPayload.put("title", "New Message");
             notificationPayload.put("body", "Message could not be decrypted...");
-            notificationPayload.put("tag","default");
-
-
+            notificationPayload.put("tag", "default");
 
             dataPayload.put(Util.PAYLOAD_ATTRIBUTE_MESSAGE, "This is the simple sample message");
             dataPayload.put("data", new Random().nextInt(5000) + "");
@@ -78,7 +85,7 @@ public class EntryPoint extends CcsClient {
             }
 
         }
-//
+        //
         try {
             final CountDownLatch latch = new CountDownLatch(1);
             latch.await();

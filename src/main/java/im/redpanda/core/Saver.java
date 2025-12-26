@@ -19,11 +19,9 @@ public class Saver {
         for (Peer peer : peers) {
             arrayList.add(peer.toSaveable());
         }
-        //arrayList = (ArrayList<PeerSaveable>) arrayList.clone();//hack?
-
+        // arrayList = (ArrayList<PeerSaveable>) arrayList.clone();//hack?
 
         File file = new File(SAVE_DIR + "/peers.dat");
-
 
         try {
             file.createNewFile();
@@ -32,7 +30,6 @@ public class Saver {
                     objectOutputStream.writeObject(arrayList);
                 }
             }
-
 
         } catch (IOException ex) {
             Logger.getLogger(Saver.class.getName()).log(Level.SEVERE, null, ex);
@@ -47,9 +44,8 @@ public class Saver {
             try (FileInputStream fileInputStream = new FileInputStream(file)) {
                 try (ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
                     Object readObject = objectInputStream.readObject();
-                    objectInputStream.close();
-                    fileInputStream.close();
 
+                    @SuppressWarnings("unchecked")
                     ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
                     HashMap<KademliaId, Peer> hashMap = new HashMap<KademliaId, Peer>();
 
@@ -60,9 +56,8 @@ public class Saver {
                 }
             }
 
-
         } catch (ClassNotFoundException | IOException | ClassCastException ex) {
-            //we can ignore the errors here and just reseed the peers
+            // we can ignore the errors here and just reseed the peers
         }
 
         System.out.println("could not load peers.dat");

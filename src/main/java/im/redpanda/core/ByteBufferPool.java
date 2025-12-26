@@ -18,7 +18,6 @@ import java.util.Map;
 
 public class ByteBufferPool {
 
-
     private static GenericKeyedObjectPool<Integer, ByteBuffer> pool;
     private static final Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
 
@@ -39,7 +38,8 @@ public class ByteBufferPool {
                     pool.setMaxTotalPerKey(400);
                 }
                 System.out.println("Generating new ByteBuffer for pool. Free memory (MB): " +
-                        (Runtime.getRuntime().freeMemory() / 1024. / 1024.) + " Idle: " + pool.getNumIdle() + " Active: " + pool.getNumActive() + " Waiters: " + pool.getNumWaiters());
+                        (Runtime.getRuntime().freeMemory() / 1024. / 1024.) + " Idle: " + pool.getNumIdle()
+                        + " Active: " + pool.getNumActive() + " Waiters: " + pool.getNumWaiters());
 
                 Map<String, List<DefaultPooledObjectInfo>> stringListMap = pool.listAllObjects();
 
@@ -48,7 +48,6 @@ public class ByteBufferPool {
                 for (String s : stringListMap.keySet()) {
                     out += "key: " + s + " size: " + stringListMap.get(s).size() + "\n";
                 }
-
 
                 System.out.println("\n\nList of Pool: \n" + out + "\n\n");
 
@@ -67,7 +66,6 @@ public class ByteBufferPool {
                 byteBuffer.position(0);
                 byteBuffer.limit(byteBuffer.capacity());
 
-
                 super.passivateObject(key, p);
             }
 
@@ -83,7 +81,6 @@ public class ByteBufferPool {
                 return new DefaultPooledObject<>(byteBuffer);
             }
         };
-
 
         pool = new GenericKeyedObjectPool<>(pooledObjectFactory);
         pool.setMinIdlePerKey(0);
@@ -106,6 +103,10 @@ public class ByteBufferPool {
             e.printStackTrace();
         }
 
+        if (byteBuffer == null) {
+            return null;
+        }
+
         while (byteBuffer.position() != 0 || byteBuffer.limit() != byteBuffer.capacity()) {
             String stack = byteBufferToStacktrace.get(byteBuffer);
             Log.sentry("borrowObject found an invalid ByteBuffer: " + byteBuffer + " stack: " + stack);
@@ -117,18 +118,16 @@ public class ByteBufferPool {
             }
         }
 
-
         return byteBuffer;
     }
 
-
     /**
-     * Returns the ByteBuffer to the pool, the key is calculated from the capacity of the ByteBuffer.
+     * Returns the ByteBuffer to the pool, the key is calculated from the capacity
+     * of the ByteBuffer.
      *
      * @param byteBuffer
      */
     public static void returnObject(ByteBuffer byteBuffer) {
-
 
         int key = byteBuffer.capacity();
 
