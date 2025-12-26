@@ -6,7 +6,6 @@ import im.redpanda.kademlia.KadContent;
 import org.junit.Test;
 import java.nio.ByteBuffer;
 import static org.junit.Assert.*;
-import static org.assertj.core.api.Assertions.assertThat;
 
 public class KademliaProtobufTest {
 

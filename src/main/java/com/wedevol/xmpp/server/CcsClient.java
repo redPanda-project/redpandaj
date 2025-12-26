@@ -47,8 +47,10 @@ import com.wedevol.xmpp.util.MessageMapper;
 import com.wedevol.xmpp.util.Util;
 
 /**
- * Class that connects to FCM Cloud Connection Server and handles stanzas (ACK, NACK, upstream,
- * downstream). Sample Smack implementation of a client for FCM Cloud Connection Server. Most of it
+ * Class that connects to FCM Cloud Connection Server and handles stanzas (ACK,
+ * NACK, upstream,
+ * downstream). Sample Smack implementation of a client for FCM Cloud Connection
+ * Server. Most of it
  * has been taken more or less verbatim from Google's documentation: <a href=
  * "https://firebase.google.com/docs/cloud-messaging/xmpp-server-ref">https://firebase.google.com/docs/cloud-messaging/xmpp-server-ref</a>
  * 
@@ -126,7 +128,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
 
     xmppConn.connect(); // Connect
 
-    // Enable automatic reconnection and add the listener (if not, remove the the listener, the
+    // Enable automatic reconnection and add the listener (if not, remove the the
+    // listener, the
     // interface and the override methods)
     ReconnectionManager.getInstanceFor(xmppConn).enableAutomaticReconnection();
     ReconnectionManager.getInstanceFor(xmppConn).addReconnectionListener(this);
@@ -178,15 +181,16 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
   }
 
   /**
-   * Sends all the queued sync messages that occurred before 5 seconds (1000 ms) ago. With this we try
+   * Sends all the queued sync messages that occurred before 5 seconds (1000 ms)
+   * ago. With this we try
    * to send those lost messages that we have not received ack nor nack.
    */
   private void sendQueuedSyncMessages(Map<String, Message> syncMessagesToResend) {
     logger.info("Sending queued sync messages ...");
     logger.info("Sync messages size: {}", syncMessages.size());
-    final Map<String, Message> filtered =
-        syncMessagesToResend.entrySet().stream().filter(isOldSyncMessageQueued()).sorted(compareTimestampsAscending())
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+    final Map<String, Message> filtered = syncMessagesToResend.entrySet().stream().filter(isOldSyncMessageQueued())
+        .sorted(compareTimestampsAscending())
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
     logger.info("Filtered sync messages size: {}", filtered.size());
     filtered.entrySet().stream().forEach(entry -> {
       final String messageId = entry.getKey();
@@ -211,7 +215,7 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
   @Override
   public void processStanza(Stanza packet) {
     logger.info("Processing packet in thread {} - {}", Thread.currentThread().getName(),
-        Thread.currentThread().getId());
+        Thread.currentThread().threadId());
     logger.info("Received: {}", packet.toXML(null));
     final FcmPacketExtension fcmPacket = (FcmPacketExtension) packet.getExtension(Util.FCM_NAMESPACE);
     final String json = fcmPacket.getJson();
@@ -239,7 +243,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
         handleNackReceipt(jsonMap);
         break;
       case "receipt":
-        // TODO: handle the delivery receipt when a device confirms that it received a particular message.
+        // TODO: handle the delivery receipt when a device confirms that it received a
+        // particular message.
         break;
       case "control":
         handleControlMessage(jsonMap);
@@ -254,9 +259,10 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
    * Handles an upstream message from a device client through FCM
    */
   private void handleUpstreamMessage(CcsInMessage inMessage) {
-    // The custom 'action' payload attribute defines what the message action is about.
-    final Optional<String> actionObj =
-        Optional.ofNullable(inMessage.getDataPayload().get(Util.PAYLOAD_ATTRIBUTE_ACTION));
+    // The custom 'action' payload attribute defines what the message action is
+    // about.
+    final Optional<String> actionObj = Optional
+        .ofNullable(inMessage.getDataPayload().get(Util.PAYLOAD_ATTRIBUTE_ACTION));
     if (actionObj.isEmpty()) {
       throw new IllegalStateException("Action must not be null! Options: 'ECHO', 'MESSAGE'");
     }
@@ -355,14 +361,16 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
    * 
    * API Helper methods:
    * 
-   * These are methods that implementers can use, call, or override. Help give the implementer more
+   * These are methods that implementers can use, call, or override. Help give the
+   * implementer more
    * control/ customization.
    * 
    * ===============================================================================================
    */
 
   /**
-   * Note: This method is only called if {@link ReconnectionManager#isAutomaticReconnectEnabled()}
+   * Note: This method is only called if
+   * {@link ReconnectionManager#isAutomaticReconnectEnabled()}
    * returns true
    */
   @Override
@@ -371,7 +379,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
   }
 
   /**
-   * Note: This method is only called if {@link ReconnectionManager#isAutomaticReconnectEnabled()}
+   * Note: This method is only called if
+   * {@link ReconnectionManager#isAutomaticReconnectEnabled()}
    * returns true
    */
   @Override
@@ -412,7 +421,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
   }
 
   /**
-   * Called when a custom packet has been received by the server. By default this method just resends
+   * Called when a custom packet has been received by the server. By default this
+   * method just resends
    * the packet.
    */
   public void handlePacketRecieved(CcsInMessage inMessage) {
@@ -420,7 +430,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
     // TODO: it should be the user id to be retrieved from the data base
     final String to = inMessage.getDataPayload().get(Util.PAYLOAD_ATTRIBUTE_RECIPIENT);
 
-    // TODO: handle the data payload sent to the client device. Here, I just resend the incoming one.
+    // TODO: handle the data payload sent to the client device. Here, I just resend
+    // the incoming one.
     final CcsOutMessage outMessage = new CcsOutMessage(to, messageId, inMessage.getDataPayload());
     final String jsonRequest = MessageMapper.toJsonString(outMessage);
     sendDownstreamMessage(messageId, jsonRequest);
@@ -482,7 +493,8 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
   }
 
   /**
-   * Sends a message to multiple recipients (list). Kind of like the old HTTP message with the list of
+   * Sends a message to multiple recipients (list). Kind of like the old HTTP
+   * message with the list of
    * regIds in the "registration_ids" field.
    */
   public void sendBroadcast(CcsOutMessage outMessage, List<String> recipients) {

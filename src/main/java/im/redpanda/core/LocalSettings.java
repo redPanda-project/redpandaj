@@ -19,12 +19,10 @@ import java.io.Serializable;
 @Slf4j
 public class LocalSettings implements Serializable {
 
-
     @Serial
     private static final long serialVersionUID = 639L;
 
     private NodeId myIdentity;
-    private String myIp;
     private long updateTimestamp;
     private byte[] updateSignature;
 
@@ -37,7 +35,6 @@ public class LocalSettings implements Serializable {
 
     public LocalSettings() {
         myIdentity = new NodeId();
-        myIp = "";
         updateTimestamp = -1;
         nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
         systemUpTimeData = new SystemUpTimeData();
@@ -79,7 +76,6 @@ public class LocalSettings implements Serializable {
         }
 
     }
-
 
     public static LocalSettings load(int port) {
         try {

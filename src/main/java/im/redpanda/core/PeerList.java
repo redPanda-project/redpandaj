@@ -1,7 +1,6 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.PeerComparator;
-import org.apache.logging.log4j.LogManager;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -13,63 +12,47 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * This class stores all peers in two Hashmaps for fast get operations using the {@link KademliaId} and Ip+Port.
- * For the connections we establish, we need a sorted List with regard to specific parameters.
+ * This class stores all peers in two Hashmaps for fast get operations using the
+ * {@link KademliaId} and Ip+Port.
+ * For the connections we establish, we need a sorted List with regard to
+ * specific parameters.
  * This class maintains an ArrayList with the same peers as in the Hashmaps.
- * In addition, a peer can be optionally be stored in the DHT routing table, called the Buckets.
+ * In addition, a peer can be optionally be stored in the DHT routing table,
+ * called the Buckets.
  * Note that not all nodes will be in the routing table (Buckets).
  * <p>
- * <b>Warning</b>: Do not change any of the required data ({@link KademliaId}, Ip, Port) of a {@link Peer} if
- * it is present in the Peerlist without updating the corresponding List/HashMap.
+ * <b>Warning</b>: Do not change any of the required data ({@link KademliaId},
+ * Ip, Port) of a {@link Peer} if
+ * it is present in the Peerlist without updating the corresponding
+ * List/HashMap.
  */
-public class PeerList {
 
-    private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
+public class PeerList {
 
     /**
      * We store each Peer in a hashmap for fast get operations via KademliaId
      */
-    private final HashMap<KademliaId, Peer> peerHashMap;
+    private final HashMap<KademliaId, Peer> peerHashMap = new HashMap<>();
 
     /**
      * We store each Peer in a hashmap for fast get operations via Ip and Port
      */
-    private final HashMap<Integer, Peer> peerlistIpPort;
+    private final HashMap<Integer, Peer> peerlistIpPort = new HashMap<>();
 
     /**
      * Blacklist of ips via HashMap
      */
-    private final HashMap<String, Peer> blacklistIp;
+    private final HashMap<String, Peer> blacklistIp = new HashMap<>();
 
     /**
-     * We store each Peer in a ArrayList to obtain a sorted list of Peers where the good peers are on top
+     * We store each Peer in a ArrayList to obtain a sorted list of Peers where the
+     * good peers are on top
      */
-    private final ArrayList<Peer> peerArrayList;
+    private final ArrayList<Peer> peerArrayList = new ArrayList<>();
 
-    /**
-     * ReadWriteLock for peerlist peerArrayList and Buckets
-     */
-    private final ReadWriteLock readWriteLock;
-
-    /**
-     * Buckets for the Kademlia routing
-     */
-    private final ArrayList<Peer>[] buckets;
-    private final ArrayList<Peer>[] bucketsReplacement;
-
-    private final ServerContext serverContext;
-
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public PeerList(ServerContext serverContext) {
-        this.serverContext = serverContext;
-        peerHashMap = new HashMap<>();
-        peerlistIpPort = new HashMap<>();
-        blacklistIp = new HashMap<>();
-        peerArrayList = new ArrayList<>();
-        readWriteLock = new ReentrantReadWriteLock();
-        buckets = new ArrayList[KademliaId.ID_LENGTH];
-        bucketsReplacement = new ArrayList[KademliaId.ID_LENGTH];
-
         initBlacklist();
     }
 
@@ -84,7 +67,8 @@ public class PeerList {
     public Peer add(Peer peer) {
         Peer oldPeer = null;
 
-        // we have to check if the peer is already in the PeerList, for this we use the HashMaps since they are much faster
+        // we have to check if the peer is already in the PeerList, for this we use the
+        // HashMaps since they are much faster
         if (peer.getKademliaId() != null) {
             oldPeer = peerHashMap.get(peer.getKademliaId());
             if (oldPeer != null) {
@@ -94,15 +78,19 @@ public class PeerList {
             } else {
                 /**
                  * Peer has a NodeId but was not found in list.
-                 * If we would return without checking for ip and port, fast connections to same peer might make a problem.
+                 * If we would return without checking for ip and port, fast connections to same
+                 * peer might make a problem.
                  */
             }
         }
 
         /**
-         * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of data the new Node
-         * has the same (ip,port) but different Identity. The (ip,port) will then be removed from the old Peer.
-         * Since we allow Peers without (ip,port) in general we allow to add Peers without (ip,port) here.
+         * We allow peers without connection details (ip,port) in the PeerList, since
+         * after a wipe of data the new Node
+         * has the same (ip,port) but different Identity. The (ip,port) will then be
+         * removed from the old Peer.
+         * Since we allow Peers without (ip,port) in general we allow to add Peers
+         * without (ip,port) here.
          */
         if (peer.getIp() != null) {
             oldPeer = peerlistIpPort.get(getIpPortHash(peer));
@@ -153,7 +141,7 @@ public class PeerList {
     }
 
     private static Integer getIpPortHash(String ip, int port) {
-        //ToDo: we need later a better method
+        // ToDo: we need later a better method
         return ip.hashCode() + port;
     }
 
@@ -214,7 +202,8 @@ public class PeerList {
     }
 
     /**
-     * Removes the Peer from the IpPortList, peer is still in the other lists. Use this only for ip,port changes.
+     * Removes the Peer from the IpPortList, peer is still in the other lists. Use
+     * this only for ip,port changes.
      *
      * @param ip
      * @param port
@@ -289,7 +278,6 @@ public class PeerList {
         return peerArrayList;
     }
 
-
     /**
      * Returns the size of the ArrayList which should contain all Peers.
      *
@@ -343,7 +331,7 @@ public class PeerList {
                 return null;
             }
 
-            //lets get a random x percent peer
+            // lets get a random x percent peer
             int max = (int) Math.ceil(size * upperPercent);
 
             int i = Server.secureRandom.nextInt(max);
@@ -360,7 +348,6 @@ public class PeerList {
         peer.removeIpAndPort();
     }
 
-
     /**
      * does not use connected peers or light clients
      *
@@ -374,7 +361,7 @@ public class PeerList {
 
             TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(targetId));
 
-            //insert all nodes
+            // insert all nodes
             Lock lock = getReadWriteLock().readLock();
             lock.lock();
             try {
@@ -382,12 +369,12 @@ public class PeerList {
 
                 for (Peer peer : peerArrayList) {
 
-                    //do not add the peer if the peer is not connected or the nodeId is unknown!
+                    // do not add the peer if the peer is not connected or the nodeId is unknown!
                     if (peer.getNodeId() == null || !peer.isConnected()) {
                         continue;
                     }
 
-                    //remove all light clients
+                    // remove all light clients
                     if (peer.isLightClient()) {
                         continue;
                     }
@@ -396,9 +383,10 @@ public class PeerList {
                         continue;
                     }
 
-//                    if (targetId.getDistanceToUs(serverContext) < peer.getKademliaId().getDistance(targetId)) {
-//                        continue;
-//                    }
+                    // if (targetId.getDistanceToUs(serverContext) <
+                    // peer.getKademliaId().getDistance(targetId)) {
+                    // continue;
+                    // }
 
                     peers.add(peer);
                 }
@@ -407,14 +395,12 @@ public class PeerList {
             }
 
             if (peers.size() == 0) {
-//                System.out.println(String.format("no peer found for destination %s which is near to target", targetId));
+                // System.out.println(String.format("no peer found for destination %s which is
+                // near to target", targetId));
                 return null;
             }
 
             goodPeer = peers.first();
-
-            int peersDistance = targetId.getDistance(goodPeer.getKademliaId());
-//            System.out.println("good peer for target " + targetId + " distance " + peersDistance + " our distance node: " + goodPeer.getNode().getNodeId() + " connected: " + goodPeer.isConnected());
 
         }
         return goodPeer;
@@ -426,7 +412,6 @@ public class PeerList {
         }
 
     }
-
 
     public boolean isBlacklisted(String ip) {
         return blacklistIp.containsKey(ip);

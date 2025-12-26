@@ -65,10 +65,4 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
         return kadContents;
     }
 
-    @Override
-    protected void fail() {
-        super.fail();
-        // todo: send fail to light client
-
-    }
 }

@@ -1,18 +1,14 @@
 package im.redpanda.core;
 
-import javax.crypto.Cipher;
-import javax.crypto.CipherInputStream;
-import javax.crypto.CipherOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * The OutputStreams are for encryption and the InputStreams for decryption.
  */
+@Slf4j
 public class PeerChiperStreams {
-
-    private Cipher cipherSend;
-    private Cipher cipherReceive;
 
     private PeerOutputStream peerOutputStream;
     private PeerInputStream peerInputStream;
@@ -20,9 +16,9 @@ public class PeerChiperStreams {
     private CipherInputStreamByteBuffer cipherInputStream;
     private CipherOutputStreamByteBuffer cipherOutputStream;
 
-    public PeerChiperStreams(Cipher cipherSend, Cipher cipherReceive, PeerOutputStream peerOutputStream, PeerInputStream peerInputStream, CipherInputStreamByteBuffer cipherInputStream, CipherOutputStreamByteBuffer cipherOutputStream) {
-        this.cipherSend = cipherSend;
-        this.cipherReceive = cipherReceive;
+    public PeerChiperStreams(PeerOutputStream peerOutputStream,
+            PeerInputStream peerInputStream, CipherInputStreamByteBuffer cipherInputStream,
+            CipherOutputStreamByteBuffer cipherOutputStream) {
         this.peerOutputStream = peerOutputStream;
         this.peerInputStream = peerInputStream;
         this.cipherInputStream = cipherInputStream;
@@ -39,7 +35,8 @@ public class PeerChiperStreams {
 
         /**
          * encrypt so we have to use the outputstreams
-         * The bytes will flow the following way: input -> cipherOutputStream -> peerOutputStream -> output
+         * The bytes will flow the following way: input -> cipherOutputStream ->
+         * peerOutputStream -> output
          */
 
         try {
@@ -47,7 +44,7 @@ public class PeerChiperStreams {
             int r = output.remaining();
 
             if (r < input.remaining()) {
-//                System.out.println("enc write buffer too small...");
+                // System.out.println("enc write buffer too small...");
                 peerOutputStream.setByteBuffer(output);
                 cipherOutputStream.write(input, r);
                 cipherOutputStream.flush();
@@ -59,7 +56,6 @@ public class PeerChiperStreams {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
 
     }
 
@@ -73,7 +69,8 @@ public class PeerChiperStreams {
 
         /**
          * decrypt so we have to use the inputStreams
-         * The bytes will flow the following way: input -> peerInputStream -> cipherInputStream -> output
+         * The bytes will flow the following way: input -> peerInputStream ->
+         * cipherInputStream -> output
          */
 
         try {
@@ -85,15 +82,14 @@ public class PeerChiperStreams {
             e.printStackTrace();
         }
 
-
     }
 
-//    public void encrypt(byte[] input, byte[] output) {
-//        encrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-//    }
-//
-//    public void decrypt(byte[] input, byte[] output) {
-//        decrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-//    }
+    // public void encrypt(byte[] input, byte[] output) {
+    // encrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
+    // }
+    //
+    // public void decrypt(byte[] input, byte[] output) {
+    // decrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
+    // }
 
 }

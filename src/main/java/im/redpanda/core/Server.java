@@ -3,8 +3,6 @@ package im.redpanda.core;
 import im.redpanda.jobs.NodeStoreMaintainJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.security.SecureRandom;
 import java.security.Security;
@@ -12,8 +10,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Server {
-
-    private static final Logger logger = LogManager.getLogger();
 
     public static final int VERSION = 22;
     public final static String MAGIC = "k3gV";
@@ -30,11 +26,7 @@ public class Server {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     }
 
-    private final ServerContext serverContext;
-    public PeerList peerList;
-
     public Server(ServerContext serverContext, ConnectionHandler connectionHandler) {
-        this.serverContext = serverContext;
         this.connectionHandler = connectionHandler;
         outboundHandler = new OutboundHandler(serverContext);
     }

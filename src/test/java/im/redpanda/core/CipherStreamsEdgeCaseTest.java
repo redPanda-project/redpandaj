@@ -21,7 +21,9 @@ public class CipherStreamsEdgeCaseTest {
     private static final String PROVIDER = "SunJCE";
 
     @Test
-    public void cipherOutputStream_writeRespectsLenWithNonZeroPosition() throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, java.security.NoSuchProviderException {
+    public void cipherOutputStream_writeRespectsLenWithNonZeroPosition()
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException,
+            InvalidKeyException, IOException, java.security.NoSuchProviderException {
         SecretKeySpec key = new SecretKeySpec(new byte[16], "AES");
         IvParameterSpec iv = new IvParameterSpec(new byte[16]);
 
@@ -32,38 +34,42 @@ public class CipherStreamsEdgeCaseTest {
         ByteBuffer outBuf = ByteBuffer.allocate(64);
         target.setByteBuffer(outBuf);
 
-        CipherOutputStreamByteBuffer cos = new CipherOutputStreamByteBuffer(target, enc);
+        try (CipherOutputStreamByteBuffer cos = new CipherOutputStreamByteBuffer(target, enc)) {
+            byte[] src = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+            ByteBuffer inBuf = ByteBuffer.wrap(src);
+            // Simulate partially consumed input
+            inBuf.position(6); // remaining = 4
 
-        byte[] src = new byte[]{0,1,2,3,4,5,6,7,8,9};
-        ByteBuffer inBuf = ByteBuffer.wrap(src);
-        // Simulate partially consumed input
-        inBuf.position(6); // remaining = 4
+            // Write only 2 bytes from current position
+            cos.write(inBuf, 2);
+            cos.flush();
 
-        // Write only 2 bytes from current position
-        cos.write(inBuf, 2);
-        cos.flush();
-
-        // Only 2 bytes should have been written downstream
-        assertThat(outBuf.position()).isEqualTo(2);
-        // And input buffer position advanced by 2
-        assertThat(inBuf.position()).isEqualTo(8);
+            // Only 2 bytes should have been written downstream
+            assertThat(outBuf.position()).isEqualTo(2);
+            // And input buffer position advanced by 2
+            assertThat(inBuf.position()).isEqualTo(8);
+        }
     }
 
     @Test
-    public void cipherInputStream_readRespectsRemainingWithNonZeroPosition() throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, java.security.NoSuchProviderException {
+    public void cipherInputStream_readRespectsRemainingWithNonZeroPosition()
+            throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException,
+            InvalidKeyException, IOException, java.security.NoSuchProviderException {
         SecretKeySpec key = new SecretKeySpec(new byte[16], "AES");
         IvParameterSpec iv = new IvParameterSpec(new byte[16]);
 
         // Prepare ciphertext by encrypting 10 bytes
         Cipher enc = Cipher.getInstance(ALGO, PROVIDER);
         enc.init(Cipher.ENCRYPT_MODE, key, iv);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        CipherOutputStreamByteBuffer cos = new CipherOutputStreamByteBuffer(baos, enc);
-        byte[] plain = new byte[10];
-        ByteBuffer plainBuf = ByteBuffer.wrap(plain);
-        cos.write(plainBuf);
-        cos.flush();
-        byte[] ciphertext = baos.toByteArray();
+        byte[] ciphertext;
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                CipherOutputStreamByteBuffer cos = new CipherOutputStreamByteBuffer(baos, enc)) {
+            byte[] plain = new byte[10];
+            ByteBuffer plainBuf = ByteBuffer.wrap(plain);
+            cos.write(plainBuf);
+            cos.flush();
+            ciphertext = baos.toByteArray();
+        }
 
         // Set up decrypting stream reading from ciphertext
         PeerInputStream pis = new PeerInputStream();
@@ -71,16 +77,16 @@ public class CipherStreamsEdgeCaseTest {
 
         Cipher dec = Cipher.getInstance(ALGO, PROVIDER);
         dec.init(Cipher.DECRYPT_MODE, key, iv);
-        CipherInputStreamByteBuffer cis = new CipherInputStreamByteBuffer(pis, dec);
+        try (CipherInputStreamByteBuffer cis = new CipherInputStreamByteBuffer(pis, dec)) {
+            // Output buffer with non-zero position and tight limit
+            ByteBuffer out = ByteBuffer.allocate(10);
+            out.position(3);
+            out.limit(7); // remaining = 4
 
-        // Output buffer with non-zero position and tight limit
-        ByteBuffer out = ByteBuffer.allocate(10);
-        out.position(3);
-        out.limit(7); // remaining = 4
+            // Read into the buffer; should only fill remaining bytes (4)
+            cis.read(out);
 
-        // Read into the buffer; should only fill remaining bytes (4)
-        cis.read(out);
-
-        assertThat(out.position()).isEqualTo(7);
+            assertThat(out.position()).isEqualTo(7);
+        }
     }
 }

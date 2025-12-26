@@ -138,12 +138,8 @@ public class Updater {
 
         long timestamp = file.lastModified();
 
-        System.out.println("timestamp : " + timestamp + " ago: " + (System.currentTimeMillis() - timestamp));
-
         Path path = Path.of(fileName);
         byte[] data = Files.readAllBytes(path);
-
-        int updateSize = data.length;
 
         ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
         toHash.putLong(timestamp);

@@ -1,5 +1,7 @@
 package im.redpanda.jobs;
 
+import static com.google.protobuf.ByteString.copyFrom;
+
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
@@ -9,11 +11,8 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaIdProto;
-import static com.google.protobuf.ByteString.copyFrom;
-
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -79,12 +78,6 @@ public class KademliaSearchJob extends Job {
             kademliaIdSearchBlacklistLock.unlock();
         }
 
-        int myDistanceToKey = id.getDistance(serverContext.getNonce());
-
-        // BigInteger key = id.getInt();
-        // BigInteger me = Server.NONCE.getInt();
-        // BigInteger myDistanceToKey = me.xor(key).abs();
-
         // key is not blacklisted, lets sort the peers by the destination key
         peers = new TreeMap<>(new PeerComparator(id));
 
@@ -112,16 +105,6 @@ public class KademliaSearchJob extends Job {
                 if (p.isLightClient()) {
                     continue;
                 }
-
-                // /**
-                // * do not add peers which are further or equally away from the key than us
-                // */
-                // int peersDistanceToKey = id.getDistance(p.getKademliaId());
-                // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
-                // peersDistanceToKey);
-                // if (myDistanceToKey <= peersDistanceToKey) {
-                // continue;
-                // }
 
                 peers.put(p, NONE);
             }
@@ -199,9 +182,8 @@ public class KademliaSearchJob extends Job {
                         } finally {
                             p.getWriteBufferLock().unlock();
                         }
-                    } else {
-
                     }
+
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

@@ -1,8 +1,6 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Sha256Hash;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
@@ -20,8 +18,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 
 public class PeerInHandshake {
-
-    private static final Logger logger = LogManager.getLogger();
 
     public static final int IVbytelen = 16;
     public static final String ALGORITHM = "AES/CTR/NoPadding";
@@ -315,7 +311,7 @@ public class PeerInHandshake {
             CipherInputStreamByteBuffer cipherInputStream = new CipherInputStreamByteBuffer(peerInputStream,
                     cipherReceive);
 
-            peerChiperStreams = new PeerChiperStreams(cipherSend, cipherReceive, peerOutputStream, peerInputStream,
+            peerChiperStreams = new PeerChiperStreams(peerOutputStream, peerInputStream,
                     cipherInputStream, cipherOutputStream);
 
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
