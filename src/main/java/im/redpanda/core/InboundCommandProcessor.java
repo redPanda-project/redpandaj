@@ -33,8 +33,83 @@ public class InboundCommandProcessor {
 
   private final ServerContext serverContext;
 
+  @FunctionalInterface
+  private interface CommandHandler {
+    int handle(Peer peer, ByteBuffer readBuffer, byte[] payload)
+        throws InvalidProtocolBufferException;
+  }
+
+  private final java.util.Map<Byte, CommandHandler> commandHandlers = new java.util.HashMap<>();
+
   public InboundCommandProcessor(ServerContext serverContext) {
     this.serverContext = serverContext;
+    initializeHandlers();
+  }
+
+  private void initializeHandlers() {
+    commandHandlers.put(Command.PING, (peer, buf, payload) -> handlePing(peer));
+    commandHandlers.put(Command.PONG, (peer, buf, payload) -> handlePong(peer));
+    commandHandlers.put(
+        Command.REQUEST_PEERLIST, (peer, buf, payload) -> handleRequestPeerList(peer));
+
+    // Payload commands
+    commandHandlers.put(
+        Command.SEND_PEERLIST,
+        (peer, buf, payload) -> handleSendPeerList(payload, peer) + 4 + payload.length);
+    commandHandlers.put(
+        Command.UPDATE_REQUEST_TIMESTAMP,
+        (peer, buf, payload) -> handleUpdateRequestTimestamp(peer));
+    commandHandlers.put(
+        Command.UPDATE_ANSWER_TIMESTAMP,
+        (peer, buf, payload) -> handleUpdateAnswerTimestamp(buf, peer));
+    commandHandlers.put(
+        Command.UPDATE_REQUEST_CONTENT, (peer, buf, payload) -> handleUpdateRequestContent(peer));
+    commandHandlers.put(
+        Command.UPDATE_ANSWER_CONTENT,
+        (peer, buf, payload) -> handleUpdateAnswerContent(buf, peer));
+    commandHandlers.put(
+        Command.ANDROID_UPDATE_REQUEST_TIMESTAMP,
+        (peer, buf, payload) -> handleAndroidUpdateRequestTimestamp(peer));
+    commandHandlers.put(
+        Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
+        (peer, buf, payload) -> handleAndroidUpdateAnswerTimestamp(buf, peer));
+    commandHandlers.put(
+        Command.ANDROID_UPDATE_REQUEST_CONTENT,
+        (peer, buf, payload) -> handleAndroidUpdateRequestContent(peer));
+    commandHandlers.put(
+        Command.ANDROID_UPDATE_ANSWER_CONTENT,
+        (peer, buf, payload) -> handleAndroidUpdateAnswerContent(buf, peer));
+
+    commandHandlers.put(
+        Command.JOB_ACK,
+        (peer, buf, payload) -> {
+          handleJobAck(payload, peer);
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.KADEMLIA_GET,
+        (peer, buf, payload) -> {
+          handleKademliaGet(payload, peer);
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.KADEMLIA_STORE,
+        (peer, buf, payload) -> {
+          handleKademliaStore(payload, peer);
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.KADEMLIA_GET_ANSWER,
+        (peer, buf, payload) -> {
+          handleKademliaGetAnswer(payload, peer);
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.FLASCHENPOST_PUT,
+        (peer, buf, payload) -> {
+          handleFlaschenpostPut(payload, peer);
+          return 1 + 4 + payload.length;
+        });
   }
 
   public void loopCommands(Peer peer, ByteBuffer readBuffer) {
@@ -59,17 +134,16 @@ public class InboundCommandProcessor {
   }
 
   public int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
-    if (command == Command.PING) {
-      return handlePing(peer);
-    }
-    if (command == Command.PONG) {
-      return handlePong(peer);
-    }
-    if (command == Command.REQUEST_PEERLIST) {
-      return handleRequestPeerList(peer);
-    }
+    // Commands with payload require reading length first for some handlers,
+    // but the handler logic itself might not use it if it reads directly from
+    // buffer (?)
+    // Actually existing logic reads payload for specific commands before switch.
+    // Let's preserve that logic or move it into handlers?
+    // The previous logic pre-read payload for `isPayloadCommand`.
+    // We should keep that pre-reading behaviour to be safe or refactor carefully.
+    // The original code check `isPayloadCommand` then `readMessage`.
+    // Let's keep that structure but pass the payload to the handler.
 
-    // Commands with payload require reading length first
     byte[] payload = null;
     if (isPayloadCommand(command)) {
       payload = readMessage(readBuffer);
@@ -78,54 +152,34 @@ public class InboundCommandProcessor {
       }
     }
 
-    try {
-      switch (command) {
-        case Command.SEND_PEERLIST:
-          return handleSendPeerList(payload, peer) + 4 + payload.length;
-        case Command.UPDATE_REQUEST_TIMESTAMP:
-          return handleUpdateRequestTimestamp(peer);
-        case Command.UPDATE_ANSWER_TIMESTAMP:
-          return handleUpdateAnswerTimestamp(readBuffer, peer); // Special case: reads Long directly
-        case Command.UPDATE_REQUEST_CONTENT:
-          return handleUpdateRequestContent(peer);
-        case Command.UPDATE_ANSWER_CONTENT:
-          return handleUpdateAnswerContent(readBuffer, peer); // Special case: complex read
-        case Command.ANDROID_UPDATE_REQUEST_TIMESTAMP:
-          return handleAndroidUpdateRequestTimestamp(peer);
-        case Command.ANDROID_UPDATE_ANSWER_TIMESTAMP:
-          return handleAndroidUpdateAnswerTimestamp(
-              readBuffer, peer); // Special case: reads Long directly
-        case Command.ANDROID_UPDATE_REQUEST_CONTENT:
-          return handleAndroidUpdateRequestContent(peer);
-        case Command.ANDROID_UPDATE_ANSWER_CONTENT:
-          return handleAndroidUpdateAnswerContent(readBuffer, peer); // Special case: complex read
-        case Command.JOB_ACK:
-          handleJobAck(payload, peer);
+    CommandHandler handler = commandHandlers.get(command);
+    if (handler != null) {
+      try {
+        return handler.handle(peer, readBuffer, payload);
+      } catch (InvalidProtocolBufferException e) {
+        logger.error("Failed to parse protobuf for command " + command, e);
+        // If payload was read, we can skip it.
+        // The original code had specific fallback: return 1 + 4 + payload.length;
+        // This assumes `payload` is not null if we are here and exception happened in a
+        // payload handler.
+        if (payload != null) {
           return 1 + 4 + payload.length;
-        case Command.KADEMLIA_GET:
-          handleKademliaGet(payload, peer);
-          return 1 + 4 + payload.length;
-        case Command.KADEMLIA_STORE:
-          handleKademliaStore(payload, peer);
-          return 1 + 4 + payload.length;
-        case Command.KADEMLIA_GET_ANSWER:
-          handleKademliaGetAnswer(payload, peer);
-          return 1 + 4 + payload.length;
-        case Command.FLASCHENPOST_PUT:
-          handleFlaschenpostPut(payload, peer);
-          return 1 + 4 + payload.length;
-        default:
-          throw new RuntimeException(
-              "Got unknown command from peer: "
-                  + command
-                  + " last cmd: "
-                  + peer.lastCommand
-                  + " lightClient: "
-                  + peer.isLightClient());
+        } else {
+          // Should not happen for payload commands if logic matches, but strictly
+          // speaking:
+          return 1; // skip command byte? Or just return 0?
+          // Original code only caught IPBE which comes from payload parsing.
+          // So payload IS not null.
+        }
       }
-    } catch (InvalidProtocolBufferException e) {
-      logger.error("Failed to parse protobuf for command " + command, e);
-      return 1 + 4 + payload.length; // Skip the malformed message
+    } else {
+      throw new RuntimeException(
+          "Got unknown command from peer: "
+              + command
+              + " last cmd: "
+              + peer.lastCommand
+              + " lightClient: "
+              + peer.isLightClient());
     }
   }
 
