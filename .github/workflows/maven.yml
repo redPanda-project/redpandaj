@@ -35,6 +35,10 @@ jobs:
         path: ~/.m2
         key: ${{ runner.os }}-m2-${{ github.ref_name }}-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2-${{ github.ref_name }}-
+    - name: Purge suspicious cached artifacts
+      run: |
+        rm -rf ~/.m2/repository/org/bouncycastle/bcprov-jdk18on/1.81
+        rm -rf ~/.m2/repository/org/sonarsource/scanner
     - name: clean
       run: mvn -B clean
     - name: coverage
