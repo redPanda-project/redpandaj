@@ -15,7 +15,7 @@ import java.security.Security;
 
 public class Updater {
 
-    public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "Pu6kn8E5ZpazhJZRDuhAbtrtAwirGi9ssWaW4eYCqUkxuLqVhnLeDJbAXe4KHRavks3n7pKquczkBzJpRr6JxJKd";
+    public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "Qj4k2grhTy5omj4AFG6793SVnJaWuLz4H4yJE9BbQJG5kh8FTxEGggA4ozVb2afAWjDJDPZjv1nWz9D2QHJw9XGr";
 
     static {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());

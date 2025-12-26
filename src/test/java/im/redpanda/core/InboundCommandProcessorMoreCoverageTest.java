@@ -144,7 +144,7 @@ public class InboundCommandProcessorMoreCoverageTest {
     }
 
     @Test
-    public void androidUpdateAnswerContent_updatesFileAndSettings() {
+    public void androidUpdateAnswerContent_rejectsInvalidSignature() {
         Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
         peer.setConnected(true);
         ctx.getPeerList().add(peer);
@@ -163,11 +163,11 @@ public class InboundCommandProcessorMoreCoverageTest {
         int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, peer);
         assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
-        // File should exist and settings updated
+        // File should NOT exist and settings NOT updated because signature is invalid
         File apk = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
-        assertTrue(apk.exists());
-        assertEquals(newerTs, ctx.getLocalSettings().getUpdateAndroidTimestamp());
-        assertArrayEquals(sig, ctx.getLocalSettings().getUpdateAndroidSignature());
+        assertFalse("APK should not be created with invalid signature", apk.exists());
+        assertNotEquals("Timestamp should not update with invalid signature", newerTs,
+                ctx.getLocalSettings().getUpdateAndroidTimestamp());
     }
 
     @Test

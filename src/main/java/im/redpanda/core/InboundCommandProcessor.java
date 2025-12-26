@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Date;
+import java.nio.file.StandardCopyOption;
 
 /**
  * Parses and processes inbound commands for a peer connection.
@@ -355,10 +356,56 @@ public class InboundCommandProcessor {
         byte[] data = new byte[toReadBytes];
         readBuffer.get(data);
         if (othersTimestamp > serverContext.getLocalSettings().getUpdateTimestamp()) {
+
+            // Verify signature before writing anything
+            NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+            if (publicUpdaterKey == null) {
+                System.out.println("No public updater key available, cannot verify update.");
+                return 1 + 8 + 4 + lenOfSignature + data.length;
+            }
+
+            ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+            toHash.putLong(othersTimestamp);
+            toHash.put(data);
+
+            if (!publicUpdaterKey.verify(toHash.array(), signatureBytes)) {
+                System.out.println("Update verification failed! Signature invalid.");
+                return 1 + 8 + 4 + lenOfSignature + data.length;
+            }
+
             try (FileOutputStream fos = new FileOutputStream("tmp_redpanda.jar")) {
                 fos.write(data);
             } catch (IOException e) {
                 Log.sentry(e);
+                return 1 + 8 + 4 + lenOfSignature + data.length;
+            }
+
+            try {
+                // Install the update
+                // Save to 'update' file so the shell script can pick it up and restart
+                Files.move(Path.of("tmp_redpanda.jar"), Path.of("update"), StandardCopyOption.REPLACE_EXISTING);
+
+                // Update local settings
+                serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
+                serverContext.getLocalSettings().setUpdateSignature(signatureBytes);
+                serverContext.getLocalSettings().save(serverContext.getPort());
+
+                System.out.println(
+                        "Update successfully verified and saved to 'update'. New timestamp: " + othersTimestamp);
+                System.out.println("Stopping server to apply update...");
+
+                // Exit asynchronously to allow current method to return and log to be written
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                    }
+                    System.exit(0);
+                }).start();
+
+            } catch (IOException e) {
+                Log.sentry(e);
+                System.out.println("Failed to install update: " + e.getMessage());
             }
         }
         return 1 + 8 + 4 + lenOfSignature + data.length;
@@ -511,6 +558,23 @@ public class InboundCommandProcessor {
         byte[] data = new byte[toReadBytes];
         readBuffer.get(data);
         if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
+
+            // Verify signature
+            NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+            if (publicUpdaterKey == null) {
+                System.out.println("No public updater key available, cannot verify android update.");
+                return 1 + 8 + 4 + signatureLen + data.length;
+            }
+
+            ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+            toHash.putLong(othersTimestamp);
+            toHash.put(data);
+
+            if (!publicUpdaterKey.verify(toHash.array(), signature)) {
+                System.out.println("Android update verification failed! Signature invalid.");
+                return 1 + 8 + 4 + signatureLen + data.length;
+            }
+
             try (FileOutputStream fos = new FileOutputStream(ConnectionReaderThread.ANDROID_UPDATE_FILE)) {
                 fos.write(data);
             } catch (IOException e) {
@@ -518,6 +582,7 @@ public class InboundCommandProcessor {
             }
             serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
             serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
+            serverContext.getLocalSettings().save(serverContext.getPort());
         }
         return 1 + 8 + 4 + signatureLen + data.length;
     }

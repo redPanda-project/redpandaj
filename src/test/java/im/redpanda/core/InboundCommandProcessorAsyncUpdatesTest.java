@@ -41,7 +41,8 @@ public class InboundCommandProcessorAsyncUpdatesTest {
         byte[] sig = new byte[totalLen];
         sig[0] = 0x30; // sequence
         sig[1] = (byte) (totalLen - 2);
-        for (int i = 2; i < totalLen; i++) sig[i] = (byte) i;
+        for (int i = 2; i < totalLen; i++)
+            sig[i] = (byte) i;
         return sig;
     }
 
@@ -78,7 +79,8 @@ public class InboundCommandProcessorAsyncUpdatesTest {
             fos.write(data);
         }
 
-        // Set android timestamp and an invalid signature to trigger verify(false) and early return
+        // Set android timestamp and an invalid signature to trigger verify(false) and
+        // early return
         ctx.getLocalSettings().setUpdateAndroidTimestamp(System.currentTimeMillis());
         ctx.getLocalSettings().setUpdateAndroidSignature(derSignature(72));
 
@@ -96,13 +98,13 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     }
 
     @Test
-    public void updateAnswerContent_writesTempJar_whenNewer() {
+    public void updateAnswerContent_rejectsFakeSignature() {
         Peer peer = new Peer("127.0.0.1", 7777, ctx.getNodeId());
         peer.setConnected(true);
         ctx.getPeerList().add(peer);
 
         long newerTs = ctx.getLocalSettings().getUpdateTimestamp() + 1000;
-        byte[] data = new byte[]{9,8,7,6};
+        byte[] data = new byte[] { 9, 8, 7, 6 };
         byte[] sig = derSignature(72);
 
         ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
@@ -116,8 +118,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
         assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
         File tmp = new File("tmp_redpanda.jar");
-        assertTrue(tmp.exists());
-        assertEquals(data.length, tmp.length());
+        assertFalse("tmp file should NOT exist because signature is fake", tmp.exists());
     }
 
     private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
