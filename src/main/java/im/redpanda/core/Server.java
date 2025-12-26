@@ -22,7 +22,7 @@ public class Server {
     public static int inBytes = 0;
     private ConnectionHandler connectionHandler;
     public static OutboundHandler outboundHandler;
-    public static final ExecutorService threadPool = Executors.newFixedThreadPool(2);
+    public static final ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
 
     public static final SecureRandom secureRandom = new SecureRandom();
 
@@ -48,7 +48,6 @@ public class Server {
     public static void startUpRoutines(ServerContext serverContext) {
         Settings.init(serverContext);
 
-
         new HTTPServer(serverContext).start();
 
         outboundHandler.start();
@@ -65,7 +64,8 @@ public class Server {
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
-            e.printStackTrace(); // NOSONAR (java:S4507): intentional fallback console output during shutdown; replace with logger later
+            e.printStackTrace(); // NOSONAR (java:S4507): intentional fallback console output during shutdown;
+                                 // replace with logger later
             Thread.currentThread().interrupt();
         }
 
@@ -76,6 +76,5 @@ public class Server {
     public void start() {
         connectionHandler.start();
     }
-
 
 }

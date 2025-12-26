@@ -395,13 +395,14 @@ public class InboundCommandProcessor {
                 System.out.println("Stopping server to apply update...");
 
                 // Exit asynchronously to allow current method to return and log to be written
-                new Thread(() -> {
+                // Exit asynchronously to allow current method to return and log to be written
+                Thread.ofVirtual().start(() -> {
                     try {
                         Thread.sleep(2000);
                     } catch (InterruptedException e) {
                     }
                     System.exit(0);
-                }).start();
+                });
 
             } catch (IOException e) {
                 Log.sentry(e);
