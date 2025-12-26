@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.Security;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,12 +24,12 @@ public class SecureKeyGenerator {
         String publicKey = Base58.encode(nodeId.exportPublic());
 
         // 2. Write Private Key to file
-        Path privateKeyPath = Paths.get("privateSigningKey.txt");
+        Path privateKeyPath = Path.of("privateSigningKey.txt");
         Files.write(privateKeyPath, privateKey.getBytes(StandardCharsets.UTF_8));
         System.out.println("New private key written to: " + privateKeyPath.toAbsolutePath());
 
         // 3. Update Updater.java with new Public Key
-        Path updaterPath = Paths.get("src/main/java/im/redpanda/core/Updater.java");
+        Path updaterPath = Path.of("src/main/java/im/redpanda/core/Updater.java");
         if (Files.exists(updaterPath)) {
             String content = new String(Files.readAllBytes(updaterPath), StandardCharsets.UTF_8);
 

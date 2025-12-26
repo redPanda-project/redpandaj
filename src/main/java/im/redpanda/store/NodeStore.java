@@ -247,7 +247,7 @@ public class NodeStore {
                     }
                 }
                 if (veryGoodLinks <= 1) {
-                    System.out.println(String.format("remove node %s due to bad score of %s, very good links only %s", node, node.getScore(), veryGoodLinks));
+                    System.out.println("remove node %s due to bad score of %s, very good links only %s".formatted(node, node.getScore(), veryGoodLinks));
                     removeNodeFromGraphAndBlacklist(node);
                 }
             }
@@ -396,10 +396,10 @@ public class NodeStore {
             count++;
 
             Collections.shuffle(ids);
-            Node nodeFrome = ids.get(0);
+            Node nodeFrome = ids.getFirst();
             ids.remove(nodeFrome);
             Collections.shuffle(ids);
-            Node nodeTo = ids.get(0);
+            Node nodeTo = ids.getFirst();
             ids.add(nodeFrome);
             ids.add(nodeTo);
 
@@ -412,7 +412,7 @@ public class NodeStore {
             if (defaultEdge != null) {
                 nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_HARD);
                 added = true;
-                System.out.println(String.format("added edge: %s -> %s", nodeFrome.getNodeId(), nodeTo.getNodeId()));
+                System.out.println("added edge: %s -> %s".formatted(nodeFrome.getNodeId(), nodeTo.getNodeId()));
             }
 
 
@@ -428,7 +428,7 @@ public class NodeStore {
         if (nodes.isEmpty()) {
             return null;
         }
-        return nodes.get(0);
+        return nodes.getFirst();
     }
 
     public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {

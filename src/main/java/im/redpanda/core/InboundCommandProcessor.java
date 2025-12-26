@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
 
@@ -153,7 +152,7 @@ public class InboundCommandProcessor {
     private int handlePing(Peer peer) {
         Log.put("Received ping command", 200);
         if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
-            logger.error(String.format("Got PING from node not in our peerlist, lets add it.... %s, id: %s", peer,
+            logger.error("Got PING from node not in our peerlist, lets add it.... %s, id: %s".formatted(peer,
                     peer.getKademliaId()));
             serverContext.getPeerList().add(peer);
             return 0;
@@ -298,7 +297,7 @@ public class InboundCommandProcessor {
                     Thread.sleep(200);
                 } catch (InterruptedException ignored) {
                 }
-                Path path = Settings.isSeedNode() ? Paths.get("target/redpanda.jar") : Paths.get("redpanda.jar");
+                Path path = Settings.isSeedNode() ? Path.of("target/redpanda.jar") : Path.of("redpanda.jar");
                 try {
                     System.out.println("we send the update to a peer!");
                     byte[] data = Files.readAllBytes(path);
@@ -429,7 +428,7 @@ public class InboundCommandProcessor {
                     Thread.sleep(200);
                 } catch (InterruptedException ignored) {
                 }
-                Path path = Paths.get(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+                Path path = Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
                 try {
                     System.out.println("we send the android.apk update to a peer!");
                     byte[] data = Files.readAllBytes(path);
@@ -527,8 +526,8 @@ public class InboundCommandProcessor {
         JobAck ackMsg = JobAck.parseFrom(payload);
         int jobId = ackMsg.getJobId();
         var runningJob = Job.getRunningJob(jobId);
-        if (runningJob instanceof KademliaInsertJob) {
-            ((KademliaInsertJob) runningJob).ack(peer);
+        if (runningJob instanceof KademliaInsertJob job) {
+            job.ack(peer);
             System.out.println("ACK from peer: " + peer.getNodeId().toString());
         }
     }
@@ -598,8 +597,8 @@ public class InboundCommandProcessor {
                 answerMsg.getSignature().toByteArray());
         if (kadContent.verify()) {
             var byId = Job.getRunningJob(answerMsg.getAckId());
-            if (byId instanceof KademliaSearchJob) {
-                ((KademliaSearchJob) byId).ack(kadContent, peer);
+            if (byId instanceof KademliaSearchJob job) {
+                job.ack(kadContent, peer);
             }
         } else {
             logger.error("Kademlia content verification failed!");
