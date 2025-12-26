@@ -9,4 +9,5 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
-    target-branch: "dev"
+    target-branch: "main"
+    open-pull-requests-limit: 2
