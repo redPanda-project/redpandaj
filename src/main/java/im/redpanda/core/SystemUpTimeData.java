@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.Duration;
 import java.util.Calendar;
@@ -11,6 +12,7 @@ import java.util.TreeSet;
 @Slf4j
 public class SystemUpTimeData implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 2028364573881956089L;
     private static final int UPTIME_WINDOW_IN_DAYS = 7;
     private static final int MAX_HITS_IN_WINDOW = UPTIME_WINDOW_IN_DAYS * 24;
@@ -33,8 +35,8 @@ public class SystemUpTimeData implements Serializable {
     }
 
     public void clearTooOldHits() {
-        while (!upHits.isEmpty() && upHits.first() < System.currentTimeMillis() - Duration.ofDays(UPTIME_WINDOW_IN_DAYS).toMillis()) {
-            upHits.remove(upHits.first());
+        while (!upHits.isEmpty() && upHits.getFirst() < System.currentTimeMillis() - Duration.ofDays(UPTIME_WINDOW_IN_DAYS).toMillis()) {
+            upHits.remove(upHits.getFirst());
         }
     }
 

@@ -22,7 +22,7 @@ public class NodeInfoModelTest {
         assertEquals(1, imported.getEntryPoints().size());
         assertNotEquals(0L, imported.getTimestamp());
 
-        GMEntryPointModel firstEntry = imported.getEntryPoints().get(0);
+        GMEntryPointModel firstEntry = imported.getEntryPoints().getFirst();
         assertEquals(nodeId, firstEntry.getNodeId());
 
     }

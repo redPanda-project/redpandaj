@@ -94,8 +94,7 @@ public class KademliaId implements Serializable {
             return false;
         }
 
-        if (o instanceof KademliaId) {
-            KademliaId nid = (KademliaId) o;
+        if (o instanceof KademliaId nid) {
             return this.hashCode() == nid.hashCode();
         }
         throw new RuntimeException("do not compare KademliaId to other objects!");

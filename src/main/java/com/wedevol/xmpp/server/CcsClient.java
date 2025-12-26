@@ -216,14 +216,14 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
     final FcmPacketExtension fcmPacket = (FcmPacketExtension) packet.getExtension(Util.FCM_NAMESPACE);
     final String json = fcmPacket.getJson();
     Optional<Map<String, Object>> jsonMapObject = Optional.ofNullable(MessageMapper.toMapFromJsonString(json));
-    if (!jsonMapObject.isPresent()) {
+    if (jsonMapObject.isEmpty()) {
       logger.info("Error parsing Packet JSON to JSON String: {}", json);
       return;
     }
     final Map<String, Object> jsonMap = jsonMapObject.get();
     final Optional<Object> messageTypeObj = Optional.ofNullable(jsonMap.get("message_type"));
 
-    if (!messageTypeObj.isPresent()) {
+    if (messageTypeObj.isEmpty()) {
       // Normal upstream message from a device client
       CcsInMessage inMessage = MessageMapper.ccsInMessageFrom(jsonMap);
       handleUpstreamMessage(inMessage);
@@ -257,7 +257,7 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
     // The custom 'action' payload attribute defines what the message action is about.
     final Optional<String> actionObj =
         Optional.ofNullable(inMessage.getDataPayload().get(Util.PAYLOAD_ATTRIBUTE_ACTION));
-    if (!actionObj.isPresent()) {
+    if (actionObj.isEmpty()) {
       throw new IllegalStateException("Action must not be null! Options: 'ECHO', 'MESSAGE'");
     }
     final String action = actionObj.get();
@@ -293,7 +293,7 @@ public class CcsClient implements StanzaListener, ReconnectionListener, Connecti
     removeMessageFromSyncMessages(jsonMap);
 
     Optional<String> errorCodeObj = Optional.ofNullable((String) jsonMap.get("error"));
-    if (!errorCodeObj.isPresent()) {
+    if (errorCodeObj.isEmpty()) {
       logger.error("Received null FCM Error Code.");
       return;
     }

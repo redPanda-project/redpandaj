@@ -12,7 +12,6 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 public class HTTPServer extends Thread {
 
@@ -49,7 +48,7 @@ public class HTTPServer extends Thread {
             Headers h = t.getResponseHeaders();
 
 
-            Path path = Paths.get("android.apk");
+            Path path = Path.of("android.apk");
             byte[] data = Files.readAllBytes(path);
 
 

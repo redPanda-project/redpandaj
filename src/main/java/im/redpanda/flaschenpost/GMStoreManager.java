@@ -37,7 +37,7 @@ public class GMStoreManager {
                 }
             }
 
-            Log.put(String.format("remaining entries in GMStoreManager after cleanup: %d", entries.size()), 0);
+            Log.put("remaining entries in GMStoreManager after cleanup: %d".formatted(entries.size()), 0);
         } finally {
             lock.unlock();
         }

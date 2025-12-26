@@ -5,6 +5,7 @@ import im.redpanda.store.NodeStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,6 +17,7 @@ public class Node implements Serializable {
 
     private static final Logger logger = LogManager.getLogger();
 
+    @Serial
     private static final long serialVersionUID = 43L;
     private final NodeId nodeId;
     private long lastSeen;
@@ -65,7 +67,7 @@ public class Node implements Serializable {
             return null;
         }
         Collections.sort(connectionPoints, Comparator.comparingLong(ConnectionPoint::getLastSeen));
-        return connectionPoints.get(0);
+        return connectionPoints.getFirst();
     }
 
     public void seen(String ip, int port) {
@@ -96,7 +98,7 @@ public class Node implements Serializable {
         }
 
         for (ConnectionPoint point : connectionPoints) {
-            logger.debug(String.format("seen, ip list for node: %s:%s reties: %s, last seen: %s", point.getIp(), point.getPort(), point.getRetries(), Utils.formatDurationFromNow(point.getLastSeen())));
+            logger.debug("seen, ip list for node: %s:%s reties: %s, last seen: %s".formatted(point.getIp(), point.getPort(), point.getRetries(), Utils.formatDurationFromNow(point.getLastSeen())));
         }
 
     }

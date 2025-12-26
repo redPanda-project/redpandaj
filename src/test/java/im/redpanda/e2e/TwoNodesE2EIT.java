@@ -11,7 +11,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.net.ServerSocket;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +50,7 @@ public class TwoNodesE2EIT {
             if (nodeA.exitCode() != 0 || nodeB.exitCode() != 0) {
                 System.out.println("Node A output:\n" + nodeAOutput);
                 System.out.println("Node B output:\n" + nodeBOutput);
-                Path logDir = Paths.get("target", "e2e-logs");
+                Path logDir = Path.of("target", "e2e-logs");
                 Files.createDirectories(logDir);
                 Files.writeString(logDir.resolve("nodeA.log"), nodeAOutput);
                 Files.writeString(logDir.resolve("nodeB.log"), nodeBOutput);

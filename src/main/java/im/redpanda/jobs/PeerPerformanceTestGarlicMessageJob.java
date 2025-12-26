@@ -245,7 +245,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         Node nodeBefore = null;
         for (Node node : nodes) {
             if (nodeBefore != null) {
-                a += " -(" + String.format("%.1f", g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
+                a += " -(" + "%.1f".formatted(g.getEdgeWeight(g.getEdge(nodeBefore, node))) + ")-> " + node;
             } else {
                 a += node;
             }
@@ -299,7 +299,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
                 }
                 nodeGraph.setEdgeWeight(edge, newWeight);
                 edge.setLastCheckFailed(!success);
-                pathString += " -(" + String.format("%.0f", newWeight) + ")-> " + node;
+                pathString += " -(" + "%.0f".formatted(newWeight) + ")-> " + node;
             } else {
                 pathString += node;
             }

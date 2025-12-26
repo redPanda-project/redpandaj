@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -19,6 +20,7 @@ import java.io.Serializable;
 public class LocalSettings implements Serializable {
 
 
+    @Serial
     private static final long serialVersionUID = 639L;
 
     private NodeId myIdentity;
