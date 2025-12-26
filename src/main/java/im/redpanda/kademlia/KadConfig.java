@@ -2,6 +2,5 @@ package im.redpanda.kademlia;
 
 public class KadConfig {
 
-    public static long OPERATION_TIMEOUT = 2000;
-
+  public static long OPERATION_TIMEOUT = 2000;
 }

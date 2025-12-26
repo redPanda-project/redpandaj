@@ -1,6 +1,6 @@
-//package im.redpanda.core;
+// package im.redpanda.core;
 //
-//public class TestHelper {
+// public class TestHelper {
 //    private static boolean running = false;
 //
 //
@@ -37,4 +37,4 @@
 //        running = false;
 //    }
 //
-//}
+// }

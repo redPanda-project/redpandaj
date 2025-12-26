@@ -1,31 +1,28 @@
 package im.redpanda.core;
 
-import org.junit.Test;
+import static org.junit.Assert.*;
 
 import java.nio.ByteBuffer;
 import java.security.Security;
-
-import static org.junit.Assert.*;
+import org.junit.Test;
 
 public class KademliaIdTest {
 
-    static {
-        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-    }
+  static {
+    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+  }
 
-    @Test
-    public void testEquals() {
+  @Test
+  public void testEquals() {
 
-        NodeId nodeId = new NodeId();
+    NodeId nodeId = new NodeId();
 
-        KademliaId kademliaId = nodeId.getKademliaId();
+    KademliaId kademliaId = nodeId.getKademliaId();
 
-        KademliaId clonedByBytes = KademliaId.fromBuffer(ByteBuffer.wrap(kademliaId.getBytes()));
+    KademliaId clonedByBytes = KademliaId.fromBuffer(ByteBuffer.wrap(kademliaId.getBytes()));
 
-        assertEquals(kademliaId, clonedByBytes);
+    assertEquals(kademliaId, clonedByBytes);
 
-        assertTrue(kademliaId.equals(clonedByBytes));
-
-    }
-
+    assertTrue(kademliaId.equals(clonedByBytes));
+  }
 }

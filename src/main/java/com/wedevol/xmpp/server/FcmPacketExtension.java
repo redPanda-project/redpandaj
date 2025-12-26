@@ -1,13 +1,11 @@
 package com.wedevol.xmpp.server;
 
+import com.wedevol.xmpp.util.Util;
 import org.jivesoftware.smack.packet.ExtensionElement;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Stanza;
-import com.wedevol.xmpp.util.Util;
 
-/**
- * XMPP Packet Extension for FCM Cloud Connection Server
- */
+/** XMPP Packet Extension for FCM Cloud Connection Server */
 public class FcmPacketExtension implements ExtensionElement {
 
   private String json;
@@ -22,8 +20,10 @@ public class FcmPacketExtension implements ExtensionElement {
 
   @Override
   public String toXML(String enclosingNamespace) {
-    // TODO: 1. Do we need to scape the json? StringUtils.escapeForXML(json) 2. How to use the enclosing namespace?
-    return "<%s xmlns=\"%s\">%s</%s>".formatted(getElementName(), getNamespace(), json, Util.FCM_ELEMENT_NAME);
+    // TODO: 1. Do we need to scape the json? StringUtils.escapeForXML(json) 2. How to use the
+    // enclosing namespace?
+    return "<%s xmlns=\"%s\">%s</%s>"
+        .formatted(getElementName(), getNamespace(), json, Util.FCM_ELEMENT_NAME);
   }
 
   public Stanza toPacket() {

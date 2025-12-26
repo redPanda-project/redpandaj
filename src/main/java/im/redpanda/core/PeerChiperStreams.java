@@ -4,92 +4,86 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * The OutputStreams are for encryption and the InputStreams for decryption.
- */
+/** The OutputStreams are for encryption and the InputStreams for decryption. */
 @Slf4j
 public class PeerChiperStreams {
 
-    private PeerOutputStream peerOutputStream;
-    private PeerInputStream peerInputStream;
+  private PeerOutputStream peerOutputStream;
+  private PeerInputStream peerInputStream;
 
-    private CipherInputStreamByteBuffer cipherInputStream;
-    private CipherOutputStreamByteBuffer cipherOutputStream;
+  private CipherInputStreamByteBuffer cipherInputStream;
+  private CipherOutputStreamByteBuffer cipherOutputStream;
 
-    public PeerChiperStreams(PeerOutputStream peerOutputStream,
-            PeerInputStream peerInputStream, CipherInputStreamByteBuffer cipherInputStream,
-            CipherOutputStreamByteBuffer cipherOutputStream) {
-        this.peerOutputStream = peerOutputStream;
-        this.peerInputStream = peerInputStream;
-        this.cipherInputStream = cipherInputStream;
-        this.cipherOutputStream = cipherOutputStream;
-    }
+  public PeerChiperStreams(
+      PeerOutputStream peerOutputStream,
+      PeerInputStream peerInputStream,
+      CipherInputStreamByteBuffer cipherInputStream,
+      CipherOutputStreamByteBuffer cipherOutputStream) {
+    this.peerOutputStream = peerOutputStream;
+    this.peerInputStream = peerInputStream;
+    this.cipherInputStream = cipherInputStream;
+    this.cipherOutputStream = cipherOutputStream;
+  }
 
-    /**
-     * Input has to be in read mode, output has to be in default (write) mode.
-     *
-     * @param input
-     * @param output
-     */
-    public void encrypt(ByteBuffer input, ByteBuffer output) {
-
-        /**
-         * encrypt so we have to use the outputstreams
-         * The bytes will flow the following way: input -> cipherOutputStream ->
-         * peerOutputStream -> output
-         */
-
-        try {
-
-            int r = output.remaining();
-
-            if (r < input.remaining()) {
-                // System.out.println("enc write buffer too small...");
-                peerOutputStream.setByteBuffer(output);
-                cipherOutputStream.write(input, r);
-                cipherOutputStream.flush();
-            } else {
-                peerOutputStream.setByteBuffer(output);
-                cipherOutputStream.write(input);
-                cipherOutputStream.flush();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-    }
+  /**
+   * Input has to be in read mode, output has to be in default (write) mode.
+   *
+   * @param input
+   * @param output
+   */
+  public void encrypt(ByteBuffer input, ByteBuffer output) {
 
     /**
-     * Input has to be in read mode, output has to be in default (write) mode.
-     *
-     * @param input
-     * @param output
+     * encrypt so we have to use the outputstreams The bytes will flow the following way: input ->
+     * cipherOutputStream -> peerOutputStream -> output
      */
-    public void decrypt(ByteBuffer input, ByteBuffer output) {
+    try {
 
-        /**
-         * decrypt so we have to use the inputStreams
-         * The bytes will flow the following way: input -> peerInputStream ->
-         * cipherInputStream -> output
-         */
+      int r = output.remaining();
 
-        try {
-            peerInputStream.setByteBuffer(input);
-            while (input.hasRemaining()) {
-                cipherInputStream.read(output);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
+      if (r < input.remaining()) {
+        // System.out.println("enc write buffer too small...");
+        peerOutputStream.setByteBuffer(output);
+        cipherOutputStream.write(input, r);
+        cipherOutputStream.flush();
+      } else {
+        peerOutputStream.setByteBuffer(output);
+        cipherOutputStream.write(input);
+        cipherOutputStream.flush();
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
     }
+  }
 
-    // public void encrypt(byte[] input, byte[] output) {
-    // encrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-    // }
-    //
-    // public void decrypt(byte[] input, byte[] output) {
-    // decrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-    // }
+  /**
+   * Input has to be in read mode, output has to be in default (write) mode.
+   *
+   * @param input
+   * @param output
+   */
+  public void decrypt(ByteBuffer input, ByteBuffer output) {
+
+    /**
+     * decrypt so we have to use the inputStreams The bytes will flow the following way: input ->
+     * peerInputStream -> cipherInputStream -> output
+     */
+    try {
+      peerInputStream.setByteBuffer(input);
+      while (input.hasRemaining()) {
+        cipherInputStream.read(output);
+      }
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  // public void encrypt(byte[] input, byte[] output) {
+  // encrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
+  // }
+  //
+  // public void decrypt(byte[] input, byte[] output) {
+  // decrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
+  // }
 
 }

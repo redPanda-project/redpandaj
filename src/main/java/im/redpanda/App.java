@@ -18,30 +18,25 @@ import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
 import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-
-/**
- * Hello world!
- */
+/** Hello world! */
 public class App {
 
+  private static final Logger logger = LogManager.getLogger();
 
-    private static final Logger logger = LogManager.getLogger();
+  public static boolean sentryAllowed = false;
 
+  public static void main(String[] args) throws IOException {
 
-    public static boolean sentryAllowed = false;
-
-    public static void main(String[] args) throws IOException {
-
-        System.out.println("""
+    System.out.println(
+        """
                                _ _____                _      \s
                               | |  __ \\              | |     \s
                   _ __ ___  __| | |__) |_ _ _ __   __| | __ _\s
@@ -51,137 +46,136 @@ public class App {
                                                              \s
                                                               """);
 
-        System.out.println("Starting redpanda " + App.class.getPackage().getImplementationVersion());
+    System.out.println("Starting redpanda " + App.class.getPackage().getImplementationVersion());
 
+    initLogger();
 
-        initLogger();
-
-
-        boolean activateSentry = false;
-        if (args.length > 0) {
-            String sentryExtras = args[0];
-            String[] split = sentryExtras.split("=");
-            if (split[1].equals("yes")) {
-                activateSentry = true;
-            }
-        }
-
-
-        logger.info("Activate Sentry: " + activateSentry);
-
-        String gitRev = readGitProperties();
-
-        if (activateSentry) {
-            Sentry.init(options -> {
-                options.setDsn("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
-                options.setRelease(gitRev);
-            });
-
-            Sentry.configureScope(scope -> scope.setContexts("gitRev", gitRev));
-
-            sentryAllowed = true;
-        }
-
-        if (gitRev != null) {
-            logger.info("found git revision: " + gitRev + " Sentry: " + activateSentry);
-        } else {
-            logger.warn("Warning, no git revision found...");
-        }
-
-
-        ServerContext serverContext = new ServerContext();
-        startServer(serverContext);
-
-        new ListenConsole(serverContext).start();
+    boolean activateSentry = false;
+    if (args.length > 0) {
+      String sentryExtras = args[0];
+      String[] split = sentryExtras.split("=");
+      if (split[1].equals("yes")) {
+        activateSentry = true;
+      }
     }
 
-    private static void startServer(ServerContext serverContext) {
-        ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
-        serverContext.setConnectionHandler(connectionHandler);
-        int port = connectionHandler.bind();
-        serverContext.setPort(port);
-        serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
-        serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
-        serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
-        serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+    logger.info("Activate Sentry: " + activateSentry);
 
+    String gitRev = readGitProperties();
 
-        logger.info("started node with KademliaId: " + serverContext.getNonce().toString() + " port: " + serverContext.getPort());
+    if (activateSentry) {
+      Sentry.init(
+          options -> {
+            options.setDsn("https://eefa8afdcdb7418995f6306c136546c7@sentry.io/1400313");
+            options.setRelease(gitRev);
+          });
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
+      Sentry.configureScope(scope -> scope.setContexts("gitRev", gitRev));
 
-            @Override
-            public void run() {
+      sentryAllowed = true;
+    }
+
+    if (gitRev != null) {
+      logger.info("found git revision: " + gitRev + " Sentry: " + activateSentry);
+    } else {
+      logger.warn("Warning, no git revision found...");
+    }
+
+    ServerContext serverContext = new ServerContext();
+    startServer(serverContext);
+
+    new ListenConsole(serverContext).start();
+  }
+
+  private static void startServer(ServerContext serverContext) {
+    ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, true);
+    serverContext.setConnectionHandler(connectionHandler);
+    int port = connectionHandler.bind();
+    serverContext.setPort(port);
+    serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
+    serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
+    serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+    serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+
+    logger.info(
+        "started node with KademliaId: "
+            + serverContext.getNonce().toString()
+            + " port: "
+            + serverContext.getPort());
+
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread() {
+
+              @Override
+              public void run() {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
                 logger.info("started shutdownhook...");
                 Server.shutdown(serverContext);
                 logger.info("shutdownhook done");
-            }
-        });
+              }
+            });
 
-        //lets restart the server once in a while until we have stable releases...
-        new ServerRestartJob(serverContext).start();
+    // lets restart the server once in a while until we have stable releases...
+    new ServerRestartJob(serverContext).start();
 
-        ByteBufferPool.init();
+    ByteBufferPool.init();
 
-        Server server = new Server(serverContext, connectionHandler);
-        server.start();
+    Server server = new Server(serverContext, connectionHandler);
+    server.start();
 
-        initServerNode(serverContext);
+    initServerNode(serverContext);
 
-        Server.startUpRoutines(serverContext);
+    Server.startUpRoutines(serverContext);
 
-        Log.init(serverContext);
+    Log.init(serverContext);
 
-        startPermanentJobsWithServerContext(serverContext);
+    startPermanentJobsWithServerContext(serverContext);
+  }
+
+  private static void initServerNode(ServerContext serverContext) {
+    Node serverNode = serverContext.getNodeStore().get(serverContext.getNodeId().getKademliaId());
+    if (serverNode == null) {
+      serverNode = new Node(serverContext, serverContext.getNodeId());
     }
+    serverContext.setNode(serverNode);
+    serverContext.getNodeStore().getNodeGraph().addVertex(serverNode);
+  }
 
-    private static void initServerNode(ServerContext serverContext) {
-        Node serverNode = serverContext.getNodeStore().get(serverContext.getNodeId().getKademliaId());
-        if (serverNode == null) {
-            serverNode = new Node(serverContext, serverContext.getNodeId());
+  private static void startPermanentJobsWithServerContext(ServerContext serverContext) {
+    new PeerJobs(serverContext).start();
+    new SaveJobs(serverContext).start();
+    new GMManagerCleanJobs(serverContext).start();
+    new KadRefreshJob(serverContext).start();
+    new NodeInfoSetRefreshJob(serverContext).start();
+    new NodeConnectionPointsSeenJob(serverContext).start();
+    new UpTimeReporterJob(serverContext).start();
+  }
 
+  private static void initLogger() {
+    logger.info("redPanda started.");
+  }
+
+  public static String readGitProperties() throws IOException {
+    String gitRev = null;
+    try (InputStream is = App.class.getResourceAsStream("/git.properties")) {
+      if (is == null) {
+        return null;
+      }
+      try (BufferedReader br =
+          new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+        String line;
+        while ((line = br.readLine()) != null) {
+          if (line.startsWith("git.commit.id.abbrev=")) {
+            int separatorIndex = line.indexOf('=');
+            if (separatorIndex >= 0 && separatorIndex + 1 < line.length()) {
+              gitRev = line.substring(separatorIndex + 1);
+            }
+          }
         }
-        serverContext.setNode(serverNode);
-        serverContext.getNodeStore().getNodeGraph().addVertex(serverNode);
+      }
     }
-
-    private static void startPermanentJobsWithServerContext(ServerContext serverContext) {
-        new PeerJobs(serverContext).start();
-        new SaveJobs(serverContext).start();
-        new GMManagerCleanJobs(serverContext).start();
-        new KadRefreshJob(serverContext).start();
-        new NodeInfoSetRefreshJob(serverContext).start();
-        new NodeConnectionPointsSeenJob(serverContext).start();
-        new UpTimeReporterJob(serverContext).start();
-    }
-
-    private static void initLogger() {
-        logger.info("redPanda started.");
-    }
-
-
-    public static String readGitProperties() throws IOException {
-        String gitRev = null;
-        try (InputStream is = App.class.getResourceAsStream("/git.properties")) {
-            if (is == null) {
-                return null;
-            }
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    if (line.startsWith("git.commit.id.abbrev=")) {
-                        int separatorIndex = line.indexOf('=');
-                        if (separatorIndex >= 0 && separatorIndex + 1 < line.length()) {
-                            gitRev = line.substring(separatorIndex + 1);
-                        }
-                    }
-                }
-            }
-        }
-        return gitRev;
-    }
-
-
+    return gitRev;
+  }
 }

@@ -1,14 +1,14 @@
 package com.wedevol.xmpp.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedevol.xmpp.bean.CcsInMessage;
+import com.wedevol.xmpp.bean.CcsOutMessage;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wedevol.xmpp.bean.CcsInMessage;
-import com.wedevol.xmpp.bean.CcsOutMessage;
 
 /**
  * Mapper for the transformation of JSON messages to attribute maps and vice versa in the XMPP
@@ -16,29 +16,22 @@ import com.wedevol.xmpp.bean.CcsOutMessage;
  *
  * @author Charz++
  */
-
 public class MessageMapper {
 
   private static final Logger logger = LoggerFactory.getLogger(MessageMapper.class);
   private static ObjectMapper mapper = new ObjectMapper();
 
-  /**
-   * Creates a JSON from a FCM outgoing message attributes
-   */
+  /** Creates a JSON from a FCM outgoing message attributes */
   public static String toJsonString(CcsOutMessage outMessage) {
     return toJsonString(mapFrom(outMessage));
   }
 
-  /**
-   * Creates a JSON from a FCM incoming message attributes
-   */
+  /** Creates a JSON from a FCM incoming message attributes */
   public static String toJsonString(CcsInMessage inMessage) {
     return toJsonString(mapFrom(inMessage));
   }
 
-  /**
-   * Creates a JSON encoded ACK message for a received upstream message
-   */
+  /** Creates a JSON encoded ACK message for a received upstream message */
   public static String createJsonAck(String to, String messageId) {
     final Map<String, Object> map = new HashMap<String, Object>();
     map.put("message_type", "ack");
@@ -66,9 +59,7 @@ public class MessageMapper {
     return null;
   }
 
-  /**
-   * Creates a MAP from a FCM outgoing message attributes
-   */
+  /** Creates a MAP from a FCM outgoing message attributes */
   public static Map<String, Object> mapFrom(CcsOutMessage msg) {
     final Map<String, Object> map = new HashMap<String, Object>();
     if (msg.getTo() != null) {
@@ -90,7 +81,7 @@ public class MessageMapper {
       map.put("collapse_key", msg.getCollapseKey());
     }
     if (msg.getPriority() != null) {
-      map.put("priority",10);
+      map.put("priority", 10);
 
       Map<String, String> stringStringMap = new HashMap<>();
       stringStringMap.put("priority", "high");
@@ -112,9 +103,7 @@ public class MessageMapper {
     return map;
   }
 
-  /**
-   * Creates a MAP from a FCM incoming message attributes
-   */
+  /** Creates a MAP from a FCM incoming message attributes */
   private static Map<String, Object> mapFrom(CcsInMessage msg) {
     final Map<String, Object> map = new HashMap<String, Object>();
     if (msg.getFrom() != null) {
@@ -130,9 +119,7 @@ public class MessageMapper {
     return map;
   }
 
-  /**
-   * Creates an incoming message according the bean
-   */
+  /** Creates an incoming message according the bean */
   @SuppressWarnings("unchecked")
   public static CcsInMessage ccsInMessageFrom(Map<String, Object> jsonMap) {
     String from = null;
@@ -161,5 +148,4 @@ public class MessageMapper {
     final CcsInMessage msg = new CcsInMessage(from, category, messageId, dataPayload);
     return msg;
   }
-
 }

@@ -2,24 +2,22 @@ package im.redpanda.flaschenpost;
 
 public abstract class GMContent {
 
-    protected byte TYPE;
+  protected byte TYPE;
 
-    private byte[] content;
+  private byte[] content;
 
+  protected abstract void computeContent();
 
-    protected abstract void computeContent();
+  public abstract GMType getGMType();
 
-    public abstract GMType getGMType();
+  protected void setContent(byte[] content) {
+    this.content = content;
+  }
 
-
-    protected void setContent(byte[] content) {
-        this.content = content;
+  public byte[] getContent() {
+    if (this.content == null) {
+      computeContent();
     }
-
-    public byte[] getContent() {
-        if (this.content == null) {
-            computeContent();
-        }
-        return this.content;
-    }
+    return this.content;
+  }
 }

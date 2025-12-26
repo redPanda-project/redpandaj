@@ -2,9 +2,7 @@ package com.wedevol.xmpp.bean;
 
 import java.util.Map;
 
-/**
- * Represents an outgoing message to FCM CCS
- */
+/** Represents an outgoing message to FCM CCS */
 public class CcsOutMessage {
 
   // Sender registration ID
@@ -123,5 +121,4 @@ public class CcsOutMessage {
   public void setNotificationPayload(Map<String, String> notificationPayload) {
     this.notificationPayload = notificationPayload;
   }
-
 }

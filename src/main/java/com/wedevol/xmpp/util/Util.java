@@ -5,10 +5,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * Util class for constants and generic methods
- */
-
+/** Util class for constants and generic methods */
 public class Util {
 
   // For the FCM connection
@@ -27,25 +24,28 @@ public class Util {
   public static final String PAYLOAD_ATTRIBUTE_ACTION = "action";
   public static final String PAYLOAD_ATTRIBUTE_RECIPIENT = "recipient";
 
-  /**
-   * Returns a random message id to uniquely identify a message
-   */
+  /** Returns a random message id to uniquely identify a message */
   public static String getUniqueMessageId() {
     // TODO: replace with your own random message ID
     final LocalDateTime now = LocalDateTime.now();
-    final String formatted = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ENGLISH));
+    final String formatted =
+        now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ENGLISH));
     final UUID randomUUID = UUID.randomUUID();
     final String messageId =
-        new StringBuilder().append("m-").append(formatted).append("-").append(randomUUID.toString()).toString();
+        new StringBuilder()
+            .append("m-")
+            .append(formatted)
+            .append("-")
+            .append(randomUUID.toString())
+            .toString();
     return messageId;
   }
-  
+
   public static Long getCurrentUnixTime() {
     return getCurrentTimeMillis() / 1000L;
   }
-  
+
   public static Long getCurrentTimeMillis() {
     return System.currentTimeMillis();
   }
-
 }
