@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class PeerPerformanceTestSchedulerJob extends Job {
 
@@ -32,11 +33,11 @@ public class PeerPerformanceTestSchedulerJob extends Job {
             setReRunDelay(2000L);
         }
 
-        if (Math.random() < 0.01) {
+        if (ThreadLocalRandom.current().nextDouble() < 0.01) {
             PeerPerformanceTestGarlicMessageJob.decayRates();
         }
 
-        if (Math.random() < 0.01) {
+        if (ThreadLocalRandom.current().nextDouble() < 0.01) {
             //lets randomly wait such that multiple edges are ready at once for more hops
             setReRunDelay(2000L);
         }

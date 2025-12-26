@@ -20,7 +20,7 @@ public class NodeEdgeTest {
         nodeEdges.add(newEdge);
 
         Collections.sort(nodeEdges);
-        assertEquals(oldEdge, nodeEdges.get(0));
+        assertEquals(oldEdge, nodeEdges.getFirst());
     }
 
     @Test
@@ -34,7 +34,7 @@ public class NodeEdgeTest {
         nodeEdges.add(newEdge);
 
         Collections.sort(nodeEdges);
-        assertEquals(oldEdge, nodeEdges.get(0));
+        assertEquals(oldEdge, nodeEdges.getFirst());
     }
 
     @Test
@@ -49,7 +49,7 @@ public class NodeEdgeTest {
         nodeEdges.add(oldEdge);
 
         Collections.sort(nodeEdges);
-        assertEquals(oldEdge, nodeEdges.get(0));
+        assertEquals(oldEdge, nodeEdges.getFirst());
     }
 
 }

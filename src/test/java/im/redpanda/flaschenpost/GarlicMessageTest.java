@@ -66,7 +66,7 @@ public class GarlicMessageTest {
 
         assertEquals(1, parsedGM.getGMContent().size());
 
-        GMContent gmContent = parsedGM.getGMContent().get(0);
+        GMContent gmContent = parsedGM.getGMContent().getFirst();
 
         assertEquals(gmContent.getClass(), GMAck.class);
 

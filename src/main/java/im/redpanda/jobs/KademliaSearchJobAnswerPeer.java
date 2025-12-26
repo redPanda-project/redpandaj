@@ -26,7 +26,7 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
         ArrayList<KadContent> kadContents = super.success();
 
-        if (kadContents == null || kadContents.get(0) == null) {
+        if (kadContents == null || kadContents.getFirst() == null) {
             System.out.println("job failed, did not found an entry in time...");
             fail();
             return null;

@@ -5,7 +5,7 @@ import im.redpanda.crypt.Utils;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
 import org.jetbrains.annotations.NotNull;
-
+import java.util.concurrent.ThreadLocalRandom;
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import java.io.*;
@@ -306,7 +306,7 @@ public class SmallChiperStreamTest {
                 return 0;
             }
 
-            return buffers.get(0).remaining();
+            return buffers.getFirst().remaining();
         }
 
         @Override
@@ -315,7 +315,7 @@ public class SmallChiperStreamTest {
                 return -1;
             }
 
-            ByteBuffer byteBuffer = buffers.get(0);
+            ByteBuffer byteBuffer = buffers.getFirst();
 
             if (!byteBuffer.hasRemaining()) {
                 return -1;
@@ -323,7 +323,7 @@ public class SmallChiperStreamTest {
 
 //            System.out.println("" + byteBuffer.remaining());
 
-            if (Math.random() < 0.5) {
+            if (ThreadLocalRandom.current().nextDouble() < 0.5) {
                 System.out.println("-1 ############");
                 return -1;
             }
@@ -338,16 +338,16 @@ public class SmallChiperStreamTest {
                 return -1;
             }
 
-            ByteBuffer byteBuffer = buffers.get(0);
+            ByteBuffer byteBuffer = buffers.getFirst();
 
             if (!byteBuffer.hasRemaining()) {
-                buffers.remove(0);
+                buffers.removeFirst();
 
                 if (buffers.size() == 0) {
                     return -1;
                 }
 
-                byteBuffer = buffers.get(0);
+                byteBuffer = buffers.getFirst();
                 if (!byteBuffer.hasRemaining()) {
                     return -1;
                 }

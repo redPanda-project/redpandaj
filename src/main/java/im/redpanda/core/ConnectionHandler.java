@@ -113,23 +113,23 @@ public class ConnectionHandler extends Thread {
                 serverSocketChannel.socket().bind(new InetSocketAddress(port));
                 bound = true;
             } catch (Exception e) {
-                System.out.println(String.format("could not bound to port: %s", port));
+                System.out.println("could not bound to port: %s".formatted(port));
                 port++;
             }
         }
-        logger.info(String.format("bound successfully to port: %s", port));
+        logger.info("bound successfully to port: %s".formatted(port));
         return port;
     }
 
     private void bindToSpecificPortWithBlocking(int port, ServerSocketChannel serverSocketChannel) {
-        logger.info(String.format("bin to specific port %s ...", port));
+        logger.info("bin to specific port %s ...".formatted(port));
         boolean bound = false;
         while (!bound) {
             try {
                 serverSocketChannel.socket().bind(new InetSocketAddress(port));
                 bound = true;
             } catch (Exception e) {
-                System.out.println(String.format("could not bound to port: %s, retry", port));
+                System.out.println("could not bound to port: %s, retry".formatted(port));
                 try {
                     Thread.sleep(1000L);
                 } catch (InterruptedException ex) {
@@ -138,7 +138,7 @@ public class ConnectionHandler extends Thread {
                 }
             }
         }
-        logger.info(String.format("bound successfully to port: %s", port));
+        logger.info("bound successfully to port: %s".formatted(port));
     }
 
     void addServerSocketChannel(ServerSocketChannel serverSocketChannel) {

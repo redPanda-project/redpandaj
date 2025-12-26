@@ -97,7 +97,7 @@ public class Peer implements Comparable<Peer> {
     public void setNode(Node node) {
 
         if (this.nodeId != null && !this.nodeId.equals(node.getNodeId())) {
-            System.out.println(String.format("set wrong node to peer, panic: %s - %s", this.nodeId, node.getNodeId()));
+            System.out.println("set wrong node to peer, panic: %s - %s".formatted(this.nodeId, node.getNodeId()));
         }
 
         this.node = node;
@@ -119,9 +119,7 @@ public class Peer implements Comparable<Peer> {
 
     public boolean equalsIpAndPort(Object obj) {
 
-        if (obj instanceof Peer) {
-
-            Peer n2 = (Peer) obj;
+        if (obj instanceof Peer n2) {
 
             return (ip.equals(n2.ip) && port == n2.port);
 
@@ -133,9 +131,7 @@ public class Peer implements Comparable<Peer> {
 
     public boolean equalsNonce(Object obj) {
 
-        if (obj instanceof Peer) {
-
-            Peer n2 = (Peer) obj;
+        if (obj instanceof Peer n2) {
 
             if (getNodeId() == null || getNodeId().getKademliaId() == null || n2.getNodeId() == null
                     || n2.getNodeId().getKademliaId() == null) {
@@ -385,9 +381,9 @@ public class Peer implements Comparable<Peer> {
                 int newSize = Math.min(readBuffer.position() + remaining + 1024, 1024 * 1024 * 60);
                 if (newSize == readBuffer.remaining()) {
                     throw new PeerProtocolException(
-                            String.format("buffer could not be increased, size is %s ", newSize));
+                            "buffer could not be increased, size is %s ".formatted(newSize));
                 }
-                Log.put(String.format("get new readBuffer with size: %s", newSize), 5);
+                Log.put("get new readBuffer with size: %s".formatted(newSize), 5);
                 ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
 
                 System.arraycopy(readBuffer.array(), 0, newBuffer.array(), 0, readBuffer.array().length);

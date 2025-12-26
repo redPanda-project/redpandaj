@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.security.Security;
 
@@ -39,7 +38,7 @@ public class Updater {
     public static void main(String[] args) {
         // createNewKeys();
 
-        if (!Paths.get("privateSigningKey.txt").toFile().exists()) {
+        if (!Path.of("privateSigningKey.txt").toFile().exists()) {
             System.out.println("No private key for signing found, skipping insert update into network.");
             return;
         }
@@ -81,7 +80,7 @@ public class Updater {
     public static void insertNewUpdate() throws IOException, AddressFormatException {
 
         // lets test if we have the priv key before generating update
-        String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
+        String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
@@ -94,7 +93,7 @@ public class Updater {
 
         System.out.println("timestamp : " + timestamp);
 
-        Path path = Paths.get("target/redpanda.jar");
+        Path path = Path.of("target/redpanda.jar");
         byte[] data = Files.readAllBytes(path);
 
         ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
@@ -126,7 +125,7 @@ public class Updater {
 
         System.out.println("inserting android.apk as android update...");
         // lets test if we have the priv key before generating update
-        String keyString = new String(Files.readAllBytes(Paths.get("privateSigningKey.txt")));
+        String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
         keyString = keyString.replace("\n", "").replace("\r", "");
 
         NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
@@ -141,7 +140,7 @@ public class Updater {
 
         System.out.println("timestamp : " + timestamp + " ago: " + (System.currentTimeMillis() - timestamp));
 
-        Path path = Paths.get(fileName);
+        Path path = Path.of(fileName);
         byte[] data = Files.readAllBytes(path);
 
         int updateSize = data.length;
@@ -171,8 +170,8 @@ public class Updater {
 
         System.out.println("renaming file to android.apk to be used from the client");
 
-        Path source = Paths.get(fileName);
-        Files.move(source, Paths.get("android.apk"), StandardCopyOption.REPLACE_EXISTING);
+        Path source = Path.of(fileName);
+        Files.move(source, Path.of("android.apk"), StandardCopyOption.REPLACE_EXISTING);
     }
 
 }

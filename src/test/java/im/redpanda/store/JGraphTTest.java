@@ -57,10 +57,10 @@ public class JGraphTTest {
         while (!added && count < 100) {
 
             Collections.shuffle(ids);
-            KademliaId a = ids.get(0);
+            KademliaId a = ids.getFirst();
             ids.remove(a);
             Collections.shuffle(ids);
-            KademliaId b = ids.get(0);
+            KademliaId b = ids.getFirst();
             ids.add(a);
 
             DefaultEdge defaultEdge = g.addEdge(a, b);

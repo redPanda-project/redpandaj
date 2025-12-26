@@ -29,7 +29,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.Objects;
@@ -49,7 +48,7 @@ public final class TestNodeLauncher {
 
     public static void main(String[] args) throws Exception {
         Security.addProvider(new BouncyCastleProvider());
-        Path workDir = Paths.get(System.getProperty("redpanda.workdir", ".")).toAbsolutePath();
+        Path workDir = Path.of(System.getProperty("redpanda.workdir", ".")).toAbsolutePath();
         Files.createDirectories(workDir);
         System.setProperty("user.dir", workDir.toString());
 
