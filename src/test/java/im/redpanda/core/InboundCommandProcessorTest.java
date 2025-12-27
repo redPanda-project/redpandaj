@@ -163,4 +163,46 @@ public class InboundCommandProcessorTest {
       org.junit.Assert.fail("Failed to parse ACK protobuf: " + e.getMessage());
     }
   }
+
+  @Test
+  public void parseCommand_requestPeerList_skipsPeerWithNullIp()
+      throws InvalidProtocolBufferException {
+    ServerContext ctx = ServerContext.buildDefaultServerContext();
+    InboundCommandProcessor proc = newProcessor(ctx);
+
+    // Add valid peer
+    Peer validPeer = new Peer("127.0.0.1", 11111, ctx.getNodeId());
+    ctx.getPeerList().add(validPeer);
+
+    // Add invalid peer (null IP)
+    Peer invalidPeer = new Peer("1.2.3.4", 22222);
+    ctx.getPeerList().add(invalidPeer);
+    invalidPeer.ip = null;
+
+    Peer requestingPeer = new Peer("10.0.0.1", 33333, ctx.getNodeId());
+    requestingPeer.setConnected(true);
+    requestingPeer.writeBuffer = ByteBuffer.allocate(4096);
+
+    ByteBuffer dummy = ByteBuffer.allocate(0);
+    // This call would throw NPE before the fix
+    int consumed = proc.parseCommand(Command.REQUEST_PEERLIST, dummy, requestingPeer);
+
+    assertEquals(1, consumed);
+
+    // Check response
+    requestingPeer.writeBuffer.flip();
+    assertEquals(Command.SEND_PEERLIST, requestingPeer.writeBuffer.get());
+    int len = requestingPeer.writeBuffer.getInt();
+    byte[] data = new byte[len];
+    requestingPeer.writeBuffer.get(data);
+
+    im.redpanda.proto.SendPeerList sendPeerList = im.redpanda.proto.SendPeerList.parseFrom(data);
+
+    boolean foundInvalid = false;
+    for (im.redpanda.proto.PeerInfoProto p : sendPeerList.getPeersList()) {
+      if (p.getPort() == 22222) foundInvalid = true;
+    }
+    assertFalse("Peer with null IP should be skipped", foundInvalid);
+    assertTrue(sendPeerList.getPeersCount() >= 1);
+  }
 }
