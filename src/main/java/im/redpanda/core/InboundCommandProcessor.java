@@ -237,6 +237,9 @@ public class InboundCommandProcessor {
     try {
       var builder = SendPeerList.newBuilder();
       for (Peer peerToCheck : serverContext.getPeerList().getPeerArrayList()) {
+        if (peerToCheck.ip == null) {
+          continue;
+        }
         var peerBuilder =
             PeerInfoProto.newBuilder().setIp(peerToCheck.ip).setPort(peerToCheck.getPort());
         if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
