@@ -6,7 +6,7 @@
 DIRECTORY=sources
 
 #todo change later to master branch
-BRANCH=dev
+BRANCH=main
 
 if [ ! -d "$DIRECTORY" ]; then
   echo "$DIRECTORY does not exists cloning into $DIRECTORY..."
