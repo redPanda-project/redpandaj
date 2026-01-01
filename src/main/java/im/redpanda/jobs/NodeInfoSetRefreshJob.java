@@ -37,6 +37,10 @@ public class NodeInfoSetRefreshJob extends Job {
     nodeInfoModel.setUptime(
         serverContext.getLocalSettings().getSystemUpTimeData().getUptimePercentAsInt());
 
+    if (serverContext.getOutboundService() != null) {
+      nodeInfoModel.addService("outbound_v1");
+    }
+
     System.out.println("string to store: " + nodeInfoModel.export());
 
     byte[] payload = nodeInfoModel.export().getBytes();

@@ -16,6 +16,9 @@ import im.redpanda.jobs.NodeInfoSetRefreshJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
+import im.redpanda.outbound.OutboundHandleStore;
+import im.redpanda.outbound.OutboundMailboxStore;
+import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeStore;
 import io.sentry.Sentry;
 import java.io.BufferedReader;
@@ -37,14 +40,14 @@ public class App {
 
     System.out.println(
         """
-                               _ _____                _      \s
-                              | |  __ \\              | |     \s
-                  _ __ ___  __| | |__) |_ _ _ __   __| | __ _\s
-                 | '__/ _ \\/ _` |  ___/ _` | '_ \\ / _` |/ _` |
-                 | | |  __/ (_| | |  | (_| | | | | (_| | (_| |
-                 |_|  \\___|\\__,_|_|   \\__,_|_| |_|\\__,_|\\__,_|               - p2p chat, https://github.com/redPanda-project/redpandaj
-                                                             \s
-                                                              """);
+                          _ _____                _      \s
+                         | |  __ \\              | |     \s
+             _ __ ___  __| | |__) |_ _ _ __   __| | __ _\s
+            | '__/ _ \\/ _` |  ___/ _` | '_ \\ / _` |/ _` |
+            | | |  __/ (_| | |  | (_| | | | | (_| | (_| |
+            |_|  \\___|\\__,_|_|   \\__,_|_| |_|\\__,_|\\__,_|               - p2p chat, https://github.com/redPanda-project/redpandaj
+                                                        \s
+                                                         """);
 
     System.out.println("Starting redpanda " + App.class.getPackage().getImplementationVersion());
 
@@ -96,6 +99,15 @@ public class App {
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
     serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+
+    // Outbound Service V1 Init
+    OutboundHandleStore ohStore = new OutboundHandleStore(serverContext);
+    OutboundMailboxStore mbStore = new OutboundMailboxStore(serverContext);
+    OutboundService outService = new OutboundService(ohStore, mbStore);
+
+    serverContext.setOutboundHandleStore(ohStore);
+    serverContext.setOutboundMailboxStore(mbStore);
+    serverContext.setOutboundService(outService);
 
     logger.info(
         "started node with KademliaId: "

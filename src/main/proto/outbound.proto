@@ -1,0 +1,69 @@
+syntax = "proto3";
+package im.redpanda.outbound.v1;
+
+option java_multiple_files = true;
+option java_package = "im.redpanda.outbound.v1";
+option java_outer_classname = "OutboundProtoV1";
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  OK = 1;
+  INVALID_SIGNATURE = 2;
+  INVALID_TIMESTAMP = 3;
+  REPLAY = 4;
+  NOT_FOUND = 5;
+  RATE_LIMIT = 6;
+  QUOTA_EXCEEDED = 7;
+  BAD_REQUEST = 8;
+}
+
+message RegisterOhRequest {
+  bytes oh_id = 1;              // 16-32 random bytes (client generated)
+  bytes oh_auth_public_key = 2; // NodeId.PUBLIC_KEYLEN bytes (same format as NodeId.exportPublic())
+  int64 requested_expires_at = 3;
+
+  int64 timestamp_ms = 4;       // client time
+  bytes nonce = 5;              // 16-32 bytes
+  bytes signature = 6;          // DER ECDSA over "signing_bytes"
+}
+
+message RegisterOhResponse {
+  Status status = 1;
+  int64 server_time_ms = 2;
+  int64 expires_at_ms = 3;      // server-clamped TTL
+}
+
+message FetchRequest {
+  bytes oh_id = 1;
+  uint32 limit = 2;             // max batch size
+  uint64 cursor = 3;            // optional, 0 = from start (PoC)
+
+  int64 timestamp_ms = 4;
+  bytes nonce = 5;
+  bytes signature = 6;
+}
+
+message MailItem {
+  bytes message_id = 1;         // 16 bytes UUID raw or 32 random bytes
+  int64 received_at_ms = 2;
+  bytes payload = 3;            // chat payload (later: push payload / garlic delivered)
+}
+
+message FetchResponse {
+  Status status = 1;
+  uint64 next_cursor = 2;
+  repeated MailItem items = 3;
+  int64 server_time_ms = 4;
+}
+
+message RevokeOhRequest {
+  bytes oh_id = 1;
+  int64 timestamp_ms = 2;
+  bytes nonce = 3;
+  bytes signature = 4;
+}
+
+message RevokeOhResponse {
+  Status status = 1;
+  int64 server_time_ms = 2;
+}

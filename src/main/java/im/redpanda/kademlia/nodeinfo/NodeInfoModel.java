@@ -20,6 +20,7 @@ public class NodeInfoModel {
   private final long timestamp = System.currentTimeMillis();
   @Setter @Getter private int uptime;
   @Getter private final List<GMEntryPointModel> entryPoints = new ArrayList<>();
+  @Getter private final List<String> services = new ArrayList<>();
 
   public static NodeInfoModel importFromString(String jsonString) {
     return gson.fromJson(jsonString, NodeInfoModel.class);
@@ -31,6 +32,10 @@ public class NodeInfoModel {
 
   public void addAllEntryPoints(List<GMEntryPointModel> entryPointModels) {
     entryPoints.addAll(entryPointModels);
+  }
+
+  public void addService(String service) {
+    services.add(service);
   }
 
   public String export() {
