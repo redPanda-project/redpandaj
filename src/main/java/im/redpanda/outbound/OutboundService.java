@@ -103,7 +103,7 @@ public class OutboundService {
 
     // Signing bytes: commandId || oh_id || timestamp || nonce || limit || cursor...
     // We need to match the client's signing logic.
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length + 4 + 8);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length + 4 + 8);
     signBuf.put(Command.OUTBOUND_FETCH_REQ);
     signBuf.put(ohId);
     signBuf.putLong(timestamp);
