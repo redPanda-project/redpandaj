@@ -10,7 +10,12 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
 import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.kademlia.KadContent;
+import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.v1.FetchRequest;
+import im.redpanda.outbound.v1.RegisterOhRequest;
+import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.proto.*;
+import im.redpanda.proto.FlaschenpostPut;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -41,8 +46,11 @@ public class InboundCommandProcessor {
 
   private final java.util.Map<Byte, CommandHandler> commandHandlers = new java.util.HashMap<>();
 
+  private final OutboundService outboundService;
+
   public InboundCommandProcessor(ServerContext serverContext) {
     this.serverContext = serverContext;
+    this.outboundService = serverContext.getOutboundService(); // Ensure ServerContext has this!
     initializeHandlers();
   }
 
@@ -51,6 +59,29 @@ public class InboundCommandProcessor {
     commandHandlers.put(Command.PONG, (peer, buf, payload) -> handlePong(peer));
     commandHandlers.put(
         Command.REQUEST_PEERLIST, (peer, buf, payload) -> handleRequestPeerList(peer));
+
+    // Outbound V1
+    commandHandlers.put(
+        Command.OUTBOUND_REGISTER_OH_REQ,
+        (peer, buf, payload) -> {
+          int len = (payload != null) ? payload.length : 0;
+          outboundService.handleRegister(peer, RegisterOhRequest.parseFrom(payload));
+          return 1 + 4 + len;
+        });
+    commandHandlers.put(
+        Command.OUTBOUND_FETCH_REQ,
+        (peer, buf, payload) -> {
+          int len = (payload != null) ? payload.length : 0;
+          outboundService.handleFetch(peer, FetchRequest.parseFrom(payload));
+          return 1 + 4 + len;
+        });
+    commandHandlers.put(
+        Command.OUTBOUND_REVOKE_OH_REQ,
+        (peer, buf, payload) -> {
+          int len = (payload != null) ? payload.length : 0;
+          outboundService.handleRevoke(peer, RevokeOhRequest.parseFrom(payload));
+          return 1 + 4 + len;
+        });
 
     // Payload commands
     commandHandlers.put(
@@ -108,6 +139,36 @@ public class InboundCommandProcessor {
         Command.FLASCHENPOST_PUT,
         (peer, buf, payload) -> {
           handleFlaschenpostPut(payload, peer);
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.OUTBOUND_REGISTER_OH_REQ,
+        (peer, buf, payload) -> {
+          try {
+            outboundService.handleRegister(peer, RegisterOhRequest.parseFrom(payload));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.OUTBOUND_FETCH_REQ,
+        (peer, buf, payload) -> {
+          try {
+            outboundService.handleFetch(peer, FetchRequest.parseFrom(payload));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+          return 1 + 4 + payload.length;
+        });
+    commandHandlers.put(
+        Command.OUTBOUND_REVOKE_OH_REQ,
+        (peer, buf, payload) -> {
+          try {
+            outboundService.handleRevoke(peer, RevokeOhRequest.parseFrom(payload));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
           return 1 + 4 + payload.length;
         });
   }

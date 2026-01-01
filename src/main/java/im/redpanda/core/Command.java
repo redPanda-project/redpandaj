@@ -28,4 +28,12 @@ public class Command {
 
   // flaschenpost
   public static final byte FLASCHENPOST_PUT = (byte) 141;
+
+  // outbound
+  public static final byte OUTBOUND_REGISTER_OH_REQ = (byte) 150;
+  public static final byte OUTBOUND_REGISTER_OH_RES = (byte) 151;
+  public static final byte OUTBOUND_FETCH_REQ = (byte) 152;
+  public static final byte OUTBOUND_FETCH_RES = (byte) 153;
+  public static final byte OUTBOUND_REVOKE_OH_REQ = (byte) 154;
+  public static final byte OUTBOUND_REVOKE_OH_RES = (byte) 155;
 }
