@@ -62,7 +62,7 @@ public class OutboundAuth {
 
     if (verifier == null) {
       logger.warn("OutboundAuth: Could not import public key");
-      return AuthResult.INVALID_SIGNATURE;
+      return AuthResult.INVALID_SIGNATURE; // Malformed public key
     }
 
     try {

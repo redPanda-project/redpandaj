@@ -1,5 +1,9 @@
 package im.redpanda.outbound;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+
+import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import org.junit.Before;
@@ -12,49 +16,259 @@ public class OutboundIntegrationTest {
   private OutboundMailboxStore mailboxStore;
   private Peer peer;
 
+  private NodeId clientNode;
+
   @Before
   public void setUp() {
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
     service = new OutboundService(handleStore, mailboxStore);
     peer = new Peer("127.0.0.1", 12345);
-    peer.writeBuffer = java.nio.ByteBuffer.allocate(1024);
-    peer.writeBuffer.flip(); // Prepare for reading (although we write to it)
-    // Actually we write to it, so it should be in write mode (position 0, limit
-    // cap).
+    peer.writeBuffer = java.nio.ByteBuffer.allocate(4096);
+    peer.writeBuffer.flip();
+    peer.writeBuffer.clear();
+    peer.setConnected(true);
+
+    // Generate valid client identity
+    clientNode = new NodeId(NodeId.generateECKeys());
+  }
+
+  @Test
+  public void testRegister_ValidRequest_Success() throws Exception {
+    RegisterOhRequest req = createSignedRegisterRequest();
+    service.handleRegister(peer, req);
+
+    // Verify response
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.RegisterOhResponse res =
+        im.redpanda.outbound.v1.RegisterOhResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
+  }
+
+  @Test
+  public void testFetch_Success() throws Exception {
+    // 1. Register first
+    RegisterOhRequest regReq = createSignedRegisterRequest();
+    service.handleRegister(peer, regReq);
+    peer.writeBuffer.clear(); // Clear register response
+
+    // 2. Add some mail manually to store for testing fetch
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    mailboxStore.addMessage(
+        ohId,
+        im.redpanda.outbound.v1.MailItem.newBuilder()
+            .setPayload(com.google.protobuf.ByteString.copyFromUtf8("TestMsg"))
+            .build());
+
+    // 3. Fetch
+    im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
+    service.handleFetch(peer, fetchReq);
+
+    // 4. Verify
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.FetchResponse res =
+        im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
+    assertEquals(1, res.getItemsCount());
+    assertEquals("TestMsg", res.getItems(0).getPayload().toStringUtf8());
+  }
+
+  @Test
+  public void testRevoke_Success() throws Exception {
+    // 1. Register first
+    RegisterOhRequest regReq = createSignedRegisterRequest();
+    service.handleRegister(peer, regReq);
     peer.writeBuffer.clear();
 
-    // Set selection key to avoid NPE in setWriteBufferFilled if mocked/stubbed
-    // But Peer.setWriteBufferFilled checks if key is null and returns false.
-    // However, if we want to valid command writing...
-    // The code only locks/unlocks and puts.
-    // setWriteBufferFilled is called at the end.
-    // Let's ensure it doesn't crash.
-    peer.setConnected(true); // make isConnected return true
+    // 2. Revoke
+    im.redpanda.outbound.v1.RevokeOhRequest revokeReq = createSignedRevokeRequest();
+    service.handleRevoke(peer, revokeReq);
+
+    // 3. Verify Response
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.RevokeOhResponse res =
+        im.redpanda.outbound.v1.RevokeOhResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
+
+    // 4. Verify store is empty
+    assertNull(handleStore.get(clientNode.getKademliaId().getBytes()));
   }
 
   @Test
-  public void testRegister_ValidRequest_Success() {
-    // Since we mock/stub nothing and use real Auth which fails signature,
-    // we expect it to return REGISTER_RES with INVALID_SIGNATURE (or error).
-    // But verify it DOES NOT throw exception.
+  public void testFetch_NotFound() throws Exception {
+    im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
+    service.handleFetch(peer, fetchReq);
 
-    // We need to generate a real KeyPair to sign if we want SUCCESS.
-    // For now, let's just verify it runs without crashing.
-    RegisterOhRequest req =
-        RegisterOhRequest.newBuilder()
-            .setTimestampMs(System.currentTimeMillis())
-            // .setSignature(...) // Invalid
-            .build();
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
 
-    // The service.handleRegister returns int (bytes written).
-    // It should NOT throw exception now.
-    service.handleRegister(peer, req);
+    im.redpanda.outbound.v1.FetchResponse res =
+        im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.NOT_FOUND, res.getStatus());
   }
 
   @Test
-  public void testAuth_InvalidSignature_ReturnsError_Stub() {
-    // This is a placeholder to verify Auth integration later
-    // Logic will be inside OutboundService
+  public void testRevoke_NotFound() throws Exception {
+    im.redpanda.outbound.v1.RevokeOhRequest revokeReq = createSignedRevokeRequest();
+    service.handleRevoke(peer, revokeReq);
+
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.RevokeOhResponse res =
+        im.redpanda.outbound.v1.RevokeOhResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.NOT_FOUND, res.getStatus());
+  }
+
+  // --- Helpers ---
+
+  private RegisterOhRequest createSignedRegisterRequest() {
+    long now = System.currentTimeMillis();
+    long expires = now + 60000;
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    byte[] nonce = getRandomNonce();
+
+    // Signing bytes: command(Register=150/151?) -> Wait, what bytes are signed?
+    // OutboundAuth.verify uses: signingBytes, signature
+    // In OutboundService.handleRegister:
+    // byte[] signingBytes = Bytes.concat(ohId,
+    // Longs.toByteArray(req.getExpiresAtMs()),
+    // Longs.toByteArray(req.getTimestampMs()), req.getNonce().toByteArray());
+    // Wait, let's check OutboundService logic for signing bytes construction.
+
+    // Re-reading OutboundService logic locally or assuming based on usual pattern?
+    // I should probably check OutboundService to be sure about signing bytes order.
+    // Based on previous edits, it was probably: ohId + expires + timestamp + nonce.
+    // Let's assume this for now, but if test fails I'll check.
+
+    // Actually, looking at OutboundAuth it takes signingBytes passed from
+    // OutboundService.
+    // I need to replicate HOW OutboundService constructs signingBytes to create
+    // valid sig.
+
+    // Constructed inside helper method below to ensure match
+    byte[] signature = signRegister(ohId, expires, now, nonce);
+
+    return RegisterOhRequest.newBuilder()
+        .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
+        .setOhAuthPublicKey(com.google.protobuf.ByteString.copyFrom(clientNode.exportPublic()))
+        .setRequestedExpiresAt(expires)
+        .setTimestampMs(now)
+        .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
+        .setSignature(com.google.protobuf.ByteString.copyFrom(signature))
+        .build();
+  }
+
+  private im.redpanda.outbound.v1.FetchRequest createSignedFetchRequest() {
+    long now = System.currentTimeMillis();
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    byte[] nonce = getRandomNonce();
+    int limit = 10;
+    long cursor = 0;
+
+    byte[] signature = signFetch(ohId, limit, cursor, now, nonce);
+
+    return im.redpanda.outbound.v1.FetchRequest.newBuilder()
+        .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
+        .setCursor(cursor)
+        .setLimit(limit)
+        .setTimestampMs(now)
+        .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
+        .setSignature(com.google.protobuf.ByteString.copyFrom(signature))
+        .build();
+  }
+
+  private im.redpanda.outbound.v1.RevokeOhRequest createSignedRevokeRequest() {
+    long now = System.currentTimeMillis();
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    byte[] nonce = getRandomNonce();
+
+    byte[] signature = signRevoke(ohId, now, nonce);
+
+    return im.redpanda.outbound.v1.RevokeOhRequest.newBuilder()
+        .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
+        .setTimestampMs(now)
+        .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
+        .setSignature(com.google.protobuf.ByteString.copyFrom(signature))
+        .build();
+  }
+
+  private byte[] getRandomNonce() {
+    byte[] n = new byte[8];
+    new java.util.Random().nextBytes(n);
+    return n;
+  }
+
+  // Use Guava or manual concat
+  private byte[] signRegister(byte[] ohId, long expires, long ts, byte[] nonce) {
+    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+    try {
+      bos.write(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_REQ);
+      bos.write(ohId);
+      bos.write(com.google.common.primitives.Longs.toByteArray(expires));
+      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
+      bos.write(nonce);
+    } catch (Exception e) {
+    }
+    return clientNode.sign(bos.toByteArray());
+  }
+
+  private byte[] signFetch(byte[] ohId, int limit, long cursor, long ts, byte[] nonce) {
+    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+    try {
+      bos.write(im.redpanda.core.Command.OUTBOUND_FETCH_REQ);
+      bos.write(ohId);
+      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
+      bos.write(nonce);
+      bos.write(com.google.common.primitives.Ints.toByteArray(limit));
+      bos.write(com.google.common.primitives.Longs.toByteArray(cursor));
+
+    } catch (Exception e) {
+    }
+    // I will rewrite the whole method body to be safe and match OutboundService.
+    return clientNode.sign(bos.toByteArray());
+  }
+
+  private byte[] signRevoke(byte[] ohId, long ts, byte[] nonce) {
+    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+    try {
+      bos.write(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_REQ);
+      bos.write(ohId);
+      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
+      bos.write(nonce);
+    } catch (Exception e) {
+    }
+    return clientNode.sign(bos.toByteArray());
   }
 }
