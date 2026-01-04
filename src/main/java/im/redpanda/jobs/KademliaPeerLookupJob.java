@@ -35,8 +35,5 @@ public class KademliaPeerLookupJob extends Job {
   public void init() {}
 
   @Override
-  public void work() {
-
-    for (Peer p : peers.keySet()) {}
-  }
+  public void work() {}
 }

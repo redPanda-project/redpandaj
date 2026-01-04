@@ -8,6 +8,7 @@ import java.security.Security;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,11 +16,11 @@ public class Server {
 
   public static final int VERSION = 22;
   public static final String MAGIC = "k3gV";
-  public static boolean shuttingDown = false;
-  public static int outBytes = 0;
-  public static int inBytes = 0;
+  private static volatile boolean shuttingDown = false;
+  private static final AtomicInteger outBytes = new AtomicInteger(0);
+  private static final AtomicInteger inBytes = new AtomicInteger(0);
   private ConnectionHandler connectionHandler;
-  public static OutboundHandler outboundHandler;
+  private static OutboundHandler outboundHandler;
   private static final Logger log = LoggerFactory.getLogger(Server.class);
   public static final ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -65,9 +66,7 @@ public class Server {
     try {
       Thread.sleep(500);
     } catch (InterruptedException e) {
-      e.printStackTrace(); // NOSONAR (java:S4507): intentional fallback console output during
-      // shutdown;
-      // replace with logger later
+      log.warn("Interrupted during shutdown", e);
       Thread.currentThread().interrupt();
     }
 
@@ -78,5 +77,37 @@ public class Server {
 
   public void start() {
     connectionHandler.start();
+  }
+
+  public static boolean isShuttingDown() {
+    return shuttingDown;
+  }
+
+  public static void setShuttingDown(boolean shuttingDown) {
+    Server.shuttingDown = shuttingDown;
+  }
+
+  public static int getOutBytes() {
+    return outBytes.get();
+  }
+
+  public static void addOutBytes(int bytes) {
+    outBytes.addAndGet(bytes);
+  }
+
+  public static int getInBytes() {
+    return inBytes.get();
+  }
+
+  public static void addInBytes(int bytes) {
+    inBytes.addAndGet(bytes);
+  }
+
+  public static OutboundHandler getOutboundHandler() {
+    return outboundHandler;
+  }
+
+  public static void setOutboundHandler(OutboundHandler outboundHandler) {
+    Server.outboundHandler = outboundHandler;
   }
 }

@@ -275,7 +275,7 @@ public class ConnectionReaderThread implements Runnable {
     }
 
     if (read > 0) {
-      Server.inBytes += read;
+      Server.addInBytes(read);
       peer.receivedBytes += read;
     }
     if (read == 0) {
@@ -415,7 +415,7 @@ public class ConnectionReaderThread implements Runnable {
 
     Thread.currentThread().setName("ReaderThread");
 
-    while (!Server.shuttingDown && run) {
+    while (!Server.isShuttingDown() && run) {
 
       if (killThreadIfMaxThreadsReached()) {
         continue;

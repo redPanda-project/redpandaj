@@ -16,7 +16,7 @@ public class PeerPerformanceTestSchedulerJob extends Job {
   @Override
   public void work() {
 
-    if (Server.shuttingDown) {
+    if (Server.isShuttingDown()) {
       done();
       return;
     }
