@@ -162,11 +162,16 @@ public class InboundCommandProcessorMoreCoverageTest {
     in.put(data);
     in.flip();
 
+    // Ensure apk does not exist before test
+    File apk = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    if (apk.exists()) {
+      apk.delete();
+    }
+
     int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, peer);
     assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
     // File should NOT exist and settings NOT updated because signature is invalid
-    File apk = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
     assertFalse("APK should not be created with invalid signature", apk.exists());
     assertNotEquals(
         "Timestamp should not update with invalid signature",
