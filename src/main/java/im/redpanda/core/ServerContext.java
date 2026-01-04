@@ -1,6 +1,9 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.outbound.OutboundHandleStore;
+import im.redpanda.outbound.OutboundMailboxStore;
+import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeStore;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,6 +23,10 @@ public class ServerContext {
   private NodeId nodeId;
   private KademliaId nonce;
   private ConnectionHandler connectionHandler;
+
+  private OutboundService outboundService;
+  private OutboundHandleStore outboundHandleStore;
+  private OutboundMailboxStore outboundMailboxStore;
 
   public static ServerContext buildDefaultServerContext() {
     ServerContext serverContext = new ServerContext();
