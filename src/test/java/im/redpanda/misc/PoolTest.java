@@ -17,7 +17,7 @@ public class PoolTest {
         new BaseKeyedPooledObjectFactory<Integer, ByteBuffer>() {
           @Override
           public ByteBuffer create(Integer size) throws Exception {
-            //                System.out.println("create object" + size);
+            // System.out.println("create object" + size);
             switch (size) {
               case 0:
                 return ByteBuffer.allocate(100);
@@ -31,14 +31,14 @@ public class PoolTest {
 
           @Override
           public void activateObject(Integer key, PooledObject<ByteBuffer> p) throws Exception {
-            //                System.out.println("act");
+            // System.out.println("act");
             super.activateObject(key, p);
           }
 
           @Override
           public void passivateObject(Integer key, PooledObject<ByteBuffer> p) throws Exception {
             p.getObject().position(0);
-            //                System.out.println("pass");
+            // System.out.println("pass");
             super.passivateObject(key, p);
           }
 
@@ -55,27 +55,18 @@ public class PoolTest {
           }
         };
 
-    GenericKeyedObjectPool<Integer, ByteBuffer> pool =
-        new GenericKeyedObjectPool<>(pooledObjectFactory);
+    try (GenericKeyedObjectPool<Integer, ByteBuffer> pool =
+        new GenericKeyedObjectPool<>(pooledObjectFactory)) {
 
-    for (int i = 0; i < 500; i++) {
-      ByteBuffer byteBuffer = pool.borrowObject(1);
+      for (int i = 0; i < 500; i++) {
+        ByteBuffer byteBuffer = pool.borrowObject(1);
 
-      assertTrue(byteBuffer.position() == 0);
+        assertTrue(byteBuffer.position() == 0);
 
-      byteBuffer.putInt(1);
-      pool.returnObject(1, byteBuffer);
-
-      //            System.out.println("Free memory (bytes): " +
-      //                    (Runtime.getRuntime().freeMemory() /1024./1024.));
-
+        byteBuffer.putInt(1);
+        pool.returnObject(1, byteBuffer);
+      }
+      assertTrue(pool.getNumIdle() == 1);
     }
-
-    assertTrue(pool.getNumIdle() == 1);
-
-    //        Thread.sleep(1000);
-
-    //        pool.setEvictionPolicy();
-
   }
 }

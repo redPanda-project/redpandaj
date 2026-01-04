@@ -1,10 +1,11 @@
 package im.redpanda.core;
 
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+
 import java.security.KeyPair;
 import java.security.Security;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
 public class NodeIdSetKeyPairNegativeCasesTest {
 
@@ -12,28 +13,25 @@ public class NodeIdSetKeyPairNegativeCasesTest {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
-  @Rule public ExpectedException thrown = ExpectedException.none();
-
   @Test
-  public void setKeyPair_rejectsNull() throws Exception {
+  public void setKeyPair_rejectsNull() {
     KeyPair kp = NodeId.generateECKeys();
     KademliaId kad = NodeId.fromPublicKey(kp.getPublic());
     NodeId nodeId = new NodeId(kad);
 
-    thrown.expect(RuntimeException.class);
-    thrown.expectMessage("must not be null");
-    nodeId.setKeyPair(null);
+    RuntimeException exception =
+        assertThrows(RuntimeException.class, () -> nodeId.setKeyPair(null));
+    assertTrue(exception.getMessage().contains("must not be null"));
   }
 
   @Test
-  public void setKeyPair_rejectsMismatchingKeyPair() throws Exception {
+  public void setKeyPair_rejectsMismatchingKeyPair() {
     KeyPair kp = NodeId.generateECKeys();
     KademliaId kad = NodeId.fromPublicKey(kp.getPublic());
     NodeId nodeId = new NodeId(kad);
 
     KeyPair other = NodeId.generateECKeys();
 
-    thrown.expect(NodeId.KeypairDoesNotMatchException.class);
-    nodeId.setKeyPair(other);
+    assertThrows(NodeId.KeypairDoesNotMatchException.class, () -> nodeId.setKeyPair(other));
   }
 }

@@ -3,7 +3,6 @@ package im.redpanda.store;
 import static org.junit.Assert.*;
 
 import java.io.File;
-import java.io.Serializable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -142,22 +141,5 @@ public class HashMapCacheToDiskTest {
 
     inMemory.close();
     onDisk.close();
-  }
-
-  private static class TestClass implements Serializable {
-
-    int i;
-
-    public TestClass(int i) {
-      this.i = i;
-    }
-
-    public int getI() {
-      return i;
-    }
-
-    public void setI(int i) {
-      this.i = i;
-    }
   }
 }

@@ -88,7 +88,7 @@ public final class TestNodeLauncher {
     Settings.MIN_CONNECTIONS = Integer.getInteger("redpanda.minConnections", 0);
     Settings.MAX_CONNECTIONS = Integer.getInteger("redpanda.maxConnections", 5);
     Settings.STD_PORT = Integer.getInteger("redpanda.stdPort", Settings.STD_PORT);
-    Server.shuttingDown = false;
+    Server.setShuttingDown(false);
   }
 
   private static String[] parseKnownNodes(String raw) {
@@ -113,10 +113,10 @@ public final class TestNodeLauncher {
   private static void startRuntimeThreads(ServerContext serverContext) {
     Settings.init(serverContext);
 
-    if (Server.outboundHandler == null) {
-      Server.outboundHandler = new OutboundHandler(serverContext);
+    if (Server.getOutboundHandler() == null) {
+      Server.setOutboundHandler(new OutboundHandler(serverContext));
     }
-    Server.outboundHandler.start();
+    Server.getOutboundHandler().start();
     new PeerPerformanceTestSchedulerJob(serverContext).start();
     new RequestPeerListJob(serverContext).start();
     new NodeStoreMaintainJob(serverContext).start();
@@ -148,7 +148,7 @@ public final class TestNodeLauncher {
       return;
     }
     try {
-      Server.shuttingDown = true;
+      Server.setShuttingDown(true);
       ConnectionHandler.selector.wakeup();
       Server.shutdown(serverContext);
       NodeStore.threadPool.shutdownNow();
@@ -156,7 +156,7 @@ public final class TestNodeLauncher {
       shutdownJobScheduler();
       shutdownConnectionReaderPool();
       joinQuietly(connectionHandler, TimeUnit.SECONDS.toMillis(5));
-      joinQuietly(Server.outboundHandler, TimeUnit.SECONDS.toMillis(5));
+      joinQuietly(Server.getOutboundHandler(), TimeUnit.SECONDS.toMillis(5));
     } catch (Throwable t) {
       t.printStackTrace();
     }

@@ -11,8 +11,6 @@ import org.junit.Test;
 
 public class ParseCommandTest {
 
-  private final ServerContext serverContext = new ServerContext();
-
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     ByteBufferPool.init();
