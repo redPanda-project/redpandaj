@@ -186,13 +186,13 @@ public class KadStoreManager {
     System.out.println("verified: " + kadContent.verify());
 
     // assoziate an command pointer to the job
-    HashMap<Integer, ScheduledFuture> runningJobs = new HashMap<>();
+    HashMap<Integer, ScheduledFuture<?>> runningJobs = new HashMap<>();
 
     final int pointer = new Random().nextInt();
 
     Job job = new Job(runningJobs, pointer);
 
-    ScheduledFuture future = JobScheduler.insert(job, 500);
+    ScheduledFuture<?> future = JobScheduler.insert(job, 500);
     runningJobs.put(pointer, future);
 
     try {
@@ -201,7 +201,7 @@ public class KadStoreManager {
       e.printStackTrace();
     }
 
-    ScheduledFuture scheduledFuture = runningJobs.get(pointer);
+    ScheduledFuture<?> scheduledFuture = runningJobs.get(pointer);
 
     Job r = job;
 
@@ -254,11 +254,11 @@ public class KadStoreManager {
 
   static class Job implements Runnable {
 
-    HashMap<Integer, ScheduledFuture> runningJobs;
+    HashMap<Integer, ScheduledFuture<?>> runningJobs;
     private final Integer pointer;
     private String data = null;
 
-    public Job(HashMap<Integer, ScheduledFuture> runningJobs, Integer pointer) {
+    public Job(HashMap<Integer, ScheduledFuture<?>> runningJobs, Integer pointer) {
       this.runningJobs = runningJobs;
       this.pointer = pointer;
     }
@@ -272,7 +272,7 @@ public class KadStoreManager {
       System.out.println("asdf " + data + " done: " + done);
 
       if (done) {
-        ScheduledFuture sf = runningJobs.remove(pointer);
+        ScheduledFuture<?> sf = runningJobs.remove(pointer);
         sf.cancel(false);
       }
       timesRun++;

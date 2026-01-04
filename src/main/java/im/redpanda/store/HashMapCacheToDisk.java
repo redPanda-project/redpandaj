@@ -20,6 +20,7 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
   private final HTreeMap<K, V> onDisk;
   private final HTreeMap<K, V> inMemory;
 
+  @SuppressWarnings("unchecked")
   public HashMapCacheToDisk() {
 
     for (int i = 0; i < NUMBER_OF_EVICTION_THREADS; i++) {

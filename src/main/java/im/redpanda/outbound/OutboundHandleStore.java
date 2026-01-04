@@ -63,12 +63,15 @@ public class OutboundHandleStore {
     init();
   }
 
+  @SuppressWarnings("unchecked")
   private void init() {
     if (dbPath == null) return;
     try {
       new File("data").mkdirs();
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
-      handles = db.hashMap("handles", Serializer.STRING, Serializer.JAVA).createOrOpen();
+      handles =
+          (Map<String, HandleRecord>)
+              db.hashMap("handles", Serializer.STRING, Serializer.JAVA).createOrOpen();
     } catch (Exception e) {
       Log.sentry(e);
       logger.error("Failed to initialize OutboundHandleStore DB", e);

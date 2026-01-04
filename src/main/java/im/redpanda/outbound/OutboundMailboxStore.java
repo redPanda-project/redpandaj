@@ -40,6 +40,7 @@ public class OutboundMailboxStore {
     init();
   }
 
+  @SuppressWarnings("unchecked")
   private void init() {
     if (dbPath == null) return;
     try {
@@ -47,7 +48,9 @@ public class OutboundMailboxStore {
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       // Using JAVA serializer for the list of byte arrays is simple but not most
       // efficient
-      mailboxes = db.hashMap("mailboxes", Serializer.STRING, Serializer.JAVA).createOrOpen();
+      mailboxes =
+          (Map<String, ArrayList<byte[]>>)
+              db.hashMap("mailboxes", Serializer.STRING, Serializer.JAVA).createOrOpen();
     } catch (Exception e) {
       Log.sentry(e);
       logger.error("Failed to initialize OutboundMailboxStore DB", e);

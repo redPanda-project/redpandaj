@@ -44,9 +44,9 @@ public class NodeStore {
   private static final long MAX_SIZE_OFFHEAP = 50L * 1024L * 1024L;
   private static final long MAX_SIZE_ONDISK = 300L * 1024L * 1024L;
 
-  private HTreeMap onHeap;
-  private HTreeMap offHeap;
-  private HTreeMap onDisk;
+  private HTreeMap<KademliaId, Node> onHeap;
+  private HTreeMap<KademliaId, Node> offHeap;
+  private HTreeMap<KademliaId, Node> onDisk;
   private DB dbonHeap;
   private DB dboffHeap;
   private DB dbDisk;
@@ -62,6 +62,7 @@ public class NodeStore {
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
   }
 
+  @SuppressWarnings("unchecked")
   public static NodeStore buildWithDiskCache(ServerContext serverContext) {
 
     NodeStore nodeStore = new NodeStore(serverContext);
@@ -74,57 +75,61 @@ public class NodeStore {
 
     nodeStore.dbonHeap =
         DBMaker.heapDB()
-            //                .closeOnJvmShutdown()
+            // .closeOnJvmShutdown()
             .make();
 
     nodeStore.dboffHeap =
         DBMaker.memoryDirectDB()
-            //                .closeOnJvmShutdown()
+            // .closeOnJvmShutdown()
             .make();
 
     nodeStore.dbDisk =
         DBMaker.fileDB("data/nodeids" + serverContext.getPort() + ".mapdb")
             .fileMmapEnableIfSupported()
-            //                .closeOnJvmShutdown()
+            // .closeOnJvmShutdown()
             .checksumHeaderBypass()
             .make();
 
     nodeStore.onDisk =
-        nodeStore
-            .dbDisk
-            .hashMap("nodeidsOnDisk")
-            .expireStoreSize(MAX_SIZE_ONDISK)
-            .expireExecutor(threadPool)
-            //                .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
-            // not seen in this time
-            .expireAfterGet(60, TimeUnit.DAYS)
-            .createOrOpen();
+        (HTreeMap<KademliaId, Node>)
+            nodeStore
+                .dbDisk
+                .hashMap("nodeidsOnDisk")
+                .expireStoreSize(MAX_SIZE_ONDISK)
+                .expireExecutor(threadPool)
+                // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
+                // not seen in this time
+                .expireAfterGet(60, TimeUnit.DAYS)
+                .createOrOpen();
 
     nodeStore.offHeap =
-        nodeStore
-            .dboffHeap
-            .hashMap("nodeidsOffHeap")
-            .expireStoreSize(MAX_SIZE_OFFHEAP)
-            .expireOverflow(nodeStore.onDisk)
-            .expireExecutor(threadPool)
-            .expireAfterCreate()
-            .expireAfterGet(60, TimeUnit.MINUTES)
-            .create();
+        (HTreeMap<KademliaId, Node>)
+            nodeStore
+                .dboffHeap
+                .hashMap("nodeidsOffHeap")
+                .expireStoreSize(MAX_SIZE_OFFHEAP)
+                .expireOverflow((Map) nodeStore.onDisk)
+                .expireExecutor(threadPool)
+                .expireAfterCreate()
+                .expireAfterGet(60, TimeUnit.MINUTES)
+                .create();
 
     nodeStore.onHeap =
-        nodeStore
-            .dbonHeap
-            .hashMap("nodeidsOnHeap")
-            .expireStoreSize(MAX_SIZE_ONHEAP)
-            .expireOverflow(nodeStore.offHeap)
-            .expireExecutor(threadPool)
-            .expireAfterCreate()
-            .expireAfterGet(15, TimeUnit.MINUTES)
-            .create();
+        (HTreeMap<KademliaId, Node>)
+            nodeStore
+                .dbonHeap
+                .hashMap("nodeidsOnHeap")
+                .expireStoreSize(MAX_SIZE_ONHEAP)
+                .expireOverflow((Map) nodeStore.offHeap)
+                .expireExecutor(threadPool)
+                .expireAfterCreate()
+                .expireAfterGet(15, TimeUnit.MINUTES)
+                .create();
 
     return nodeStore;
   }
 
+  @SuppressWarnings("unchecked")
   public static NodeStore buildWithMemoryCacheOnly(ServerContext serverContext) {
     NodeStore nodeStore = new NodeStore(serverContext);
 
@@ -137,14 +142,15 @@ public class NodeStore {
     nodeStore.dbonHeap = DBMaker.heapDB().make();
 
     nodeStore.onHeap =
-        nodeStore
-            .dbonHeap
-            .hashMap("nodeidsOnHeap")
-            .expireStoreSize(MAX_SIZE_ONHEAP)
-            .expireExecutor(threadPool)
-            .expireAfterCreate()
-            .expireAfterGet(15, TimeUnit.HOURS)
-            .create();
+        (HTreeMap<KademliaId, Node>)
+            nodeStore
+                .dbonHeap
+                .hashMap("nodeidsOnHeap")
+                .expireStoreSize(MAX_SIZE_ONHEAP)
+                .expireExecutor(threadPool)
+                .expireAfterCreate()
+                .expireAfterGet(15, TimeUnit.HOURS)
+                .create();
 
     return nodeStore;
   }
@@ -296,7 +302,7 @@ public class NodeStore {
 
     if (currentNodeCount < MAX_NODES_FOR_GRAPH) {
 
-      ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList(onHeap.entrySet());
+      ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList<>(onHeap.entrySet());
 
       Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
@@ -326,7 +332,7 @@ public class NodeStore {
 
   private void removeNodeIfNoGoodLinkAvailable() {
 
-    List<Node> nodes = new ArrayList(nodeGraph.vertexSet());
+    List<Node> nodes = new ArrayList<>(nodeGraph.vertexSet());
     nodes.remove(serverContext.getNode());
     if (nodes.size() < 4) {
       return;
@@ -441,9 +447,9 @@ public class NodeStore {
   public void printAllNotBlacklisted() {
 
     for (Node node : nodeGraph.vertexSet()) {
-      //            if (nodeBlacklist.containsKey(node)) {
-      //                continue;
-      //            }
+      // if (nodeBlacklist.containsKey(node)) {
+      // continue;
+      // }
       System.out.println(node.toString() + " " + (node.isBlacklisted() ? "b" : ""));
     }
   }

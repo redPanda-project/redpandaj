@@ -9,7 +9,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class Job implements Runnable {
 
-  //    public static final long RERUNTIME = 500L;
+  // public static final long RERUNTIME = 500L;
   private static final HashMap<Integer, Job> runningJobs = new HashMap<>(10);
   private static final ReentrantLock runningJobsLock = new ReentrantLock();
   public static final Random rand = new Random();
@@ -22,7 +22,7 @@ public abstract class Job implements Runnable {
 
   private int jobId = -1;
   private int runCounter = 0;
-  private ScheduledFuture future;
+  private ScheduledFuture<?> future;
   private boolean done = false;
   protected boolean initilized = false;
 
@@ -58,7 +58,8 @@ public abstract class Job implements Runnable {
       done();
     }
 
-    // lets run the init inside the run loop such that the init is runs in the threadpool
+    // lets run the init inside the run loop such that the init is runs in the
+    // threadpool
     // and not in the creating thread
     if (!initilized) {
       initilized = true;
@@ -95,7 +96,8 @@ public abstract class Job implements Runnable {
    * the next rerun occurs by delay
    */
   public void updated() {
-    // do not rise the runCounter, because this is an additional run beside the returning rerun by
+    // do not rise the runCounter, because this is an additional run beside the
+    // returning rerun by
     // delay
     JobScheduler.runNow(this);
   }
@@ -158,7 +160,8 @@ public abstract class Job implements Runnable {
       if (remove != null) {
         future.cancel(false);
       } else {
-        // job already done, but we should never be in this case, run exception to debug this case
+        // job already done, but we should never be in this case, run exception to debug
+        // this case
         throw new RuntimeException("CODE 17dh6");
       }
     } finally {

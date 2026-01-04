@@ -10,7 +10,8 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
   private static JobScheduler jobScheduler;
 
   static {
-    // ScheduledThreadPoolExecutor only uses a fixed thread pool with size corePoolSize
+    // ScheduledThreadPoolExecutor only uses a fixed thread pool with size
+    // corePoolSize
     jobScheduler = new JobScheduler(8, new SimpleNamingThreadFactory());
   }
 
@@ -22,7 +23,7 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
     super(corePoolSize, threadFactory);
   }
 
-  public static ScheduledFuture insert(Runnable runnable, long delayInMS) {
+  public static ScheduledFuture<?> insert(Runnable runnable, long delayInMS) {
     return jobScheduler.scheduleWithFixedDelay(
         runnable, delayInMS, delayInMS, TimeUnit.MILLISECONDS);
   }
