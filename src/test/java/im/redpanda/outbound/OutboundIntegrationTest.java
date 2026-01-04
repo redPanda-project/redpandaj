@@ -255,4 +255,57 @@ public class OutboundIntegrationTest {
     }
     return clientNode.sign(bos.toByteArray());
   }
+
+  @Test
+  public void testRegister_InvalidSignature_Fails() throws Exception {
+    RegisterOhRequest req = createSignedRegisterRequest();
+    // Tamper with signature
+    byte[] badSig = req.getSignature().toByteArray();
+    badSig[0] ^= 1;
+    RegisterOhRequest tampered =
+        req.toBuilder().setSignature(com.google.protobuf.ByteString.copyFrom(badSig)).build();
+
+    service.handleRegister(peer, tampered);
+
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.RegisterOhResponse res =
+        im.redpanda.outbound.v1.RegisterOhResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.INVALID_SIGNATURE, res.getStatus());
+  }
+
+  @Test
+  public void testFetch_InvalidSignature_Fails() throws Exception {
+    // 1. Register first
+    RegisterOhRequest regReq = createSignedRegisterRequest();
+    service.handleRegister(peer, regReq);
+    peer.writeBuffer.clear();
+
+    // 2. Fetch with bad signature
+    im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
+    byte[] badSig = fetchReq.getSignature().toByteArray();
+    badSig[0] ^= 1;
+    im.redpanda.outbound.v1.FetchRequest tampered =
+        fetchReq.toBuilder().setSignature(com.google.protobuf.ByteString.copyFrom(badSig)).build();
+
+    service.handleFetch(peer, tampered);
+
+    peer.writeBuffer.flip();
+    byte cmd = peer.writeBuffer.get();
+    assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
+    int len = peer.writeBuffer.getInt();
+    byte[] payload = new byte[len];
+    peer.writeBuffer.get(payload);
+
+    im.redpanda.outbound.v1.FetchResponse res =
+        im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);
+
+    assertEquals(im.redpanda.outbound.v1.Status.INVALID_SIGNATURE, res.getStatus());
+  }
 }
