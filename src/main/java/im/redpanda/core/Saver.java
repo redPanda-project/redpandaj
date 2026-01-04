@@ -3,6 +3,8 @@ package im.redpanda.core;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -12,7 +14,7 @@ public class Saver {
 
   public static final String SAVE_DIR = "data";
 
-  public static void savePeers(ArrayList<Peer> peers) {
+  public static void savePeers(List<Peer> peers) {
     ArrayList<PeerSaveable> arrayList = new ArrayList<>();
 
     for (Peer peer : peers) {
@@ -27,7 +29,9 @@ public class Saver {
     File file = new File(SAVE_DIR + "/peers.dat");
 
     try {
-      file.createNewFile();
+      if (file.createNewFile()) {
+        log.info("Created new peers.dat file");
+      }
       try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
         try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
           objectOutputStream.writeObject(arrayList);
@@ -40,7 +44,7 @@ public class Saver {
   }
 
   @SuppressWarnings("unchecked")
-  public static HashMap<KademliaId, Peer> loadPeers() {
+  public static Map<KademliaId, Peer> loadPeers() {
     try {
       File file = new File(SAVE_DIR + "/peers.dat");
 

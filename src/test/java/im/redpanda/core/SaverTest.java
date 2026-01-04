@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,7 +47,7 @@ public class SaverTest {
     assertTrue(file.exists());
 
     // Load peers
-    HashMap<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
 
     // Verify loaded peers
     assertNotNull(loadedPeers);
@@ -73,7 +73,7 @@ public class SaverTest {
     }
 
     // Load peers
-    HashMap<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
 
     // Verify empty result (no exception)
     assertNotNull(loadedPeers);

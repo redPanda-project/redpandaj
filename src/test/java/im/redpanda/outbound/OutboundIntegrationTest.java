@@ -221,6 +221,7 @@ public class OutboundIntegrationTest {
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
       bos.write(nonce);
     } catch (Exception e) {
+      // Ignored for testing; signature generation failures will fail test elsewhere
     }
     return clientNode.sign(bos.toByteArray());
   }
@@ -236,6 +237,7 @@ public class OutboundIntegrationTest {
       bos.write(com.google.common.primitives.Longs.toByteArray(cursor));
 
     } catch (Exception e) {
+      // Ignored for testing helper
     }
     // I will rewrite the whole method body to be safe and match OutboundService.
     return clientNode.sign(bos.toByteArray());
@@ -249,6 +251,7 @@ public class OutboundIntegrationTest {
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
       bos.write(nonce);
     } catch (Exception e) {
+      // Ignored for testing helper
     }
     return clientNode.sign(bos.toByteArray());
   }

@@ -79,19 +79,19 @@ public class OutboundHandleStore {
   }
 
   public void put(byte[] ohId, HandleRecord record) {
-    String key = Utils.bytesToHexString(ohId);
-    handles.put(key, record);
+    String handleKey = Utils.bytesToHexString(ohId);
+    handles.put(handleKey, record);
     if (db != null) db.commit();
   }
 
   public HandleRecord get(byte[] ohId) {
-    String key = Utils.bytesToHexString(ohId);
-    return handles.get(key);
+    String handleKey = Utils.bytesToHexString(ohId);
+    return handles.get(handleKey);
   }
 
   public void remove(byte[] ohId) {
-    String key = Utils.bytesToHexString(ohId);
-    handles.remove(key);
+    String handleKey = Utils.bytesToHexString(ohId);
+    handles.remove(handleKey);
     if (db != null) db.commit();
   }
 
