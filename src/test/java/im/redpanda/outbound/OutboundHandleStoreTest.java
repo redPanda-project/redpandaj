@@ -25,15 +25,15 @@ public class OutboundHandleStoreTest {
   public void testPutAndGet() {
     long created = System.currentTimeMillis();
     long expires = created + 10000;
-    OutboundHandleStore.HandleRecord record =
+    OutboundHandleStore.HandleRecord handleRecord =
         new OutboundHandleStore.HandleRecord(authKey, created, expires);
 
-    store.put(ohId, record);
+    store.put(ohId, handleRecord);
 
     OutboundHandleStore.HandleRecord retrieved = store.get(ohId);
     assertNotNull(retrieved);
-    assertEquals(created, retrieved.createdAtMs);
-    assertEquals(expires, retrieved.expiresAtMs);
+    assertEquals(created, retrieved.getCreatedAtMs());
+    assertEquals(expires, retrieved.getExpiresAtMs());
     // Array comparison needs more than equals for objects, but let's check length
     // or content if possible
     // or assume instance correctness. For byte arrays, standard equals checks
@@ -41,15 +41,15 @@ public class OutboundHandleStoreTest {
     // Let's check hex string of key if we want deep check, or just trust the object
     // ref if in-memory.
     // Wait, mapdb serializer would copy. In-memory concurrent map keeps ref.
-    assertEquals(authKey, retrieved.ohAuthPublicKey);
+    assertEquals(authKey, retrieved.getOhAuthPublicKey());
   }
 
   @Test
   public void testRemove() {
     long created = System.currentTimeMillis();
-    OutboundHandleStore.HandleRecord record =
+    OutboundHandleStore.HandleRecord handleRecord =
         new OutboundHandleStore.HandleRecord(authKey, created, created + 10000);
-    store.put(ohId, record);
+    store.put(ohId, handleRecord);
     assertNotNull(store.get(ohId));
 
     store.remove(ohId);

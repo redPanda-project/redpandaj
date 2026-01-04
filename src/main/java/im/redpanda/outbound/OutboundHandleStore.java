@@ -23,16 +23,32 @@ public class OutboundHandleStore {
 
   public static class HandleRecord implements Serializable {
     private static final long serialVersionUID = 1L;
-    public byte[] ohAuthPublicKey;
-    public long createdAtMs;
-    public long expiresAtMs;
-    public long lastSeenMs;
+    private byte[] ohAuthPublicKey;
+    private long createdAtMs;
+    private long expiresAtMs;
+    private long lastSeenMs;
 
     public HandleRecord(byte[] ohAuthPublicKey, long createdAtMs, long expiresAtMs) {
       this.ohAuthPublicKey = ohAuthPublicKey;
       this.createdAtMs = createdAtMs;
       this.expiresAtMs = expiresAtMs;
       this.lastSeenMs = System.currentTimeMillis();
+    }
+
+    public byte[] getOhAuthPublicKey() {
+      return ohAuthPublicKey;
+    }
+
+    public long getCreatedAtMs() {
+      return createdAtMs;
+    }
+
+    public long getExpiresAtMs() {
+      return expiresAtMs;
+    }
+
+    public long getLastSeenMs() {
+      return lastSeenMs;
     }
   }
 
@@ -86,14 +102,15 @@ public class OutboundHandleStore {
   }
 
   public void cleanupExpired(long now) {
-    boolean changed = false;
-    for (String key : handles.keySet()) {
-      HandleRecord rec = handles.get(key);
-      if (rec != null && rec.expiresAtMs < now) {
-        handles.remove(key);
-        changed = true;
-      }
-    }
+    boolean changed =
+        handles
+            .entrySet()
+            .removeIf(
+                entry -> {
+                  HandleRecord rec = entry.getValue();
+                  return rec != null && rec.getExpiresAtMs() < now;
+                });
+
     if (changed && db != null) db.commit();
   }
 }

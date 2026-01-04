@@ -159,25 +159,6 @@ public class OutboundIntegrationTest {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     byte[] nonce = getRandomNonce();
 
-    // Signing bytes: command(Register=150/151?) -> Wait, what bytes are signed?
-    // OutboundAuth.verify uses: signingBytes, signature
-    // In OutboundService.handleRegister:
-    // byte[] signingBytes = Bytes.concat(ohId,
-    // Longs.toByteArray(req.getExpiresAtMs()),
-    // Longs.toByteArray(req.getTimestampMs()), req.getNonce().toByteArray());
-    // Wait, let's check OutboundService logic for signing bytes construction.
-
-    // Re-reading OutboundService logic locally or assuming based on usual pattern?
-    // I should probably check OutboundService to be sure about signing bytes order.
-    // Based on previous edits, it was probably: ohId + expires + timestamp + nonce.
-    // Let's assume this for now, but if test fails I'll check.
-
-    // Actually, looking at OutboundAuth it takes signingBytes passed from
-    // OutboundService.
-    // I need to replicate HOW OutboundService constructs signingBytes to create
-    // valid sig.
-
-    // Constructed inside helper method below to ensure match
     byte[] signature = signRegister(ohId, expires, now, nonce);
 
     return RegisterOhRequest.newBuilder()

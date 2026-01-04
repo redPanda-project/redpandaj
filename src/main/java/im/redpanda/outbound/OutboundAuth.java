@@ -11,7 +11,8 @@ public class OutboundAuth {
   private static final Logger logger = LogManager.getLogger();
 
   // Allow requests within ±5 minutes of server time
-  private static final long TIME_WINDOW_MS = 5 * 60 * 1000;
+  // Allow requests within ±5 minutes of server time
+  private static final long TIME_WINDOW_MS = 5L * 60L * 1000L;
 
   // Simple replay cache: (ohId + nonce) -> timestamp
   // In a real prod environment, this should be LRU or expire based on timestamp
