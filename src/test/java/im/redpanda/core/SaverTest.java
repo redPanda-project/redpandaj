@@ -79,4 +79,21 @@ public class SaverTest {
     assertNotNull(loadedPeers);
     assertTrue(loadedPeers.isEmpty());
   }
+
+  @Test
+  public void testLoadCorruptedFile() throws IOException {
+    // Determine path
+    // Create directory if needed
+    new File(TEST_SAVE_DIR).mkdirs();
+
+    // Write garbage content
+    Files.writeString(Path.of(TEST_FILE), "This is not a serialized object stream");
+
+    // Load peers
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+
+    // Verify fallback to empty map
+    assertNotNull(loadedPeers);
+    assertTrue(loadedPeers.isEmpty());
+  }
 }
