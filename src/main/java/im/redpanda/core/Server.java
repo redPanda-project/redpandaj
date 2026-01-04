@@ -5,6 +5,7 @@ import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
 import java.security.SecureRandom;
 import java.security.Security;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -43,6 +44,13 @@ public class Server {
 
     outboundHandler.start();
 
+    // restore peers
+    HashMap<KademliaId, Peer> peers = Saver.loadPeers();
+    for (Peer p : peers.values()) {
+      serverContext.getPeerList().add(p);
+    }
+    System.out.println("Restored " + peers.size() + " peers from disk");
+
     new PeerPerformanceTestSchedulerJob(serverContext).start();
     new RequestPeerListJob(serverContext).start();
     new NodeStoreMaintainJob(serverContext).start();
@@ -60,6 +68,7 @@ public class Server {
       Thread.currentThread().interrupt();
     }
 
+    Saver.savePeers(serverContext.getPeerList().getPeerArrayList());
     serverContext.getNodeStore().close();
     serverContext.getLocalSettings().save(serverContext.getPort());
   }
