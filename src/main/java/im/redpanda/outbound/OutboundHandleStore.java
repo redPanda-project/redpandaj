@@ -10,8 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OutboundHandleStore {
+
+  private static final Logger logger = LoggerFactory.getLogger(OutboundHandleStore.class);
 
   private DB db;
   private Map<String, HandleRecord> handles; // Key: Base58 or Hex of oh_id
@@ -51,7 +55,7 @@ public class OutboundHandleStore {
       handles = db.hashMap("handles", Serializer.STRING, Serializer.JAVA).createOrOpen();
     } catch (Exception e) {
       Log.sentry(e);
-      e.printStackTrace();
+      logger.error("Failed to initialize OutboundHandleStore DB", e);
       // Fallback to memory if file fails? Or throw?
       // For now, let's just log and maybe fallback to memory map to keep running
       handles = new ConcurrentHashMap<>();
