@@ -28,7 +28,7 @@ public class ECCrypto {
       Provider p[] = Security.getProviders();
       for (int i = 0; i < p.length; i++) {
         System.out.println(p[i]);
-        for (Enumeration e = p[i].keys(); e.hasMoreElements(); ) {
+        for (Enumeration<Object> e = p[i].keys(); e.hasMoreElements(); ) {
           System.out.println("\t" + e.nextElement());
         }
       }
