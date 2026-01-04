@@ -1,5 +1,6 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.Saver;
 import im.redpanda.core.ServerContext;
 
 public class SaveJobs extends Job {
@@ -17,5 +18,6 @@ public class SaveJobs extends Job {
   public void work() {
     serverContext.getLocalSettings().save(serverContext.getPort());
     serverContext.getNodeStore().saveToDisk();
+    Saver.savePeers(serverContext.getPeerList().getPeerArrayList());
   }
 }

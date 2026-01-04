@@ -3,22 +3,26 @@ package im.redpanda.core;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class Saver {
 
   private Saver() {}
 
   public static final String SAVE_DIR = "data";
 
-  public static void savePeerss(ArrayList<Peer> peers) {
-    ArrayList<PeerSaveable> arrayList = new ArrayList<PeerSaveable>();
+  public static void savePeers(ArrayList<Peer> peers) {
+    ArrayList<PeerSaveable> arrayList = new ArrayList<>();
 
     for (Peer peer : peers) {
-      arrayList.add(peer.toSaveable());
+      if (peer.getNodeId() != null) {
+        arrayList.add(peer.toSaveable());
+      }
     }
-    // arrayList = (ArrayList<PeerSaveable>) arrayList.clone();//hack?
+
+    File mkdirs = new File(SAVE_DIR);
+    mkdirs.mkdir();
 
     File file = new File(SAVE_DIR + "/peers.dat");
 
@@ -31,21 +35,25 @@ public class Saver {
       }
 
     } catch (IOException ex) {
-      Logger.getLogger(Saver.class.getName()).log(Level.SEVERE, null, ex);
+      log.error("Could not save peers", ex);
     }
   }
 
+  @SuppressWarnings("unchecked")
   public static HashMap<KademliaId, Peer> loadPeers() {
     try {
       File file = new File(SAVE_DIR + "/peers.dat");
+
+      if (!file.exists()) {
+        return new HashMap<>();
+      }
 
       try (FileInputStream fileInputStream = new FileInputStream(file)) {
         try (ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
           Object readObject = objectInputStream.readObject();
 
-          @SuppressWarnings("unchecked")
           ArrayList<PeerSaveable> pp = (ArrayList<PeerSaveable>) readObject;
-          HashMap<KademliaId, Peer> hashMap = new HashMap<KademliaId, Peer>();
+          HashMap<KademliaId, Peer> hashMap = new HashMap<>();
 
           for (PeerSaveable p : pp) {
             hashMap.put(p.nodeId.getKademliaId(), p.toPeer());
@@ -55,11 +63,11 @@ public class Saver {
       }
 
     } catch (ClassNotFoundException | IOException | ClassCastException ex) {
-      // we can ignore the errors here and just reseed the peers
+      log.error("Could not load peers", ex);
     }
 
-    System.out.println("could not load peers.dat");
+    log.info("could not load peers.dat");
 
-    return new HashMap<KademliaId, Peer>();
+    return new HashMap<>();
   }
 }
