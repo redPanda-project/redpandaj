@@ -27,12 +27,11 @@ public class FlaschenpostTest {
 
   @Test
   public void echoNestedGM() {
-    GMEchoTest gmEchoTest = new GMEchoTest();
 
     NodeId nodeId = new NodeId();
 
     GarlicMessage garlicMessage = new GarlicMessage(new ServerContext(), nodeId);
 
-    byte[] content = garlicMessage.getContent();
+    garlicMessage.getContent();
   }
 }

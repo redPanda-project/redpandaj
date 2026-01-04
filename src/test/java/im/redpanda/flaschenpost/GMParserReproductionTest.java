@@ -13,7 +13,6 @@ import org.junit.Test;
 public class GMParserReproductionTest {
 
   private static class TestPeer extends Peer {
-    boolean setWriteBufferCalled;
 
     TestPeer(String ip, int port, NodeId nodeId) {
       super(ip, port, nodeId);
@@ -21,7 +20,7 @@ public class GMParserReproductionTest {
 
     @Override
     public boolean setWriteBufferFilled() {
-      setWriteBufferCalled = true;
+
       return true;
     }
   }

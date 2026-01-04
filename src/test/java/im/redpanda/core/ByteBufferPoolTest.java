@@ -19,7 +19,7 @@ public class ByteBufferPoolTest {
     boolean limit = false;
 
     for (int i = 0; i < 15; i++) {
-      ByteBuffer byteBuffer = ByteBufferPool.borrowObject(20 * 1024 * 1024);
+      ByteBufferPool.borrowObject(20 * 1024 * 1024);
       limit = ByteBufferPool.getPool().getMaxTotalPerKey() < 10;
       if (limit) {
         break;

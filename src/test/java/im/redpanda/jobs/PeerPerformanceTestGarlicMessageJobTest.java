@@ -2,7 +2,6 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.GMContent;
 import im.redpanda.flaschenpost.GMParser;
 import java.security.Security;
 import java.util.ArrayList;
@@ -32,7 +31,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
     byte[] bytes = peerPerformanceTestGarlicMessageJob.calculateNestedGarlicMessages(nodes, 1);
 
-    GMContent parse = GMParser.parse(serverContext, bytes);
+    GMParser.parse(serverContext, bytes);
     // todo assert?
   }
 }

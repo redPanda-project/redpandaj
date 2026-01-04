@@ -101,10 +101,6 @@ public class PeerTest {
             Utils.parseAsHexOrBase58(
                 "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
 
-    byte[] bytes =
-        Utils.parseAsHexOrBase58(
-            "000000000000000000000000000000000000000000000000000000000000000000000000");
-
     peer.setNodeId(new NodeId(kademliaId));
     peer2.setNodeId(new NodeId(kademliaId2));
 
