@@ -12,8 +12,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OutboundMailboxStore {
+
+  private static final Logger logger = LoggerFactory.getLogger(OutboundMailboxStore.class);
 
   private DB db;
   // PoC: Map<ohID_Hex, ArrayList<MailItemBytes>>
@@ -46,7 +50,7 @@ public class OutboundMailboxStore {
       mailboxes = db.hashMap("mailboxes", Serializer.STRING, Serializer.JAVA).createOrOpen();
     } catch (Exception e) {
       Log.sentry(e);
-      e.printStackTrace();
+      logger.error("Failed to initialize OutboundMailboxStore DB", e);
       mailboxes = new ConcurrentHashMap<>();
     }
   }
@@ -78,7 +82,7 @@ public class OutboundMailboxStore {
         result.add(MailItem.parseFrom(bytes));
         if (result.size() >= limit) break;
       } catch (Exception e) {
-        e.printStackTrace();
+        logger.error("Failed to parse MailItem", e);
       }
     }
     return result;
@@ -118,7 +122,7 @@ public class OutboundMailboxStore {
       try {
         result.add(MailItem.parseFrom(list.get(i)));
       } catch (Exception e) {
-        e.printStackTrace();
+        logger.error("Failed to parse MailItem", e);
       }
     }
     return result;
