@@ -39,7 +39,7 @@ public class ListenConsole extends Thread {
     InputStreamReader inputStreamReader = new InputStreamReader(System.in, StandardCharsets.UTF_8);
     BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
 
-    while (!Server.shuttingDown) {
+    while (!Server.isShuttingDown()) {
 
       String readLine = bufferedReader.readLine();
 
@@ -128,7 +128,11 @@ public class ListenConsole extends Thread {
                   + (Settings.NAT_OPEN ? "open" : "closed")
                   + ")");
           System.out.println(
-              "Traffic: " + Server.inBytes / 1024. + " kb / " + Server.outBytes / 1024. + " kb.");
+              "Traffic: "
+                  + Server.getInBytes() / 1024.
+                  + " kb / "
+                  + Server.getOutBytes() / 1024.
+                  + " kb.");
 
           // System.out.println("Services last run: ConnectionHandler: " +
           // (System.currentTimeMillis() - ConnectionHandler.lastRun) + "

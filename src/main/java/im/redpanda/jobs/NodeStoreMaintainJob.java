@@ -19,7 +19,7 @@ public class NodeStoreMaintainJob extends Job {
   public void work() {
 
     try {
-      if (serverContext.getNodeStore() != null && !Server.shuttingDown) {
+      if (serverContext.getNodeStore() != null && !Server.isShuttingDown()) {
         serverContext.getNodeStore().maintainNodes();
       }
     } catch (Exception e) {

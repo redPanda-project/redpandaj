@@ -62,7 +62,9 @@ public class LocalSettings implements Serializable {
 
       File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
 
-      file.createNewFile();
+      if (!file.createNewFile() && !file.exists()) {
+        throw new IOException("Could not create file " + file);
+      }
       try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
         try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
           objectOutputStream.writeObject(this);

@@ -17,8 +17,14 @@ import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 
 public class ByteBufferPool {
 
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(ByteBufferPool.class);
   private static GenericKeyedObjectPool<Integer, ByteBuffer> pool;
   private static final Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
+
+  private ByteBufferPool() {
+    // Hide implicit public constructor
+  }
 
   public static void init() {
     if (pool != null) {
@@ -37,32 +43,29 @@ public class ByteBufferPool {
             } else {
               pool.setMaxTotalPerKey(400);
             }
-            System.out.println(
-                "Generating new ByteBuffer for pool. Free memory (MB): "
-                    + (Runtime.getRuntime().freeMemory() / 1024. / 1024.)
-                    + " Idle: "
-                    + pool.getNumIdle()
-                    + " Active: "
-                    + pool.getNumActive()
-                    + " Waiters: "
-                    + pool.getNumWaiters());
+            log.info(
+                "Generating new ByteBuffer for pool. Free memory (MB): {} Idle: {} Active: {} Waiters: {}",
+                (Runtime.getRuntime().freeMemory() / 1024. / 1024.),
+                pool.getNumIdle(),
+                pool.getNumActive(),
+                pool.getNumWaiters());
 
             Map<String, List<DefaultPooledObjectInfo>> stringListMap = pool.listAllObjects();
 
-            String out = "";
+            StringBuilder out = new StringBuilder();
 
-            for (String s : stringListMap.keySet()) {
-              out += "key: " + s + " size: " + stringListMap.get(s).size() + "\n";
+            for (Map.Entry<String, List<DefaultPooledObjectInfo>> entry :
+                stringListMap.entrySet()) {
+              out.append("key: ")
+                  .append(entry.getKey())
+                  .append(" size: ")
+                  .append(entry.getValue().size())
+                  .append("\n");
             }
 
-            System.out.println("\n\nList of Pool: \n" + out + "\n\n");
+            log.info("\n\nList of Pool: \n{}\n\n", out);
 
             return allocate;
-          }
-
-          @Override
-          public void activateObject(Integer key, PooledObject<ByteBuffer> p) throws Exception {
-            super.activateObject(key, p);
           }
 
           @Override
@@ -78,7 +81,9 @@ public class ByteBufferPool {
           @Override
           public boolean validateObject(Integer key, PooledObject<ByteBuffer> p) {
             boolean b = p.getObject().position() == 0;
-            System.out.println("validateObject: " + b);
+            if (log.isDebugEnabled()) {
+              log.debug("validateObject: {}", b);
+            }
             return b;
           }
 
@@ -145,9 +150,9 @@ public class ByteBufferPool {
         e.printStackTrace();
       }
 
-      String out = "";
+      StringBuilder out = new StringBuilder();
       for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-        out += e.toString() + "\n";
+        out.append(e.toString()).append("\n");
       }
 
       if (App.sentryAllowed) {
@@ -159,11 +164,11 @@ public class ByteBufferPool {
         Log.sentry("had to invalidate ByteBuffer: \n" + out);
       }
     } else {
-      String out = "";
+      StringBuilder out = new StringBuilder();
       for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-        out += e.toString() + "\n";
+        out.append(e.toString()).append("\n");
       }
-      byteBufferToStacktrace.put(byteBuffer, out);
+      byteBufferToStacktrace.put(byteBuffer, out.toString());
       pool.returnObject(key, byteBuffer);
     }
   }

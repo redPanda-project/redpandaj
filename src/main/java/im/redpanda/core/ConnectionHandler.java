@@ -158,7 +158,7 @@ public class ConnectionHandler extends Thread {
 
     ConnectionReaderThread.init(serverContext);
 
-    while (!Server.shuttingDown) {
+    while (!Server.isShuttingDown()) {
 
       readPeersBackToSelector();
 
@@ -305,7 +305,7 @@ public class ConnectionHandler extends Thread {
         }
       }
 
-      Server.outBytes += writtenBytes;
+      Server.addOutBytes(writtenBytes);
       peer.sendBytes += writtenBytes;
     } finally {
       peer.writeBufferLock.unlock();

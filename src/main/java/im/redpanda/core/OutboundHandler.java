@@ -111,7 +111,7 @@ public class OutboundHandler extends Thread {
 
     ArrayList<Peer> peersToRemove = new ArrayList<>();
 
-    while (!Server.shuttingDown) {
+    while (!Server.isShuttingDown()) {
 
       // System.out.println("Peers: " + PeerList.size());
 
