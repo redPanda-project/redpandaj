@@ -8,6 +8,8 @@ import java.security.Security;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Server {
 
@@ -18,6 +20,7 @@ public class Server {
   public static int inBytes = 0;
   private ConnectionHandler connectionHandler;
   public static OutboundHandler outboundHandler;
+  private static final Logger log = LoggerFactory.getLogger(Server.class);
   public static final ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
 
   public static final SecureRandom secureRandom = new SecureRandom();
@@ -49,7 +52,7 @@ public class Server {
     for (Peer p : peers.values()) {
       serverContext.getPeerList().add(p);
     }
-    System.out.println("Restored " + peers.size() + " peers from disk");
+    log.info("Restored {} peers from disk", peers.size());
 
     new PeerPerformanceTestSchedulerJob(serverContext).start();
     new RequestPeerListJob(serverContext).start();

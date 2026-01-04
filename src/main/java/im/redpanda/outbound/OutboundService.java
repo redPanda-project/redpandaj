@@ -34,15 +34,8 @@ public class OutboundService {
   public void handleRegister(Peer peer, RegisterOhRequest req) {
     long now = System.currentTimeMillis();
 
-    // 1. Auth
-    // Bytes to sign: oh_id || requested_expires_at || timestamp_ms || nonce
-    // NOTE: The user plan suggested signing: commandId || oh_id ...
-    // But the request object doesn't have commandId in it directly.
-    // For PoC, let's sign what we have in the request:
-    // oh_id + requested_expires_at + timestamp_ms + nonce
-    // To match the user's plan STRICTLY we would need to reconstructing the signing
-    // buffer carefully.
-    // "Signiert wird über deterministische Bytes"
+    // 1. Auth: Verify signature over oh_id, requested_expires_at, timestamp_ms, and
+    // nonce.
 
     byte[] ohId = req.getOhId().toByteArray();
     byte[] nonce = req.getNonce().toByteArray();
@@ -73,10 +66,10 @@ public class OutboundService {
 
     // 2. Logic
     long validExpiresAt = clampExpiresAt(now, requestedExpires);
-    HandleRecord record =
+    HandleRecord handleRecord =
         new HandleRecord(req.getOhAuthPublicKey().toByteArray(), now, validExpiresAt);
 
-    handleStore.put(ohId, record);
+    handleStore.put(ohId, handleRecord);
 
     // 3. Response
     sendRegisterResponse(peer, Status.OK, validExpiresAt);
@@ -95,7 +88,7 @@ public class OutboundService {
       return;
     }
 
-    if (handle.expiresAtMs < now) {
+    if (handle.getExpiresAtMs() < now) {
       // Should have been cleaned up, but explicitly reject
       sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of());
       return;
@@ -114,7 +107,7 @@ public class OutboundService {
 
     AuthResult result =
         auth.verify(
-            handle.ohAuthPublicKey, // Verify against the stored public key for this OH
+            handle.getOhAuthPublicKey(), // Verify against the stored public key for this OH
             signBuf.array(),
             req.getSignature().toByteArray(),
             timestamp,
@@ -154,7 +147,7 @@ public class OutboundService {
 
     AuthResult result =
         auth.verify(
-            handle.ohAuthPublicKey,
+            handle.getOhAuthPublicKey(),
             signBuf.array(),
             req.getSignature().toByteArray(),
             timestamp,
