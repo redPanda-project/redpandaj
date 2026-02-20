@@ -41,8 +41,6 @@ jobs:
         rm -rf ~/.m2/repository/org/sonarsource/scanner
     - name: clean
       run: mvn -B clean
-    - name: coverage
-      run: mvn -B jacoco:prepare-agent install jacoco:report
     - name: Build and analyze
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
@@ -50,7 +48,7 @@ jobs:
       run: |
         if [ -z "${{ secrets.SONAR_TOKEN }}" ]; then
           echo "SONAR_TOKEN is not configured; Skipping Sonar analysis."
-          mvn -B jacoco:prepare-agent verify jacoco:report
+          mvn -B jacoco:prepare-agent install jacoco:report
         else
           echo "Running Sonar analysis..."
           mvn -B jacoco:prepare-agent verify jacoco:report sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj
