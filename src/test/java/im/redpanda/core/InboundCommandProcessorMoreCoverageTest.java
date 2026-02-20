@@ -28,13 +28,17 @@ public class InboundCommandProcessorMoreCoverageTest {
     // Ensure android.apk from tests is removed
     File f = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
     if (f.exists()) {
-      // ignore deletion result
-      f.delete();
+      if (!f.delete()) {
+        System.err.println(
+            "Warning: Failed to delete " + ConnectionReaderThread.ANDROID_UPDATE_FILE);
+      }
     }
     // Remove tmp_redpanda.jar if created
     File f2 = new File("tmp_redpanda.jar");
     if (f2.exists()) {
-      f2.delete();
+      if (!f2.delete()) {
+        System.err.println("Warning: Failed to delete tmp_redpanda.jar");
+      }
     }
   }
 
@@ -165,7 +169,7 @@ public class InboundCommandProcessorMoreCoverageTest {
     // Ensure apk does not exist before test
     File apk = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
     if (apk.exists()) {
-      apk.delete();
+      assertTrue("Failed to delete existing APK before test", apk.delete());
     }
 
     int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, peer);
