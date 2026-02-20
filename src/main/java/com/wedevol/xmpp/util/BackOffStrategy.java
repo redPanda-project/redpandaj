@@ -1,6 +1,6 @@
 package com.wedevol.xmpp.util;
 
-import java.util.Random;
+import java.security.SecureRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +16,7 @@ public class BackOffStrategy {
   private int numberOfTriesLeft;
   private long defaultTimeToWait;
   private long timeToWait;
-  private Random random = new Random();
+  private final SecureRandom random = new SecureRandom();
 
   public BackOffStrategy() {
     this(DEFAULT_RETRIES, DEFAULT_WAIT_TIME_IN_MILLI);

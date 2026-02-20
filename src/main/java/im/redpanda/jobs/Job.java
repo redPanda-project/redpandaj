@@ -2,8 +2,8 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
+import java.security.SecureRandom;
 import java.util.HashMap;
-import java.util.Random;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -12,7 +12,7 @@ public abstract class Job implements Runnable {
   // public static final long RERUNTIME = 500L;
   private static final HashMap<Integer, Job> runningJobs = new HashMap<>(10);
   private static final ReentrantLock runningJobsLock = new ReentrantLock();
-  public static final Random rand = new Random();
+  public static final SecureRandom rand = new SecureRandom();
 
   protected ServerContext serverContext;
 

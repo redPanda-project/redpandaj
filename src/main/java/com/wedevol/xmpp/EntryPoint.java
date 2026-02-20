@@ -7,9 +7,9 @@ import com.wedevol.xmpp.util.Util;
 import java.io.IOException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.XMPPException;
@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 public class EntryPoint extends CcsClient {
 
   protected static final Logger logger = LoggerFactory.getLogger(EntryPoint.class);
+  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   /**
    * Hard-coded demo credentials kept to preserve current behavior until a secure configuration
@@ -76,7 +77,7 @@ public class EntryPoint extends CcsClient {
       notificationPayload.put("tag", "default");
 
       dataPayload.put(Util.PAYLOAD_ATTRIBUTE_MESSAGE, "This is the simple sample message");
-      dataPayload.put("data", new Random().nextInt(5000) + "");
+      dataPayload.put("data", SECURE_RANDOM.nextInt(5000) + "");
       final CcsOutMessage message = new CcsOutMessage(toRegId, messageId, dataPayload);
       message.setCollapseKey("default");
 
