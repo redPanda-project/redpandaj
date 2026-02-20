@@ -11,6 +11,7 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.jobs.JobScheduler;
 import im.redpanda.jobs.KademliaInsertJob;
 import java.nio.ByteBuffer;
+import java.security.SecureRandom;
 import java.security.Security;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -18,7 +19,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.TimeZone;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantLock;
@@ -27,6 +27,7 @@ public class KadStoreManager {
 
   private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; // size of content without key
   private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; // 7 days
+  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private static final Map<KademliaId, KadContent> entries = new HashMap<>();
   private static final ReentrantLock lock = new ReentrantLock();
@@ -169,7 +170,7 @@ public class KadStoreManager {
 
     // random content
     byte[] payload = new byte[1024];
-    new Random().nextBytes(payload);
+    SECURE_RANDOM.nextBytes(payload);
 
     KadContent kadContent = new KadContent(nodeId.exportPublic(), payload);
 
@@ -188,7 +189,7 @@ public class KadStoreManager {
     // assoziate an command pointer to the job
     HashMap<Integer, ScheduledFuture<?>> runningJobs = new HashMap<>();
 
-    final int pointer = new Random().nextInt();
+    final int pointer = SECURE_RANDOM.nextInt();
 
     Job job = new Job(runningJobs, pointer);
 
