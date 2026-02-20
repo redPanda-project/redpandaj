@@ -28,6 +28,9 @@
 
         <sonar.organization>redpanda-project</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+
+        <!-- Default empty argLine so @{argLine} resolves even when Jacoco is inactive -->
+        <argLine></argLine>
     </properties>
 
     <dependencyManagement>
@@ -346,6 +349,7 @@
                     </properties>
                     <reuseForks>true</reuseForks>
                     <forkCount>8</forkCount>
+                    <argLine>@{argLine} -Dredpanda.android.update.file=${project.build.directory}/android-${surefire.forkNumber}.apk</argLine>
                 </configuration>
             </plugin>
             <plugin>

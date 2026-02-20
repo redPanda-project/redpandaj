@@ -25,7 +25,8 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class ConnectionReaderThread implements Runnable {
 
-  public static final String ANDROID_UPDATE_FILE = "android.apk";
+  public static final String ANDROID_UPDATE_FILE =
+      System.getProperty("redpanda.android.update.file", "android.apk");
 
   public static final int STD_TIMEOUT = 10;
   public static final int MIN_SIGNATURE_LEN = 70;
