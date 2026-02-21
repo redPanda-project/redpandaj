@@ -829,6 +829,38 @@ public class InboundCommandProcessor {
   private void handleFlaschenpostPut(byte[] payload, Peer peer)
       throws InvalidProtocolBufferException {
     FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(payload);
-    GMParser.parse(serverContext, putMsg.getContent().toByteArray());
+    byte[] content = putMsg.getContent().toByteArray();
+
+    // MS01: Try to route to a local OH mailbox before standard Kademlia routing.
+    if (tryDepositToLocalOh(content)) {
+      return;
+    }
+
+    GMParser.parse(serverContext, content);
+  }
+
+  /**
+   * Attempts to extract the destination KademliaId from a GarlicMessage-formatted payload and
+   * deposit it into a locally registered Outbound Handle mailbox.
+   *
+   * @return true if the message was deposited into a local OH mailbox
+   */
+  private boolean tryDepositToLocalOh(byte[] content) {
+    if (outboundService == null) {
+      return false;
+    }
+    // GarlicMessage format: [1 gmType][4 overallLen][20 destinationKademliaId]...
+    int headerLen = 1 + 4 + KademliaId.ID_LENGTH_BYTES;
+    if (content.length < headerLen) {
+      return false;
+    }
+    try {
+      byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
+      System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
+      return outboundService.depositMessage(ohId, content);
+    } catch (Exception e) {
+      logger.warn("Failed to check OH deposit for FlaschenpostPut", e);
+      return false;
+    }
   }
 }
