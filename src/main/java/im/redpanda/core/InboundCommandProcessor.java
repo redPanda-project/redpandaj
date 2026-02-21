@@ -858,7 +858,7 @@ public class InboundCommandProcessor {
       byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
       System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
       return outboundService.depositMessage(ohId, content);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
       logger.warn("Failed to extract destination or deposit message to local OH", e);
       return false;
     }
