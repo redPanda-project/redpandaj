@@ -17,8 +17,10 @@ import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Random;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -64,7 +66,7 @@ public class OutboundServiceIntegrationTest {
     assertTrue(regRes.getExpiresAtMs() > System.currentTimeMillis());
 
     // 2. Deposit a message via depositMessage
-    byte[] payload = "Hello from sender!".getBytes();
+    byte[] payload = "Hello from sender!".getBytes(StandardCharsets.UTF_8);
     boolean deposited = service.depositMessage(ohId, payload);
     assertTrue("Message should be deposited into registered OH", deposited);
 
@@ -92,8 +94,9 @@ public class OutboundServiceIntegrationTest {
   @Test
   public void testDepositMessage_OhNotRegistered_ReturnsFalse() {
     byte[] unknownOhId = new byte[20];
-    new Random().nextBytes(unknownOhId);
-    boolean deposited = service.depositMessage(unknownOhId, "test".getBytes());
+    new SecureRandom().nextBytes(unknownOhId);
+    boolean deposited =
+        service.depositMessage(unknownOhId, "test".getBytes(StandardCharsets.UTF_8));
     assertFalse(deposited);
   }
 
@@ -106,9 +109,9 @@ public class OutboundServiceIntegrationTest {
     byte[] ohId = clientNode.getKademliaId().getBytes();
 
     // Deposit multiple messages
-    service.depositMessage(ohId, "msg1".getBytes());
-    service.depositMessage(ohId, "msg2".getBytes());
-    service.depositMessage(ohId, "msg3".getBytes());
+    service.depositMessage(ohId, "msg1".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, "msg2".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, "msg3".getBytes(StandardCharsets.UTF_8));
 
     // Fetch all
     service.handleFetch(peer, createSignedFetchRequest());
@@ -134,7 +137,8 @@ public class OutboundServiceIntegrationTest {
     readRevokeResponse();
 
     // Try to deposit after revoke
-    boolean deposited = service.depositMessage(ohId, "late message".getBytes());
+    boolean deposited =
+        service.depositMessage(ohId, "late message".getBytes(StandardCharsets.UTF_8));
     assertFalse(deposited);
   }
 
@@ -231,7 +235,7 @@ public class OutboundServiceIntegrationTest {
 
   private byte[] randomNonce() {
     byte[] n = new byte[8];
-    new Random().nextBytes(n);
+    new SecureRandom().nextBytes(n);
     return n;
   }
 
@@ -243,7 +247,8 @@ public class OutboundServiceIntegrationTest {
       bos.write(com.google.common.primitives.Longs.toByteArray(expires));
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
       bos.write(nonce);
-    } catch (Exception ignored) {
+    } catch (IOException e) {
+      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
     }
     return clientNode.sign(bos.toByteArray());
   }
@@ -257,7 +262,8 @@ public class OutboundServiceIntegrationTest {
       bos.write(nonce);
       bos.write(com.google.common.primitives.Ints.toByteArray(limit));
       bos.write(com.google.common.primitives.Longs.toByteArray(cursor));
-    } catch (Exception ignored) {
+    } catch (IOException e) {
+      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
     }
     return clientNode.sign(bos.toByteArray());
   }
@@ -269,7 +275,8 @@ public class OutboundServiceIntegrationTest {
       bos.write(ohId);
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
       bos.write(nonce);
-    } catch (Exception ignored) {
+    } catch (IOException e) {
+      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
     }
     return clientNode.sign(bos.toByteArray());
   }
