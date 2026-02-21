@@ -1,6 +1,7 @@
 package im.redpanda.outbound;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -93,7 +94,7 @@ public class OutboundServiceIntegrationTest {
     byte[] unknownOhId = new byte[20];
     new Random().nextBytes(unknownOhId);
     boolean deposited = service.depositMessage(unknownOhId, "test".getBytes());
-    assertEquals(false, deposited);
+    assertFalse(deposited);
   }
 
   @Test
@@ -134,7 +135,7 @@ public class OutboundServiceIntegrationTest {
 
     // Try to deposit after revoke
     boolean deposited = service.depositMessage(ohId, "late message".getBytes());
-    assertEquals(false, deposited);
+    assertFalse(deposited);
   }
 
   // --- Response readers ---

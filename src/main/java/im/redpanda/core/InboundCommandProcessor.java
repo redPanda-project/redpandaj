@@ -859,7 +859,7 @@ public class InboundCommandProcessor {
       System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
       return outboundService.depositMessage(ohId, content);
     } catch (Exception e) {
-      logger.warn("Failed to check OH deposit for FlaschenpostPut", e);
+      logger.warn("Failed to extract destination or deposit message to local OH", e);
       return false;
     }
   }
