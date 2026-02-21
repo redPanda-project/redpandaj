@@ -379,24 +379,6 @@
             <!-- No broad coverage excludes; we'll improve via tests. -->
 
             <plugin>
-                <artifactId>maven-sources-plugin</artifactId>
-                <version>3.2.1</version>
-                <configuration>
-                    <finalName>redpanda</finalName>
-                    <attach>false</attach>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>attach-sources</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>jar-no-fork</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.3.0</version>
                 <configuration>
