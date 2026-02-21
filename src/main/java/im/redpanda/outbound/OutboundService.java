@@ -163,6 +163,30 @@ public class OutboundService {
     sendRevokeResponse(peer, Status.OK);
   }
 
+  /**
+   * Deposits a message into the mailbox for the given OH, if it exists and is not expired.
+   *
+   * @param ohId the outbound handle identifier
+   * @param payload the raw message payload to deposit
+   * @return true if the message was deposited, false if the OH was not found or expired
+   */
+  public boolean depositMessage(byte[] ohId, byte[] payload) {
+    HandleRecord handle = handleStore.get(ohId);
+    if (handle == null) {
+      return false;
+    }
+    if (handle.getExpiresAtMs() < System.currentTimeMillis()) {
+      return false;
+    }
+    MailItem item =
+        MailItem.newBuilder()
+            .setReceivedAtMs(System.currentTimeMillis())
+            .setPayload(com.google.protobuf.ByteString.copyFrom(payload))
+            .build();
+    mailboxStore.addMessage(ohId, item);
+    return true;
+  }
+
   // --- Helpers ---
 
   private long clampExpiresAt(long now, long requested) {
