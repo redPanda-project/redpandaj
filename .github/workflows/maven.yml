@@ -96,8 +96,7 @@ jobs:
       - name: Release JAR
         run: |
           # Delete existing 'latest' release and tag so the date is refreshed on each publish.
-          gh release delete latest --repo ${{ github.repository }} --yes || true
-          git push --delete origin latest || true
+          gh release delete latest --repo ${{ github.repository }} --cleanup-tag --yes || true
           gh release create latest --title "Latest Backend Build" --notes "Auto-generated latest build of the RedPanda backend." --prerelease --repo ${{ github.repository }}
           gh release upload latest target/redpanda.jar target/redpanda-sources.jar --repo ${{ github.repository }}
         env:
