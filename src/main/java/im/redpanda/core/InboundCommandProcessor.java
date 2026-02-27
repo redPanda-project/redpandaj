@@ -808,8 +808,16 @@ public class InboundCommandProcessor {
     // MS01: Direct OH routing via explicit oh_id field
     ByteString ohIdBytes = putMsg.getOhId();
     if (ohIdBytes != null && !ohIdBytes.isEmpty() && outboundService != null) {
-      if (outboundService.depositMessage(ohIdBytes.toByteArray(), content)) {
-        return;
+      // Validate OH id length before converting to a byte array to avoid large allocations
+      if (ohIdBytes.size() == KademliaId.ID_LENGTH_BYTES) {
+        if (outboundService.depositMessage(ohIdBytes.toByteArray(), content)) {
+          return;
+        }
+      } else {
+        logger.warn(
+            "Received FlaschenpostPut with invalid oh_id length: {}, expected {}",
+            ohIdBytes.size(),
+            KademliaId.ID_LENGTH_BYTES);
       }
     }
 
