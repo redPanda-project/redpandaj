@@ -59,6 +59,7 @@ message JobAck {
 
 message FlaschenpostPut {
     bytes content = 1;
+    bytes oh_id = 2;    // 20 bytes — target OH mailbox KademliaId
 }
 
 // Unified envelope for future-proofing or batching, 
