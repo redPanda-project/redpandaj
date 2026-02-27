@@ -142,36 +142,6 @@ public class InboundCommandProcessor {
           handleFlaschenpostPut(payload, peer);
           return 1 + 4 + payload.length;
         });
-    commandHandlers.put(
-        Command.OUTBOUND_REGISTER_OH_REQ,
-        (peer, buf, payload) -> {
-          try {
-            outboundService.handleRegister(peer, RegisterOhRequest.parseFrom(payload));
-          } catch (Exception e) {
-            e.printStackTrace();
-          }
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.OUTBOUND_FETCH_REQ,
-        (peer, buf, payload) -> {
-          try {
-            outboundService.handleFetch(peer, FetchRequest.parseFrom(payload));
-          } catch (Exception e) {
-            e.printStackTrace();
-          }
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.OUTBOUND_REVOKE_OH_REQ,
-        (peer, buf, payload) -> {
-          try {
-            outboundService.handleRevoke(peer, RevokeOhRequest.parseFrom(payload));
-          } catch (Exception e) {
-            e.printStackTrace();
-          }
-          return 1 + 4 + payload.length;
-        });
   }
 
   public void loopCommands(Peer peer, ByteBuffer readBuffer) {
@@ -251,7 +221,10 @@ public class InboundCommandProcessor {
         || command == Command.KADEMLIA_GET
         || command == Command.KADEMLIA_STORE
         || command == Command.KADEMLIA_GET_ANSWER
-        || command == Command.FLASCHENPOST_PUT;
+        || command == Command.FLASCHENPOST_PUT
+        || command == Command.OUTBOUND_REGISTER_OH_REQ
+        || command == Command.OUTBOUND_FETCH_REQ
+        || command == Command.OUTBOUND_REVOKE_OH_REQ;
   }
 
   private byte[] readMessage(ByteBuffer readBuffer) {
