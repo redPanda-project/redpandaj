@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMParser;
@@ -831,7 +832,15 @@ public class InboundCommandProcessor {
     FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(payload);
     byte[] content = putMsg.getContent().toByteArray();
 
-    // MS01: Try to route to a local OH mailbox before standard Kademlia routing.
+    // MS01: Direct OH routing via explicit oh_id field
+    ByteString ohIdBytes = putMsg.getOhId();
+    if (ohIdBytes != null && !ohIdBytes.isEmpty() && outboundService != null) {
+      if (outboundService.depositMessage(ohIdBytes.toByteArray(), content)) {
+        return;
+      }
+    }
+
+    // Legacy: Try to route via GarlicMessage destination header
     if (tryDepositToLocalOh(content)) {
       return;
     }
