@@ -807,7 +807,7 @@ public class InboundCommandProcessor {
 
     // MS01: Direct OH routing via explicit oh_id field
     ByteString ohIdBytes = putMsg.getOhId();
-    if (ohIdBytes != null && !ohIdBytes.isEmpty() && outboundService != null) {
+    if (!ohIdBytes.isEmpty() && outboundService != null) {
       // Validate OH id length before converting to a byte array to avoid large allocations
       if (ohIdBytes.size() == KademliaId.ID_LENGTH_BYTES) {
         if (outboundService.depositMessage(ohIdBytes.toByteArray(), content)) {
