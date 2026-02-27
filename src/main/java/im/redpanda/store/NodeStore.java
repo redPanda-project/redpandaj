@@ -9,12 +9,12 @@ import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -54,7 +54,7 @@ public class NodeStore {
   private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
   private long lastTimeEdgeAdded = 0;
   private final ServerContext serverContext;
-  private final Random random = new Random();
+  private final SecureRandom random = new SecureRandom();
   @Getter private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
   private NodeStore(ServerContext serverContext) {

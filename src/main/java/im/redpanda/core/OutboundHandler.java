@@ -3,16 +3,16 @@ package im.redpanda.core;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Random;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 
 public class OutboundHandler extends Thread {
 
   long lastAddedKnownNodes;
-  Random random = new Random();
+  SecureRandom random = new SecureRandom();
   private final PeerList peerList;
   private final ServerContext serverContext;
 
