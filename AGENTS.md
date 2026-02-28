@@ -1,50 +1,67 @@
 # AGENTS.md
 
-> **Purpose**: This file provides immediate context for AI agents working on `redpandaj`. Read this first to understand build, test, and architectural patterns.
+> **Purpose**: Guidelines for AI agents working on `redpandaj` — a Java 21+ full node for the Redpanda decentralized messaging network.
 
-## Project Identity
-- **Name**: `redpandaj`
-- **Role**: Java full node for the Redpanda decentralized messaging network.
-- **Goal**: Privacy-first, metadata-resistant messaging (WhatsApp-like UX, decentralized core).
-- **Mobile Client Relationship**: This node handles routing/storage so mobile clients (Flutter) can stay lightweight/offline.
+## Quick Reference
 
-## Tech Stack
-- **Language**: Java 21+
-- **Build System**: Maven 3.x
-- **Key Libraries**:
-    - **Protobuf**: For wire format/serialization.
-    - **Bouncy Castle**: Cryptography.
-    - **JGraphT**: Graph structures.
-    - **MapDB**: Embedded persistence.
-    - **Lombok**: Boilerplate reduction (requires annotation processing).
+| What           | Command                          |
+|----------------|----------------------------------|
+| Format         | `mvn spotless:apply`             |
+| Build          | `mvn clean package`              |
+| Unit Tests     | `mvn test`                       |
+| E2E Tests      | `mvn -Pe2e verify`               |
+| Run            | `java -jar target/redpanda.jar`  |
 
-## Critical Commands
+- **Protobuf**: Run `mvn compile` to generate sources into `target/generated-sources/protobuf`. Never edit generated files.
+- **Lombok**: `@Getter`, `@Setter`, `@Slf4j` are used extensively — be aware of generated methods.
 
-### Build
-```bash
-mvn clean package
-# Artifact: target/redpanda.jar
-```
+## Workflow Orchestration
 
-### Run
-```bash
-java -jar target/redpanda.jar
-# Default Port: 59558
-```
+### 1. Plan Mode Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions).
+- If something goes sideways, STOP and re-plan immediately — don't keep pushing.
+- Use plan mode for verification steps, not just building.
+- Write detailed specs upfront to reduce ambiguity.
 
-### Testing
-- **Unit Tests**: `mvn test`
-- **E2E/Integration**: `mvn -Pe2e verify`
+### 2. Subagent Strategy
+- Use subagents liberally to keep main context window clean.
+- Offload research, exploration, and parallel analysis to subagents.
+- For complex problems, throw more compute at it via subagents.
+- One task per subagent for focused execution.
 
-## Project Structure
-- `src/main/java/im/redpanda` - Core source code.
-- `src/test/java` - Unit and integration tests.
-- `docs/` - Protocol documentation (read this for deep dives on crypto/routing).
-- `pom.xml` - Dependencies and build configuration.
+### 3. Self-Improvement Loop
+- After ANY correction from the user: update `tasks/lessons.md` with the pattern.
+- Write rules for yourself that prevent the same mistake.
+- Ruthlessly iterate on these lessons until mistake rate drops.
+- Review lessons at session start for relevant project.
 
-## Developer Notes / Gotchas
-1.  **Protobuf Generation**: Sources are generated into `target/generated-sources/protobuf`. If symbol resolution fails, try running `mvn generate-sources` or `mvn compile` first.
-2.  **Generated Code**: Do not edit files in `target/`.
-3.  **Lombok**: Annotations (`@Getter`, `@Setter`, `@Slf4j`) are used extensively. Ensure your context is aware of generated methods.
-4.  **Java 21**: We use modern Java features. Ensure compatibility when suggesting code.
-5.  **Strict Filtering**: Recent changes enforce strict peer filtering to prevent redundant connections.
+### 4. Verification Before Done
+- Never mark a task complete without proving it works.
+- Diff behavior between main and your changes when relevant.
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness.
+
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution."
+- Skip this for simple, obvious fixes — don't over-engineer.
+- Challenge your own work before presenting it.
+
+### 6. Autonomous Bug Fixing
+- When given a bug report: just fix it. Don't ask for hand-holding.
+- Point at logs, errors, failing tests — then resolve them.
+- Zero context switching required from the user.
+- Go fix failing CI tests without being told how.
+
+## Task Management
+1. **Plan First**: Write plan to `tasks/todo.md` with checkable items.
+2. **Verify Plan**: Check in before starting implementation.
+3. **Track Progress**: Mark items complete as you go.
+4. **Explain Changes**: High-level summary at each step.
+5. **Document Results**: Add review section to `tasks/todo.md`.
+6. **Capture Lessons**: Update `tasks/lessons.md` after corrections.
+
+## Core Principles
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
