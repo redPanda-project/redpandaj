@@ -5,6 +5,7 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
 import java.io.File;
 import java.io.Serializable;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.mapdb.DB;
@@ -114,10 +115,9 @@ public class OutboundHandleStore {
    */
   public void cleanupExpired(long now, OutboundMailboxStore mailboxStore) {
     boolean changed = false;
-    java.util.Iterator<java.util.Map.Entry<String, HandleRecord>> it =
-        handles.entrySet().iterator();
+    Iterator<Map.Entry<String, HandleRecord>> it = handles.entrySet().iterator();
     while (it.hasNext()) {
-      java.util.Map.Entry<String, HandleRecord> entry = it.next();
+      Map.Entry<String, HandleRecord> entry = it.next();
       HandleRecord rec = entry.getValue();
       if (rec != null && rec.getExpiresAtMs() < now) {
         it.remove();

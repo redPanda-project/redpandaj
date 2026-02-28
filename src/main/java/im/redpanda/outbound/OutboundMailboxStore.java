@@ -6,6 +6,7 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Set;
@@ -168,11 +169,14 @@ public class OutboundMailboxStore {
     String fromKey = ohPrefix(ohKey);
     String toKey = itemKey(ohKey, sequenceId);
     NavigableMap<String, byte[]> toDelete = mailboxItems.subMap(fromKey, true, toKey, true);
-    List<String> keys = new ArrayList<>(toDelete.keySet());
-    for (String key : keys) {
-      mailboxItems.remove(key);
+    Iterator<String> it = toDelete.keySet().iterator();
+    boolean changed = false;
+    while (it.hasNext()) {
+      it.next();
+      it.remove();
+      changed = true;
     }
-    if (db != null && !keys.isEmpty()) db.commit();
+    if (db != null && changed) db.commit();
   }
 
   /**
@@ -182,12 +186,15 @@ public class OutboundMailboxStore {
   public synchronized void deleteAllByHexKey(String ohIdHex) {
     NavigableMap<String, byte[]> sub =
         mailboxItems.subMap(ohPrefix(ohIdHex), true, ohCeiling(ohIdHex), false);
-    List<String> keys = new ArrayList<>(sub.keySet());
-    for (String key : keys) {
-      mailboxItems.remove(key);
+    Iterator<String> it = sub.keySet().iterator();
+    boolean changed = false;
+    while (it.hasNext()) {
+      it.next();
+      it.remove();
+      changed = true;
     }
     overflowFlags.remove(ohIdHex);
-    if (db != null && !keys.isEmpty()) db.commit();
+    if (db != null && changed) db.commit();
   }
 
   /** Deletes all items for the given OH. */
