@@ -207,8 +207,8 @@ public class OutboundServiceIntegrationTest {
     FetchResponse res = readFetchResponse();
 
     assertThat(res.getStatus()).isEqualTo(Status.OK);
-    assertThat(res.getItemsCount()).isEqualTo(0);
-    assertThat(res.getNextCursor()).isEqualTo(0L);
+    assertThat(res.getItemsCount()).isZero();
+    assertThat(res.getNextCursor()).isZero();
   }
 
   // --- MS02 AC: AckFetch deletes items with sequence_id <= acked_sequence_id ---

@@ -66,8 +66,7 @@ public class OutboundMailboxStore {
       Files.createDirectories(Path.of("data"));
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       mailboxItems =
-          (NavigableMap<String, byte[]>)
-              db.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY).createOrOpen();
+          db.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY).createOrOpen();
       // Restore in-memory sequence counters from persisted keys
       for (String key : mailboxItems.keySet()) {
         int sep = key.lastIndexOf(':');
