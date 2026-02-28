@@ -162,6 +162,7 @@ public class OutboundService {
     }
 
     handleStore.remove(ohId);
+    mailboxStore.deleteAll(ohId);
 
     sendRevokeResponse(peer, Status.OK);
   }
@@ -228,14 +229,12 @@ public class OutboundService {
     if (handle == null) {
       return false;
     }
-    if (handle.getExpiresAtMs() < System.currentTimeMillis()) {
+    long now = System.currentTimeMillis();
+    if (handle.getExpiresAtMs() < now) {
       return false;
     }
     MailItem item =
-        MailItem.newBuilder()
-            .setReceivedAtMs(System.currentTimeMillis())
-            .setPayload(ByteString.copyFrom(payload))
-            .build();
+        MailItem.newBuilder().setReceivedAtMs(now).setPayload(ByteString.copyFrom(payload)).build();
     mailboxStore.addMessage(ohId, item);
     return true;
   }

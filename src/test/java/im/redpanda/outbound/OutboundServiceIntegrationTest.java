@@ -140,6 +140,27 @@ public class OutboundServiceIntegrationTest {
     assertThat(deposited).isFalse();
   }
 
+  @Test
+  public void testRevoke_alsoDeletesMailboxItems() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+
+    // Register and deposit messages
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+    service.depositMessage(ohId, "msg1".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, "msg2".getBytes(StandardCharsets.UTF_8));
+
+    // Verify messages exist
+    assertThat(mailboxStore.fetchMessages(ohId, 10, 0)).hasSize(2);
+
+    // Revoke
+    service.handleRevoke(peer, createSignedRevokeRequest());
+    readRevokeResponse();
+
+    // Mailbox items should be cleaned up after revoke
+    assertThat(mailboxStore.fetchMessages(ohId, 10, 0)).isEmpty();
+  }
+
   // --- MS02 AC: FetchResponse.next_cursor is the highest sequence_id ---
 
   @Test
