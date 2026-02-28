@@ -4,6 +4,8 @@ import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
 import im.redpanda.outbound.OutboundAuth.AuthResult;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import im.redpanda.outbound.v1.AckFetchRequest;
+import im.redpanda.outbound.v1.AckFetchResponse;
 import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.FetchResponse;
 import im.redpanda.outbound.v1.MailItem;
@@ -84,13 +86,13 @@ public class OutboundService {
     // Auth checks
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
-      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of());
+      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of(), false);
       return;
     }
 
     if (handle.getExpiresAtMs() < now) {
       // Should have been cleaned up, but explicitly reject
-      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of());
+      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of(), false);
       return;
     }
 
@@ -100,9 +102,9 @@ public class OutboundService {
     signBuf.put(ohId);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
-    // limit is int32, cursor is int64
+    // limit is int32, cursor is int64 (used as afterSequence)
     signBuf.putInt(req.getLimit());
-    signBuf.putLong(req.getCursor()); // optional field, usually 0 if PoC
+    signBuf.putLong(req.getCursor());
 
     AuthResult result =
         auth.verify(
@@ -114,14 +116,17 @@ public class OutboundService {
             nonce);
 
     if (result != AuthResult.OK) {
-      sendFetchResponse(peer, mapAuthToStatus(result), 0, List.of());
+      sendFetchResponse(peer, mapAuthToStatus(result), 0, List.of(), false);
       return;
     }
 
-    // Fetch logic
-    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), req.getCursor());
-    long nextCursor = req.getCursor() + items.size();
-    sendFetchResponse(peer, Status.OK, nextCursor, items);
+    // Fetch logic — cursor is now afterSequence
+    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), (long) req.getCursor());
+    // next_cursor = highest sequence_id returned, or current cursor if no items
+    long nextCursor =
+        items.isEmpty() ? req.getCursor() : items.get(items.size() - 1).getSequenceId();
+    boolean overflow = mailboxStore.checkAndClearOverflow(ohId);
+    sendFetchResponse(peer, Status.OK, nextCursor, items, overflow);
   }
 
   public void handleRevoke(Peer peer, RevokeOhRequest req) {
@@ -161,6 +166,56 @@ public class OutboundService {
     handleStore.remove(ohId);
 
     sendRevokeResponse(peer, Status.OK);
+  }
+
+  /**
+   * Handles an AckFetch request: verifies the signature, deletes all mailbox items with sequence_id
+   * &lt;= acked_sequence_id, and responds with OK.
+   *
+   * <p>Signing bytes: {@code [CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]}
+   */
+  public void handleAckFetch(Peer peer, AckFetchRequest req) {
+    long now = System.currentTimeMillis();
+    byte[] ohId = req.getOhId().toByteArray();
+    byte[] nonce = req.getNonce().toByteArray();
+    long timestamp = req.getTimestampMs();
+
+    HandleRecord handle = handleStore.get(ohId);
+    if (handle == null) {
+      sendAckFetchResponse(peer, Status.NOT_FOUND);
+      return;
+    }
+
+    if (handle.getExpiresAtMs() < now) {
+      sendAckFetchResponse(peer, Status.NOT_FOUND);
+      return;
+    }
+
+    // Signing bytes: CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce
+    long ackedSeqId = req.getAckedSequenceId();
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    signBuf.put(Command.OUTBOUND_ACK_FETCH_REQ);
+    signBuf.put(ohId);
+    signBuf.putLong(ackedSeqId);
+    signBuf.putLong(timestamp);
+    signBuf.put(nonce);
+
+    AuthResult result =
+        auth.verify(
+            handle.getOhAuthPublicKey(),
+            signBuf.array(),
+            req.getSignature().toByteArray(),
+            timestamp,
+            ohId,
+            nonce);
+
+    if (result != AuthResult.OK) {
+      sendAckFetchResponse(peer, mapAuthToStatus(result));
+      return;
+    }
+
+    mailboxStore.deleteUpTo(ohId, ackedSeqId);
+    sendAckFetchResponse(peer, Status.OK);
   }
 
   /**
@@ -223,13 +278,15 @@ public class OutboundService {
     writeResponse(peer, Command.OUTBOUND_REGISTER_OH_RES, res.toByteArray());
   }
 
-  private void sendFetchResponse(Peer peer, Status status, long nextCursor, List<MailItem> items) {
+  private void sendFetchResponse(
+      Peer peer, Status status, long nextCursor, List<MailItem> items, boolean overflow) {
     FetchResponse res =
         FetchResponse.newBuilder()
             .setStatus(status)
             .setServerTimeMs(System.currentTimeMillis())
             .setNextCursor(nextCursor)
             .addAllItems(items)
+            .setMailboxOverflow(overflow)
             .build();
     writeResponse(peer, Command.OUTBOUND_FETCH_RES, res.toByteArray());
   }
@@ -241,6 +298,15 @@ public class OutboundService {
             .setServerTimeMs(System.currentTimeMillis())
             .build();
     writeResponse(peer, Command.OUTBOUND_REVOKE_OH_RES, res.toByteArray());
+  }
+
+  private void sendAckFetchResponse(Peer peer, Status status) {
+    AckFetchResponse res =
+        AckFetchResponse.newBuilder()
+            .setStatus(status)
+            .setServerTimeMs(System.currentTimeMillis())
+            .build();
+    writeResponse(peer, Command.OUTBOUND_ACK_FETCH_RES, res.toByteArray());
   }
 
   // Helper to write [cmd][len][payload]

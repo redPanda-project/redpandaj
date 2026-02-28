@@ -47,13 +47,28 @@ message MailItem {
   bytes message_id = 1;         // 16 bytes UUID raw or 32 random bytes
   int64 received_at_ms = 2;
   bytes payload = 3;            // chat payload (later: push payload / garlic delivered)
+  uint64 sequence_id = 4;       // monotone per-OH sequence id
 }
 
 message FetchResponse {
   Status status = 1;
-  uint64 next_cursor = 2;
+  uint64 next_cursor = 2;       // = highest sequence_id returned
   repeated MailItem items = 3;
   int64 server_time_ms = 4;
+  bool mailbox_overflow = 5;    // true if items were evicted since last fetch
+}
+
+message AckFetchRequest {
+  bytes oh_id = 1;
+  uint64 acked_sequence_id = 2;
+  int64 timestamp_ms = 3;
+  bytes nonce = 4;
+  bytes signature = 5;
+}
+
+message AckFetchResponse {
+  Status status = 1;
+  int64 server_time_ms = 2;
 }
 
 message RevokeOhRequest {

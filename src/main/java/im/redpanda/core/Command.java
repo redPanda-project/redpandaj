@@ -36,4 +36,6 @@ public class Command {
   public static final byte OUTBOUND_FETCH_RES = (byte) 153;
   public static final byte OUTBOUND_REVOKE_OH_REQ = (byte) 154;
   public static final byte OUTBOUND_REVOKE_OH_RES = (byte) 155;
+  public static final byte OUTBOUND_ACK_FETCH_REQ = (byte) 156;
+  public static final byte OUTBOUND_ACK_FETCH_RES = (byte) 157;
 }

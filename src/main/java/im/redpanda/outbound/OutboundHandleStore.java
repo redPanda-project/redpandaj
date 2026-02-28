@@ -105,15 +105,28 @@ public class OutboundHandleStore {
   }
 
   public void cleanupExpired(long now) {
-    boolean changed =
-        handles
-            .entrySet()
-            .removeIf(
-                entry -> {
-                  HandleRecord rec = entry.getValue();
-                  return rec != null && rec.getExpiresAtMs() < now;
-                });
+    cleanupExpired(now, null);
+  }
 
+  /**
+   * Removes all expired handles. If {@code mailboxStore} is non-null, also deletes the associated
+   * mailbox items for each removed handle.
+   */
+  public void cleanupExpired(long now, OutboundMailboxStore mailboxStore) {
+    boolean changed = false;
+    java.util.Iterator<java.util.Map.Entry<String, HandleRecord>> it =
+        handles.entrySet().iterator();
+    while (it.hasNext()) {
+      java.util.Map.Entry<String, HandleRecord> entry = it.next();
+      HandleRecord rec = entry.getValue();
+      if (rec != null && rec.getExpiresAtMs() < now) {
+        it.remove();
+        changed = true;
+        if (mailboxStore != null) {
+          mailboxStore.deleteAllByHexKey(entry.getKey());
+        }
+      }
+    }
     if (changed && db != null) db.commit();
   }
 }
