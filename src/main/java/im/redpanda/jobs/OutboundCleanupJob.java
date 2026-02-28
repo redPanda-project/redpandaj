@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OutboundHandleStore;
+import im.redpanda.outbound.OutboundMailboxStore;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,10 +12,12 @@ public class OutboundCleanupJob extends Job {
 
   private static final Logger logger = LogManager.getLogger();
   private final OutboundHandleStore handleStore;
+  private final OutboundMailboxStore mailboxStore;
 
   public OutboundCleanupJob(ServerContext serverContext) {
     super(serverContext, TimeUnit.MINUTES.toMillis(10), true); // Permanent job, run every 10 mins
     this.handleStore = serverContext.getOutboundHandleStore();
+    this.mailboxStore = serverContext.getOutboundMailboxStore();
   }
 
   @Override
@@ -27,11 +30,8 @@ public class OutboundCleanupJob extends Job {
     try {
       long now = System.currentTimeMillis();
       if (handleStore != null) {
-        handleStore.cleanupExpired(now);
+        handleStore.cleanupExpired(now, mailboxStore);
       }
-
-      // Mailbox cleanup could go here
-
     } catch (Exception e) {
       logger.error("Error in OutboundCleanupJob", e);
     }

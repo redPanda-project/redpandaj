@@ -1,6 +1,8 @@
 package im.redpanda.core;
 
-public class Command {
+public final class Command {
+
+  private Command() {}
 
   public static final byte REQUEST_PUBLIC_KEY = (byte) 1;
   public static final byte SEND_PUBLIC_KEY = (byte) 2;
@@ -36,4 +38,6 @@ public class Command {
   public static final byte OUTBOUND_FETCH_RES = (byte) 153;
   public static final byte OUTBOUND_REVOKE_OH_REQ = (byte) 154;
   public static final byte OUTBOUND_REVOKE_OH_RES = (byte) 155;
+  public static final byte OUTBOUND_ACK_FETCH_REQ = (byte) 156;
+  public static final byte OUTBOUND_ACK_FETCH_RES = (byte) 157;
 }

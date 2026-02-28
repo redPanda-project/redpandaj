@@ -1,9 +1,12 @@
 package im.redpanda.outbound;
 
+import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
 import im.redpanda.outbound.OutboundAuth.AuthResult;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import im.redpanda.outbound.v1.AckFetchRequest;
+import im.redpanda.outbound.v1.AckFetchResponse;
 import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.FetchResponse;
 import im.redpanda.outbound.v1.MailItem;
@@ -25,6 +28,12 @@ public class OutboundService {
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
   private static final long MIN_TTL_MS = 10L * 60 * 1000; // 10 minutes
 
+  // Input validation bounds (defense-in-depth against oversized fields)
+  private static final int MIN_OH_ID_BYTES = 16;
+  private static final int MAX_OH_ID_BYTES = 64;
+  private static final int MIN_NONCE_BYTES = 8;
+  private static final int MAX_NONCE_BYTES = 64;
+
   public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
     this.handleStore = handleStore;
     this.mailboxStore = mailboxStore;
@@ -34,17 +43,21 @@ public class OutboundService {
   public void handleRegister(Peer peer, RegisterOhRequest req) {
     long now = System.currentTimeMillis();
 
-    // 1. Auth: Verify signature over oh_id, requested_expires_at, timestamp_ms, and
-    // nonce.
-
     byte[] ohId = req.getOhId().toByteArray();
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
     long requestedExpires = req.getRequestedExpiresAt();
 
+    // Input validation: reject oversized or empty fields
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendRegisterResponse(peer, Status.BAD_REQUEST, 0);
+      return;
+    }
+
     // Reconstruct signing bytes
     ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
-    signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ); // Command ID included as per plan
+    signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ);
     signBuf.put(ohId);
     signBuf.putLong(requestedExpires);
     signBuf.putLong(timestamp);
@@ -81,16 +94,22 @@ public class OutboundService {
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
-    // Auth checks
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendFetchResponse(peer, Status.BAD_REQUEST, 0, List.of(), false);
+      return;
+    }
+
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
-      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of());
+      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of(), false);
       return;
     }
 
     if (handle.getExpiresAtMs() < now) {
       // Should have been cleaned up, but explicitly reject
-      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of());
+      sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of(), false);
       return;
     }
 
@@ -100,9 +119,9 @@ public class OutboundService {
     signBuf.put(ohId);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
-    // limit is int32, cursor is int64
+    // limit is int32, cursor is int64 (used as afterSequence)
     signBuf.putInt(req.getLimit());
-    signBuf.putLong(req.getCursor()); // optional field, usually 0 if PoC
+    signBuf.putLong(req.getCursor());
 
     AuthResult result =
         auth.verify(
@@ -114,14 +133,17 @@ public class OutboundService {
             nonce);
 
     if (result != AuthResult.OK) {
-      sendFetchResponse(peer, mapAuthToStatus(result), 0, List.of());
+      sendFetchResponse(peer, mapAuthToStatus(result), 0, List.of(), false);
       return;
     }
 
-    // Fetch logic
+    // Fetch logic — cursor is now afterSequence
     List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), req.getCursor());
-    long nextCursor = req.getCursor() + items.size();
-    sendFetchResponse(peer, Status.OK, nextCursor, items);
+    // next_cursor = highest sequence_id returned, or current cursor if no items
+    long nextCursor =
+        items.isEmpty() ? req.getCursor() : items.get(items.size() - 1).getSequenceId();
+    boolean overflow = mailboxStore.checkAndClearOverflow(ohId);
+    sendFetchResponse(peer, Status.OK, nextCursor, items, overflow);
   }
 
   public void handleRevoke(Peer peer, RevokeOhRequest req) {
@@ -129,11 +151,15 @@ public class OutboundService {
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendRevokeResponse(peer, Status.BAD_REQUEST);
+      return;
+    }
+
     HandleRecord handle = handleStore.get(ohId);
-    if (handle == null) { // Already gone is OK or Not Found?
-      // If we can't find it, we can't verify signature because we don't have the
-      // pubkey.
-      // So we must return Not Found.
+    if (handle == null) {
       sendRevokeResponse(peer, Status.NOT_FOUND);
       return;
     }
@@ -159,8 +185,66 @@ public class OutboundService {
     }
 
     handleStore.remove(ohId);
+    mailboxStore.deleteAll(ohId);
 
     sendRevokeResponse(peer, Status.OK);
+  }
+
+  /**
+   * Handles an AckFetch request: verifies the signature, deletes all mailbox items with sequence_id
+   * &lt;= acked_sequence_id, and responds with OK.
+   *
+   * <p>Signing bytes: {@code [CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]}
+   */
+  public void handleAckFetch(Peer peer, AckFetchRequest req) {
+    long now = System.currentTimeMillis();
+    byte[] ohId = req.getOhId().toByteArray();
+    byte[] nonce = req.getNonce().toByteArray();
+    long timestamp = req.getTimestampMs();
+
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendAckFetchResponse(peer, Status.BAD_REQUEST);
+      return;
+    }
+
+    HandleRecord handle = handleStore.get(ohId);
+    if (handle == null) {
+      sendAckFetchResponse(peer, Status.NOT_FOUND);
+      return;
+    }
+
+    if (handle.getExpiresAtMs() < now) {
+      sendAckFetchResponse(peer, Status.NOT_FOUND);
+      return;
+    }
+
+    // Signing bytes: CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce
+    long ackedSeqId = req.getAckedSequenceId();
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    signBuf.put(Command.OUTBOUND_ACK_FETCH_REQ);
+    signBuf.put(ohId);
+    signBuf.putLong(ackedSeqId);
+    signBuf.putLong(timestamp);
+    signBuf.put(nonce);
+
+    AuthResult result =
+        auth.verify(
+            handle.getOhAuthPublicKey(),
+            signBuf.array(),
+            req.getSignature().toByteArray(),
+            timestamp,
+            ohId,
+            nonce);
+
+    if (result != AuthResult.OK) {
+      sendAckFetchResponse(peer, mapAuthToStatus(result));
+      return;
+    }
+
+    mailboxStore.deleteUpTo(ohId, ackedSeqId);
+    sendAckFetchResponse(peer, Status.OK);
   }
 
   /**
@@ -175,19 +259,22 @@ public class OutboundService {
     if (handle == null) {
       return false;
     }
-    if (handle.getExpiresAtMs() < System.currentTimeMillis()) {
+    long now = System.currentTimeMillis();
+    if (handle.getExpiresAtMs() < now) {
       return false;
     }
     MailItem item =
-        MailItem.newBuilder()
-            .setReceivedAtMs(System.currentTimeMillis())
-            .setPayload(com.google.protobuf.ByteString.copyFrom(payload))
-            .build();
+        MailItem.newBuilder().setReceivedAtMs(now).setPayload(ByteString.copyFrom(payload)).build();
     mailboxStore.addMessage(ohId, item);
     return true;
   }
 
   // --- Helpers ---
+
+  /** Returns true if the field length is outside the allowed range (inclusive). */
+  private static boolean outOfRange(int length, int min, int max) {
+    return length < min || length > max;
+  }
 
   private long clampExpiresAt(long now, long requested) {
     long max = now + MAX_TTL_MS;
@@ -197,19 +284,14 @@ public class OutboundService {
     return requested;
   }
 
-  private Status mapAuthToStatus(AuthResult result) {
-    switch (result) {
-      case OK:
-        return Status.OK;
-      case INVALID_SIGNATURE:
-        return Status.INVALID_SIGNATURE;
-      case INVALID_TIMESTAMP:
-        return Status.INVALID_TIMESTAMP;
-      case REPLAY:
-        return Status.REPLAY;
-      default:
-        return Status.STATUS_UNSPECIFIED;
-    }
+  private static Status mapAuthToStatus(AuthResult result) {
+    return switch (result) {
+      case OK -> Status.OK;
+      case INVALID_SIGNATURE -> Status.INVALID_SIGNATURE;
+      case INVALID_TIMESTAMP -> Status.INVALID_TIMESTAMP;
+      case REPLAY -> Status.REPLAY;
+      default -> Status.STATUS_UNSPECIFIED;
+    };
   }
 
   private void sendRegisterResponse(Peer peer, Status status, long expiresAt) {
@@ -223,13 +305,15 @@ public class OutboundService {
     writeResponse(peer, Command.OUTBOUND_REGISTER_OH_RES, res.toByteArray());
   }
 
-  private void sendFetchResponse(Peer peer, Status status, long nextCursor, List<MailItem> items) {
+  private void sendFetchResponse(
+      Peer peer, Status status, long nextCursor, List<MailItem> items, boolean overflow) {
     FetchResponse res =
         FetchResponse.newBuilder()
             .setStatus(status)
             .setServerTimeMs(System.currentTimeMillis())
             .setNextCursor(nextCursor)
             .addAllItems(items)
+            .setMailboxOverflow(overflow)
             .build();
     writeResponse(peer, Command.OUTBOUND_FETCH_RES, res.toByteArray());
   }
@@ -241,6 +325,15 @@ public class OutboundService {
             .setServerTimeMs(System.currentTimeMillis())
             .build();
     writeResponse(peer, Command.OUTBOUND_REVOKE_OH_RES, res.toByteArray());
+  }
+
+  private void sendAckFetchResponse(Peer peer, Status status) {
+    AckFetchResponse res =
+        AckFetchResponse.newBuilder()
+            .setStatus(status)
+            .setServerTimeMs(System.currentTimeMillis())
+            .build();
+    writeResponse(peer, Command.OUTBOUND_ACK_FETCH_RES, res.toByteArray());
   }
 
   // Helper to write [cmd][len][payload]
