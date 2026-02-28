@@ -28,6 +28,12 @@ public class OutboundService {
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
   private static final long MIN_TTL_MS = 10L * 60 * 1000; // 10 minutes
 
+  // Input validation bounds (defense-in-depth against oversized fields)
+  private static final int MIN_OH_ID_BYTES = 16;
+  private static final int MAX_OH_ID_BYTES = 64;
+  private static final int MIN_NONCE_BYTES = 8;
+  private static final int MAX_NONCE_BYTES = 64;
+
   public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
     this.handleStore = handleStore;
     this.mailboxStore = mailboxStore;
@@ -37,13 +43,17 @@ public class OutboundService {
   public void handleRegister(Peer peer, RegisterOhRequest req) {
     long now = System.currentTimeMillis();
 
-    // 1. Auth: Verify signature over oh_id, requested_expires_at, timestamp_ms, and
-    // nonce.
-
     byte[] ohId = req.getOhId().toByteArray();
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
     long requestedExpires = req.getRequestedExpiresAt();
+
+    // Input validation: reject oversized or empty fields
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendRegisterResponse(peer, Status.BAD_REQUEST, 0);
+      return;
+    }
 
     // Reconstruct signing bytes
     ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
@@ -84,7 +94,13 @@ public class OutboundService {
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
-    // Auth checks
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendFetchResponse(peer, Status.BAD_REQUEST, 0, List.of(), false);
+      return;
+    }
+
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
       sendFetchResponse(peer, Status.NOT_FOUND, 0, List.of(), false);
@@ -135,6 +151,13 @@ public class OutboundService {
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendRevokeResponse(peer, Status.BAD_REQUEST);
+      return;
+    }
+
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
       sendRevokeResponse(peer, Status.NOT_FOUND);
@@ -178,6 +201,13 @@ public class OutboundService {
     byte[] ohId = req.getOhId().toByteArray();
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
+
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendAckFetchResponse(peer, Status.BAD_REQUEST);
+      return;
+    }
 
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
@@ -240,6 +270,11 @@ public class OutboundService {
   }
 
   // --- Helpers ---
+
+  /** Returns true if the field length is outside the allowed range (inclusive). */
+  private static boolean outOfRange(int length, int min, int max) {
+    return length < min || length > max;
+  }
 
   private long clampExpiresAt(long now, long requested) {
     long max = now + MAX_TTL_MS;
