@@ -15,8 +15,6 @@ import im.redpanda.outbound.v1.RegisterOhResponse;
 import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -204,7 +202,7 @@ public class OutboundServiceIntegrationTest {
     service.handleFetch(peer, createSignedFetchRequest(0));
     FetchResponse fetchRes = readFetchResponse();
     assertThat(fetchRes.getItemsCount()).isEqualTo(3);
-    long highestSeq = fetchRes.getNextCursor(); // = 3
+    assertThat(fetchRes.getNextCursor()).isEqualTo(3L);
 
     // AckFetch up to seq 2 — should delete msg1 and msg2
     service.handleAckFetch(peer, createSignedAckFetchRequest(2));
@@ -380,58 +378,42 @@ public class OutboundServiceIntegrationTest {
   }
 
   private byte[] signRegister(byte[] ohId, long expires, long ts, byte[] nonce) {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try {
-      bos.write(Command.OUTBOUND_REGISTER_OH_REQ);
-      bos.write(ohId);
-      bos.write(com.google.common.primitives.Longs.toByteArray(expires));
-      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
-      bos.write(nonce);
-    } catch (IOException e) {
-      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
-    }
-    return clientNode.sign(bos.toByteArray());
+    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    buf.put(Command.OUTBOUND_REGISTER_OH_REQ);
+    buf.put(ohId);
+    buf.putLong(expires);
+    buf.putLong(ts);
+    buf.put(nonce);
+    return clientNode.sign(buf.array());
   }
 
   private byte[] signFetch(byte[] ohId, int limit, long cursor, long ts, byte[] nonce) {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try {
-      bos.write(Command.OUTBOUND_FETCH_REQ);
-      bos.write(ohId);
-      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
-      bos.write(nonce);
-      bos.write(com.google.common.primitives.Ints.toByteArray(limit));
-      bos.write(com.google.common.primitives.Longs.toByteArray(cursor));
-    } catch (IOException e) {
-      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
-    }
-    return clientNode.sign(bos.toByteArray());
+    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length + 4 + 8);
+    buf.put(Command.OUTBOUND_FETCH_REQ);
+    buf.put(ohId);
+    buf.putLong(ts);
+    buf.put(nonce);
+    buf.putInt(limit);
+    buf.putLong(cursor);
+    return clientNode.sign(buf.array());
   }
 
   private byte[] signRevoke(byte[] ohId, long ts, byte[] nonce) {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try {
-      bos.write(Command.OUTBOUND_REVOKE_OH_REQ);
-      bos.write(ohId);
-      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
-      bos.write(nonce);
-    } catch (IOException e) {
-      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
-    }
-    return clientNode.sign(bos.toByteArray());
+    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length);
+    buf.put(Command.OUTBOUND_REVOKE_OH_REQ);
+    buf.put(ohId);
+    buf.putLong(ts);
+    buf.put(nonce);
+    return clientNode.sign(buf.array());
   }
 
   private byte[] signAckFetch(byte[] ohId, long ackedSeqId, long ts, byte[] nonce) {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try {
-      bos.write(Command.OUTBOUND_ACK_FETCH_REQ);
-      bos.write(ohId);
-      bos.write(com.google.common.primitives.Longs.toByteArray(ackedSeqId));
-      bos.write(com.google.common.primitives.Longs.toByteArray(ts));
-      bos.write(nonce);
-    } catch (IOException e) {
-      throw new AssertionError("ByteArrayOutputStream should not throw IOException", e);
-    }
-    return clientNode.sign(bos.toByteArray());
+    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    buf.put(Command.OUTBOUND_ACK_FETCH_REQ);
+    buf.put(ohId);
+    buf.putLong(ackedSeqId);
+    buf.putLong(ts);
+    buf.put(nonce);
+    return clientNode.sign(buf.array());
   }
 }

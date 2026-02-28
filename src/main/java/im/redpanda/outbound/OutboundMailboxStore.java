@@ -4,7 +4,8 @@ import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.v1.MailItem;
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -62,7 +63,7 @@ public class OutboundMailboxStore {
   private void init() {
     if (dbPath == null) return;
     try {
-      new File("data").mkdirs();
+      Files.createDirectories(Path.of("data"));
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       mailboxItems =
           (NavigableMap<String, byte[]>)

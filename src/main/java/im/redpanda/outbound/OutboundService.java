@@ -1,5 +1,6 @@
 package im.redpanda.outbound;
 
+import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
 import im.redpanda.outbound.OutboundAuth.AuthResult;
@@ -46,7 +47,7 @@ public class OutboundService {
 
     // Reconstruct signing bytes
     ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
-    signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ); // Command ID included as per plan
+    signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ);
     signBuf.put(ohId);
     signBuf.putLong(requestedExpires);
     signBuf.putLong(timestamp);
@@ -121,7 +122,7 @@ public class OutboundService {
     }
 
     // Fetch logic — cursor is now afterSequence
-    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), (long) req.getCursor());
+    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), req.getCursor());
     // next_cursor = highest sequence_id returned, or current cursor if no items
     long nextCursor =
         items.isEmpty() ? req.getCursor() : items.get(items.size() - 1).getSequenceId();
@@ -135,10 +136,7 @@ public class OutboundService {
     long timestamp = req.getTimestampMs();
 
     HandleRecord handle = handleStore.get(ohId);
-    if (handle == null) { // Already gone is OK or Not Found?
-      // If we can't find it, we can't verify signature because we don't have the
-      // pubkey.
-      // So we must return Not Found.
+    if (handle == null) {
       sendRevokeResponse(peer, Status.NOT_FOUND);
       return;
     }
@@ -236,7 +234,7 @@ public class OutboundService {
     MailItem item =
         MailItem.newBuilder()
             .setReceivedAtMs(System.currentTimeMillis())
-            .setPayload(com.google.protobuf.ByteString.copyFrom(payload))
+            .setPayload(ByteString.copyFrom(payload))
             .build();
     mailboxStore.addMessage(ohId, item);
     return true;
@@ -253,18 +251,13 @@ public class OutboundService {
   }
 
   private Status mapAuthToStatus(AuthResult result) {
-    switch (result) {
-      case OK:
-        return Status.OK;
-      case INVALID_SIGNATURE:
-        return Status.INVALID_SIGNATURE;
-      case INVALID_TIMESTAMP:
-        return Status.INVALID_TIMESTAMP;
-      case REPLAY:
-        return Status.REPLAY;
-      default:
-        return Status.STATUS_UNSPECIFIED;
-    }
+    return switch (result) {
+      case OK -> Status.OK;
+      case INVALID_SIGNATURE -> Status.INVALID_SIGNATURE;
+      case INVALID_TIMESTAMP -> Status.INVALID_TIMESTAMP;
+      case REPLAY -> Status.REPLAY;
+      default -> Status.STATUS_UNSPECIFIED;
+    };
   }
 
   private void sendRegisterResponse(Peer peer, Status status, long expiresAt) {
