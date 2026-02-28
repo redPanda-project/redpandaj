@@ -30,6 +30,10 @@ import org.junit.Test;
  */
 public class OutboundServiceIntegrationTest {
 
+  private static final String MSG1 = "msg1";
+  private static final String MSG2 = "msg2";
+  private static final String MSG3 = "msg3";
+
   private OutboundService service;
   private OutboundHandleStore handleStore;
   private OutboundMailboxStore mailboxStore;
@@ -107,9 +111,9 @@ public class OutboundServiceIntegrationTest {
     byte[] ohId = clientNode.getKademliaId().getBytes();
 
     // Deposit multiple messages
-    service.depositMessage(ohId, "msg1".getBytes(StandardCharsets.UTF_8));
-    service.depositMessage(ohId, "msg2".getBytes(StandardCharsets.UTF_8));
-    service.depositMessage(ohId, "msg3".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG3.getBytes(StandardCharsets.UTF_8));
 
     // Fetch all
     service.handleFetch(peer, createSignedFetchRequest(0));
@@ -117,9 +121,9 @@ public class OutboundServiceIntegrationTest {
 
     assertThat(fetchRes.getStatus()).isEqualTo(Status.OK);
     assertThat(fetchRes.getItemsCount()).isEqualTo(3);
-    assertThat(fetchRes.getItems(0).getPayload().toStringUtf8()).isEqualTo("msg1");
-    assertThat(fetchRes.getItems(1).getPayload().toStringUtf8()).isEqualTo("msg2");
-    assertThat(fetchRes.getItems(2).getPayload().toStringUtf8()).isEqualTo("msg3");
+    assertThat(fetchRes.getItems(0).getPayload().toStringUtf8()).isEqualTo(MSG1);
+    assertThat(fetchRes.getItems(1).getPayload().toStringUtf8()).isEqualTo(MSG2);
+    assertThat(fetchRes.getItems(2).getPayload().toStringUtf8()).isEqualTo(MSG3);
   }
 
   @Test
@@ -147,8 +151,8 @@ public class OutboundServiceIntegrationTest {
     // Register and deposit messages
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
-    service.depositMessage(ohId, "msg1".getBytes(StandardCharsets.UTF_8));
-    service.depositMessage(ohId, "msg2".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
 
     // Verify messages exist
     assertThat(mailboxStore.fetchMessages(ohId, 10, 0)).hasSize(2);
@@ -215,9 +219,9 @@ public class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
-    service.depositMessage(ohId, "msg1".getBytes(StandardCharsets.UTF_8));
-    service.depositMessage(ohId, "msg2".getBytes(StandardCharsets.UTF_8));
-    service.depositMessage(ohId, "msg3".getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG3.getBytes(StandardCharsets.UTF_8));
 
     // Fetch to get sequence IDs
     service.handleFetch(peer, createSignedFetchRequest(0));
@@ -234,7 +238,7 @@ public class OutboundServiceIntegrationTest {
     service.handleFetch(peer, createSignedFetchRequest(0));
     FetchResponse afterAck = readFetchResponse();
     assertThat(afterAck.getItemsCount()).isEqualTo(1);
-    assertThat(afterAck.getItems(0).getPayload().toStringUtf8()).isEqualTo("msg3");
+    assertThat(afterAck.getItems(0).getPayload().toStringUtf8()).isEqualTo(MSG3);
     assertThat(afterAck.getItems(0).getSequenceId()).isEqualTo(3L);
   }
 

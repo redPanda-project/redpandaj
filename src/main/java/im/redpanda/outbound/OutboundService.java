@@ -284,7 +284,7 @@ public class OutboundService {
     return requested;
   }
 
-  private Status mapAuthToStatus(AuthResult result) {
+  private static Status mapAuthToStatus(AuthResult result) {
     return switch (result) {
       case OK -> Status.OK;
       case INVALID_SIGNATURE -> Status.INVALID_SIGNATURE;
