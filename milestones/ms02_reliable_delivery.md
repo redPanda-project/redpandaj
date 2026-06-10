@@ -1,6 +1,6 @@
 # Backend MS02: Reliable Mailbox & Lifecycle
 
-## Status: Partial
+## Status: Done
 
 > **Frontend-Alignment**: Backend MS02 ist Voraussetzung für [Frontend MS02](../frontend/ms02_reliable_delivery.md).
 > Das Frontend braucht das sequence-basierte Fetch + AckFetch-Command.
@@ -17,9 +17,9 @@ Mailbox von index-basiertem PoC auf sequence-basierte Queue umstellen. Delete-af
 
 | Component | File | Status |
 |-----------|------|--------|
-| Mailbox store | `OutboundMailboxStore.java` | `ArrayList<byte[]>`, cursor = list index, no delete |
-| Handle lifecycle | `OutboundHandleStore.java` | TTL clamp 10min–7d, `cleanupExpired()` exists |
-| Fetch pagination | `outbound.proto` → `FetchRequest.cursor` | cursor = list index |
+| Mailbox store | `OutboundMailboxStore.java` | Done — sequence-based BTreeMap, deleteUpTo(), overflow flag |
+| Handle lifecycle | `OutboundHandleStore.java` | Done — cleanupExpired() inkl. Mailbox-Cleanup (10-min-Job) |
+| Fetch pagination | `outbound.proto` → `FetchRequest.cursor` | Done — cursor = sequence_id, AckFetch implementiert |
 
 ## Spec
 
@@ -114,12 +114,12 @@ message AckFetchResponse {
 
 ## Acceptance Criteria
 
-- [ ] `MailItem` hat eine monotone `sequence_id` pro OH
-- [ ] `FetchResponse.next_cursor` ist die höchste `sequence_id` (nicht List-Index)
-- [ ] `AckFetchRequest` löscht alle Items mit `sequence_id <= acked_sequence_id`
-- [ ] Expired OHs werden alle 10 Minuten gecleant inkl. ihrer Mailboxen
-- [ ] Mailbox-Overflow (>500 Items) setzt `mailbox_overflow = true` in der nächsten `FetchResponse`
-- [ ] Signing-Bytes für `AckFetch` sind dokumentiert: `[CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]`
+- [x] `MailItem` hat eine monotone `sequence_id` pro OH
+- [x] `FetchResponse.next_cursor` ist die höchste `sequence_id` (nicht List-Index)
+- [x] `AckFetchRequest` löscht alle Items mit `sequence_id <= acked_sequence_id`
+- [x] Expired OHs werden alle 10 Minuten gecleant inkl. ihrer Mailboxen
+- [x] Mailbox-Overflow (>500 Items) setzt `mailbox_overflow = true` in der nächsten `FetchResponse`
+- [x] Signing-Bytes für `AckFetch` sind dokumentiert: `[CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]`
 
 ## Open Questions
 
