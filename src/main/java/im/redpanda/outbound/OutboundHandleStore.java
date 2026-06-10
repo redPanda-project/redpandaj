@@ -3,8 +3,10 @@ package im.redpanda.outbound;
 import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
-import java.io.File;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.mapdb.DB;
@@ -18,7 +20,7 @@ public class OutboundHandleStore {
   private static final Logger logger = LoggerFactory.getLogger(OutboundHandleStore.class);
 
   private DB db;
-  private Map<String, HandleRecord> handles; // Key: Base58 or Hex of oh_id
+  private Map<String, HandleRecord> handles;
   private final String dbPath;
 
   public static class HandleRecord implements Serializable {
@@ -67,7 +69,7 @@ public class OutboundHandleStore {
   private void init() {
     if (dbPath == null) return;
     try {
-      new File("data").mkdirs();
+      Files.createDirectories(Path.of("data"));
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       handles =
           (Map<String, HandleRecord>)
@@ -75,8 +77,6 @@ public class OutboundHandleStore {
     } catch (Exception e) {
       Log.sentry(e);
       logger.error("Failed to initialize OutboundHandleStore DB", e);
-      // Fallback to memory if file fails? Or throw?
-      // For now, let's just log and maybe fallback to memory map to keep running
       handles = new ConcurrentHashMap<>();
     }
   }
@@ -105,15 +105,27 @@ public class OutboundHandleStore {
   }
 
   public void cleanupExpired(long now) {
-    boolean changed =
-        handles
-            .entrySet()
-            .removeIf(
-                entry -> {
-                  HandleRecord rec = entry.getValue();
-                  return rec != null && rec.getExpiresAtMs() < now;
-                });
+    cleanupExpired(now, null);
+  }
 
+  /**
+   * Removes all expired handles. If {@code mailboxStore} is non-null, also deletes the associated
+   * mailbox items for each removed handle.
+   */
+  public void cleanupExpired(long now, OutboundMailboxStore mailboxStore) {
+    boolean changed = false;
+    Iterator<Map.Entry<String, HandleRecord>> it = handles.entrySet().iterator();
+    while (it.hasNext()) {
+      Map.Entry<String, HandleRecord> entry = it.next();
+      HandleRecord rec = entry.getValue();
+      if (rec != null && rec.getExpiresAtMs() < now) {
+        it.remove();
+        changed = true;
+        if (mailboxStore != null) {
+          mailboxStore.deleteAllByHexKey(entry.getKey());
+        }
+      }
+    }
     if (changed && db != null) db.commit();
   }
 }

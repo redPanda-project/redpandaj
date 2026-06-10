@@ -13,6 +13,7 @@ import im.redpanda.jobs.GMManagerCleanJobs;
 import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.NodeConnectionPointsSeenJob;
 import im.redpanda.jobs.NodeInfoSetRefreshJob;
+import im.redpanda.jobs.OutboundCleanupJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
@@ -163,6 +164,7 @@ public class App {
     new NodeInfoSetRefreshJob(serverContext).start();
     new NodeConnectionPointsSeenJob(serverContext).start();
     new UpTimeReporterJob(serverContext).start();
+    new OutboundCleanupJob(serverContext).start();
   }
 
   private static void initLogger() {

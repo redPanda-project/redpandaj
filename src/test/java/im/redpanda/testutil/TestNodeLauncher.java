@@ -16,11 +16,15 @@ import im.redpanda.jobs.KadRefreshJob;
 import im.redpanda.jobs.NodeConnectionPointsSeenJob;
 import im.redpanda.jobs.NodeInfoSetRefreshJob;
 import im.redpanda.jobs.NodeStoreMaintainJob;
+import im.redpanda.jobs.OutboundCleanupJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
+import im.redpanda.outbound.OutboundHandleStore;
+import im.redpanda.outbound.OutboundMailboxStore;
+import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeStore;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -62,6 +66,14 @@ public final class TestNodeLauncher {
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
     serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
+
+    // Outbound Service V1 Init
+    OutboundHandleStore ohStore = new OutboundHandleStore(serverContext);
+    OutboundMailboxStore mbStore = new OutboundMailboxStore(serverContext);
+    OutboundService outService = new OutboundService(ohStore, mbStore);
+    serverContext.setOutboundHandleStore(ohStore);
+    serverContext.setOutboundMailboxStore(mbStore);
+    serverContext.setOutboundService(outService);
 
     Runtime.getRuntime()
         .addShutdownHook(new Thread(() -> shutdown(serverContext, connectionHandler)));
@@ -131,6 +143,7 @@ public final class TestNodeLauncher {
     new NodeConnectionPointsSeenJob(serverContext).start();
     new UpTimeReporterJob(serverContext).start();
     new ServerRestartJob(serverContext).start();
+    new OutboundCleanupJob(serverContext).start();
   }
 
   private static void waitForStopSignal() throws IOException {
