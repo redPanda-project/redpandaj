@@ -9,6 +9,7 @@ import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.AckFetchResponse;
 import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.FetchResponse;
+import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import im.redpanda.outbound.v1.RegisterOhResponse;
@@ -17,9 +18,26 @@ import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public class OutboundService {
+
+  /** Result of a deposit attempt (MS02b: callers must distinguish rejection from "not local"). */
+  public enum DepositResult {
+    /** Stored in a locally registered OH mailbox. */
+    DEPOSITED,
+    /** The oh_id is not registered here (or expired) — candidate for forwarding. */
+    NOT_FOUND,
+    /** Mailbox full (item cap or byte quota); deposit rejected, nothing displaced. */
+    QUOTA_EXCEEDED,
+    /** Item exceeds the per-item size limit. */
+    BAD_REQUEST
+  }
 
   /**
    * Length in bytes of the per-item {@code message_id}: a raw RFC-4122 UUIDv4 ("16 bytes UUID raw",
@@ -42,6 +60,18 @@ public class OutboundService {
   private static final int MIN_NONCE_BYTES = 8;
   private static final int MAX_NONCE_BYTES = 64;
 
+  // MS02b: register rate limit per connection (handle-store exhaustion defense).
+  // Counted per RegisterOhRequest before signature verification, sliding window.
+  static final int REGISTER_LIMIT_PER_WINDOW = 5;
+  static final long REGISTER_WINDOW_MS = 60_000;
+
+  /**
+   * Register timestamps per connection. WeakHashMap so entries vanish with the Peer object after
+   * disconnect; all access goes through the synchronized wrapper plus per-deque synchronization.
+   */
+  private final Map<Peer, Deque<Long>> registerHistory =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
   public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
     this.handleStore = handleStore;
     this.mailboxStore = mailboxStore;
@@ -60,6 +90,12 @@ public class OutboundService {
     if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
         || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendRegisterResponse(peer, Status.BAD_REQUEST, 0);
+      return;
+    }
+
+    // MS02b: rate-limit registers per connection before the (expensive) signature check
+    if (registerRateLimited(peer, now)) {
+      sendRegisterResponse(peer, Status.RATE_LIMIT, 0);
       return;
     }
 
@@ -267,16 +303,17 @@ public class OutboundService {
    *
    * @param ohId the outbound handle identifier
    * @param payload the raw message payload to deposit
-   * @return true if the message was deposited, false if the OH was not found or expired
+   * @return {@link DepositResult#DEPOSITED} on success, {@link DepositResult#NOT_FOUND} if the OH
+   *     is not registered here or expired, or the MS02b rejection reason
    */
-  public boolean depositMessage(byte[] ohId, byte[] payload) {
+  public DepositResult depositMessage(byte[] ohId, byte[] payload) {
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
-      return false;
+      return DepositResult.NOT_FOUND;
     }
     long now = System.currentTimeMillis();
     if (handle.getExpiresAtMs() < now) {
-      return false;
+      return DepositResult.NOT_FOUND;
     }
     byte[] messageId = newMessageId();
     MailItem item =
@@ -285,8 +322,57 @@ public class OutboundService {
             .setReceivedAtMs(now)
             .setPayload(ByteString.copyFrom(payload))
             .build();
-    mailboxStore.addMessage(ohId, item);
-    return true;
+    return switch (mailboxStore.addMessage(ohId, item)) {
+      case ADDED -> DepositResult.DEPOSITED;
+      case REJECTED_ITEM_TOO_LARGE -> DepositResult.BAD_REQUEST;
+      case REJECTED_MAILBOX_FULL, REJECTED_BYTE_QUOTA -> DepositResult.QUOTA_EXCEEDED;
+    };
+  }
+
+  /**
+   * Sends a {@link FlaschenpostPutResponse} for a deposit attempt. Only called for directly
+   * connected light clients that set {@code want_response} (full nodes and legacy clients must
+   * never receive command 158 — unknown commands desync their read loop).
+   */
+  public void sendFlaschenpostPutResponse(Peer peer, Status status) {
+    FlaschenpostPutResponse res =
+        FlaschenpostPutResponse.newBuilder()
+            .setStatus(status)
+            .setServerTimeMs(System.currentTimeMillis())
+            .build();
+    writeResponse(peer, Command.FLASCHENPOST_PUT_RES, res.toByteArray());
+  }
+
+  /** Maps a {@link DepositResult} to the wire status for FlaschenpostPutResponse. */
+  public static Status depositResultToStatus(DepositResult result) {
+    return switch (result) {
+      case DEPOSITED -> Status.OK;
+      case NOT_FOUND -> Status.NOT_FOUND;
+      case QUOTA_EXCEEDED -> Status.QUOTA_EXCEEDED;
+      case BAD_REQUEST -> Status.BAD_REQUEST;
+    };
+  }
+
+  /**
+   * Sliding-window register rate limit per connection: returns true (and rejects) if more than
+   * {@link #REGISTER_LIMIT_PER_WINDOW} registers arrived within {@link #REGISTER_WINDOW_MS}.
+   */
+  private boolean registerRateLimited(Peer peer, long now) {
+    Deque<Long> history;
+    // computeIfAbsent is not covered by the synchronizedMap wrapper — do get-or-create atomically
+    synchronized (registerHistory) {
+      history = registerHistory.computeIfAbsent(peer, p -> new ArrayDeque<>());
+    }
+    synchronized (history) {
+      while (!history.isEmpty() && now - history.peekFirst() > REGISTER_WINDOW_MS) {
+        history.pollFirst();
+      }
+      if (history.size() >= REGISTER_LIMIT_PER_WINDOW) {
+        return true;
+      }
+      history.addLast(now);
+      return false;
+    }
   }
 
   // --- Helpers ---

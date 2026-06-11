@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
@@ -37,14 +38,45 @@ public class OutboundMailboxStore {
   private final ConcurrentHashMap<String, AtomicLong> seqCounters = new ConcurrentHashMap<>();
 
   /**
-   * Transient overflow flags: ohId_hex of OHs that had FIFO eviction since the last fetch. Cleared
-   * by checkAndClearOverflow().
+   * In-memory byte usage per mailbox: ohId_hex → total stored bytes (serialized MailItem sizes).
+   * Rebuilt from the persisted map on startup, updated on every add/delete.
+   */
+  private final ConcurrentHashMap<String, AtomicLong> byteCounters = new ConcurrentHashMap<>();
+
+  /**
+   * Transient overflow flags: ohId_hex of OHs that had deposits rejected (mailbox full or byte
+   * quota reached) since the last fetch. Cleared by checkAndClearOverflow().
+   *
+   * <p>MS02b note: before MS02b this flag meant "oldest items were evicted (FIFO)". With reject-new
+   * eviction nothing stored is ever displaced; the flag now signals "deposits were rejected", so
+   * the client still learns that messages may be missing.
    */
   private final Set<String> overflowFlags = ConcurrentHashMap.newKeySet();
 
   private final String dbPath;
 
   static final int MAX_ITEMS_PER_MAILBOX = 500;
+
+  /**
+   * Per-item limit on the serialized {@link MailItem} size. Deposits above this are rejected
+   * (BAD_REQUEST): the 500-item cap alone counts items, not bytes, so a single item could otherwise
+   * be arbitrarily large.
+   */
+  static final int MAX_ITEM_BYTES = 64 * 1024;
+
+  /**
+   * Byte quota per mailbox, independent of the item count. Deposits that would exceed it are
+   * rejected (QUOTA_EXCEEDED).
+   */
+  static final long MAX_MAILBOX_BYTES = 4L * 1024 * 1024;
+
+  /** Result of {@link #addMessage}: deposited, or rejected with the reason (MS02b hardening). */
+  public enum AddResult {
+    ADDED,
+    REJECTED_ITEM_TOO_LARGE,
+    REJECTED_MAILBOX_FULL,
+    REJECTED_BYTE_QUOTA
+  }
 
   private static final String SEQ_FMT = "%019d";
 
@@ -67,8 +99,9 @@ public class OutboundMailboxStore {
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       mailboxItems =
           db.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY).createOrOpen();
-      // Restore in-memory sequence counters from persisted keys
-      for (String key : mailboxItems.keySet()) {
+      // Restore in-memory sequence and byte counters from persisted entries
+      for (Map.Entry<String, byte[]> entry : mailboxItems.entrySet()) {
+        String key = entry.getKey();
         int sep = key.lastIndexOf(':');
         if (sep > 0) {
           String ohKey = key.substring(0, sep);
@@ -76,6 +109,9 @@ public class OutboundMailboxStore {
           seqCounters
               .computeIfAbsent(ohKey, k -> new AtomicLong(1L))
               .updateAndGet(current -> Math.max(current, seqId + 1));
+          byteCounters
+              .computeIfAbsent(ohKey, k -> new AtomicLong(0L))
+              .addAndGet(entry.getValue().length);
         }
       }
     } catch (Exception e) {
@@ -111,24 +147,37 @@ public class OutboundMailboxStore {
 
   /**
    * Adds a message to the mailbox for the given OH. Assigns a monotonically increasing sequence_id.
-   * If the mailbox is full, the oldest item is evicted (FIFO) and the overflow flag is set.
+   *
+   * <p>MS02b deposit hardening — reject-new instead of drop-oldest: a deposit into a full mailbox
+   * (item cap or byte quota) is rejected and the overflow flag is set, but already-stored items are
+   * never displaced. Spam can block a full mailbox, but cannot silently flush real messages.
+   *
+   * @return {@link AddResult#ADDED} or the rejection reason
    */
-  public synchronized void addMessage(byte[] ohId, MailItem item) {
+  public synchronized AddResult addMessage(byte[] ohId, MailItem item) {
     String ohKey = Utils.bytesToHexString(ohId);
 
-    // Enforce limit — evict oldest (FIFO)
+    long seqId = seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).get();
+    byte[] serialized = item.toBuilder().setSequenceId(seqId).build().toByteArray();
+
+    if (serialized.length > MAX_ITEM_BYTES) {
+      return AddResult.REJECTED_ITEM_TOO_LARGE;
+    }
     if (countItems(ohKey) >= MAX_ITEMS_PER_MAILBOX) {
-      String firstKey = mailboxItems.ceilingKey(ohPrefix(ohKey));
-      if (firstKey != null && firstKey.startsWith(ohPrefix(ohKey))) {
-        mailboxItems.remove(firstKey);
-        overflowFlags.add(ohKey);
-      }
+      overflowFlags.add(ohKey);
+      return AddResult.REJECTED_MAILBOX_FULL;
+    }
+    AtomicLong usedBytes = byteCounters.computeIfAbsent(ohKey, k -> new AtomicLong(0L));
+    if (usedBytes.get() + serialized.length > MAX_MAILBOX_BYTES) {
+      overflowFlags.add(ohKey);
+      return AddResult.REJECTED_BYTE_QUOTA;
     }
 
-    long seqId = nextSeqId(ohKey);
-    MailItem itemWithSeq = item.toBuilder().setSequenceId(seqId).build();
-    mailboxItems.put(itemKey(ohKey, seqId), itemWithSeq.toByteArray());
+    nextSeqId(ohKey);
+    mailboxItems.put(itemKey(ohKey, seqId), serialized);
+    usedBytes.addAndGet(serialized.length);
     if (db != null) db.commit();
+    return AddResult.ADDED;
   }
 
   /**
@@ -169,13 +218,15 @@ public class OutboundMailboxStore {
     String fromKey = ohPrefix(ohKey);
     String toKey = itemKey(ohKey, sequenceId);
     NavigableMap<String, byte[]> toDelete = mailboxItems.subMap(fromKey, true, toKey, true);
-    Iterator<String> it = toDelete.keySet().iterator();
+    Iterator<Map.Entry<String, byte[]>> it = toDelete.entrySet().iterator();
     boolean changed = false;
+    long freedBytes = 0;
     while (it.hasNext()) {
-      it.next();
+      freedBytes += it.next().getValue().length;
       it.remove();
       changed = true;
     }
+    subtractBytes(ohKey, freedBytes);
     if (db != null && changed) db.commit();
   }
 
@@ -194,7 +245,19 @@ public class OutboundMailboxStore {
       changed = true;
     }
     overflowFlags.remove(ohIdHex);
+    byteCounters.remove(ohIdHex);
     if (db != null && changed) db.commit();
+  }
+
+  /** Reduces the in-memory byte counter for an OH, never going below zero. */
+  private void subtractBytes(String ohKey, long freedBytes) {
+    if (freedBytes <= 0) {
+      return;
+    }
+    AtomicLong counter = byteCounters.get(ohKey);
+    if (counter != null) {
+      counter.updateAndGet(current -> Math.max(0, current - freedBytes));
+    }
   }
 
   /** Deletes all items for the given OH. */
@@ -203,8 +266,9 @@ public class OutboundMailboxStore {
   }
 
   /**
-   * Returns {@code true} if items were evicted from this OH's mailbox since the last call, and
-   * clears the overflow flag. This flag is transient — not persisted across restarts.
+   * Returns {@code true} if deposits into this OH's mailbox were rejected (mailbox full or byte
+   * quota reached) since the last call, and clears the overflow flag. This flag is transient — not
+   * persisted across restarts.
    */
   public boolean checkAndClearOverflow(byte[] ohId) {
     return overflowFlags.remove(Utils.bytesToHexString(ohId));

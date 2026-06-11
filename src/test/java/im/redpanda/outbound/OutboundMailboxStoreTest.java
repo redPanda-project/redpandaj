@@ -145,23 +145,27 @@ public class OutboundMailboxStoreTest {
     assertThat(store.fetchMessages(ohId2, 10, 0)).hasSize(1);
   }
 
-  // --- AC: Mailbox overflow (>500 items) sets overflow flag ---
+  // --- MS02b AC: full mailbox rejects new deposits (reject-new) and sets overflow flag ---
 
   @Test
-  public void addMessage_whenMailboxFull_evictsOldestAndSetsOverflowFlag() {
+  public void addMessage_whenMailboxFull_rejectsNewAndSetsOverflowFlag() {
     // Fill to capacity
     for (int i = 0; i < OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
-      store.addMessage(
-          ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("val" + i)).build());
+      OutboundMailboxStore.AddResult result =
+          store.addMessage(
+              ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("val" + i)).build());
+      assertThat(result).isEqualTo(OutboundMailboxStore.AddResult.ADDED);
     }
 
     // No overflow yet
     assertThat(store.checkAndClearOverflow(ohId)).isFalse();
 
-    // Add one more to trigger eviction
-    store.addMessage(
-        ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("overflow")).build());
+    // One more is rejected — nothing stored is displaced
+    OutboundMailboxStore.AddResult rejected =
+        store.addMessage(
+            ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("overflow")).build());
 
+    assertThat(rejected).isEqualTo(OutboundMailboxStore.AddResult.REJECTED_MAILBOX_FULL);
     assertThat(store.checkAndClearOverflow(ohId)).isTrue();
     // After clearing, flag is gone
     assertThat(store.checkAndClearOverflow(ohId)).isFalse();
@@ -181,7 +185,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void testMailboxLimit_fifoEviction() {
+  public void testMailboxLimit_rejectNewKeepsOldest() {
     int limit = OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX;
     for (int i = 0; i < limit + 5; i++) {
       store.addMessage(
@@ -191,8 +195,89 @@ public class OutboundMailboxStoreTest {
     List<MailItem> messages = store.fetchMessages(ohId, 1000, 0);
     assertThat(messages).hasSize(limit);
 
-    // FIFO: oldest 5 (val0–val4) are evicted; first surviving is val5
-    assertThat(messages.get(0).getPayload().toStringUtf8()).isEqualTo("val5");
-    assertThat(messages.get(limit - 1).getPayload().toStringUtf8()).isEqualTo("val" + (limit + 4));
+    // Reject-new: the first stored items survive, the 5 excess deposits were rejected
+    assertThat(messages.get(0).getPayload().toStringUtf8()).isEqualTo("val0");
+    assertThat(messages.get(limit - 1).getPayload().toStringUtf8()).isEqualTo("val" + (limit - 1));
+  }
+
+  @Test
+  public void addMessage_afterAckFreesSpace_acceptsAgain() {
+    int limit = OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX;
+    for (int i = 0; i < limit; i++) {
+      store.addMessage(
+          ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("val" + i)).build());
+    }
+    assertThat(
+            store.addMessage(
+                ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("x")).build()))
+        .isEqualTo(OutboundMailboxStore.AddResult.REJECTED_MAILBOX_FULL);
+
+    // Acknowledge (delete) the first 10 items — deposits are accepted again
+    store.deleteUpTo(ohId, 10);
+    assertThat(
+            store.addMessage(
+                ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("y")).build()))
+        .isEqualTo(OutboundMailboxStore.AddResult.ADDED);
+  }
+
+  // --- MS02b AC: per-item size limit ---
+
+  @Test
+  public void addMessage_itemAboveSizeLimit_isRejected() {
+    byte[] tooLarge = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
+
+    OutboundMailboxStore.AddResult result =
+        store.addMessage(
+            ohId, MailItem.newBuilder().setPayload(ByteString.copyFrom(tooLarge)).build());
+
+    assertThat(result).isEqualTo(OutboundMailboxStore.AddResult.REJECTED_ITEM_TOO_LARGE);
+    assertThat(store.fetchMessages(ohId, 10, 0)).isEmpty();
+  }
+
+  @Test
+  public void addMessage_itemJustBelowSizeLimit_isAccepted() {
+    // Leave room for the message_id/seq/timestamp fields of the serialized MailItem
+    byte[] payload = new byte[OutboundMailboxStore.MAX_ITEM_BYTES - 64];
+
+    OutboundMailboxStore.AddResult result =
+        store.addMessage(
+            ohId, MailItem.newBuilder().setPayload(ByteString.copyFrom(payload)).build());
+
+    assertThat(result).isEqualTo(OutboundMailboxStore.AddResult.ADDED);
+  }
+
+  // --- MS02b AC: per-mailbox byte quota independent of item count ---
+
+  @Test
+  public void addMessage_byteQuotaReached_rejectsBeforeItemCap() {
+    // ~63 KiB per item: the 4 MiB quota is hit after ~66 items, far below the 500-item cap
+    byte[] payload = new byte[63 * 1024];
+
+    int accepted = 0;
+    OutboundMailboxStore.AddResult last = OutboundMailboxStore.AddResult.ADDED;
+    for (int i = 0; i < OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
+      last =
+          store.addMessage(
+              ohId, MailItem.newBuilder().setPayload(ByteString.copyFrom(payload)).build());
+      if (last != OutboundMailboxStore.AddResult.ADDED) {
+        break;
+      }
+      accepted++;
+    }
+
+    assertThat(last).isEqualTo(OutboundMailboxStore.AddResult.REJECTED_BYTE_QUOTA);
+    // Quota must bite around MAX_MAILBOX_BYTES / itemSize, well below the 500-item cap
+    long approxItems = OutboundMailboxStore.MAX_MAILBOX_BYTES / (63 * 1024);
+    assertThat(accepted)
+        .isLessThan(OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX)
+        .isBetween((int) approxItems - 2, (int) approxItems);
+    assertThat(store.checkAndClearOverflow(ohId)).isTrue();
+
+    // Quota is byte-based: freeing items via ack makes room again
+    store.deleteUpTo(ohId, 2);
+    assertThat(
+            store.addMessage(
+                ohId, MailItem.newBuilder().setPayload(ByteString.copyFrom(payload)).build()))
+        .isEqualTo(OutboundMailboxStore.AddResult.ADDED);
   }
 }

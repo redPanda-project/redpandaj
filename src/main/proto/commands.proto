@@ -60,6 +60,9 @@ message JobAck {
 message FlaschenpostPut {
     bytes content = 1;
     bytes oh_id = 2;    // 20 bytes — target OH mailbox KademliaId
+    // MS02b: if set by a directly connected light client, the node answers with
+    // FlaschenpostPutResponse (command 158). Full nodes never set this.
+    bool want_response = 3;
 }
 
 // Unified envelope for future-proofing or batching, 
