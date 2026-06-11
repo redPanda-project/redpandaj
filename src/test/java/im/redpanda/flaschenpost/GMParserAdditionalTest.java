@@ -577,6 +577,31 @@ public class GMParserAdditionalTest {
   }
 
   /**
+   * A null target (destination unknown to the NodeStore) must yield no selection instead of
+   * crashing inside Dijkstra with a NullPointerException.
+   */
+  @Test
+  public void selectBestRoutePeer_nullTargetYieldsNoSelection() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    TestPeer peer = authedPeerWithNode(serverContext, "10.4.0.1", 1);
+    Node peerNode = peer.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    graph.addVertex(selfNode);
+    graph.addVertex(peerNode);
+    graph.setEdgeWeight(graph.addEdge(selfNode, peerNode), 1.0);
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            graph, selfNode, java.util.List.of(peer), null, GMParser.MAX_ROUTE_WEIGHT);
+
+    assertNull(selection.peer());
+  }
+
+  /**
    * Builds an authed + connected peer with a Node attached, so {@link Peer#getNode()} returns the
    * node (it returns null for un-authed / disconnected peers).
    */

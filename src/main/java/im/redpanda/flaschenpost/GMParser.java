@@ -76,6 +76,11 @@ public class GMParser {
     double bestWeight = maxWeight;
     Peer bestPeer = null;
 
+    if (targetNode == null) {
+      // Destination unknown to the NodeStore — no route can be computed.
+      return new RouteSelection(null, maxWeight);
+    }
+
     for (Peer peer : candidates) {
       Node peerNode = peer.getNode();
       if (peerNode == null) {
