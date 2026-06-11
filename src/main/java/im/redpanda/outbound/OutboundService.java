@@ -16,13 +16,21 @@ import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
 import java.nio.ByteBuffer;
+import java.security.SecureRandom;
 import java.util.List;
 
 public class OutboundService {
 
+  /**
+   * Length in bytes of the per-item {@code message_id}: a raw RFC-4122 UUIDv4 ("16 bytes UUID raw",
+   * see outbound.proto).
+   */
+  private static final int MESSAGE_ID_BYTES = 16;
+
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
   private final OutboundAuth auth;
+  private final SecureRandom secureRandom = new SecureRandom();
 
   // Configuration (could be in LocalSettings)
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
@@ -250,6 +258,13 @@ public class OutboundService {
   /**
    * Deposits a message into the mailbox for the given OH, if it exists and is not expired.
    *
+   * <p>A fresh {@code message_id} (raw RFC-4122 UUIDv4, generated from cryptographically random
+   * bytes) is assigned here, at deposit time, before the item is serialized into the mailbox store.
+   * This guarantees the id is persisted with the item and stays stable across re-fetches of the
+   * same un-acked item. The frontend uses hex(message_id) as its deduplication key, so an
+   * unset/empty id would collapse every message to the same key and cause the receiver to drop
+   * everything after the first.
+   *
    * @param ohId the outbound handle identifier
    * @param payload the raw message payload to deposit
    * @return true if the message was deposited, false if the OH was not found or expired
@@ -263,13 +278,30 @@ public class OutboundService {
     if (handle.getExpiresAtMs() < now) {
       return false;
     }
+    byte[] messageId = newMessageId();
     MailItem item =
-        MailItem.newBuilder().setReceivedAtMs(now).setPayload(ByteString.copyFrom(payload)).build();
+        MailItem.newBuilder()
+            .setMessageId(ByteString.copyFrom(messageId))
+            .setReceivedAtMs(now)
+            .setPayload(ByteString.copyFrom(payload))
+            .build();
     mailboxStore.addMessage(ohId, item);
     return true;
   }
 
   // --- Helpers ---
+
+  /**
+   * Generates a raw RFC-4122 UUIDv4 (random bytes with version nibble 4 and IETF variant bits) so
+   * the wire value matches the "16 bytes UUID raw" contract documented in outbound.proto.
+   */
+  private byte[] newMessageId() {
+    byte[] id = new byte[MESSAGE_ID_BYTES];
+    secureRandom.nextBytes(id);
+    id[6] = (byte) ((id[6] & 0x0F) | 0x40); // version 4
+    id[8] = (byte) ((id[8] & 0x3F) | 0x80); // IETF variant
+    return id;
+  }
 
   /** Returns true if the field length is outside the allowed range (inclusive). */
   private static boolean outOfRange(int length, int min, int max) {
