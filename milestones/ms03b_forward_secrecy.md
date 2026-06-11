@@ -2,10 +2,10 @@
 
 ## Status: Missing (minimaler Backend-Anteil)
 
-> **Master-Spec**: [../ms03b_forward_secrecy.md](../ms03b_forward_secrecy.md) — der Ratchet
+> **Master-Spec**: [Master-Spec im docs-Repo](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms03b_forward_secrecy.md) — der Ratchet
 > läuft Ende-zu-Ende zwischen den Clients; Relays und OH-Mailboxen transportieren weiterhin
 > opake Payloads.
-> **Frontend-Alignment**: [Frontend MS03b](../frontend/ms03b_forward_secrecy.md) (Hauptanteil).
+> **Frontend-Alignment**: [Frontend MS03b](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms03b_forward_secrecy.md) (Hauptanteil).
 
 ## Scope (Backend)
 

@@ -2,8 +2,8 @@
 
 ## Status: Missing
 
-> **Master-Spec**: [../ms02b_oh_discovery_forwarding.md](../ms02b_oh_discovery_forwarding.md) — MS02b ist fast vollständig Backend-Arbeit; dies ist die Backend-Sicht.
-> **Frontend-Alignment**: [Frontend MS02b](../frontend/ms02b_oh_discovery_forwarding.md) (kleiner Anteil).
+> **Master-Spec**: [Master-Spec im docs-Repo](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms02b_oh_discovery_forwarding.md) — MS02b ist fast vollständig Backend-Arbeit; dies ist die Backend-Sicht.
+> **Frontend-Alignment**: [Frontend MS02b](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms02b_oh_discovery_forwarding.md) (kleiner Anteil).
 
 ## Warum
 
