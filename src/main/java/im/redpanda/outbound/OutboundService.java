@@ -358,7 +358,11 @@ public class OutboundService {
    * {@link #REGISTER_LIMIT_PER_WINDOW} registers arrived within {@link #REGISTER_WINDOW_MS}.
    */
   private boolean registerRateLimited(Peer peer, long now) {
-    Deque<Long> history = registerHistory.computeIfAbsent(peer, p -> new ArrayDeque<>());
+    Deque<Long> history;
+    // computeIfAbsent is not covered by the synchronizedMap wrapper — do get-or-create atomically
+    synchronized (registerHistory) {
+      history = registerHistory.computeIfAbsent(peer, p -> new ArrayDeque<>());
+    }
     synchronized (history) {
       while (!history.isEmpty() && now - history.peekFirst() > REGISTER_WINDOW_MS) {
         history.pollFirst();

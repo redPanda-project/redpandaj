@@ -832,7 +832,7 @@ public class InboundCommandProcessor {
       OutboundService.DepositResult result =
           outboundService.depositMessage(ohIdBytes.toByteArray(), content);
       if (result != OutboundService.DepositResult.DEPOSITED) {
-        logger.info("FlaschenpostPut deposit not stored: {}", result);
+        logger.debug("FlaschenpostPut deposit not stored: {}", result);
       }
       respondToDeposit(peer, putMsg, OutboundService.depositResultToStatus(result));
       return;
@@ -876,8 +876,10 @@ public class InboundCommandProcessor {
     try {
       byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
       System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
+      // Anything other than NOT_FOUND targeted a locally registered OH: a rejected deposit
+      // (quota/size) is handled here and must not leak into the legacy forwarding pipeline.
       return outboundService.depositMessage(ohId, content)
-          == OutboundService.DepositResult.DEPOSITED;
+          != OutboundService.DepositResult.NOT_FOUND;
     } catch (RuntimeException e) {
       logger.warn("Failed to extract destination or deposit message to local OH", e);
       return false;
