@@ -63,6 +63,9 @@ message FlaschenpostPut {
     // MS02b: if set by a directly connected light client, the node answers with
     // FlaschenpostPutResponse (command 158). Full nodes never set this.
     bool want_response = 3;
+    // MS02b: number of node-to-node forwards this packet has taken. Incremented on every
+    // forward; packets at the hop limit are dropped instead of forwarded (loop protection).
+    uint32 hop_count = 4;
 }
 
 // Unified envelope for future-proofing or batching, 

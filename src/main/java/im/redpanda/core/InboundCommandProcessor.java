@@ -6,6 +6,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMParser;
+import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
@@ -829,8 +830,20 @@ public class InboundCommandProcessor {
         respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
         return;
       }
-      OutboundService.DepositResult result =
-          outboundService.depositMessage(ohIdBytes.toByteArray(), content);
+      byte[] ohId = ohIdBytes.toByteArray();
+      OutboundService.DepositResult result = outboundService.depositMessage(ohId, content);
+      if (result == OutboundService.DepositResult.NOT_FOUND) {
+        // MS02b: not our OH — forward toward the host node (resolved via the DHT announce),
+        // preserving the oh_id on every hop. Best-effort: OK means "accepted for forwarding".
+        boolean accepted = OhForwarder.forward(serverContext, ohId, content, putMsg.getHopCount());
+        respondToDeposit(
+            peer,
+            putMsg,
+            accepted
+                ? im.redpanda.outbound.v1.Status.OK
+                : im.redpanda.outbound.v1.Status.NOT_FOUND);
+        return;
+      }
       if (result != OutboundService.DepositResult.DEPOSITED) {
         logger.debug("FlaschenpostPut deposit not stored: {}", result);
       }
@@ -862,7 +875,16 @@ public class InboundCommandProcessor {
    * Attempts to extract the destination KademliaId from a GarlicMessage-formatted payload and
    * deposit it into a locally registered Outbound Handle mailbox.
    *
-   * @return true if the message was deposited into a local OH mailbox
+   * <p><b>Scheduled for removal (MS02b domain-separation decision):</b> this legacy fallback treats
+   * a 20-byte garlic <em>node</em> destination directly as an {@code oh_id}, so OH ids and node
+   * KademliaIds share one undifferentiated namespace (a registered OH can shadow a node id). It
+   * only exists because the explicit {@code oh_id} field was added after the first prototype; the
+   * frontend has sent an explicit {@code oh_id} since Frontend-MS01. Once no legacy traffic
+   * remains, remove this method and the implicit shared-namespace behavior — new code must never
+   * rely on it.
+   *
+   * @return true if the deposit targeted a locally registered OH (stored or rejected by the MS02b
+   *     hardening — in both cases the packet is handled here)
    */
   private boolean tryDepositToLocalOh(byte[] content) {
     if (outboundService == null) {
