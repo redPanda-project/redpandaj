@@ -62,7 +62,7 @@ public class OutboundMailboxStore {
    * (BAD_REQUEST): the 500-item cap alone counts items, not bytes, so a single item could otherwise
    * be arbitrarily large.
    */
-  static final int MAX_ITEM_BYTES = 64 * 1024;
+  public static final int MAX_ITEM_BYTES = 64 * 1024;
 
   /**
    * Byte quota per mailbox, independent of the item count. Deposits that would exceed it are

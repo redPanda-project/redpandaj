@@ -831,6 +831,13 @@ public class InboundCommandProcessor {
         return;
       }
       byte[] ohId = ohIdBytes.toByteArray();
+      // Pre-check the size limit before any deposit/forward decision: an oversized payload is
+      // rejected by every host node anyway, so forwarding it (and answering OK) would only waste
+      // hops and mislead the sender.
+      if (content.length > im.redpanda.outbound.OutboundMailboxStore.MAX_ITEM_BYTES) {
+        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
+        return;
+      }
       OutboundService.DepositResult result = outboundService.depositMessage(ohId, content);
       if (result == OutboundService.DepositResult.NOT_FOUND) {
         // MS02b: not our OH — forward toward the host node (resolved via the DHT announce),

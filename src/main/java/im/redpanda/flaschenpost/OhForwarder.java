@@ -73,7 +73,11 @@ public final class OhForwarder {
       return;
     }
 
-    TreeSet<Peer> candidates = new TreeSet<>(new PeerComparator(targetNodeId));
+    // tie-break equal XOR distances by KademliaId so the TreeSet never collapses distinct peers
+    TreeSet<Peer> candidates =
+        new TreeSet<>(
+            new PeerComparator(targetNodeId)
+                .thenComparing(peer -> peer.getKademliaId().toString()));
     Lock lock = peerList.getReadWriteLock().readLock();
     lock.lock();
     try {
@@ -97,15 +101,20 @@ public final class OhForwarder {
       return;
     }
 
-    Node targetNode = serverContext.getNodeStore().get(targetNodeId);
-    org.jgrapht.Graph<Node, NodeEdge> graph = serverContext.getNodeStore().getNodeGraph();
-    GMParser.RouteSelection selection =
-        GMParser.selectBestRoutePeer(
-            graph, serverContext.getNode(), candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
+    // Graph routing needs our own Node, which is wired late during startup — fall back to the
+    // greedy Kademlia step below until it is available.
+    Node self = serverContext.getNode();
+    if (self != null) {
+      Node targetNode = serverContext.getNodeStore().get(targetNodeId);
+      org.jgrapht.Graph<Node, NodeEdge> graph = serverContext.getNodeStore().getNodeGraph();
+      GMParser.RouteSelection selection =
+          GMParser.selectBestRoutePeer(
+              graph, self, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
 
-    if (selection.peer() != null) {
-      GMParser.sendFpToPeer(selection.peer(), content, ohId, hopCount + 1);
-      return;
+      if (selection.peer() != null) {
+        GMParser.sendFpToPeer(selection.peer(), content, ohId, hopCount + 1);
+        return;
+      }
     }
 
     // No graph route — greedy Kademlia fallback: next hop must be strictly closer to the target

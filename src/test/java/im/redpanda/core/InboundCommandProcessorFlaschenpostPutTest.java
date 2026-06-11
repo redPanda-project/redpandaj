@@ -397,6 +397,20 @@ public class InboundCommandProcessorFlaschenpostPutTest {
     assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
   }
 
+  /**
+   * Oversized payloads are rejected up front with BAD_REQUEST — even for unknown OHs — instead of
+   * being forwarded through the network only to be rejected by the host node.
+   */
+  @Test
+  public void flaschenpostPut_oversizedPayloadToUnknownOh_isRejectedNotForwarded() {
+    byte[] ohId = sampleOhId(); // not registered
+    byte[] oversized = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
+
+    im.redpanda.outbound.v1.FlaschenpostPutResponse res =
+        depositAndReadResponse(ohId, oversized, true, true);
+    assertEquals(im.redpanda.outbound.v1.Status.BAD_REQUEST, res.getStatus());
+  }
+
   /** At the hop limit an unknown OH is NOT forwarded again — the client sees NOT_FOUND. */
   @Test
   public void flaschenpostPut_lightClientWantResponse_unknownOhAtHopLimitIsNotFound() {
