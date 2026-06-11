@@ -50,6 +50,12 @@ public class OutboundService {
   private final OutboundAuth auth;
   private final SecureRandom secureRandom = new SecureRandom();
 
+  /**
+   * MS02b: invoked with the oh_id after every successful register, so the host node can announce
+   * the OH → node mapping to the DHT promptly (wired up in App, no-op by default and in tests).
+   */
+  private volatile java.util.function.Consumer<byte[]> ohRegisteredListener = ohId -> {};
+
   // Configuration (could be in LocalSettings)
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
   private static final long MIN_TTL_MS = 10L * 60 * 1000; // 10 minutes
@@ -128,8 +134,16 @@ public class OutboundService {
 
     handleStore.put(ohId, handleRecord);
 
+    // MS02b: make the fresh handle resolvable via the DHT announce
+    ohRegisteredListener.accept(ohId);
+
     // 3. Response
     sendRegisterResponse(peer, Status.OK, validExpiresAt);
+  }
+
+  /** Sets the MS02b post-register hook (DHT announce trigger). */
+  public void setOhRegisteredListener(java.util.function.Consumer<byte[]> listener) {
+    this.ohRegisteredListener = listener != null ? listener : ohId -> {};
   }
 
   public void handleFetch(Peer peer, FetchRequest req) {

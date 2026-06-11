@@ -82,6 +82,18 @@ message FlaschenpostPutResponse {
   int64 server_time_ms = 2;
 }
 
+// MS02b: DHT announce record mapping an OH to its host node. Stored as KadContent signed by a
+// keypair deterministically derived from the oh_id (domain tag "redpanda.oh.announce.v1"), so
+// anyone who knows the oh_id can compute the lookup key — and only they can. The serialized
+// record is padded to a fixed size so record size does not reveal which OH is announced.
+message OhNodeRecord {
+  bytes oh_id_hash = 1;     // SHA256(oh_id) — binds the record to the OH
+  bytes node_id = 2;        // 20-byte KademliaId of the host node
+  string endpoint = 3;      // optional "host:port"; empty = resolve node_id via NodeInfo lookup
+  int64 announced_at_ms = 4;
+  bytes padding = 5;        // random bytes padding the record to OhDht.RECORD_SIZE_BYTES
+}
+
 message RevokeOhRequest {
   bytes oh_id = 1;
   int64 timestamp_ms = 2;

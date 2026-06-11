@@ -6,9 +6,12 @@ import im.redpanda.crypt.Utils;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bouncycastle.util.encoders.Hex;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
@@ -96,6 +99,20 @@ public class OutboundHandleStore {
     String handleKey = Utils.bytesToHexString(ohId);
     handles.remove(handleKey);
     if (db != null) db.commit();
+  }
+
+  /**
+   * Returns the oh_ids of all non-expired handles (MS02b: used by the periodic DHT announce job).
+   */
+  public List<byte[]> listActiveOhIds(long now) {
+    List<byte[]> result = new ArrayList<>();
+    for (Map.Entry<String, HandleRecord> entry : handles.entrySet()) {
+      HandleRecord record = entry.getValue();
+      if (record != null && record.getExpiresAtMs() >= now) {
+        result.add(Hex.decode(entry.getKey()));
+      }
+    }
+    return result;
   }
 
   public void close() {

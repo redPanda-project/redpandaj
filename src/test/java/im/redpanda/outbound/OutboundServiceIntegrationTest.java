@@ -364,6 +364,28 @@ public class OutboundServiceIntegrationTest {
     assertThat(readFetchResponse().getItemsCount()).isZero();
   }
 
+  // --- MS02b: successful register triggers the OH announce hook ---
+
+  @Test
+  public void testRegister_invokesOhRegisteredListener() throws Exception {
+    java.util.List<byte[]> announced = new java.util.ArrayList<>();
+    service.setOhRegisteredListener(announced::add);
+
+    service.handleRegister(peer, createSignedRegisterRequest());
+    assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);
+
+    assertThat(announced).hasSize(1);
+    assertThat(announced.get(0)).isEqualTo(clientNode.getKademliaId().getBytes());
+
+    // Failed registers (bad signature) must not trigger the announce hook
+    RegisterOhRequest valid = createSignedRegisterRequest();
+    RegisterOhRequest tampered =
+        valid.toBuilder().setSignature(ByteString.copyFrom(new byte[80])).build();
+    service.handleRegister(peer, tampered);
+    readRegisterResponse();
+    assertThat(announced).hasSize(1);
+  }
+
   // --- MS02b AC: register rate limit per connection ---
 
   @Test
