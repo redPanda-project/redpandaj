@@ -277,8 +277,6 @@ public class GMParserAdditionalTest {
         serverContext.getNodeStore().getNodeGraph();
     graph.addVertex(selfNode);
     graph.addVertex(destinationNode);
-    NodeEdge edge = graph.addEdge(selfNode, destinationNode);
-    graph.setEdgeWeight(edge, 4.0);
 
     NodeInfoModel nodeInfoModel = new NodeInfoModel();
     KadContent kadContent =
@@ -296,6 +294,12 @@ public class GMParserAdditionalTest {
     byte[] content = garlicMessageBytes(serverContext, destination);
     goodPeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
     serverContext.getPeerList().add(goodPeer);
+
+    // A real route through goodPeer: self -> goodPeer -> destination. Under correct routing the
+    // candidate must have a direct edge from self and a path onward to the target to be selected.
+    graph.addVertex(goodPeer.getNode());
+    graph.setEdgeWeight(graph.addEdge(selfNode, goodPeer.getNode()), 2.0);
+    graph.setEdgeWeight(graph.addEdge(goodPeer.getNode(), destinationNode), 2.0);
 
     GMParser.parse(serverContext, content);
 
@@ -433,8 +437,6 @@ public class GMParserAdditionalTest {
         serverContext.getNodeStore().getNodeGraph();
     graph.addVertex(selfNode);
     graph.addVertex(destinationNode);
-    NodeEdge edge = graph.addEdge(selfNode, destinationNode);
-    graph.setEdgeWeight(edge, 2.0);
 
     NodeInfoModel nodeInfoModel = new NodeInfoModel();
     KadContent kadContent =
@@ -462,9 +464,153 @@ public class GMParserAdditionalTest {
     serverContext.getPeerList().add(firstPeer);
     serverContext.getPeerList().add(secondPeer);
 
+    // Two equal-cost real routes (self -> peer -> destination, total 2 each). This exercises the
+    // "not strictly less" branch: whichever peer is iterated first stays selected and the other
+    // does not replace it.
+    graph.addVertex(firstPeer.getNode());
+    graph.addVertex(secondPeer.getNode());
+    graph.setEdgeWeight(graph.addEdge(selfNode, firstPeer.getNode()), 1.0);
+    graph.setEdgeWeight(graph.addEdge(firstPeer.getNode(), destinationNode), 1.0);
+    graph.setEdgeWeight(graph.addEdge(selfNode, secondPeer.getNode()), 1.0);
+    graph.setEdgeWeight(graph.addEdge(secondPeer.getNode(), destinationNode), 1.0);
+
     GMParser.parse(serverContext, content);
 
     assertTrue(firstPeer.setWriteBufferCalled || secondPeer.setWriteBufferCalled);
+  }
+
+  /**
+   * Regression test for B3: the candidate that yields the cheapest route must be chosen even when
+   * it is not the first candidate in iteration order. The previous implementation computed the path
+   * {@code self -> target} independent of the candidate, so the first candidate always won.
+   *
+   * <p>Graph: self has a cheap direct link to peerB (weight 1) and an expensive one to peerA
+   * (weight 10); both peers reach the target with weight 1. peerA is iterated first but peerB is
+   * the correct (cheaper) next hop.
+   */
+  @Test
+  public void selectBestRoutePeer_picksCheapestRouteNotFirstCandidate() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    Node targetNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+
+    TestPeer peerA = authedPeerWithNode(serverContext, "10.1.0.1", 1);
+    TestPeer peerB = authedPeerWithNode(serverContext, "10.1.0.2", 2);
+    Node peerANode = peerA.getNode();
+    Node peerBNode = peerB.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    graph.addVertex(selfNode);
+    graph.addVertex(targetNode);
+    graph.addVertex(peerANode);
+    graph.addVertex(peerBNode);
+
+    graph.setEdgeWeight(graph.addEdge(selfNode, peerANode), 10.0);
+    graph.setEdgeWeight(graph.addEdge(selfNode, peerBNode), 1.0);
+    graph.setEdgeWeight(graph.addEdge(peerANode, targetNode), 1.0);
+    graph.setEdgeWeight(graph.addEdge(peerBNode, targetNode), 1.0);
+
+    // peerA iterated first, but peerB (total 1+1=2) beats peerA (total 10+1=11).
+    java.util.List<Peer> candidates = java.util.List.of(peerA, peerB);
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            graph, selfNode, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
+
+    assertEquals(peerB, selection.peer());
+    assertEquals(2.0, selection.weight(), 1e-9);
+  }
+
+  /** A single candidate must be chosen when it has a valid route (behavior parity). */
+  @Test
+  public void selectBestRoutePeer_singleCandidateIsChosen() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    Node targetNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+
+    TestPeer peer = authedPeerWithNode(serverContext, "10.2.0.1", 1);
+    Node peerNode = peer.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    graph.addVertex(selfNode);
+    graph.addVertex(targetNode);
+    graph.addVertex(peerNode);
+    graph.setEdgeWeight(graph.addEdge(selfNode, peerNode), 3.0);
+    graph.setEdgeWeight(graph.addEdge(peerNode, targetNode), 2.0);
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            graph, selfNode, java.util.List.of(peer), targetNode, GMParser.MAX_ROUTE_WEIGHT);
+
+    assertEquals(peer, selection.peer());
+    assertEquals(5.0, selection.weight(), 1e-9);
+  }
+
+  /** No candidate has a known direct edge from self → none is selected. */
+  @Test
+  public void selectBestRoutePeer_returnsNullWhenNoDirectEdge() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    Node targetNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+
+    TestPeer peer = authedPeerWithNode(serverContext, "10.3.0.1", 1);
+    Node peerNode = peer.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    graph.addVertex(selfNode);
+    graph.addVertex(targetNode);
+    graph.addVertex(peerNode);
+    // Only an edge from the peer onward — no self -> peer edge.
+    graph.setEdgeWeight(graph.addEdge(peerNode, targetNode), 1.0);
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            graph, selfNode, java.util.List.of(peer), targetNode, GMParser.MAX_ROUTE_WEIGHT);
+
+    assertNull(selection.peer());
+  }
+
+  /**
+   * A null target (destination unknown to the NodeStore) must yield no selection instead of
+   * crashing inside Dijkstra with a NullPointerException.
+   */
+  @Test
+  public void selectBestRoutePeer_nullTargetYieldsNoSelection() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    TestPeer peer = authedPeerWithNode(serverContext, "10.4.0.1", 1);
+    Node peerNode = peer.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    graph.addVertex(selfNode);
+    graph.addVertex(peerNode);
+    graph.setEdgeWeight(graph.addEdge(selfNode, peerNode), 1.0);
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            graph, selfNode, java.util.List.of(peer), null, GMParser.MAX_ROUTE_WEIGHT);
+
+    assertNull(selection.peer());
+  }
+
+  /**
+   * Builds an authed + connected peer with a Node attached, so {@link Peer#getNode()} returns the
+   * node (it returns null for un-authed / disconnected peers).
+   */
+  private static TestPeer authedPeerWithNode(ServerContext serverContext, String ip, int port) {
+    TestPeer peer = new TestPeer(ip, port, NodeId.generateWithSimpleKey());
+    peer.authed = true;
+    peer.setConnected(true);
+    peer.setNode(new Node(serverContext, peer.getNodeId()));
+    return peer;
   }
 
   @Test
