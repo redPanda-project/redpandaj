@@ -186,6 +186,11 @@ public class OutboundServiceIntegrationTest {
       ByteString messageId = res.getItems(i).getMessageId();
       assertThat(messageId.isEmpty()).as("message_id must not be empty").isFalse();
       assertThat(messageId.size()).as("message_id must be 16 bytes").isEqualTo(16);
+      // outbound.proto contract: "16 bytes UUID raw" — RFC-4122 version 4 + IETF variant bits.
+      assertThat(messageId.byteAt(6) & 0xF0)
+          .as("message_id must be UUID version 4")
+          .isEqualTo(0x40);
+      assertThat(messageId.byteAt(8) & 0xC0).as("message_id must use IETF variant").isEqualTo(0x80);
       // Hex of the raw bytes is the frontend dedup key — must be pairwise distinct.
       assertThat(seen.add(toHex(messageId)))
           .as("message_id must be pairwise distinct across deposits")
