@@ -1,6 +1,14 @@
 # Backend MS02b: OH Discovery & Forwarding
 
-## Status: Missing
+## Status: Done (2026-06-11)
+
+Umgesetzt in redpandaj [#217](https://github.com/redPanda-project/redpandaj/pull/217) (Deposit-Härtung), [#218](https://github.com/redPanda-project/redpandaj/pull/218) (OH→Node-Discovery) und [#219](https://github.com/redPanda-project/redpandaj/pull/219) (Forwarding Option A). Entscheidungen und beantwortete Open Questions: siehe [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms02b_oh_discovery_forwarding.md#decisions-backend-2026-06-11).
+
+**Implementiert:**
+- **Forwarding (Option A):** `sendFpToPeer()` trägt `oh_id` + `hop_count` (max. 3); nicht-lokale Deposits werden via DHT-Record zum Host-Node geroutet (`OhForwarder`); expliziter `oh_id`-Pfad ist autoritativ (kein Legacy-Fallthrough mehr).
+- **Discovery:** Announce-Keypair deterministisch aus oh_id abgeleitet (`OhDht`, Domain-Tag `redpanda.oh.announce.v1`), `OhNodeRecord` fix 256 Bytes gepadded, nur Node-Id im Record; `OhAnnounceJob` (30 ± 5 min + Stagger, Announce direkt nach Register), `OhResolveJob` (Lookup mit 0–1,5 s Zufallsdelay).
+- **Deposit-Härtung:** reject-new statt drop-oldest, 64 KiB Per-Item-Limit, 4 MiB Byte-Quota pro Mailbox, Register-Rate-Limit 5/min pro Verbindung; Status-Codes `RATE_LIMIT`/`QUOTA_EXCEEDED`/`BAD_REQUEST` erstmals verdrahtet via Opt-in-Response (`want_response`, Command 158, nur Light Clients).
+- **Domänentrennung:** Legacy-Garlic-Header-Fallback (`tryDepositToLocalOh`) als *scheduled for removal* dokumentiert.
 
 > **Master-Spec**: [Master-Spec im docs-Repo](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms02b_oh_discovery_forwarding.md) — MS02b ist fast vollständig Backend-Arbeit; dies ist die Backend-Sicht.
 > **Frontend-Alignment**: [Frontend MS02b](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms02b_oh_discovery_forwarding.md) (kleiner Anteil).
