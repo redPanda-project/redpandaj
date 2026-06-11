@@ -386,6 +386,20 @@ public class OutboundServiceIntegrationTest {
     assertThat(announced).hasSize(1);
   }
 
+  /** The announce hook is best-effort: a throwing listener must not break the register flow. */
+  @Test
+  public void testRegister_throwingListenerDoesNotBreakRegister() throws Exception {
+    service.setOhRegisteredListener(
+        ohId -> {
+          throw new IllegalStateException("announce scheduler down");
+        });
+
+    service.handleRegister(peer, createSignedRegisterRequest());
+
+    assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);
+    assertThat(handleStore.get(clientNode.getKademliaId().getBytes())).isNotNull();
+  }
+
   // --- MS02b AC: register rate limit per connection ---
 
   @Test

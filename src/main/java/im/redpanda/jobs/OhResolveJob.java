@@ -110,7 +110,8 @@ public class OhResolveJob extends KademliaSearchJob {
         byte[] ohId,
         Consumer<OhNodeRecord> onResolved,
         Runnable onFailed) {
-      super(serverContext, 1 + rand.nextLong(LOOKUP_DELAY_JITTER_MS), false, true);
+      // delay sampled uniformly from [0, LOOKUP_DELAY_JITTER_MS]
+      super(serverContext, rand.nextLong(LOOKUP_DELAY_JITTER_MS + 1), false, true);
       this.ohId = ohId;
       this.onResolved = onResolved;
       this.onFailed = onFailed;

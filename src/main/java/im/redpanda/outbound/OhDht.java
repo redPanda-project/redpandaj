@@ -137,8 +137,12 @@ public final class OhDht {
 
   /**
    * Picks the newest valid announce record for {@code ohId} from DHT search results. A result is
-   * valid only if it is signed by the derived announce key (so no foreign content can be smuggled
-   * in under the searched id), carries the matching oh_id_hash, and is not stale.
+   * valid only if it is signed by the derived announce key (so peers cannot smuggle foreign content
+   * into the answer — the pubkey check also pins the self-certifying Kademlia key, which is derived
+   * from pubkey + record date), has exactly the fixed padded size (uniformity is part of the
+   * anti-profiling contract), carries the matching oh_id_hash, and is not stale. Records up to
+   * {@link #MAX_RECORD_AGE_MS} old are accepted deliberately: a record announced yesterday lives
+   * under yesterday's rotated key and stays usable across the midnight-UTC boundary.
    *
    * @return the parsed record, or {@code null} if none qualifies
    */
@@ -157,6 +161,9 @@ public final class OhDht {
         continue;
       }
       if (nowMs - content.getTimestamp() > MAX_RECORD_AGE_MS) {
+        continue;
+      }
+      if (content.getContent() == null || content.getContent().length != RECORD_SIZE_BYTES) {
         continue;
       }
       if (!Arrays.equals(content.getPubkey(), announcePubkey) || !content.verify()) {

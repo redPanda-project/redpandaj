@@ -43,7 +43,8 @@ public class OhAnnounceJob extends Job {
 
   @Override
   public void work() {
-    setReRunDelay(BASE_PERIOD_MS + rand.nextLong(PERIOD_JITTER_MS));
+    // symmetric jitter: 30 min ± 5 min
+    setReRunDelay(BASE_PERIOD_MS - PERIOD_JITTER_MS + rand.nextLong(2 * PERIOD_JITTER_MS + 1));
 
     OutboundHandleStore handleStore = serverContext.getOutboundHandleStore();
     if (handleStore == null) {
@@ -73,8 +74,9 @@ public class OhAnnounceJob extends Job {
     private final byte[] ohId;
 
     SingleAnnounceJob(ServerContext serverContext, byte[] ohId) {
-      // skipImminentRun=true → the single work() run happens after the randomized delay
-      super(serverContext, 1 + rand.nextLong(ANNOUNCE_STAGGER_MS), false, true);
+      // skipImminentRun=true → the single work() run happens after the randomized delay,
+      // sampled uniformly from [0, ANNOUNCE_STAGGER_MS]
+      super(serverContext, rand.nextLong(ANNOUNCE_STAGGER_MS + 1), false, true);
       this.ohId = ohId;
     }
 

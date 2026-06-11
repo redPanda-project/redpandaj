@@ -27,6 +27,9 @@ import java.util.WeakHashMap;
 
 public class OutboundService {
 
+  private static final org.slf4j.Logger logger =
+      org.slf4j.LoggerFactory.getLogger(OutboundService.class);
+
   /** Result of a deposit attempt (MS02b: callers must distinguish rejection from "not local"). */
   public enum DepositResult {
     /** Stored in a locally registered OH mailbox. */
@@ -134,8 +137,13 @@ public class OutboundService {
 
     handleStore.put(ohId, handleRecord);
 
-    // MS02b: make the fresh handle resolvable via the DHT announce
-    ohRegisteredListener.accept(ohId);
+    // MS02b: make the fresh handle resolvable via the DHT announce. Best-effort — a failing
+    // announce hook must never break the register flow (the handle is already stored).
+    try {
+      ohRegisteredListener.accept(ohId);
+    } catch (RuntimeException e) {
+      logger.warn("OH announce hook failed after register", e);
+    }
 
     // 3. Response
     sendRegisterResponse(peer, Status.OK, validExpiresAt);

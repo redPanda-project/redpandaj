@@ -173,6 +173,26 @@ public class OhDhtTest {
   }
 
   @Test
+  public void extractValidRecord_rejectsNonPaddedRecord() {
+    byte[] ohId = randomOhId();
+    long now = System.currentTimeMillis();
+
+    // Correctly derived key but content without the fixed-size padding — must be rejected
+    // (uniform record size is part of the anti-profiling contract)
+    NodeId announceNodeId = OhDht.deriveAnnounceNodeId(ohId);
+    OhNodeRecord unpadded =
+        OhNodeRecord.newBuilder()
+            .setOhIdHash(ByteString.copyFrom(Sha256Hash.create(ohId).getBytes()))
+            .setNodeId(ByteString.copyFrom(randomNodeKadId().getBytes()))
+            .setAnnouncedAtMs(now)
+            .build();
+    KadContent content = new KadContent(now, announceNodeId.exportPublic(), unpadded.toByteArray());
+    content.signWith(announceNodeId);
+
+    assertThat(OhDht.extractValidRecord(List.of(content), ohId, now)).isNull();
+  }
+
+  @Test
   public void extractValidRecord_rejectsStaleRecord() {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
