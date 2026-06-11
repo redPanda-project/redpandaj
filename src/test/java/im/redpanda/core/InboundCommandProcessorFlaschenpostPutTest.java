@@ -384,14 +384,67 @@ public class InboundCommandProcessorFlaschenpostPutTest {
     assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
   }
 
-  /** Light client with want_response gets NOT_FOUND when the OH is not registered here. */
+  /**
+   * Light client with want_response gets OK when the OH is unknown here but forwarding toward the
+   * host node was accepted (MS02b best-effort forwarding).
+   */
   @Test
-  public void flaschenpostPut_lightClientWantResponse_receivesNotFoundForUnknownOh() {
+  public void flaschenpostPut_lightClientWantResponse_unknownOhAcceptedForForwarding() {
     byte[] ohId = sampleOhId(); // not registered
 
     im.redpanda.outbound.v1.FlaschenpostPutResponse res =
         depositAndReadResponse(ohId, new byte[32], true, true);
-    assertEquals(im.redpanda.outbound.v1.Status.NOT_FOUND, res.getStatus());
+    assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
+  }
+
+  /**
+   * Oversized payloads are rejected up front with BAD_REQUEST — even for unknown OHs — instead of
+   * being forwarded through the network only to be rejected by the host node.
+   */
+  @Test
+  public void flaschenpostPut_oversizedPayloadToUnknownOh_isRejectedNotForwarded() {
+    byte[] ohId = sampleOhId(); // not registered
+    byte[] oversized = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
+
+    im.redpanda.outbound.v1.FlaschenpostPutResponse res =
+        depositAndReadResponse(ohId, oversized, true, true);
+    assertEquals(im.redpanda.outbound.v1.Status.BAD_REQUEST, res.getStatus());
+  }
+
+  /** At the hop limit an unknown OH is NOT forwarded again — the client sees NOT_FOUND. */
+  @Test
+  public void flaschenpostPut_lightClientWantResponse_unknownOhAtHopLimitIsNotFound() {
+    byte[] ohId = sampleOhId(); // not registered
+
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(new byte[32]))
+            .setOhId(ByteString.copyFrom(ohId))
+            .setWantResponse(true)
+            .setHopCount(im.redpanda.flaschenpost.OhForwarder.MAX_HOPS)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9101, ctx.getNodeId());
+    peer.setConnected(true);
+    peer.setLightClient(true);
+    peer.writeBuffer = ByteBuffer.allocate(8192);
+    ctx.getPeerList().add(peer);
+    proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+
+    ByteBuffer buf = peer.writeBuffer;
+    buf.flip();
+    assertEquals(Command.FLASCHENPOST_PUT_RES, buf.get());
+    int len = buf.getInt();
+    byte[] payload = new byte[len];
+    buf.get(payload);
+    try {
+      assertEquals(
+          im.redpanda.outbound.v1.Status.NOT_FOUND,
+          im.redpanda.outbound.v1.FlaschenpostPutResponse.parseFrom(payload).getStatus());
+    } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+      throw new AssertionError(e);
+    }
   }
 
   /** Full nodes never receive command 158, even if they set want_response. */

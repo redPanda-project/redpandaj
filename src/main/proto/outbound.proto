@@ -73,8 +73,9 @@ message AckFetchResponse {
 
 // MS02b: optional response to a FlaschenpostPut deposit (command 158). Only sent to light
 // clients that set FlaschenpostPut.want_response, so existing clients never see it.
-//   OK             — deposited into a locally registered OH
-//   NOT_FOUND      — oh_id not registered here
+//   OK             — deposited into a locally registered OH, or accepted for best-effort
+//                    forwarding toward the OH host node (MS02b)
+//   NOT_FOUND      — oh_id not registered here and forwarding not possible (hop limit)
 //   QUOTA_EXCEEDED — mailbox full (item cap or byte quota); deposit rejected, nothing displaced
 //   BAD_REQUEST    — item exceeds the per-item size limit
 message FlaschenpostPutResponse {

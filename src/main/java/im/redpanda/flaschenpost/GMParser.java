@@ -316,13 +316,28 @@ public class GMParser {
   }
 
   private static void sendFpToPeer(Peer peerToSendFP, byte[] content) {
+    sendFpToPeer(peerToSendFP, content, null, 0);
+  }
+
+  /**
+   * Writes a FlaschenpostPut to the peer. MS02b (Option A): when {@code ohId} is non-null it is
+   * preserved on the forwarded packet, so the destination node can deposit into the correct mailbox
+   * — before MS02b the packet was rebuilt with {@code content} only and the oh_id was lost. {@code
+   * hopCount} carries the forwarding budget (loop protection).
+   */
+  public static void sendFpToPeer(Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount) {
     peerToSendFP.getWriteBufferLock().lock();
     try {
-      var putMsg =
+      var builder =
           im.redpanda.proto.FlaschenpostPut.newBuilder()
-              .setContent(com.google.protobuf.ByteString.copyFrom(content))
-              .build();
-      byte[] data = putMsg.toByteArray();
+              .setContent(com.google.protobuf.ByteString.copyFrom(content));
+      if (ohId != null) {
+        builder.setOhId(com.google.protobuf.ByteString.copyFrom(ohId));
+      }
+      if (hopCount > 0) {
+        builder.setHopCount(hopCount);
+      }
+      byte[] data = builder.build().toByteArray();
 
       peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
       peerToSendFP.writeBuffer.putInt(data.length);
