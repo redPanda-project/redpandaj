@@ -16,13 +16,18 @@ import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
 import java.nio.ByteBuffer;
+import java.security.SecureRandom;
 import java.util.List;
 
 public class OutboundService {
 
+  /** Length in bytes of the per-item {@code message_id} (16 random bytes, see outbound.proto). */
+  private static final int MESSAGE_ID_BYTES = 16;
+
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
   private final OutboundAuth auth;
+  private final SecureRandom secureRandom = new SecureRandom();
 
   // Configuration (could be in LocalSettings)
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
@@ -250,6 +255,12 @@ public class OutboundService {
   /**
    * Deposits a message into the mailbox for the given OH, if it exists and is not expired.
    *
+   * <p>A fresh, cryptographically random 16-byte {@code message_id} is assigned here, at deposit
+   * time, before the item is serialized into the mailbox store. This guarantees the id is persisted
+   * with the item and stays stable across re-fetches of the same un-acked item. The frontend uses
+   * hex(message_id) as its deduplication key, so an unset/empty id would collapse every message to
+   * the same key and cause the receiver to drop everything after the first.
+   *
    * @param ohId the outbound handle identifier
    * @param payload the raw message payload to deposit
    * @return true if the message was deposited, false if the OH was not found or expired
@@ -263,8 +274,14 @@ public class OutboundService {
     if (handle.getExpiresAtMs() < now) {
       return false;
     }
+    byte[] messageId = new byte[MESSAGE_ID_BYTES];
+    secureRandom.nextBytes(messageId);
     MailItem item =
-        MailItem.newBuilder().setReceivedAtMs(now).setPayload(ByteString.copyFrom(payload)).build();
+        MailItem.newBuilder()
+            .setMessageId(ByteString.copyFrom(messageId))
+            .setReceivedAtMs(now)
+            .setPayload(ByteString.copyFrom(payload))
+            .build();
     mailboxStore.addMessage(ohId, item);
     return true;
   }

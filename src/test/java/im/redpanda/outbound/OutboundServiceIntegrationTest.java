@@ -165,6 +165,67 @@ public class OutboundServiceIntegrationTest {
     assertThat(mailboxStore.fetchMessages(ohId, 10, 0)).isEmpty();
   }
 
+  // --- B2 AC: MailItem.message_id is set, 16 bytes, unique, and stable across re-fetch ---
+
+  @Test
+  public void testDeposit_messageIdsAreSetUniqueAnd16Bytes() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG3.getBytes(StandardCharsets.UTF_8));
+
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    FetchResponse res = readFetchResponse();
+    assertThat(res.getItemsCount()).isEqualTo(3);
+
+    java.util.Set<String> seen = new java.util.HashSet<>();
+    for (int i = 0; i < res.getItemsCount(); i++) {
+      ByteString messageId = res.getItems(i).getMessageId();
+      assertThat(messageId.isEmpty()).as("message_id must not be empty").isFalse();
+      assertThat(messageId.size()).as("message_id must be 16 bytes").isEqualTo(16);
+      // Hex of the raw bytes is the frontend dedup key — must be pairwise distinct.
+      assertThat(seen.add(toHex(messageId)))
+          .as("message_id must be pairwise distinct across deposits")
+          .isTrue();
+    }
+  }
+
+  @Test
+  public void testDeposit_messageIdIsStableAcrossRefetch() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+
+    // First fetch (no ack) — capture the ids.
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    FetchResponse first = readFetchResponse();
+    assertThat(first.getItemsCount()).isEqualTo(2);
+    String id1 = toHex(first.getItems(0).getMessageId());
+    String id2 = toHex(first.getItems(1).getMessageId());
+
+    // Re-fetch the same un-acked items — ids must be identical (persisted, not regenerated).
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    FetchResponse second = readFetchResponse();
+    assertThat(second.getItemsCount()).isEqualTo(2);
+    assertThat(toHex(second.getItems(0).getMessageId())).isEqualTo(id1);
+    assertThat(toHex(second.getItems(1).getMessageId())).isEqualTo(id2);
+  }
+
+  private static String toHex(ByteString bytes) {
+    StringBuilder sb = new StringBuilder(bytes.size() * 2);
+    for (byte b : bytes.toByteArray()) {
+      sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+      sb.append(Character.forDigit(b & 0xF, 16));
+    }
+    return sb.toString();
+  }
+
   // --- MS02 AC: FetchResponse.next_cursor is the highest sequence_id ---
 
   @Test
