@@ -20,8 +20,9 @@ import org.junit.Test;
  * Tests for the {@code oh_id} routing path introduced in MS01 for {@code FLASCHENPOST_PUT} handling
  * in {@link InboundCommandProcessor}.
  *
- * <p>Covers: direct-OH deposit when {@code oh_id} is present and registered, fall-through to legacy
- * GMParser when deposit is not applicable, and backward compatibility when {@code oh_id} is absent.
+ * <p>Covers: direct-OH deposit when {@code oh_id} is present and registered, the authoritative
+ * explicit-oh_id path introduced in MS02b (rejected/unknown deposits are dropped, opt-in status
+ * responses for light clients), and backward compatibility when {@code oh_id} is absent.
  */
 public class InboundCommandProcessorFlaschenpostPutTest {
 
@@ -101,26 +102,22 @@ public class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
-   * When {@code oh_id} is present but no matching OH is registered (deposit returns false), the
-   * handler falls through to the legacy GMParser path and completes without error.
+   * MS02b: when {@code oh_id} is present but no matching OH is registered, the packet is dropped on
+   * the explicit path — it must NOT fall through to the legacy GMParser, which would misinterpret
+   * raw client payloads (e.g. encrypted chat payloads) as GarlicMessages.
    */
   @Test
-  public void flaschenpostPut_withOhIdButNoRegisteredOh_fallsThroughToLegacy() {
+  public void flaschenpostPut_withOhIdButNoRegisteredOh_isDroppedWithoutLegacyFallthrough() {
     byte[] ohId = sampleOhId();
-    // Intentionally skip registerOh() so depositMessage returns false
+    // Intentionally skip registerOh() so depositMessage returns NOT_FOUND
 
-    // Use a valid GMAck payload so the legacy GMParser path handles it gracefully
-    ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
-    ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
-    ack.putInt(4);
-    ack.putInt(99);
-    ack.flip();
-    byte[] ackBytes = new byte[ack.remaining()];
-    ack.get(ackBytes);
+    // A raw (non-garlic) payload like the mobile client sends; legacy parsing would throw on it
+    byte[] rawPayload = new byte[64];
+    rawPayload[0] = 0x02; // not a known GMType
 
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
-            .setContent(copyFrom(ackBytes))
+            .setContent(copyFrom(rawPayload))
             .setOhId(ByteString.copyFrom(ohId))
             .build();
     byte[] putData = putMsg.toByteArray();
@@ -139,24 +136,19 @@ public class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
-   * When {@code oh_id} has an invalid byte length, the handler logs a warning and falls through to
-   * the legacy GMParser path without throwing.
+   * MS02b: when {@code oh_id} has an invalid byte length, the packet is malformed and dropped (a
+   * light client with want_response would receive BAD_REQUEST).
    */
   @Test
-  public void flaschenpostPut_withInvalidOhIdLength_fallsThroughToLegacy() {
+  public void flaschenpostPut_withInvalidOhIdLength_isDropped() {
     byte[] wrongLengthId = new byte[5]; // too short, not ID_LENGTH_BYTES
 
-    ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
-    ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
-    ack.putInt(4);
-    ack.putInt(7);
-    ack.flip();
-    byte[] ackBytes = new byte[ack.remaining()];
-    ack.get(ackBytes);
+    byte[] rawPayload = new byte[64];
+    rawPayload[0] = 0x02;
 
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
-            .setContent(copyFrom(ackBytes))
+            .setContent(copyFrom(rawPayload))
             .setOhId(ByteString.copyFrom(wrongLengthId))
             .build();
     byte[] putData = putMsg.toByteArray();
@@ -288,11 +280,11 @@ public class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
-   * When {@code oh_id} targets an expired OH handle, deposit fails and the handler falls through to
-   * the legacy path.
+   * When {@code oh_id} targets an expired OH handle, deposit fails (NOT_FOUND) and the packet is
+   * dropped on the explicit path.
    */
   @Test
-  public void flaschenpostPut_withExpiredOhHandle_fallsThroughToLegacy() {
+  public void flaschenpostPut_withExpiredOhHandle_isDropped() {
     byte[] ohId = sampleOhId();
     // Register with an already-expired handle
     long now = System.currentTimeMillis();
@@ -377,6 +369,88 @@ public class InboundCommandProcessorFlaschenpostPutTest {
     int consumed = proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
 
     assertEquals(1 + 4 + putData.length, consumed);
+  }
+
+  // --- MS02b: opt-in deposit status responses (want_response) ---
+
+  /** Light client with want_response gets an OK FlaschenpostPutResponse on successful deposit. */
+  @Test
+  public void flaschenpostPut_lightClientWantResponse_receivesOkStatus() {
+    byte[] ohId = sampleOhId();
+    registerOh(ohId);
+
+    im.redpanda.outbound.v1.FlaschenpostPutResponse res =
+        depositAndReadResponse(ohId, "payload-ok".getBytes(StandardCharsets.UTF_8), true, true);
+    assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
+  }
+
+  /** Light client with want_response gets NOT_FOUND when the OH is not registered here. */
+  @Test
+  public void flaschenpostPut_lightClientWantResponse_receivesNotFoundForUnknownOh() {
+    byte[] ohId = sampleOhId(); // not registered
+
+    im.redpanda.outbound.v1.FlaschenpostPutResponse res =
+        depositAndReadResponse(ohId, new byte[32], true, true);
+    assertEquals(im.redpanda.outbound.v1.Status.NOT_FOUND, res.getStatus());
+  }
+
+  /** Full nodes never receive command 158, even if they set want_response. */
+  @Test
+  public void flaschenpostPut_fullNodeWantResponse_receivesNoResponse() {
+    byte[] ohId = sampleOhId();
+    registerOh(ohId);
+
+    Peer peer = depositWithPeer(ohId, new byte[16], true, false);
+    assertEquals(
+        "no response bytes must be written for full nodes", 0, peer.writeBuffer.position());
+  }
+
+  /** Light clients that do not set want_response keep the fire-and-forget behavior. */
+  @Test
+  public void flaschenpostPut_lightClientWithoutWantResponse_receivesNoResponse() {
+    byte[] ohId = sampleOhId();
+    registerOh(ohId);
+
+    Peer peer = depositWithPeer(ohId, new byte[16], false, true);
+    assertEquals(0, peer.writeBuffer.position());
+  }
+
+  /** Sends a FlaschenpostPut and returns the peer for write-buffer inspection. */
+  private Peer depositWithPeer(
+      byte[] ohId, byte[] content, boolean wantResponse, boolean lightClient) {
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(content))
+            .setOhId(ByteString.copyFrom(ohId))
+            .setWantResponse(wantResponse)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9100, ctx.getNodeId());
+    peer.setConnected(true);
+    peer.setLightClient(lightClient);
+    peer.writeBuffer = ByteBuffer.allocate(8192);
+    ctx.getPeerList().add(peer);
+
+    proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+    return peer;
+  }
+
+  /** Deposits and parses the FlaschenpostPutResponse (command 158) from the peer write buffer. */
+  private im.redpanda.outbound.v1.FlaschenpostPutResponse depositAndReadResponse(
+      byte[] ohId, byte[] content, boolean wantResponse, boolean lightClient) {
+    Peer peer = depositWithPeer(ohId, content, wantResponse, lightClient);
+    ByteBuffer buf = peer.writeBuffer;
+    buf.flip();
+    assertEquals(Command.FLASCHENPOST_PUT_RES, buf.get());
+    int len = buf.getInt();
+    byte[] payload = new byte[len];
+    buf.get(payload);
+    try {
+      return im.redpanda.outbound.v1.FlaschenpostPutResponse.parseFrom(payload);
+    } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+      throw new AssertionError("response payload must be a FlaschenpostPutResponse", e);
+    }
   }
 
   /** Builds a minimal GMAck payload: [1 type][4 len][4 ackId]. */

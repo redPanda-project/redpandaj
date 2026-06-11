@@ -69,8 +69,10 @@ public class OutboundServiceIntegrationTest {
 
     // 2. Deposit a message via depositMessage
     byte[] payload = "Hello from sender!".getBytes(StandardCharsets.UTF_8);
-    boolean deposited = service.depositMessage(ohId, payload);
-    assertThat(deposited).as("Message should be deposited into registered OH").isTrue();
+    OutboundService.DepositResult deposited = service.depositMessage(ohId, payload);
+    assertThat(deposited)
+        .as("Message should be deposited into registered OH")
+        .isEqualTo(OutboundService.DepositResult.DEPOSITED);
 
     // 3. Fetch the deposited message
     FetchRequest fetchReq = createSignedFetchRequest(0);
@@ -94,12 +96,12 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testDepositMessage_OhNotRegistered_ReturnsFalse() {
+  public void testDepositMessage_OhNotRegistered_ReturnsNotFound() {
     byte[] unknownOhId = new byte[20];
     new SecureRandom().nextBytes(unknownOhId);
-    boolean deposited =
+    OutboundService.DepositResult deposited =
         service.depositMessage(unknownOhId, "test".getBytes(StandardCharsets.UTF_8));
-    assertThat(deposited).isFalse();
+    assertThat(deposited).isEqualTo(OutboundService.DepositResult.NOT_FOUND);
   }
 
   @Test
@@ -139,9 +141,9 @@ public class OutboundServiceIntegrationTest {
     readRevokeResponse();
 
     // Try to deposit after revoke
-    boolean deposited =
+    OutboundService.DepositResult deposited =
         service.depositMessage(ohId, "late message".getBytes(StandardCharsets.UTF_8));
-    assertThat(deposited).isFalse();
+    assertThat(deposited).isEqualTo(OutboundService.DepositResult.NOT_FOUND);
   }
 
   @Test
@@ -323,17 +325,20 @@ public class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
-    // Fill mailbox to capacity + 1 to trigger eviction
-    for (int i = 0; i <= OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
+    // Fill mailbox to capacity + 1: the last deposit is rejected (MS02b reject-new)
+    for (int i = 0; i < OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
       service.depositMessage(ohId, ("m" + i).getBytes(StandardCharsets.UTF_8));
     }
+    OutboundService.DepositResult rejected =
+        service.depositMessage(ohId, "one too many".getBytes(StandardCharsets.UTF_8));
+    assertThat(rejected).isEqualTo(OutboundService.DepositResult.QUOTA_EXCEEDED);
 
     service.handleFetch(peer, createSignedFetchRequest(0));
     FetchResponse res = readFetchResponse();
 
     assertThat(res.getStatus()).isEqualTo(Status.OK);
     assertThat(res.getMailboxOverflow())
-        .as("overflow flag should be set after FIFO eviction")
+        .as("overflow flag should be set after a rejected deposit")
         .isTrue();
 
     // Second fetch — overflow flag should be cleared
@@ -342,16 +347,59 @@ public class OutboundServiceIntegrationTest {
     assertThat(res2.getMailboxOverflow()).isFalse();
   }
 
+  // --- MS02b AC: per-item size limit surfaces as BAD_REQUEST ---
+
+  @Test
+  public void testDeposit_oversizedItem_returnsBadRequest() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    byte[] oversized = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
+    assertThat(service.depositMessage(ohId, oversized))
+        .isEqualTo(OutboundService.DepositResult.BAD_REQUEST);
+
+    // Nothing was stored
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    assertThat(readFetchResponse().getItemsCount()).isZero();
+  }
+
+  // --- MS02b AC: register rate limit per connection ---
+
+  @Test
+  public void testRegister_rateLimitPerConnection() throws Exception {
+    for (int i = 0; i < OutboundService.REGISTER_LIMIT_PER_WINDOW; i++) {
+      service.handleRegister(peer, createSignedRegisterRequest());
+      assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);
+    }
+
+    // One register above the per-connection window limit → RATE_LIMIT
+    service.handleRegister(peer, createSignedRegisterRequest());
+    assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.RATE_LIMIT);
+
+    // A different connection is not affected
+    Peer otherPeer = new Peer("127.0.0.1", 23456);
+    otherPeer.writeBuffer = ByteBuffer.allocate(8192);
+    otherPeer.writeBuffer.clear();
+    otherPeer.setConnected(true);
+    service.handleRegister(otherPeer, createSignedRegisterRequest());
+    assertThat(readRegisterResponse(otherPeer).getStatus()).isEqualTo(Status.OK);
+  }
+
   // --- Response readers ---
 
   private RegisterOhResponse readRegisterResponse() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    return readRegisterResponse(peer);
+  }
+
+  private RegisterOhResponse readRegisterResponse(Peer fromPeer) throws Exception {
+    fromPeer.writeBuffer.flip();
+    byte cmd = fromPeer.writeBuffer.get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_REGISTER_OH_RES);
-    int len = peer.writeBuffer.getInt();
+    int len = fromPeer.writeBuffer.getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    fromPeer.writeBuffer.get(data);
+    fromPeer.writeBuffer.compact();
     return RegisterOhResponse.parseFrom(data);
   }
 

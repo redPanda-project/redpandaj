@@ -814,20 +814,28 @@ public class InboundCommandProcessor {
     FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(payload);
     byte[] content = putMsg.getContent().toByteArray();
 
-    // MS01: Direct OH routing via explicit oh_id field
+    // MS01: Direct OH routing via explicit oh_id field.
+    // MS02b: this path is authoritative — a packet with an explicit oh_id is deposited or
+    // dropped (with an opt-in status response) and never falls through to the legacy garlic
+    // parsing, which would misinterpret raw client payloads as GarlicMessages.
     ByteString ohIdBytes = putMsg.getOhId();
     if (!ohIdBytes.isEmpty() && outboundService != null) {
       // Validate OH id length before converting to a byte array to avoid large allocations
-      if (ohIdBytes.size() == KademliaId.ID_LENGTH_BYTES) {
-        if (outboundService.depositMessage(ohIdBytes.toByteArray(), content)) {
-          return;
-        }
-      } else {
+      if (ohIdBytes.size() != KademliaId.ID_LENGTH_BYTES) {
         logger.warn(
             "Received FlaschenpostPut with invalid oh_id length: {}, expected {}",
             ohIdBytes.size(),
             KademliaId.ID_LENGTH_BYTES);
+        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
+        return;
       }
+      OutboundService.DepositResult result =
+          outboundService.depositMessage(ohIdBytes.toByteArray(), content);
+      if (result != OutboundService.DepositResult.DEPOSITED) {
+        logger.info("FlaschenpostPut deposit not stored: {}", result);
+      }
+      respondToDeposit(peer, putMsg, OutboundService.depositResultToStatus(result));
+      return;
     }
 
     // Legacy: Try to route via GarlicMessage destination header
@@ -836,6 +844,18 @@ public class InboundCommandProcessor {
     }
 
     GMParser.parse(serverContext, content);
+  }
+
+  /**
+   * Sends the MS02b deposit status response, but only to directly connected light clients that
+   * asked for it via {@code want_response}. Peers and legacy clients never receive command 158 —
+   * their read loops would desync on an unknown command byte.
+   */
+  private void respondToDeposit(
+      Peer peer, FlaschenpostPut putMsg, im.redpanda.outbound.v1.Status status) {
+    if (putMsg.getWantResponse() && peer.isLightClient() && outboundService != null) {
+      outboundService.sendFlaschenpostPutResponse(peer, status);
+    }
   }
 
   /**
@@ -856,7 +876,8 @@ public class InboundCommandProcessor {
     try {
       byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
       System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
-      return outboundService.depositMessage(ohId, content);
+      return outboundService.depositMessage(ohId, content)
+          == OutboundService.DepositResult.DEPOSITED;
     } catch (RuntimeException e) {
       logger.warn("Failed to extract destination or deposit message to local OH", e);
       return false;
