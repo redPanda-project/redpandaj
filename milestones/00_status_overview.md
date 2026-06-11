@@ -1,6 +1,6 @@
 # Backend Milestones — Status Overview
 
-> Last updated: 2026-06-10
+> Last updated: 2026-06-11
 
 Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den fertigen Backend-APIs auf.
 
@@ -18,7 +18,9 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 |----|-------|--------|----------------------|
 | [MS01](ms01_first_real_message.md) | OH Service Stabilization | Done (PoC) | Frontend MS01 kann starten |
 | [MS02](ms02_reliable_delivery.md) | Reliable Mailbox & Lifecycle | Done | Frontend MS02 kann starten |
+| [MS02b](ms02b_oh_discovery_forwarding.md) | OH Discovery & Forwarding | Missing | Messaging über Node-Grenzen hinweg; Deposit-Härtung |
 | [MS03](ms03_authenticated_encryption.md) | Crypto Migration (Ed25519/X25519/GCM) | Missing | Frontend MS03 blocked — Handshake-Protokoll muss zuerst stehen |
+| [MS03b](ms03b_forward_secrecy.md) | Forward Secrecy | Missing | Minimaler Backend-Anteil — Ratchet ist Ende-zu-Ende zwischen Clients |
 | [MS04](ms04_multi_hop_garlic.md) | Multi-Hop Relay | Partial | Frontend MS04 blocked — Relay-Peeling muss serverseitig funktionieren |
 | [MS05](ms05_reverse_garlic.md) | Reverse Garlic (Relay-Seite) | Missing | Frontend MS05 blocked — CMD_DELIVER mit session_tag muss funktionieren |
 | [MS06](ms06_two_layer_ack.md) | R-ACK Generation | Missing | Frontend MS06 blocked — OH muss R-ACK erzeugen können |

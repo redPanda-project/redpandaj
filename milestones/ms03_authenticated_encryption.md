@@ -2,6 +2,13 @@
 
 ## Status: Missing
 
+> **Update 2026-06-11**: Die Master-Spec wurde um das **Message-Format v2** (HKDF-Schlüssel-
+> trennung, Version-Byte, inneres `ChannelMessage`) und das **Versions-/Algorithmus-Byte in
+> allen Signing-Byte-Formaten** erweitert — siehe
+> [../ms03_authenticated_encryption.md](../ms03_authenticated_encryption.md). Das Payload-
+> Format v2 ist client-seitig bereits shipped (Server behandelt Payloads opak — keine
+> Backend-Änderung); das Signing-Versions-Byte ist Teil dieses Backend-Milestones.
+
 > **Frontend-Alignment**: Backend MS03 ist Voraussetzung für [Frontend MS03](../frontend/ms03_authenticated_encryption.md).
 > Das neue Handshake-Protokoll (v23) und das Garlic-Wire-Format müssen zuerst auf dem Server stehen.
 
