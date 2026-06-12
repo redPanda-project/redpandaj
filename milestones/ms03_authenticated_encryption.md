@@ -1,6 +1,9 @@
 # Backend MS03: Crypto Migration (Ed25519 / X25519 / AES-256-GCM)
 
-## Status: Missing
+## Status: Done
+
+> **Backend umgesetzt in redpandaj [#221](https://github.com/redPanda-project/redpandaj/pull/221)** (2026-06-12).
+> Entscheidungen und beantwortete Open Questions: siehe [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms03_authenticated_encryption.md#decisions-backend-2026-06-12).
 
 > **Update 2026-06-11**: Die Master-Spec wurde um das **Message-Format v2**
 > (HKDF-Schlüsseltrennung, Version-Byte, inneres `ChannelMessage`) und das
@@ -10,8 +13,9 @@
 > opak — keine Backend-Änderung); das Signing-Versions-Byte ist Teil dieses
 > Backend-Milestones.
 
-> **Frontend-Alignment**: Backend MS03 ist Voraussetzung für [Frontend MS03](../frontend/ms03_authenticated_encryption.md).
-> Das neue Handshake-Protokoll (v23) und das Garlic-Wire-Format müssen zuerst auf dem Server stehen.
+> **Frontend-Alignment**: Backend MS03 ist Voraussetzung für [Frontend MS03](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms03_authenticated_encryption.md).
+> Das neue Handshake-Protokoll (v23) und das Garlic-Wire-Format stehen jetzt auf dem Server —
+> Frontend MS03 kann starten.
 
 ## Goal
 
@@ -22,6 +26,9 @@ Gesamte Kryptographie von brainpoolp256r1 + AES-CTR auf Ed25519 + X25519 + AES-2
 - Backend MS02 (Reliable Mailbox) — stabile Basis vor Breaking Changes
 
 ## Current State
+
+> Historischer Stand **vor** der Umsetzung (2026-06-12) — alle Zeilen sind migriert,
+> siehe [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms03_authenticated_encryption.md#decisions-backend-2026-06-12).
 
 | Component | File | Status |
 |-----------|------|--------|
@@ -158,17 +165,19 @@ Keine strukturellen Änderungen. `bytes`-Felder für Keys und Signaturen passen 
 
 ## Acceptance Criteria
 
-- [ ] `NodeId` verwendet Ed25519 (sign) + X25519 (encrypt) — kein brainpoolp256r1 mehr
-- [ ] GarlicMessage v2 nutzt AES-256-GCM; manipulierter Ciphertext → `AEADBadTagException`
-- [ ] TCP v23 Handshake funktioniert mit 32-byte Keys und framed GCM
-- [ ] TCP v22 Handshake wird noch akzeptiert (Übergangsphase)
-- [ ] OH-Auth nutzt Ed25519 Signaturen (64 bytes)
-- [ ] Keine `RC4`, `ARCFOUR`, `AES/CTR`, `brainpool` Referenzen im Backend-Code
-- [ ] Alle bestehenden Unit-Tests passen mit neuem Crypto-Stack
-- [ ] Wire-Formate (v2 Garlic, v23 Handshake) sind dokumentiert für Frontend-Team
+- [x] `NodeId` verwendet Ed25519 (sign) + X25519 (encrypt) — kein brainpoolp256r1 mehr
+- [x] GarlicMessage v2 nutzt AES-256-GCM; manipulierter Ciphertext → `AEADBadTagException`
+- [x] TCP v23 Handshake funktioniert mit 32-byte Keys und framed GCM
+- [x] TCP v22 Handshake wird noch akzeptiert (Übergangsphase) — nur für Light Clients, siehe Decisions
+- [x] OH-Auth nutzt Ed25519 Signaturen (64 bytes)
+- [x] Keine `RC4`, `ARCFOUR`, `AES/CTR`, `brainpool` Referenzen im Backend-Code — außer dem isolierten, deprecated v22-Legacy-Pfad (`crypt/legacy`), siehe Decisions
+- [x] Alle bestehenden Unit-Tests passen mit neuem Crypto-Stack
+- [x] Wire-Formate (v2 Garlic, v23 Handshake) sind dokumentiert für Frontend-Team
 
 ## Open Questions
 
-1. HKDF vs. einfaches SHA-256 vom shared secret?
-2. Wie lange Dual-Version Support (v22/v23)?
-3. Sollen bestehende NodeIds migriert werden, oder müssen alle Nodes neue Identitäten erzeugen?
+Alle drei ursprünglichen Open Questions sind durch die [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms03_authenticated_encryption.md#decisions-backend-2026-06-12) beantwortet:
+
+1. ~~HKDF vs. einfaches SHA-256 vom shared secret?~~ → HKDF-SHA256 (Decision 1).
+2. ~~Wie lange Dual-Version Support (v22/v23)?~~ → Betriebsentscheidung, technisch per Konstante entfernbar (Decision 4).
+3. ~~Sollen bestehende NodeIds migriert werden?~~ → Nein, neue Identitäten (Decision 3).
