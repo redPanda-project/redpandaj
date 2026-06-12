@@ -33,13 +33,19 @@ import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
  * <p>Layer plaintexts start with a command byte:
  *
  * <pre>
- * CMD_FORWARD (0x01): [1 cmd][20 inner next_hop][12 nonce][32 ephemeral_pub][4 ct_len][ct + tag]
- * CMD_DELIVER (0x02): [1 cmd][20 oh_id][4 payload_len][payload][optional padding]
+ * CMD_FORWARD        (0x01): [1 cmd][20 inner next_hop][12 nonce][32 ephemeral_pub][4 ct_len][ct + tag]
+ * CMD_DELIVER        (0x02): [1 cmd][20 oh_id][4 payload_len][payload][optional padding]
+ * CMD_DELIVER_TAGGED (0x03): [1 cmd][20 oh_id][16 session_tag][4 payload_len][payload][optional padding]
  * </pre>
  *
- * After peeling a {@code CMD_FORWARD} layer, the relay rebuilds a fresh 2048-byte packet with a new
- * random {@code packet_id}, the inner {@code next_hop} and the remaining plaintext as body, padded
- * with random bytes (see {@link #buildPacket}).
+ * <p>{@code CMD_DELIVER_TAGGED} (MS05) is the reverse-garlic deliver: identical to {@code
+ * CMD_DELIVER} plus a 16-byte session tag that is stored on the mailbox {@code MailItem}, so the
+ * fetching client can correlate the reply with a conversation. The tag stays inside the innermost
+ * encrypted layer — relays never see it.
+ *
+ * <p>After peeling a {@code CMD_FORWARD} layer, the relay rebuilds a fresh 2048-byte packet with a
+ * new random {@code packet_id}, the inner {@code next_hop} and the remaining plaintext as body,
+ * padded with random bytes (see {@link #buildPacket}).
  */
 public final class FlaschenpostV2 {
 
@@ -57,6 +63,15 @@ public final class FlaschenpostV2 {
 
   /** Layer command: final hop — deposit the payload into the OH mailbox. */
   public static final byte CMD_DELIVER = 0x02;
+
+  /**
+   * Layer command (MS05, reverse garlic): final hop — deposit the payload into the OH mailbox
+   * together with the 16-byte session tag that follows the oh_id.
+   */
+  public static final byte CMD_DELIVER_TAGGED = 0x03;
+
+  /** Length of the reverse-garlic session tag inside a {@link #CMD_DELIVER_TAGGED} layer. */
+  public static final int SESSION_TAG_LEN = 16;
 
   /** Length of a layer body prefix: [12 nonce][32 ephemeral_pub][4 ciphertext_len] (48). */
   public static final int BODY_HEADER_LEN =

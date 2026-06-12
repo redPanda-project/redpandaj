@@ -169,6 +169,6 @@ public class OhForwarderTest {
   public void routeToNode_withoutDirectPeer_dropsWhenNoCloserCandidate() {
     // No peers at all — routing must simply drop without throwing
     OhForwarder.routeToNode(
-        nodeA, NodeId.generateWithSimpleKey().getKademliaId(), ohId, new byte[8], 0);
+        nodeA, NodeId.generateWithSimpleKey().getKademliaId(), ohId, new byte[8], 0, null);
   }
 }

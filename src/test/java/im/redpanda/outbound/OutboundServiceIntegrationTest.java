@@ -128,6 +128,46 @@ public class OutboundServiceIntegrationTest {
     assertThat(fetchRes.getItems(2).getPayload().toStringUtf8()).isEqualTo(MSG3);
   }
 
+  /** MS05: a deposit with session tag is returned to the client via FetchResponse. */
+  @Test
+  public void testDepositWithSessionTag_FetchReturnsTag() throws Exception {
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse(); // consume
+
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    byte[] sessionTag = new byte[OutboundService.SESSION_TAG_BYTES];
+    new SecureRandom().nextBytes(sessionTag);
+
+    OutboundService.DepositResult tagged =
+        service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8), sessionTag);
+    assertThat(tagged).isEqualTo(OutboundService.DepositResult.DEPOSITED);
+    // untagged deposits keep working side by side, with an empty tag
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    FetchResponse fetchRes = readFetchResponse();
+
+    assertThat(fetchRes.getStatus()).isEqualTo(Status.OK);
+    assertThat(fetchRes.getItemsCount()).isEqualTo(2);
+    assertThat(fetchRes.getItems(0).getSessionTag().toByteArray()).isEqualTo(sessionTag);
+    assertThat(fetchRes.getItems(1).getSessionTag().isEmpty()).isTrue();
+  }
+
+  /** MS05: a non-empty session tag must be exactly 16 bytes. */
+  @Test
+  public void testDepositWithInvalidSessionTagLength_ReturnsBadRequest() throws Exception {
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse(); // consume
+
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OutboundService.DepositResult result =
+        service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8), new byte[7]);
+    assertThat(result).isEqualTo(OutboundService.DepositResult.BAD_REQUEST);
+
+    service.handleFetch(peer, createSignedFetchRequest(0));
+    assertThat(readFetchResponse().getItemsCount()).isZero();
+  }
+
   @Test
   public void testDepositAfterRevoke_ReturnsFalse() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();

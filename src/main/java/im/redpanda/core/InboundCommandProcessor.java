@@ -852,11 +852,24 @@ public class InboundCommandProcessor {
         respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
         return;
       }
-      OutboundService.DepositResult result = outboundService.depositMessage(ohId, content);
+      // MS05: a reverse-garlic session tag arrives here when the final garlic hop was not the
+      // OH host and forwarded the tagged deliver (OhForwarder). Empty for direct deposits.
+      // Validate the size on the ByteString before materializing the array (cf. oh_id above).
+      ByteString sessionTagBytes = putMsg.getSessionTag();
+      if (sessionTagBytes.size() != 0
+          && sessionTagBytes.size() != OutboundService.SESSION_TAG_BYTES) {
+        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
+        return;
+      }
+      byte[] sessionTag = sessionTagBytes.toByteArray();
+      OutboundService.DepositResult result =
+          outboundService.depositMessage(ohId, content, sessionTag);
       if (result == OutboundService.DepositResult.NOT_FOUND) {
         // MS02b: not our OH — forward toward the host node (resolved via the DHT announce),
-        // preserving the oh_id on every hop. Best-effort: OK means "accepted for forwarding".
-        boolean accepted = OhForwarder.forward(serverContext, ohId, content, putMsg.getHopCount());
+        // preserving the oh_id (and MS05 session tag) on every hop. Best-effort: OK means
+        // "accepted for forwarding".
+        boolean accepted =
+            OhForwarder.forward(serverContext, ohId, content, putMsg.getHopCount(), sessionTag);
         respondToDeposit(
             peer,
             putMsg,

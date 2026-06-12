@@ -54,6 +54,10 @@ message MailItem {
   int64 received_at_ms = 2;
   bytes payload = 3;            // chat payload (later: push payload / garlic delivered)
   uint64 sequence_id = 4;       // monotone per-OH sequence id
+  // MS05: 16-byte session tag from a reverse-garlic reply (CMD_DELIVER_TAGGED), letting the
+  // client correlate the reply with a conversation. Empty for direct messages and untagged
+  // garlic delivers (backward compatible).
+  bytes session_tag = 5;
 }
 
 message FetchResponse {

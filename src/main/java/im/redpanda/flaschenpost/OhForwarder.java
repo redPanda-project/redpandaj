@@ -40,6 +40,20 @@ public final class OhForwarder {
    */
   public static boolean forward(
       ServerContext serverContext, byte[] ohId, byte[] content, int hopCount) {
+    return forward(serverContext, ohId, content, hopCount, null);
+  }
+
+  /**
+   * Forwards a deposit for a non-local OH toward its host node, preserving an MS05 reverse-garlic
+   * session tag (or {@code null}/empty for untagged deposits). Resolution result and routing happen
+   * asynchronously (the DHT lookup is randomized-delayed against profiling).
+   *
+   * @param hopCount the hop count the packet arrived with
+   * @return {@code true} if forwarding was initiated (hop budget available), {@code false} if the
+   *     packet was dropped at the hop limit
+   */
+  public static boolean forward(
+      ServerContext serverContext, byte[] ohId, byte[] content, int hopCount, byte[] sessionTag) {
     if (hopCount >= MAX_HOPS) {
       log.debug("dropping FlaschenpostPut for unknown OH at hop limit {}", hopCount);
       return false;
@@ -49,7 +63,8 @@ public final class OhForwarder {
         ohId,
         record -> {
           byte[] nodeIdBytes = record.getNodeId().toByteArray();
-          routeToNode(serverContext, new KademliaId(nodeIdBytes), ohId, content, hopCount);
+          routeToNode(
+              serverContext, new KademliaId(nodeIdBytes), ohId, content, hopCount, sessionTag);
         },
         () -> log.debug("OH host resolution failed, dropping forwarded deposit"));
     return true;
@@ -64,10 +79,11 @@ public final class OhForwarder {
       KademliaId targetNodeId,
       byte[] ohId,
       byte[] content,
-      int hopCount) {
+      int hopCount,
+      byte[] sessionTag) {
     Peer nextPeer = selectNextPeer(serverContext, targetNodeId);
     if (nextPeer != null) {
-      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1);
+      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1, sessionTag);
     }
   }
 

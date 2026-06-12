@@ -48,6 +48,11 @@ public class OutboundService {
    */
   private static final int MESSAGE_ID_BYTES = 16;
 
+  /** Required length of a non-empty MS05 reverse-garlic session tag. */
+  public static final int SESSION_TAG_BYTES = 16;
+
+  private static final byte[] EMPTY_SESSION_TAG = new byte[0];
+
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
   private final OutboundAuth auth;
@@ -330,6 +335,24 @@ public class OutboundService {
    *     is not registered here or expired, or the MS02b rejection reason
    */
   public DepositResult depositMessage(byte[] ohId, byte[] payload) {
+    return depositMessage(ohId, payload, EMPTY_SESSION_TAG);
+  }
+
+  /**
+   * Deposits a message with an MS05 reverse-garlic session tag (see {@link #depositMessage(byte[],
+   * byte[])} for the deposit semantics). The tag is stored on the {@code MailItem} and returned to
+   * the fetching client, which uses it to correlate the reply with a conversation.
+   *
+   * @param sessionTag 16-byte session tag, or empty/{@code null} for untagged messages; any other
+   *     length is rejected with {@link DepositResult#BAD_REQUEST}
+   */
+  public DepositResult depositMessage(byte[] ohId, byte[] payload, byte[] sessionTag) {
+    if (sessionTag == null) {
+      sessionTag = EMPTY_SESSION_TAG;
+    }
+    if (sessionTag.length != 0 && sessionTag.length != SESSION_TAG_BYTES) {
+      return DepositResult.BAD_REQUEST;
+    }
     HandleRecord handle = handleStore.get(ohId);
     if (handle == null) {
       return DepositResult.NOT_FOUND;
@@ -344,6 +367,7 @@ public class OutboundService {
             .setMessageId(ByteString.copyFrom(messageId))
             .setReceivedAtMs(now)
             .setPayload(ByteString.copyFrom(payload))
+            .setSessionTag(ByteString.copyFrom(sessionTag))
             .build();
     return switch (mailboxStore.addMessage(ohId, item)) {
       case ADDED -> DepositResult.DEPOSITED;

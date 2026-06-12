@@ -327,16 +327,23 @@ public class GMParser {
   }
 
   private static void sendFpToPeer(Peer peerToSendFP, byte[] content) {
-    sendFpToPeer(peerToSendFP, content, null, 0);
+    sendFpToPeer(peerToSendFP, content, null, 0, null);
+  }
+
+  public static void sendFpToPeer(Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount) {
+    sendFpToPeer(peerToSendFP, content, ohId, hopCount, null);
   }
 
   /**
    * Writes a FlaschenpostPut to the peer. MS02b (Option A): when {@code ohId} is non-null it is
    * preserved on the forwarded packet, so the destination node can deposit into the correct mailbox
    * — before MS02b the packet was rebuilt with {@code content} only and the oh_id was lost. {@code
-   * hopCount} carries the forwarding budget (loop protection).
+   * hopCount} carries the forwarding budget (loop protection). {@code sessionTag} (MS05) preserves
+   * the reverse-garlic session tag when a tagged deliver is forwarded to the OH host node; {@code
+   * null}/empty for untagged deposits.
    */
-  public static void sendFpToPeer(Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount) {
+  public static void sendFpToPeer(
+      Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount, byte[] sessionTag) {
     peerToSendFP.getWriteBufferLock().lock();
     try {
       var builder =
@@ -347,6 +354,9 @@ public class GMParser {
       }
       if (hopCount > 0) {
         builder.setHopCount(hopCount);
+      }
+      if (sessionTag != null && sessionTag.length > 0) {
+        builder.setSessionTag(com.google.protobuf.ByteString.copyFrom(sessionTag));
       }
       byte[] data = builder.build().toByteArray();
 
