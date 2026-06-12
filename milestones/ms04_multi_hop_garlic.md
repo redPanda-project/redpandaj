@@ -6,7 +6,7 @@
 > Verbindliche Wire-Format-Festlegungen und beantwortete Open Questions: siehe
 > [Decisions (Backend-MS04) in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms04_multi_hop_garlic.md#decisions-backend-ms04-2026-06-12).
 
-> **Frontend-Alignment**: Backend MS04 ist Voraussetzung für [Frontend MS04](../frontend/ms04_multi_hop_garlic.md).
+> **Frontend-Alignment**: Backend MS04 ist Voraussetzung für [Frontend MS04](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms04_multi_hop_garlic.md).
 > Die Relay-Peeling-Logik und das Flaschenpost v2 Format funktionieren jetzt serverseitig — Frontend MS04 kann starten.
 
 ## Goal
@@ -86,8 +86,9 @@ void handleFlaschenpostV2(Peer peer, byte[] packet) {
             break;
 
         case CMD_DELIVER: // 0x02
-            byte[] ohId = readBytes(plaintext, 1, 32);
-            byte[] payload = readBytes(plaintext, 33, payloadLen);
+            byte[] ohId = readBytes(plaintext, 1, 20);   // 20-byte KademliaId
+            int payloadLen = readInt(plaintext, 21);
+            byte[] payload = readBytes(plaintext, 25, payloadLen);
             outboundService.depositMessage(ohId, payload);
             break;
     }
@@ -157,9 +158,9 @@ Flaschenpost v2 ist binär, kein Protobuf.
 - [x] `PeerInfoProto` enthält `encryption_public_key` im Peer-Austausch
 - [x] Integration-Test: 3-Layer Paket → 3 Relays peelen nacheinander → Delivery an OH (`GarlicRouterTest`)
 
-> **Hinweis zum Pseudo-Code oben**: `oh_id` in `CMD_DELIVER` ist **20 Bytes** (KademliaId, wie
-> überall) — die 32 im Pseudo-Code waren ein Fehler; außerdem trägt der Deliver-Plaintext ein
-> explizites `payload_len` (4 Bytes). Verbindlich sind die
+> **Hinweis**: `oh_id` in `CMD_DELIVER` ist **20 Bytes** (KademliaId, wie überall) mit explizitem
+> `payload_len` (4 Bytes) — der Pseudo-Code oben ist entsprechend korrigiert (ursprünglich stand
+> dort fälschlich 32). Verbindlich sind die
 > [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms04_multi_hop_garlic.md#decisions-backend-ms04-2026-06-12).
 
 ## Open Questions
