@@ -5,6 +5,7 @@ import static com.google.protobuf.ByteString.copyFrom;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.flaschenpost.GMParser;
+import im.redpanda.flaschenpost.GarlicRouter;
 import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.KademliaInsertJob;
@@ -152,6 +153,13 @@ public class InboundCommandProcessor {
           handleFlaschenpostPut(payload, peer);
           return 1 + 4 + payload.length;
         });
+    commandHandlers.put(
+        Command.FLASCHENPOST_V2,
+        (peer, buf, payload) -> {
+          // MS04 multi-hop garlic relay: dedup, peel own layer or route toward next_hop
+          GarlicRouter.handle(serverContext, payload);
+          return 1 + 4 + payload.length;
+        });
   }
 
   public void loopCommands(Peer peer, ByteBuffer readBuffer) {
@@ -232,6 +240,7 @@ public class InboundCommandProcessor {
         || command == Command.KADEMLIA_STORE
         || command == Command.KADEMLIA_GET_ANSWER
         || command == Command.FLASCHENPOST_PUT
+        || command == Command.FLASCHENPOST_V2
         || command == Command.OUTBOUND_REGISTER_OH_REQ
         || command == Command.OUTBOUND_FETCH_REQ
         || command == Command.OUTBOUND_REVOKE_OH_REQ
@@ -293,6 +302,9 @@ public class InboundCommandProcessor {
               NodeIdProto.newBuilder()
                   .setPublicKeyBytes(copyFrom(peerToCheck.getNodeId().exportPublic()))
                   .build());
+          // MS04: explicit X25519 key so light clients can pick garlic hops directly
+          peerBuilder.setEncryptionPublicKey(
+              copyFrom(peerToCheck.getNodeId().getEncryptionPubKey().getEncoded()));
         }
         builder.addPeers(peerBuilder.build());
       }

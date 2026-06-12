@@ -31,6 +31,13 @@ public final class Command {
   // flaschenpost
   public static final byte FLASCHENPOST_PUT = (byte) 141;
 
+  /**
+   * MS04: fixed-size (2048 byte) multi-hop garlic packet, see {@link
+   * im.redpanda.flaschenpost.FlaschenpostV2}. Framed like every payload command: {@code
+   * [cmd][len:4][packet]}.
+   */
+  public static final byte FLASCHENPOST_V2 = (byte) 142;
+
   // outbound
   public static final byte OUTBOUND_REGISTER_OH_REQ = (byte) 150;
   public static final byte OUTBOUND_REGISTER_OH_RES = (byte) 151;
