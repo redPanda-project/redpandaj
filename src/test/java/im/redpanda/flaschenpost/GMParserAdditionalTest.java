@@ -126,14 +126,17 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void garlicMessageWithInvalidSignatureReturnsNull() {
+  public void garlicMessageWithTamperedCiphertextYieldsNoContent() {
+    // v2 (MS03): a tampered ciphertext fails GCM authentication at decryption time — the
+    // packet is dropped without any nested content being parsed.
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     byte[] content = garlicMessageBytes(serverContext, serverContext.getNodeId());
     content[content.length - 1] ^= 0x01;
 
     GMContent parsed = GMParser.parse(serverContext, content);
 
-    assertNull(parsed);
+    assertNotNull(parsed);
+    assertTrue(((GarlicMessage) parsed).getGMContent().isEmpty());
   }
 
   @Test

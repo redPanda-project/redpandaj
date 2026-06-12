@@ -14,8 +14,12 @@ import java.security.Security;
 
 public class Updater {
 
-  public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS =
-      "Qj4k2grhTy5omj4AFG6793SVnJaWuLz4H4yJE9BbQJG5kh8FTxEGggA4ozVb2afAWjDJDPZjv1nWz9D2QHJw9XGr";
+  /**
+   * Base58 of the 64-byte MS03 public NodeId export ([32 Ed25519 verify key][32 X25519 key]) of the
+   * core developers' update-signing identity. Regenerated for MS03 — pre-MS03 (brainpool) update
+   * signatures are no longer accepted.
+   */
+  public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "MS03_PLACEHOLDER_PUBLIC_KEY";
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -24,7 +28,7 @@ public class Updater {
   public static NodeId getPublicUpdaterKey() {
     try {
       return NodeId.importPublic(Base58.decode(PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS));
-    } catch (AddressFormatException e) {
+    } catch (AddressFormatException | IllegalArgumentException e) {
       e.printStackTrace();
     }
     return null;
@@ -101,7 +105,7 @@ public class Updater {
 
     byte[] signature = nodeId.sign(toHash.array());
 
-    System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
+    System.out.println("signature len: " + signature.length);
 
     System.out.println("timestamp: " + timestamp);
 
@@ -145,7 +149,7 @@ public class Updater {
 
     byte[] signature = nodeId.sign(toHash.array());
 
-    System.out.println("signature len: " + signature.length + " " + ((int) signature[1] + 2));
+    System.out.println("signature len: " + signature.length);
 
     System.out.println("timestamp: " + timestamp);
 

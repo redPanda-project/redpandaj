@@ -1,10 +1,10 @@
 Title: Operational Notes
 
 Summary
-- Crypto format change: encryptString now returns hex(IV||ciphertext); decryption expects this format.
+- Crypto format change (MS03): authenticated payloads carry ciphertext || tag (AES-256-GCM); decryption verifies the tag before any plaintext is used.
 - Log hygiene: E2E fails on unexpected ERROR/WARN/Exception lines with a narrow allowlist for first-run LocalSettings and headless console NPE.
 
 Verification
-- Unit test ensures:
+- Unit tests ensure:
   - A correctly formatted payload decrypts.
-  - Decrypting a payload without the IV prefix returns null (GCM auth failure is caught in code).
+  - Tampered payloads fail with AEADBadTagException / PeerProtocolException and yield no plaintext.

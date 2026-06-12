@@ -1,89 +1,36 @@
 package im.redpanda.core;
 
-import java.io.IOException;
+import im.redpanda.core.exceptions.PeerProtocolException;
 import java.nio.ByteBuffer;
-import lombok.extern.slf4j.Slf4j;
 
-/** The OutputStreams are for encryption and the InputStreams for decryption. */
-@Slf4j
-public class PeerChiperStreams {
-
-  private PeerOutputStream peerOutputStream;
-  private PeerInputStream peerInputStream;
-
-  private CipherInputStreamByteBuffer cipherInputStream;
-  private CipherOutputStreamByteBuffer cipherOutputStream;
-
-  public PeerChiperStreams(
-      PeerOutputStream peerOutputStream,
-      PeerInputStream peerInputStream,
-      CipherInputStreamByteBuffer cipherInputStream,
-      CipherOutputStreamByteBuffer cipherOutputStream) {
-    this.peerOutputStream = peerOutputStream;
-    this.peerInputStream = peerInputStream;
-    this.cipherInputStream = cipherInputStream;
-    this.cipherOutputStream = cipherOutputStream;
-  }
+/**
+ * Per-connection encryption of the TCP byte stream. Implementations: {@link GcmFramedStreams}
+ * (protocol v23, framed AES-256-GCM) and {@link LegacyCtrCipherStreams} (protocol v22, AES-CTR,
+ * deprecated transition path).
+ */
+public interface PeerChiperStreams {
 
   /**
-   * Input has to be in read mode, output has to be in default (write) mode.
-   *
-   * @param input
-   * @param output
+   * Encrypts bytes from {@code input} into {@code output}. Input has to be in read mode, output has
+   * to be in default (write) mode. May leave bytes in {@code input} if {@code output} has not
+   * enough space.
    */
-  public void encrypt(ByteBuffer input, ByteBuffer output) {
-
-    /**
-     * encrypt so we have to use the outputstreams The bytes will flow the following way: input ->
-     * cipherOutputStream -> peerOutputStream -> output
-     */
-    try {
-
-      int r = output.remaining();
-
-      if (r < input.remaining()) {
-        // System.out.println("enc write buffer too small...");
-        peerOutputStream.setByteBuffer(output);
-        cipherOutputStream.write(input, r);
-        cipherOutputStream.flush();
-      } else {
-        peerOutputStream.setByteBuffer(output);
-        cipherOutputStream.write(input);
-        cipherOutputStream.flush();
-      }
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-  }
+  void encrypt(ByteBuffer input, ByteBuffer output);
 
   /**
-   * Input has to be in read mode, output has to be in default (write) mode.
+   * Decrypts bytes from {@code input} into {@code output}. Input has to be in read mode, output has
+   * to be in default (write) mode.
    *
-   * @param input
-   * @param output
+   * @throws PeerProtocolException if the stream is corrupted (e.g. failed GCM authentication) — the
+   *     connection must be closed
    */
-  public void decrypt(ByteBuffer input, ByteBuffer output) {
+  void decrypt(ByteBuffer input, ByteBuffer output) throws PeerProtocolException;
 
-    /**
-     * decrypt so we have to use the inputStreams The bytes will flow the following way: input ->
-     * peerInputStream -> cipherInputStream -> output
-     */
-    try {
-      peerInputStream.setByteBuffer(input);
-      while (input.hasRemaining()) {
-        cipherInputStream.read(output);
-      }
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
+  /**
+   * Number of buffered ciphertext bytes of an incomplete inbound frame (relevant for sizing the
+   * plaintext output buffer). Streams without internal framing return 0.
+   */
+  default int pendingDecryptBytes() {
+    return 0;
   }
-
-  // public void encrypt(byte[] input, byte[] output) {
-  // encrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-  // }
-  //
-  // public void decrypt(byte[] input, byte[] output) {
-  // decrypt(ByteBuffer.wrap(input), ByteBuffer.wrap(output));
-  // }
-
 }

@@ -2,50 +2,43 @@ package im.redpanda.docs;
 
 import static org.junit.Assert.*;
 
-import im.redpanda.crypt.ECCrypto;
+import im.redpanda.crypt.CryptoUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyPair;
-import java.security.Security;
-import javax.crypto.SecretKey;
+import java.security.SecureRandom;
+import javax.crypto.AEADBadTagException;
 import org.junit.Test;
 
 public class ProtocolStep02ECCryptoDocsTest {
-
-  static {
-    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-  }
 
   @Test
   public void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/02-eccrypto-iv-and-format.md");
     String text = Files.readString(doc);
-    assertTrue(text.contains("Title: ECCrypto AES/GCM IV Handling and Ciphertext Format"));
-    assertTrue(text.contains("Fresh IV"));
-    assertTrue(text.contains("Encoding: encryptString returns hex(IV || ciphertext)"));
-    assertTrue(text.contains("Decryption: decryptString expects hex(IV || ciphertext)"));
+    assertTrue(
+        text.contains("Title: CryptoUtils AES-256-GCM Nonce Handling and Ciphertext Format"));
+    assertTrue(text.contains("Fresh nonce"));
+    assertTrue(text.contains("ciphertext || tag"));
+    assertTrue(text.contains("AEADBadTagException"));
   }
 
   @Test
-  public void decryptRoundTripAndRejectsMissingIvPrefix() {
-    KeyPair a = ECCrypto.generateECKeys();
-    KeyPair b = ECCrypto.generateECKeys();
-    assertNotNull(a);
-    assertNotNull(b);
-    SecretKey key = ECCrypto.generateSharedSecret(a.getPrivate(), b.getPublic());
-    assertNotNull(key);
+  public void gcmRoundTripAndTagFailure() throws Exception {
+    SecureRandom random = new SecureRandom();
+    byte[] key = new byte[CryptoUtils.AES_KEY_LEN];
+    byte[] nonce = new byte[CryptoUtils.GCM_NONCE_LEN];
+    random.nextBytes(key);
+    random.nextBytes(nonce);
+    byte[] plaintext = "hello".getBytes();
+    byte[] aad = "aad".getBytes();
 
-    String plaintext = "hello";
-    String ct = ECCrypto.encryptString(key, plaintext);
-    assertNotNull(ct);
-    String back = ECCrypto.decryptString(key, ct);
-    assertEquals(plaintext, back);
+    byte[] ciphertext = CryptoUtils.encryptGcm(key, nonce, plaintext, aad);
+    assertEquals(plaintext.length + CryptoUtils.GCM_TAG_LEN, ciphertext.length);
+    assertArrayEquals(plaintext, CryptoUtils.decryptGcm(key, nonce, ciphertext, aad));
 
-    // Build a ciphertext without the IV prefix and ensure decryption fails gracefully
-    byte[] all = ECCrypto.hexToBytes(ct);
-    byte[] withoutIv = new byte[Math.max(0, all.length - 16)];
-    System.arraycopy(all, 16, withoutIv, 0, withoutIv.length);
-    String malformed = ECCrypto.bytesToHex(withoutIv);
-    assertNull(ECCrypto.decryptString(key, malformed));
+    // a flipped bit in the ciphertext must fail authentication
+    ciphertext[0] ^= 0x01;
+    assertThrows(
+        AEADBadTagException.class, () -> CryptoUtils.decryptGcm(key, nonce, ciphertext, aad));
   }
 }

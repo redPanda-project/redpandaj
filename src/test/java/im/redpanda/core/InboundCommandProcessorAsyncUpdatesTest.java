@@ -36,11 +36,10 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).delete();
   }
 
-  private static byte[] derSignature(int totalLen) {
-    byte[] sig = new byte[totalLen];
-    sig[0] = 0x30; // sequence
-    sig[1] = (byte) (totalLen - 2);
-    for (int i = 2; i < totalLen; i++) sig[i] = (byte) i;
+  /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */
+  private static byte[] fakeSignature() {
+    byte[] sig = new byte[NodeId.SIGNATURE_LEN];
+    for (int i = 0; i < sig.length; i++) sig[i] = (byte) i;
     return sig;
   }
 
@@ -54,7 +53,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
 
     // Set signature and timestamp to pass initial guards
     ctx.getLocalSettings().setUpdateTimestamp(System.currentTimeMillis());
-    ctx.getLocalSettings().setUpdateSignature(derSignature(72));
+    ctx.getLocalSettings().setUpdateSignature(fakeSignature());
 
     Peer peer = new Peer("127.0.0.1", 5555, ctx.getNodeId());
     peer.setConnected(false); // avoid SelectionKey usage in tests
@@ -80,7 +79,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     // Set android timestamp and an invalid signature to trigger verify(false) and
     // early return
     ctx.getLocalSettings().setUpdateAndroidTimestamp(System.currentTimeMillis());
-    ctx.getLocalSettings().setUpdateAndroidSignature(derSignature(72));
+    ctx.getLocalSettings().setUpdateAndroidSignature(fakeSignature());
 
     Peer peer = new Peer("127.0.0.1", 6666, ctx.getNodeId());
     peer.setConnected(false);
@@ -104,7 +103,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
 
     long newerTs = ctx.getLocalSettings().getUpdateTimestamp() + 1000;
     byte[] data = new byte[] {9, 8, 7, 6};
-    byte[] sig = derSignature(72);
+    byte[] sig = fakeSignature();
 
     ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
     in.putLong(newerTs);

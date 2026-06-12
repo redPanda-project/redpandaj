@@ -482,53 +482,84 @@ public class ConnectionHandler extends Thread {
               ConnectionReaderThread.sendPublicKeyToPeer(serverContext, peerInHandshake);
             } else if (command == Command.SEND_PUBLIC_KEY && peerInHandshake.getStatus() == 1) {
               /**
-               * We got the public Peer, lets store it and check that this public key indeed
-               * corresponds to the KademliaId.
+               * We got the public key of the Peer, lets store it and check that this public key
+               * indeed corresponds to the KademliaId. v23: 64-byte Ed25519/X25519 export; v22
+               * (legacy light clients): 65-byte brainpool key.
                */
-              byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
-              allocate.get(bytesPublicKey);
+              if (peerInHandshake.isProtocolV23()) {
+                byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
+                allocate.get(bytesPublicKey);
 
-              NodeId nodeId = NodeId.importPublic(bytesPublicKey);
+                NodeId nodeId = NodeId.importPublic(bytesPublicKey);
 
-              Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
+                Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
-              if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
-                /**
-                 * We obtained a public key which does not match the KademliaId of this Peer and
-                 * should cancel that connection here.
-                 */
-                Log.put("Wrong KademliaId/Public Key for that peer...", 20);
-                peerInHandshake.setStatus(2);
-                peerInHandshake.getSocketChannel().close();
+                if (!peerInHandshake.getIdentity().equals(nodeId.getKademliaId())) {
+                  /**
+                   * We obtained a public key which does not match the KademliaId of this Peer and
+                   * should cancel that connection here.
+                   */
+                  Log.put("Wrong KademliaId/Public Key for that peer...", 20);
+                  peerInHandshake.setStatus(2);
+                  peerInHandshake.getSocketChannel().close();
+                } else {
+                  /**
+                   * We obtained the correct public key and can add it to the Peer and lets set that
+                   * peerInHandshake status to waiting for encryption
+                   */
+                  peerInHandshake.getPeer().setNodeId(nodeId);
+                  peerInHandshake.setNodeId(nodeId);
+                  peerInHandshake.setStatus(-1);
+                }
               } else {
-                /**
-                 * We obtained the correct public key and can add it to the Peer and lets set that
-                 * peerInHandshake status to waiting for encryption
-                 */
-                peerInHandshake.getPeer().setNodeId(nodeId);
-                peerInHandshake.setNodeId(nodeId);
-                peerInHandshake.setStatus(-1);
+                byte[] bytesPublicKey =
+                    new byte[im.redpanda.crypt.legacy.LegacyNodeId.PUBLIC_KEYLEN];
+                allocate.get(bytesPublicKey);
+
+                im.redpanda.crypt.legacy.LegacyNodeId legacyNodeId =
+                    im.redpanda.crypt.legacy.LegacyNodeId.importPublic(bytesPublicKey);
+
+                Log.put("new legacy (v22) nodeid from peer: " + legacyNodeId.getKademliaId(), 20);
+
+                if (!peerInHandshake.getIdentity().equals(legacyNodeId.getKademliaId())) {
+                  Log.put("Wrong KademliaId/Public Key for that legacy peer...", 20);
+                  peerInHandshake.setStatus(2);
+                  peerInHandshake.getSocketChannel().close();
+                } else {
+                  peerInHandshake.setLegacyNodeIdFromThem(legacyNodeId);
+                  // the Peer only keeps the KademliaId — the legacy key is never used outside
+                  // the v22 handshake
+                  peerInHandshake.getPeer().setNodeId(new NodeId(legacyNodeId.getKademliaId()));
+                  peerInHandshake.setStatus(-1);
+                }
               }
 
             } else if (command == Command.ACTIVATE_ENCRYPTION) {
 
               /**
-               * We received the byte to activate the encryption and we are awaiting the encryption
-               * activation byte
+               * We received the byte to activate the encryption. v23: the payload is the 32-byte
+               * ephemeral X25519 public key of the peer; v22 (legacy): 8 random bytes for the
+               * AES-CTR IV.
                */
-
-              // lets read the random bytes from them
-
-              if (allocate.remaining() < PeerInHandshake.IVbytelen / 2.) {
-                System.out.println("not enough bytes for encryption... " + allocate.remaining());
-                peerInHandshake.getSocketChannel().close();
-                return;
+              if (peerInHandshake.isProtocolV23()) {
+                if (allocate.remaining() < 32) {
+                  System.out.println("not enough bytes for encryption... " + allocate.remaining());
+                  peerInHandshake.getSocketChannel().close();
+                  return;
+                }
+                byte[] ephemeralFromThem = new byte[32];
+                allocate.get(ephemeralFromThem);
+                peerInHandshake.setEphemeralPublicFromThem(ephemeralFromThem);
+              } else {
+                if (allocate.remaining() < PeerInHandshake.IVbytelen / 2.) {
+                  System.out.println("not enough bytes for encryption... " + allocate.remaining());
+                  peerInHandshake.getSocketChannel().close();
+                  return;
+                }
+                byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen / 2];
+                allocate.get(randomBytesFromThem);
+                peerInHandshake.setRandomFromThem(randomBytesFromThem);
               }
-
-              byte[] randomBytesFromThem = new byte[PeerInHandshake.IVbytelen / 2];
-              allocate.get(randomBytesFromThem);
-
-              peerInHandshake.setRandomFromThem(randomBytesFromThem);
 
               peerInHandshake.setAwaitingEncryption(true);
 
@@ -538,11 +569,14 @@ public class ConnectionHandler extends Thread {
 
           /** Lets check if we are ready to start the encryption for this handshaking peer */
           if (peerInHandshake.getStatus() == -1 && !peerInHandshake.isWeSendOurRandom()) {
-            ByteBuffer activateEncryptionBuffer =
-                ByteBuffer.allocate(1 + PeerInHandshake.IVbytelen / 2);
+            byte[] keyMaterialFromUs =
+                peerInHandshake.isProtocolV23()
+                    ? peerInHandshake.getEphemeralPublicFromUs()
+                    : peerInHandshake.getRandomFromUs();
+            ByteBuffer activateEncryptionBuffer = ByteBuffer.allocate(1 + keyMaterialFromUs.length);
             activateEncryptionBuffer.put(Command.ACTIVATE_ENCRYPTION);
 
-            activateEncryptionBuffer.put(peerInHandshake.getRandomFromUs());
+            activateEncryptionBuffer.put(keyMaterialFromUs);
 
             activateEncryptionBuffer.flip();
 
@@ -571,13 +605,10 @@ public class ConnectionHandler extends Thread {
             bytesSendToPing.put(Command.PING);
             bytesSendToPing.flip();
 
-            ByteBuffer byteBuffer = ByteBufferPool.borrowObject(16);
+            // a v23 GCM frame for a single byte needs 33 bytes, so borrow a bit more
+            ByteBuffer byteBuffer = ByteBufferPool.borrowObject(64);
 
             peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing, byteBuffer);
-
-            // byte[] encrypt =
-            // peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing);
-            // ByteBuffer wrap = ByteBuffer.wrap(encrypt);
 
             byteBuffer.flip();
 
@@ -596,7 +627,7 @@ public class ConnectionHandler extends Thread {
           /** The encryption is active in this section, lets check that first ping */
           System.out.println("received first encrypted command...");
 
-          ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(16);
+          ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(64);
 
           peerInHandshake.getPeerChiperStreams().decrypt(allocate, tempHandshakeReadBuffer);
 
@@ -638,7 +669,7 @@ public class ConnectionHandler extends Thread {
   private void copyRemainingReadBytesToPeerBuffer(ByteBuffer tempHandshakeReadBuffer, Peer peer) {
     if (tempHandshakeReadBuffer.hasRemaining()) {
       if (peer.readBuffer == null) {
-        peer.readBuffer = ByteBufferPool.borrowObject(16);
+        peer.readBuffer = ByteBufferPool.borrowObject(tempHandshakeReadBuffer.remaining());
       }
       peer.readBuffer.put(tempHandshakeReadBuffer);
     }

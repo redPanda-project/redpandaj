@@ -128,17 +128,28 @@ public class GMParser {
 
   public static GMContent parse(ServerContext serverContext, byte[] content) {
 
+    if (content == null || content.length == 0) {
+      return null;
+    }
+
     ByteBuffer buffer = ByteBuffer.wrap(content);
 
     byte type = buffer.get();
 
     if (type == GMType.GARLIC_MESSAGE.getId()) {
 
-      GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
-
-      if (!garlicMessage.isSignedCorrectly()) {
+      // v2 (MS03): authenticity is checked by the GCM tag at decryption time — only the
+      // recipient can verify it; intermediate nodes just deduplicate and forward.
+      GarlicMessage garlicMessage;
+      try {
+        garlicMessage = new GarlicMessage(serverContext, content);
+      } catch (RuntimeException e) {
+        // malformed packet from the network (bad version/length/truncated) — drop it instead
+        // of letting the exception bubble into the read loop
+        Log.put("dropping malformed garlic message: " + e.getMessage(), 50);
         return null;
       }
+
       boolean alreadyPresent = GMStoreManager.put(garlicMessage);
 
       if (alreadyPresent) {

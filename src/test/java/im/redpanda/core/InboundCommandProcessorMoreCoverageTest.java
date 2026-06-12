@@ -136,12 +136,10 @@ public class InboundCommandProcessorMoreCoverageTest {
     assertEquals(before, writtenTs);
   }
 
-  private static byte[] derSignature(int totalLen) {
-    // Build a minimal DER-like signature with declared length totalLen
-    byte[] sig = new byte[totalLen];
-    sig[0] = 0x30; // SEQUENCE
-    sig[1] = (byte) (totalLen - 2); // remaining length
-    for (int i = 2; i < totalLen; i++) sig[i] = (byte) i;
+  /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */
+  private static byte[] fakeSignature() {
+    byte[] sig = new byte[NodeId.SIGNATURE_LEN];
+    for (int i = 0; i < sig.length; i++) sig[i] = (byte) i;
     return sig;
   }
 
@@ -153,7 +151,7 @@ public class InboundCommandProcessorMoreCoverageTest {
 
     long newerTs = ctx.getLocalSettings().getUpdateAndroidTimestamp() + 1000;
     byte[] data = "apk".getBytes();
-    byte[] sig = derSignature(72);
+    byte[] sig = fakeSignature();
 
     ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
     in.putLong(newerTs);
@@ -187,7 +185,7 @@ public class InboundCommandProcessorMoreCoverageTest {
 
     long notNewerTs = ctx.getLocalSettings().getUpdateTimestamp();
     byte[] data = new byte[] {1, 2, 3, 4, 5};
-    byte[] sig = derSignature(70);
+    byte[] sig = fakeSignature();
 
     ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
     in.putLong(notNewerTs);

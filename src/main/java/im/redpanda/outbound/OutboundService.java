@@ -108,7 +108,7 @@ public class OutboundService {
       return;
     }
 
-    // Reconstruct signing bytes
+    // Reconstruct signing bytes (unversioned body — OutboundAuth applies the MS03 version byte)
     ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
     signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ);
     signBuf.put(ohId);
@@ -260,7 +260,8 @@ public class OutboundService {
    * Handles an AckFetch request: verifies the signature, deletes all mailbox items with sequence_id
    * &lt;= acked_sequence_id, and responds with OK.
    *
-   * <p>Signing bytes: {@code [CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]}
+   * <p>Signing bytes: {@code [CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]} —
+   * prefixed with the MS03 version byte by {@link OutboundAuth} for Ed25519 verification
    */
   public void handleAckFetch(Peer peer, AckFetchRequest req) {
     long now = System.currentTimeMillis();

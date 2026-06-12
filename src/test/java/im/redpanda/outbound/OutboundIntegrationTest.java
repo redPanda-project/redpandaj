@@ -30,7 +30,7 @@ public class OutboundIntegrationTest {
     peer.setConnected(true);
 
     // Generate valid client identity
-    clientNode = new NodeId(NodeId.generateECKeys());
+    clientNode = NodeId.generateWithSimpleKey();
   }
 
   @Test
@@ -163,7 +163,7 @@ public class OutboundIntegrationTest {
 
     return RegisterOhRequest.newBuilder()
         .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
-        .setOhAuthPublicKey(com.google.protobuf.ByteString.copyFrom(clientNode.exportPublic()))
+        .setOhAuthPublicKey(com.google.protobuf.ByteString.copyFrom(clientNode.getVerifyKeyBytes()))
         .setRequestedExpiresAt(expires)
         .setTimestampMs(now)
         .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
@@ -215,6 +215,7 @@ public class OutboundIntegrationTest {
   private byte[] signRegister(byte[] ohId, long expires, long ts, byte[] nonce) {
     java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
     try {
+      bos.write(OutboundAuth.SIGNING_VERSION_ED25519);
       bos.write(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_REQ);
       bos.write(ohId);
       bos.write(com.google.common.primitives.Longs.toByteArray(expires));
@@ -229,6 +230,7 @@ public class OutboundIntegrationTest {
   private byte[] signFetch(byte[] ohId, int limit, long cursor, long ts, byte[] nonce) {
     java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
     try {
+      bos.write(OutboundAuth.SIGNING_VERSION_ED25519);
       bos.write(im.redpanda.core.Command.OUTBOUND_FETCH_REQ);
       bos.write(ohId);
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
@@ -246,6 +248,7 @@ public class OutboundIntegrationTest {
   private byte[] signRevoke(byte[] ohId, long ts, byte[] nonce) {
     java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
     try {
+      bos.write(OutboundAuth.SIGNING_VERSION_ED25519);
       bos.write(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_REQ);
       bos.write(ohId);
       bos.write(com.google.common.primitives.Longs.toByteArray(ts));
