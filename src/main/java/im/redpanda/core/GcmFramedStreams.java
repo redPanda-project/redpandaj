@@ -100,6 +100,13 @@ public class GcmFramedStreams implements PeerChiperStreams {
         return;
       }
 
+      int plaintextLen = payloadLen - CryptoUtils.GCM_NONCE_LEN - CryptoUtils.GCM_TAG_LEN;
+      if (output.remaining() < plaintextLen) {
+        // not enough space in the output buffer — keep the complete frame buffered; the caller
+        // sizes its buffer via pendingDecryptBytes() and calls again
+        return;
+      }
+
       // extract one complete frame
       inbound.flip();
       inbound.getInt();

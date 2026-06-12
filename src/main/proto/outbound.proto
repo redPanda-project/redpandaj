@@ -21,7 +21,8 @@ enum Status {
 //   v2 (current):  signature = Ed25519 (64 bytes) over [0x02 | CMD_BYTE | fields | timestamp | nonce]
 //                  oh_auth_public_key = 32-byte Ed25519 verify key
 //   v1 (legacy):   signature = DER ECDSA (brainpool) over [CMD_BYTE | fields | timestamp | nonce]
-//                  oh_auth_public_key = 65-byte brainpool key — deprecated, removed with protocol v22
+//                  oh_auth_public_key = 65-byte brainpool key — deprecated; still accepted during
+//                  the transition phase and removed once protocol-v22 support is dropped
 message RegisterOhRequest {
   bytes oh_id = 1;              // 16-32 random bytes (client generated)
   bytes oh_auth_public_key = 2; // 32-byte Ed25519 verify key (legacy: 65-byte brainpool)

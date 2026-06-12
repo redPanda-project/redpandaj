@@ -117,6 +117,32 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
+  public void decryptKeepsFrameBufferedWhenOutputBufferIsTooSmall() throws Exception {
+    GcmFramedStreams[] streams = pair();
+
+    byte[] message = new byte[256];
+    RANDOM.nextBytes(message);
+    ByteBuffer wire = ByteBuffer.allocate(1024);
+    streams[0].encrypt(ByteBuffer.wrap(message), wire);
+    wire.flip();
+
+    // undersized output: the complete frame must stay buffered, nothing is written
+    ByteBuffer tooSmall = ByteBuffer.allocate(message.length - 1);
+    streams[1].decrypt(wire, tooSmall);
+    assertEquals(0, tooSmall.position());
+    assertTrue(streams[1].pendingDecryptBytes() > 0);
+
+    // retry with enough capacity succeeds without re-sending any bytes
+    ByteBuffer bigEnough = ByteBuffer.allocate(message.length);
+    streams[1].decrypt(ByteBuffer.allocate(0), bigEnough);
+    bigEnough.flip();
+    byte[] decrypted = new byte[bigEnough.remaining()];
+    bigEnough.get(decrypted);
+    assertArrayEquals(message, decrypted);
+    assertEquals(0, streams[1].pendingDecryptBytes());
+  }
+
+  @Test
   public void invalidFrameLengthIsRejected() {
     GcmFramedStreams streams = new GcmFramedStreams(randomKey(), randomKey());
 

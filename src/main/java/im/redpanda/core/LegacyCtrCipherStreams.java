@@ -59,7 +59,7 @@ public class LegacyCtrCipherStreams implements PeerChiperStreams {
         cipherOutputStream.flush();
       }
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error("legacy CTR stream encryption failed", e);
     }
   }
 
@@ -82,7 +82,7 @@ public class LegacyCtrCipherStreams implements PeerChiperStreams {
         cipherInputStream.read(output);
       }
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error("legacy CTR stream decryption failed", e);
     }
   }
 }

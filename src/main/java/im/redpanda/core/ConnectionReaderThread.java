@@ -94,20 +94,22 @@ public class ConnectionReaderThread implements Runnable {
     /**
      * MS03 dual-version support: v23 is the current protocol (Ed25519/X25519/AES-GCM). v22 is only
      * accepted for light clients during the transition phase (deprecated legacy crypto) — v22 full
-     * nodes use incompatible identities (brainpool) and are rejected.
+     * nodes use incompatible identities (brainpool) and are rejected. Unknown (e.g. future)
+     * versions are rejected as well: we cannot speak a protocol we do not know.
      */
     boolean acceptedLegacy =
         Server.ACCEPT_LEGACY_V22_LIGHT_CLIENTS
             && version == Server.LEGACY_VERSION
             && peerInHandshake.isLightClient();
-    if (version < Server.VERSION && !acceptedLegacy) {
-      System.out.println(
+    if (version != Server.VERSION && !acceptedLegacy) {
+      Log.put(
           "unsupported protocol version %s (lightClient=%s), disconnecting..."
-              .formatted(version, peerInHandshake.isLightClient()));
+              .formatted(version, peerInHandshake.isLightClient()),
+          20);
       try {
         peerInHandshake.getSocketChannel().close();
       } catch (IOException e) {
-        e.printStackTrace();
+        Log.sentry(e);
       }
       return false;
     }
