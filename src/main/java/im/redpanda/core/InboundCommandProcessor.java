@@ -854,11 +854,14 @@ public class InboundCommandProcessor {
       }
       // MS05: a reverse-garlic session tag arrives here when the final garlic hop was not the
       // OH host and forwarded the tagged deliver (OhForwarder). Empty for direct deposits.
-      byte[] sessionTag = putMsg.getSessionTag().toByteArray();
-      if (sessionTag.length != 0 && sessionTag.length != OutboundService.SESSION_TAG_BYTES) {
+      // Validate the size on the ByteString before materializing the array (cf. oh_id above).
+      ByteString sessionTagBytes = putMsg.getSessionTag();
+      if (sessionTagBytes.size() != 0
+          && sessionTagBytes.size() != OutboundService.SESSION_TAG_BYTES) {
         respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
         return;
       }
+      byte[] sessionTag = sessionTagBytes.toByteArray();
       OutboundService.DepositResult result =
           outboundService.depositMessage(ohId, content, sessionTag);
       if (result == OutboundService.DepositResult.NOT_FOUND) {
