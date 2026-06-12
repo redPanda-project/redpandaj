@@ -1,6 +1,6 @@
 # Backend MS03b: Forward Secrecy
 
-## Status: Missing (minimaler Backend-Anteil)
+## Status: Done (2026-06-12 — Verifikation, keine Code-Änderung)
 
 > **Master-Spec**: [Master-Spec im docs-Repo](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms03b_forward_secrecy.md) — der Ratchet
 > läuft Ende-zu-Ende zwischen den Clients; Relays und OH-Mailboxen transportieren weiterhin
@@ -19,4 +19,23 @@
    die Payload — muss innerhalb der Flaschenpost-Limits bleiben (relevant für MS04-Padding,
    2048-Byte-Pakete).
 
-Akzeptanzkriterien und Open Questions: siehe Master-Spec.
+## Verifikationsergebnis (2026-06-12)
+
+Wie erwartet **keine Code-Änderung nötig** (deshalb kein Backend-PR):
+
+1. **Deposit**: `OutboundService.depositMessage(byte[] ohId, byte[] payload)` übernimmt die
+   Payload unverändert als `ByteString` in das `MailItem` — kein Parsen des Inhalts.
+2. **Mailbox**: `OutboundMailboxStore` speichert/liefert serialisierte `MailItem`s; einziges
+   inhaltsunabhängiges Limit ist `MAX_ITEM_BYTES = 64 KiB` pro serialisiertem Item
+   (plus `MAX_ITEMS_PER_MAILBOX = 500` und Byte-Quota, MS02b).
+3. **Forwarding**: `OhForwarder`/`GMParser.sendFpToPeer` reichen `byte[] content` opak weiter
+   (oh_id + hop_count, max. 3 Hops) — keine Annahme über das Payload-Format.
+4. **Größenbudget**: Envelope v4 hat **69 Bytes Festoverhead** (v3: 29; Δ +40 durch
+   `ratchet_pub` 32 + `prev_chain_len` 4 + `chain_counter` 4). Gegen das 64-KiB-Limit
+   irrelevant; für MS04 (2048-Byte-Padding) verbleiben ~1,9 KiB für Content +
+   FlaschenpostPut-Wrapper — Budget dokumentiert in Master-Spec Decision 7.
+
+Die E2E-Suite von redpanda-mobile (Alice→Bob über das Referenz-JAR) läuft mit v4-Payloads
+unverändert grün — bestätigt die Opazität in der Praxis.
+
+Akzeptanzkriterien und Decisions: siehe Master-Spec.
