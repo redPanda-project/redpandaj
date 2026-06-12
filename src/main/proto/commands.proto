@@ -70,6 +70,10 @@ message FlaschenpostPut {
     // MS02b: number of node-to-node forwards this packet has taken. Incremented on every
     // forward; packets at the hop limit are dropped instead of forwarded (loop protection).
     uint32 hop_count = 4;
+    // MS05: 16-byte reverse-garlic session tag, preserved when the final garlic hop is not the
+    // OH host and the deliver falls back to this MS02b forwarding. Empty (unset) for direct
+    // deposits and untagged delivers; the host node stores it on the MailItem.
+    bytes session_tag = 5;
 }
 
 // Unified envelope for future-proofing or batching, 

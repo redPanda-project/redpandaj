@@ -66,7 +66,8 @@ public final class GarlicRouter {
     byte cmd = plaintext[0]; // MIN_CIPHERTEXT_LEN guarantees at least one plaintext byte
     switch (cmd) {
       case FlaschenpostV2.CMD_FORWARD -> handleForward(serverContext, plaintext);
-      case FlaschenpostV2.CMD_DELIVER -> handleDeliver(serverContext, plaintext);
+      case FlaschenpostV2.CMD_DELIVER -> handleDeliver(serverContext, plaintext, false);
+      case FlaschenpostV2.CMD_DELIVER_TAGGED -> handleDeliver(serverContext, plaintext, true);
       default -> log.debug("unknown flaschenpost v2 layer command {}, dropping", cmd);
     }
   }
@@ -101,9 +102,16 @@ public final class GarlicRouter {
     routeToNextHop(serverContext, innerNextHop, rebuilt);
   }
 
-  /** CMD_DELIVER: [1 cmd][20 oh_id][4 payload_len][payload][ignored padding]. */
-  private static void handleDeliver(ServerContext serverContext, byte[] plaintext) {
-    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + 4) {
+  /**
+   * CMD_DELIVER: {@code [1 cmd][20 oh_id][4 payload_len][payload][ignored padding]}.
+   *
+   * <p>CMD_DELIVER_TAGGED (MS05, {@code tagged = true}): {@code [1 cmd][20 oh_id][16 session_tag][4
+   * payload_len][payload][ignored padding]} — the session tag is deposited with the payload so the
+   * fetching client can correlate the reverse-garlic reply with a conversation.
+   */
+  private static void handleDeliver(ServerContext serverContext, byte[] plaintext, boolean tagged) {
+    int tagLen = tagged ? FlaschenpostV2.SESSION_TAG_LEN : 0;
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + tagLen + 4) {
       log.debug("flaschenpost v2 deliver layer too short, dropping");
       return;
     }
@@ -111,6 +119,8 @@ public final class GarlicRouter {
     buffer.get(); // command byte
     byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
     buffer.get(ohId);
+    byte[] sessionTag = new byte[tagLen];
+    buffer.get(sessionTag);
     int payloadLen = buffer.getInt();
     if (payloadLen < 0 || payloadLen > buffer.remaining()) {
       log.debug("flaschenpost v2 deliver payload length invalid, dropping");
@@ -123,10 +133,12 @@ public final class GarlicRouter {
     if (outboundService == null) {
       return;
     }
-    OutboundService.DepositResult result = outboundService.depositMessage(ohId, payload);
+    OutboundService.DepositResult result =
+        outboundService.depositMessage(ohId, payload, sessionTag);
     if (result == OutboundService.DepositResult.NOT_FOUND) {
       // the final garlic hop does not have to be the OH host — reuse the MS02b forwarding
-      OhForwarder.forward(serverContext, ohId, payload, 0);
+      // (the session tag rides along on the FlaschenpostPut, see OhForwarder)
+      OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag);
     } else if (result != OutboundService.DepositResult.DEPOSITED) {
       log.debug("flaschenpost v2 deliver not stored: {}", result);
     }
