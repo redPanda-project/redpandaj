@@ -1,9 +1,13 @@
 # Backend MS04: Multi-Hop Relay
 
-## Status: Partial
+## Status: Done
+
+> **Backend umgesetzt in redpandaj [#224](https://github.com/redPanda-project/redpandaj/pull/224)** (2026-06-12).
+> Verbindliche Wire-Format-Festlegungen und beantwortete Open Questions: siehe
+> [Decisions (Backend-MS04) in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms04_multi_hop_garlic.md#decisions-backend-ms04-2026-06-12).
 
 > **Frontend-Alignment**: Backend MS04 ist Voraussetzung für [Frontend MS04](../frontend/ms04_multi_hop_garlic.md).
-> Die Relay-Peeling-Logik und das Flaschenpost v2 Format müssen serverseitig funktionieren, bevor das Frontend Garlic-Pakete baut.
+> Die Relay-Peeling-Logik und das Flaschenpost v2 Format funktionieren jetzt serverseitig — Frontend MS04 kann starten.
 
 ## Goal
 
@@ -17,10 +21,14 @@ Full Nodes als stateless Garlic-Relays: empfangene Flaschenpost v2 Pakete entsch
 
 | Component | File | Status |
 |-----------|------|--------|
-| Single-layer Garlic | `GarlicMessage.java` | Done — wird in MS03 auf v2 umgestellt |
+| Flaschenpost v2 packet format | `FlaschenpostV2.java` | Done — fixe 2048 B, Layer-Krypto (X25519 + HKDF `"flaschenpost-v2"` + AES-256-GCM, AAD = next_hop) |
+| Relay peeling + forwarding | `GarlicRouter.java` | Done — Dedup, Kademlia-Step, CMD_FORWARD-Rebuild, CMD_DELIVER |
+| Wire command | `Command.FLASCHENPOST_V2` (142) | Done — geframed wie alle Payload-Commands |
+| Single-layer Garlic | `GarlicMessage.java` | Done — v2 seit MS03; bleibt für interne Pfade (siehe Decisions) |
 | Flaschenpost base | `Flaschenpost.java` | Done — destination, dedup ID |
-| Dedup cache | `GMStoreManager.java` | Done — 5-min window |
-| Kademlia routing | Peer tables + KadStoreManager | Done |
+| Dedup cache | `GMStoreManager.java` | Done — 5-min window, v1-Messages **und** v2 packet_ids |
+| Kademlia routing | Peer tables + KadStoreManager + `OhForwarder.selectNextPeer` | Done — gemeinsame Next-Peer-Auswahl (direkt → Graph → greedy) |
+| Peer key exchange | `PeerInfoProto.encryption_public_key` | Done — 32-byte X25519 im Peer-Austausch |
 
 ## Spec
 
@@ -141,16 +149,23 @@ Flaschenpost v2 ist binär, kein Protobuf.
 
 ## Acceptance Criteria
 
-- [ ] Ein 2048-Byte Flaschenpost v2 Paket wird korrekt empfangen und die eigene Layer gepeelt
-- [ ] `CMD_FORWARD`: Inneres Paket wird an den nächsten Hop weitergeleitet (erneut 2048 Bytes)
-- [ ] `CMD_DELIVER`: Payload wird in die OH-Mailbox eingeliefert via `outboundService.depositMessage()`
-- [ ] Dedup: Gleiches `packet_id` wird nicht zweimal verarbeitet
-- [ ] Decryption-Failure (fremdes Paket) wird still verworfen — kein Crash
-- [ ] `PeerInfoProto` enthält `encryption_public_key` im Peer-Austausch
-- [ ] Integration-Test: 3-Layer Paket → 3 Relays peelen nacheinander → Delivery an OH
+- [x] Ein 2048-Byte Flaschenpost v2 Paket wird korrekt empfangen und die eigene Layer gepeelt
+- [x] `CMD_FORWARD`: Inneres Paket wird an den nächsten Hop weitergeleitet (erneut 2048 Bytes, neue `packet_id`, neues Random-Padding)
+- [x] `CMD_DELIVER`: Payload wird in die OH-Mailbox eingeliefert via `outboundService.depositMessage()` (bei NOT_FOUND: MS02b-`OhForwarder`-Fallback)
+- [x] Dedup: Gleiches `packet_id` wird nicht zweimal verarbeitet
+- [x] Decryption-Failure (fremdes Paket) wird still verworfen — kein Crash
+- [x] `PeerInfoProto` enthält `encryption_public_key` im Peer-Austausch
+- [x] Integration-Test: 3-Layer Paket → 3 Relays peelen nacheinander → Delivery an OH (`GarlicRouterTest`)
+
+> **Hinweis zum Pseudo-Code oben**: `oh_id` in `CMD_DELIVER` ist **20 Bytes** (KademliaId, wie
+> überall) — die 32 im Pseudo-Code waren ein Fehler; außerdem trägt der Deliver-Plaintext ein
+> explizites `payload_len` (4 Bytes). Verbindlich sind die
+> [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms04_multi_hop_garlic.md#decisions-backend-ms04-2026-06-12).
 
 ## Open Questions
 
-1. Soll der Server bei `CMD_DELIVER` eine Bestätigung zurücksenden (→ R-ACK, MS06), oder ist das erst ab MS06 relevant?
-2. Maximale Paketgröße 2048 Bytes — reicht das? Fragmentierung erst in einem späteren MS?
-3. Wie verhält sich ein Relay, wenn der `next_hop` nicht erreichbar ist? Silent drop oder retry?
+Alle drei Open Questions sind durch die [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms04_multi_hop_garlic.md#decisions-backend-ms04-2026-06-12) beantwortet:
+
+1. ~~Soll der Server bei `CMD_DELIVER` eine Bestätigung zurücksenden?~~ → Nein, best-effort wie die gesamte Flaschenpost-Schicht; R-ACK kommt in MS06 (Decision 9).
+2. ~~Maximale Paketgröße 2048 Bytes — reicht das?~~ → Ja: bei 3 Hops bleiben 1764 B Deliver-Payload (~1,65 KiB Content nach Envelope v4); Fragmentierung deferred (Decision 6).
+3. ~~Verhalten bei nicht erreichbarem `next_hop`?~~ → Silent drop (stateless Relays, kein Retry); Zustellsicherheit liefert die MS02-Retry-Logik des Senders (Decision 8).
