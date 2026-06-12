@@ -1,6 +1,6 @@
 # Backend Milestones — Status Overview
 
-> Last updated: 2026-06-12
+> Last updated: 2026-06-13
 
 Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den fertigen Backend-APIs auf.
 
@@ -22,7 +22,7 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 | [MS03](ms03_authenticated_encryption.md) | Crypto Migration (Ed25519/X25519/GCM) | Done | Frontend MS03 kann starten (Handshake v23, Garlic v2, Ed25519 OH-Auth stehen) |
 | [MS03b](ms03b_forward_secrecy.md) | Forward Secrecy | Done | Verifiziert 2026-06-12 (keine Code-Änderung): Payloads bleiben opak, 64-KiB-Limit unkritisch — Frontend MS03b Done |
 | [MS04](ms04_multi_hop_garlic.md) | Multi-Hop Relay | Done | Frontend MS04 kann starten (Flaschenpost v2 Relay, `FLASCHENPOST_V2` (142), `encryption_public_key` im Peer-Austausch) |
-| [MS05](ms05_reverse_garlic.md) | Reverse Garlic (Relay-Seite) | Missing | Frontend MS05 blocked — CMD_DELIVER mit session_tag muss funktionieren |
+| [MS05](ms05_reverse_garlic.md) | Reverse Garlic (Relay-Seite) | Done | Frontend MS05 kann starten (`CMD_DELIVER_TAGGED` (0x03), `MailItem.session_tag`, RGB-Modell = Hop-Deskriptoren laut Master-Spec Decision 6) |
 | [MS06](ms06_two_layer_ack.md) | R-ACK Generation | Missing | Frontend MS06 blocked — OH muss R-ACK erzeugen können |
 | [MS07](ms07_push_notifications.md) | Push Sender (FCM/APNs) | Missing | Frontend MS07 blocked — Push-Infrastruktur muss serverseitig stehen |
 | [MS08](ms08_group_chat.md) | (keine Backend-Änderungen) | N/A | Frontend MS08 kann nach MS05 starten |
@@ -39,7 +39,7 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 | OH Forwarding (Option A) | `OhForwarder.java`, `GMParser.java` | Done — oh_id + hop_count erhalten, max. 3 Hops |
 | OH Auth (Ed25519 + replay) | `OutboundAuth.java` | Done — Ed25519 + Signing-Versions-Byte (MS03), Legacy-ECDSA-Fallback bis v22-Removal |
 | Garlic encryption (single layer) | `GarlicMessage.java` | Done — v2: AES-256-GCM + X25519 + HKDF, AAD = Ziel-KademliaId (MS03) |
-| Multi-hop garlic relay | `FlaschenpostV2.java`, `GarlicRouter.java` | Done — fixe 2048-B-Pakete, Layer-Peeling, Rebuild + Re-Padding, packet_id-Dedup (MS04) |
+| Multi-hop garlic relay | `FlaschenpostV2.java`, `GarlicRouter.java` | Done — fixe 2048-B-Pakete, Layer-Peeling, Rebuild + Re-Padding, packet_id-Dedup (MS04); `CMD_DELIVER_TAGGED` mit `session_tag`-Deposit (MS05) |
 | Kademlia DHT | `KadStoreManager.java` | Done (in-memory) — Ed25519-Signaturen (MS03) |
 | TCP handshake + stream encryption | `ConnectionHandler.java`, `GcmFramedStreams.java` | Done — v23: framed AES-256-GCM, Counter-Nonces; v22 nur noch Light Clients (MS03) |
 | Node identity | `NodeId.java` | Done — Ed25519 (sign) + X25519 (encrypt) Dual-Keypair (MS03) |

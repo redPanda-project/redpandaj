@@ -1,13 +1,14 @@
 # Backend MS05: Reverse Garlic (Relay-Seite)
 
-## Status: Missing
+## Status: Done (2026-06-13, redpandaj [#226](https://github.com/redPanda-project/redpandaj/pull/226))
 
-> **Frontend-Alignment**: Backend MS05 ist Voraussetzung für [Frontend MS05](../frontend/ms05_reverse_garlic.md).
-> Der Server muss `CMD_DELIVER` mit `session_tag` korrekt in der Mailbox ablegen.
+> **Frontend-Alignment**: Backend MS05 ist Voraussetzung für [Frontend MS05](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms05_reverse_garlic.md).
+> Der Server legt getaggte Delivers (`CMD_DELIVER_TAGGED`) mit `session_tag` in der Mailbox ab.
+> Verbindliche Festlegungen: [Decisions (Backend-MS05)](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13) in der Master-Spec.
 
 ## Goal
 
-Aus Backend-Sicht ist Reverse Garlic identisch mit Forward Garlic — die Relays peelen Layers und leiten weiter (MS04-Logik). Der einzige Unterschied: Bei `CMD_DELIVER` muss der `session_tag` mit in die Mailbox geschrieben werden, damit das Frontend eingehende Replies dem richtigen Channel zuordnen kann.
+Aus Backend-Sicht ist Reverse Garlic identisch mit Forward Garlic — die Relays peelen Layers und leiten weiter (MS04-Logik). Der einzige Unterschied: Bei einem getaggten Deliver muss der `session_tag` mit in die Mailbox geschrieben werden, damit das Frontend eingehende Replies dem richtigen Channel zuordnen kann.
 
 ## Prerequisites
 
@@ -17,34 +18,31 @@ Aus Backend-Sicht ist Reverse Garlic identisch mit Forward Garlic — die Relays
 
 | Component | File | Status |
 |-----------|------|--------|
-| Relay-Peeling | `GarlicRouter.java` (aus MS04) | Done nach MS04 |
-| OH Mailbox | `OutboundMailboxStore.java` | Done — kennt kein `session_tag` |
+| Relay-Peeling | `GarlicRouter.java` (aus MS04) | Done — unverändert für FORWARD; neuer `CMD_DELIVER_TAGGED`-Zweig |
+| OH Mailbox | `OutboundMailboxStore.java` | Done — `MailItem.session_tag` wird mitserialisiert |
+| Deposit-API | `OutboundService.java` | Done — `depositMessage(ohId, payload, sessionTag)` |
+| MS02b-Fallback | `OhForwarder.java`, `GMParser.java` | Done — `FlaschenpostPut.session_tag` konserviert den Tag |
 
-## Spec
+## Spec (umgesetzt)
 
-### 1. CMD_DELIVER mit Session-Tag
+### 1. Getaggter Deliver: `CMD_DELIVER_TAGGED (0x03)`
 
-**Erweiterung des `CMD_DELIVER` Plaintext-Formats:**
+Statt einer In-Place-Änderung von `CMD_DELIVER` (hätte die released Frontend-MS04-Clients
+gebrochen) gibt es ein **neues Layer-Command** — das Layer-Format ist über das Command-Byte
+erweiterbar (MS04):
 
-Bisher (MS04):
 ```
-[1 CMD_DELIVER] [32 oh_id] [N payload]
+CMD_DELIVER        (0x02): [1 cmd][20 oh_id][4 payload_len][payload][opt. Padding]   (unverändert, MS04)
+CMD_DELIVER_TAGGED (0x03): [1 cmd][20 oh_id][16 session_tag][4 payload_len][payload][opt. Padding]
 ```
 
-Neu (MS05):
-```
-[1 CMD_DELIVER] [32 oh_id] [16 session_tag] [N payload]
-```
-
-- `session_tag` = 16 Bytes, vom Absender (Alice) im RGB festgelegt.
+- `oh_id` = **20 Bytes** (KademliaId — die 32 im früheren Pseudo-Code waren derselbe bekannte
+  Fehler wie in MS04, siehe MS04 Decision 4); `payload_len` explizit wie in MS04.
+- `session_tag` = 16 Bytes, vom ursprünglichen Sender (Alice) im RGB festgelegt.
 - Der Relay-Node sieht den `session_tag` nicht (er ist verschlüsselt in der innersten Layer).
-- Nur der OH-Node (letzte Station) sieht `oh_id` + `session_tag` + `payload`.
+- Nur der finale Hop sieht `oh_id` + `session_tag` + `payload`.
 
-### 2. MailItem Erweiterung
-
-**`OutboundMailboxStore`:**
-
-Das `MailItem` in der Mailbox enthält jetzt optional einen `session_tag`:
+### 2. MailItem-Erweiterung
 
 ```protobuf
 message MailItem {
@@ -52,50 +50,44 @@ message MailItem {
   int64 received_at_ms = 2;
   bytes payload = 3;
   uint64 sequence_id = 4;
-  bytes session_tag = 5;    // NEW: 16 bytes, optional (empty for direct messages)
+  bytes session_tag = 5;    // NEW (MS05): 16 bytes, leer für direkte/ungetaggte Nachrichten
 }
 ```
 
-### 3. GarlicRouter Anpassung
+`FetchResponse` liefert den Tag unverändert an den Client. Deposit-Validierung: Tag leer
+oder exakt 16 Bytes, sonst `BAD_REQUEST`.
 
-**`GarlicRouter.java` — `CMD_DELIVER` Handler:**
+### 3. GarlicRouter
 
-```java
-case CMD_DELIVER:
-    byte[] ohId = readBytes(plaintext, 1, 32);
-    byte[] sessionTag = readBytes(plaintext, 33, 16);
-    byte[] payload = readBytes(plaintext, 49, payloadLen);
-
-    MailItem item = MailItem.newBuilder()
-        .setMessageId(generateMessageId())
-        .setReceivedAtMs(System.currentTimeMillis())
-        .setPayload(ByteString.copyFrom(payload))
-        .setSessionTag(ByteString.copyFrom(sessionTag))
-        .build();
-
-    outboundService.depositMessage(ohId, item);
-    break;
-```
+`CMD_DELIVER_TAGGED` wird vom gemeinsamen Deliver-Handler geparst (oh_id, session_tag,
+payload_len, payload) und via `outboundService.depositMessage(ohId, payload, sessionTag)`
+abgelegt. Bei `NOT_FOUND` greift der MS02b-`OhForwarder`-Fallback — dafür trägt
+`FlaschenpostPut` neu das Feld `session_tag = 5`, sodass der Tag den Forward zum
+OH-Host-Node überlebt.
 
 ### 4. Relay-Verhalten (keine Änderung)
 
 Relays auf dem Reverse-Garlic-Pfad verhalten sich exakt wie auf dem Forward-Pfad:
-- Layer peelen (X25519 + AES-256-GCM)
-- `CMD_FORWARD` → next_hop weiterleiten
-- `CMD_DELIVER` → OH-Mailbox einliefern
+- Layer peelen (X25519 + AES-256-GCM, AAD = next_hop)
+- `CMD_FORWARD` → next_hop weiterleiten (Rebuild mit frischer packet_id + Padding)
+- `CMD_DELIVER`/`CMD_DELIVER_TAGGED` → OH-Mailbox einliefern
 
-Es gibt keine spezielle "Reverse"-Logik auf Relay-Ebene. Die Pfad-Konstruktion passiert komplett im Frontend (RGB Builder).
+Es gibt keine spezielle "Reverse"-Logik auf Relay-Ebene. Die Pfad-Konstruktion passiert
+komplett im Frontend (RGB Builder).
 
 ## Protobuf Changes
 
 ```protobuf
-// outbound.proto — MailItem Erweiterung:
+// outbound.proto:
 message MailItem {
-  bytes message_id = 1;
-  int64 received_at_ms = 2;
-  bytes payload = 3;
-  uint64 sequence_id = 4;
-  bytes session_tag = 5;    // NEW
+  // ...
+  bytes session_tag = 5;    // NEW (MS05)
+}
+
+// commands.proto:
+message FlaschenpostPut {
+  // ...
+  bytes session_tag = 5;    // NEW (MS05): Tag-Erhalt beim MS02b-Fallback-Forwarding
 }
 ```
 
@@ -103,19 +95,24 @@ message MailItem {
 
 | File | Action |
 |------|--------|
-| `GarlicRouter.java` | `CMD_DELIVER`: `session_tag` (16 bytes) aus Plaintext extrahieren |
-| `OutboundService.java` | `depositMessage()` nimmt `MailItem` mit `session_tag` entgegen |
-| `outbound.proto` | `session_tag` Feld zu `MailItem` hinzufügen |
+| `FlaschenpostV2.java` | Konstanten `CMD_DELIVER_TAGGED (0x03)`, `SESSION_TAG_LEN (16)` |
+| `GarlicRouter.java` | Gemeinsamer Deliver-Handler parst optionalen 16-Byte-Tag; Fallback reicht Tag durch |
+| `OutboundService.java` | `depositMessage(ohId, payload, sessionTag)` + Längen-Validierung |
+| `OhForwarder.java` / `GMParser.java` | `sessionTag`-Passthrough auf dem MS02b-Forward |
+| `InboundCommandProcessor.java` | `FlaschenpostPut.session_tag` validieren + durchreichen |
+| `outbound.proto` / `commands.proto` | `session_tag`-Felder (siehe oben) |
 
 ## Acceptance Criteria
 
-- [ ] `CMD_DELIVER` Plaintext mit `[oh_id][session_tag][payload]` wird korrekt geparst
-- [ ] `MailItem` in der Mailbox enthält den `session_tag` (16 Bytes)
-- [ ] `FetchResponse` liefert `MailItem` inkl. `session_tag` an den Client
-- [ ] Nachrichten ohne `session_tag` (direct messages) funktionieren weiterhin (leeres Feld)
-- [ ] Relays auf dem Reverse-Pfad verhalten sich identisch zu Forward-Relays
+- [x] Getaggter Deliver-Plaintext mit `[oh_id][session_tag][payload_len][payload]` wird korrekt geparst *(`CMD_DELIVER_TAGGED`, `ReverseGarlicRouterTest`)*
+- [x] `MailItem` in der Mailbox enthält den `session_tag` (16 Bytes)
+- [x] `FetchResponse` liefert `MailItem` inkl. `session_tag` an den Client *(`OutboundServiceIntegrationTest`)*
+- [x] Nachrichten ohne `session_tag` (direct messages, `CMD_DELIVER`) funktionieren weiterhin (leeres Feld)
+- [x] Relays auf dem Reverse-Pfad verhalten sich identisch zu Forward-Relays *(3-Relay-E2E `ReverseGarlicRouterTest`; Negativtests: Replay-Dedup, verkürzte Tagged-Layer, ungültige payload_len, Remote-OH-Fallback mit Tag-Erhalt)*
 
 ## Open Questions
 
-1. Soll `session_tag` ein required oder optional Feld sein? Optional ist rückwärtskompatibel.
-2. Braucht der OH-Node Kenntnis über die Herkunft (Forward vs. Reverse), oder ist das irrelevant?
+Beantwortet, siehe [Decisions (Backend-MS05)](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13):
+
+1. ~~Soll `session_tag` ein required oder optional Feld sein?~~ → Optional (leer für direkte Nachrichten), rückwärtskompatibel (Decision 2).
+2. ~~Braucht der OH-Node Kenntnis über die Herkunft (Forward vs. Reverse)?~~ → Nein — die Tag-Präsenz ist die einzige nötige Unterscheidung (Decision 4).
