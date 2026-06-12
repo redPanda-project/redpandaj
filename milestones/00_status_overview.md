@@ -20,7 +20,7 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 | [MS02](ms02_reliable_delivery.md) | Reliable Mailbox & Lifecycle | Done | Frontend MS02 kann starten |
 | [MS02b](ms02b_oh_discovery_forwarding.md) | OH Discovery & Forwarding | Done | Frontend MS02b kann starten (Status-Codes, `want_response`) |
 | [MS03](ms03_authenticated_encryption.md) | Crypto Migration (Ed25519/X25519/GCM) | Done | Frontend MS03 kann starten (Handshake v23, Garlic v2, Ed25519 OH-Auth stehen) |
-| [MS03b](ms03b_forward_secrecy.md) | Forward Secrecy | Missing | Minimaler Backend-Anteil — Ratchet ist Ende-zu-Ende zwischen Clients |
+| [MS03b](ms03b_forward_secrecy.md) | Forward Secrecy | Done | Verifiziert 2026-06-12 (keine Code-Änderung): Payloads bleiben opak, 64-KiB-Limit unkritisch — Frontend MS03b Done |
 | [MS04](ms04_multi_hop_garlic.md) | Multi-Hop Relay | Partial | Frontend MS04 blocked — Relay-Peeling muss serverseitig funktionieren |
 | [MS05](ms05_reverse_garlic.md) | Reverse Garlic (Relay-Seite) | Missing | Frontend MS05 blocked — CMD_DELIVER mit session_tag muss funktionieren |
 | [MS06](ms06_two_layer_ack.md) | R-ACK Generation | Missing | Frontend MS06 blocked — OH muss R-ACK erzeugen können |
