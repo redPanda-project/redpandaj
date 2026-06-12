@@ -13,7 +13,7 @@
 > opak — keine Backend-Änderung); das Signing-Versions-Byte ist Teil dieses
 > Backend-Milestones.
 
-> **Frontend-Alignment**: Backend MS03 ist Voraussetzung für [Frontend MS03](../frontend/ms03_authenticated_encryption.md).
+> **Frontend-Alignment**: Backend MS03 ist Voraussetzung für [Frontend MS03](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms03_authenticated_encryption.md).
 > Das neue Handshake-Protokoll (v23) und das Garlic-Wire-Format stehen jetzt auf dem Server —
 > Frontend MS03 kann starten.
 
