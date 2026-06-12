@@ -65,11 +65,17 @@ public class HandshakeVersionsE2EIT {
 
       // 1. happy path: handshake + encrypted ping/pong
       try (V23Client client = V23Client.connect(port)) {
+        // the node sends its initial ping right after activating the encryption
         byte firstCommand = client.readEncryptedCommand();
         assertEquals(Command.PING, firstCommand);
-        client.sendEncrypted(new byte[] {Command.PONG});
 
-        // a full extra roundtrip proves both directions and counters work
+        // like the mobile client our first encrypted command is an initial ping — the node
+        // consumes it to complete the handshake (promotion to a full Peer)
+        client.sendEncrypted(new byte[] {Command.PING});
+        LightClientBase.pause();
+
+        // a second ping is answered by the command processor with a pong — proves both
+        // directions and frame counters work
         client.sendEncrypted(new byte[] {Command.PING});
         assertEquals(Command.PONG, client.readEncryptedCommand());
       }
@@ -77,7 +83,8 @@ public class HandshakeVersionsE2EIT {
       // 2. tampered frame: the node must drop the connection (no silent corruption)
       try (V23Client client = V23Client.connect(port)) {
         assertEquals(Command.PING, client.readEncryptedCommand());
-        client.sendEncrypted(new byte[] {Command.PONG});
+        client.sendEncrypted(new byte[] {Command.PING});
+        LightClientBase.pause();
 
         client.sendTamperedFrame(new byte[] {Command.PING});
         assertTrue("node must disconnect after a tampered frame", client.awaitDisconnect(10_000));
@@ -98,7 +105,10 @@ public class HandshakeVersionsE2EIT {
       try (V22LegacyClient client = V22LegacyClient.connect(port)) {
         byte firstCommand = client.readEncryptedCommand();
         assertEquals(Command.PING, firstCommand);
-        client.sendEncrypted(new byte[] {Command.PONG});
+
+        // initial ping completes the handshake, the second one is answered with a pong
+        client.sendEncrypted(new byte[] {Command.PING});
+        LightClientBase.pause();
 
         client.sendEncrypted(new byte[] {Command.PING});
         assertEquals(Command.PONG, client.readEncryptedCommand());
