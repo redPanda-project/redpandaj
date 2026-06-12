@@ -11,7 +11,11 @@ public class GMStoreManager {
   public static final long REMOVE_AFTER_MILLISECONDS = 1000L * 60L * 5L;
   private static final HashMap<GarlicMessage, Long> entries = new HashMap<>();
 
-  /** MS04: seen Flaschenpost v2 packet ids (dedup and loop protection), same 5-minute window. */
+  /**
+   * MS04: seen Flaschenpost v2 packet ids, same 5-minute window. A pure dedup cache for identical
+   * packets — it stops replays and routing loops of the unchanged packet; peeled forwards carry a
+   * fresh packet_id and are bounded by the layer count instead (see {@code GarlicRouter}).
+   */
   private static final HashMap<Integer, Long> v2Entries = new HashMap<>();
 
   private static final ReentrantLock lock = new ReentrantLock();

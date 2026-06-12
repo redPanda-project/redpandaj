@@ -131,7 +131,8 @@ public final class OhForwarder {
     }
 
     // No graph route — greedy Kademlia fallback: next hop must be strictly closer to the target
-    // than we are (forward progress), dedup/hop limits bound the worst case.
+    // than we are (forward progress). Loop protection is the caller's job: the hop limit for the
+    // MS02b OH forwarding, the packet_id dedup for Flaschenpost v2 routing.
     Peer nearest = candidates.first();
     int ourDistance = targetNodeId.getDistance(serverContext.getNonce());
     int nearestDistance = targetNodeId.getDistance(nearest.getKademliaId());

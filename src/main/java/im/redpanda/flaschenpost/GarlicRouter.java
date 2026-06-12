@@ -15,9 +15,12 @@ import lombok.extern.slf4j.Slf4j;
  * MS04 stateless garlic relay: handles inbound {@link Command#FLASCHENPOST_V2} packets.
  *
  * <ul>
- *   <li>Dedup: a {@code packet_id} is processed at most once per node (5-minute window) — this is
- *       also the loop protection, the packet intentionally carries no hop counter (it would leak
- *       the position in the path).
+ *   <li>Dedup: a {@code packet_id} is processed at most once per node (5-minute window). This stops
+ *       replays and routing loops of the <em>unchanged</em> packet (the Kademlia steps between
+ *       garlic hops keep the packet_id). Peeled {@code CMD_FORWARD} chains rebuild with a fresh
+ *       packet_id, but their length is physically bounded by the layer count: every layer costs 85
+ *       bytes of the fixed 2048-byte packet, so a sender cannot construct unbounded relay loops.
+ *       The packet intentionally carries no hop counter (it would leak the position in the path).
  *   <li>If {@code next_hop} is not us, the packet is routed unchanged toward {@code next_hop}
  *       (Kademlia step between garlic hops).
  *   <li>If it is us, the layer is peeled: {@code CMD_FORWARD} rebuilds a fresh 2048-byte packet
