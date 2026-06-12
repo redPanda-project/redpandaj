@@ -2,9 +2,9 @@
 
 ## Status: Done (2026-06-13, redpandaj [#226](https://github.com/redPanda-project/redpandaj/pull/226))
 
-> **Frontend-Alignment**: Backend MS05 ist Voraussetzung für [Frontend MS05](../frontend/ms05_reverse_garlic.md).
+> **Frontend-Alignment**: Backend MS05 ist Voraussetzung für [Frontend MS05](https://github.com/redPanda-project/docs/blob/main/docs/milestones/frontend/ms05_reverse_garlic.md).
 > Der Server legt getaggte Delivers (`CMD_DELIVER_TAGGED`) mit `session_tag` in der Mailbox ab.
-> Verbindliche Festlegungen: [Decisions (Backend-MS05)](../ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13) in der Master-Spec.
+> Verbindliche Festlegungen: [Decisions (Backend-MS05)](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13) in der Master-Spec.
 
 ## Goal
 
@@ -112,7 +112,7 @@ message FlaschenpostPut {
 
 ## Open Questions
 
-Beantwortet, siehe [Decisions (Backend-MS05)](../ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13):
+Beantwortet, siehe [Decisions (Backend-MS05)](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13):
 
 1. ~~Soll `session_tag` ein required oder optional Feld sein?~~ → Optional (leer für direkte Nachrichten), rückwärtskompatibel (Decision 2).
 2. ~~Braucht der OH-Node Kenntnis über die Herkunft (Forward vs. Reverse)?~~ → Nein — die Tag-Präsenz ist die einzige nötige Unterscheidung (Decision 4).
