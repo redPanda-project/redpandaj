@@ -65,12 +65,26 @@ public final class OhForwarder {
       byte[] ohId,
       byte[] content,
       int hopCount) {
+    Peer nextPeer = selectNextPeer(serverContext, targetNodeId);
+    if (nextPeer != null) {
+      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1);
+    }
+  }
+
+  /**
+   * Selects the next peer toward {@code targetNodeId}: the target itself if directly connected,
+   * otherwise the cheapest next hop in the weighted node graph, otherwise the greedy Kademlia step
+   * (only if it makes strict forward progress). Shared by the MS02b OH forwarding and the MS04
+   * Flaschenpost v2 relay routing.
+   *
+   * @return the selected peer or {@code null} if no usable route exists (best-effort drop)
+   */
+  static Peer selectNextPeer(ServerContext serverContext, KademliaId targetNodeId) {
     PeerList peerList = serverContext.getPeerList();
 
     Peer direct = peerList.get(targetNodeId);
     if (direct != null && direct.isConnected()) {
-      GMParser.sendFpToPeer(direct, content, ohId, hopCount + 1);
-      return;
+      return direct;
     }
 
     // tie-break equal XOR distances by KademliaId so the TreeSet never collapses distinct peers
@@ -83,7 +97,7 @@ public final class OhForwarder {
     try {
       ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
       if (peerArrayList == null) {
-        return;
+        return null;
       }
       for (Peer p : peerArrayList) {
         // same candidate filter as garlic routing: connected full nodes with known node id
@@ -97,8 +111,8 @@ public final class OhForwarder {
     }
 
     if (candidates.isEmpty()) {
-      log.debug("no candidate peer to forward OH deposit toward {}", targetNodeId);
-      return;
+      log.debug("no candidate peer to forward toward {}", targetNodeId);
+      return null;
     }
 
     // Graph routing needs our own Node, which is wired late during startup — fall back to the
@@ -112,20 +126,19 @@ public final class OhForwarder {
               graph, self, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
 
       if (selection.peer() != null) {
-        GMParser.sendFpToPeer(selection.peer(), content, ohId, hopCount + 1);
-        return;
+        return selection.peer();
       }
     }
 
     // No graph route — greedy Kademlia fallback: next hop must be strictly closer to the target
-    // than we are (forward progress), the hop limit bounds the worst case.
+    // than we are (forward progress), dedup/hop limits bound the worst case.
     Peer nearest = candidates.first();
     int ourDistance = targetNodeId.getDistance(serverContext.getNonce());
     int nearestDistance = targetNodeId.getDistance(nearest.getKademliaId());
     if (nearestDistance < ourDistance) {
-      GMParser.sendFpToPeer(nearest, content, ohId, hopCount + 1);
-    } else {
-      log.debug("no peer closer to OH host {} than ourselves, dropping", targetNodeId);
+      return nearest;
     }
+    log.debug("no peer closer to {} than ourselves, dropping", targetNodeId);
+    return null;
   }
 }

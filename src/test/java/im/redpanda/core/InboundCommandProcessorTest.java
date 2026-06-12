@@ -205,4 +205,41 @@ public class InboundCommandProcessorTest {
     assertFalse("Peer with null IP should be skipped", foundInvalid);
     assertTrue(sendPeerList.getPeersCount() >= 1);
   }
+
+  @Test
+  public void parseCommand_requestPeerList_includesEncryptionPublicKey()
+      throws InvalidProtocolBufferException {
+    // MS04: peers with a known NodeId must expose their X25519 encryption public key so
+    // clients can select garlic hops
+    ServerContext ctx = ServerContext.buildDefaultServerContext();
+    InboundCommandProcessor proc = newProcessor(ctx);
+
+    NodeId knownNodeId = NodeId.generateWithSimpleKey();
+    Peer knownPeer = new Peer("127.0.0.1", 44444, knownNodeId);
+    ctx.getPeerList().add(knownPeer);
+
+    Peer requestingPeer = new Peer("10.0.0.1", 33333, ctx.getNodeId());
+    requestingPeer.setConnected(true);
+    requestingPeer.writeBuffer = ByteBuffer.allocate(4096);
+
+    proc.parseCommand(Command.REQUEST_PEERLIST, ByteBuffer.allocate(0), requestingPeer);
+
+    requestingPeer.writeBuffer.flip();
+    assertEquals(Command.SEND_PEERLIST, requestingPeer.writeBuffer.get());
+    int len = requestingPeer.writeBuffer.getInt();
+    byte[] data = new byte[len];
+    requestingPeer.writeBuffer.get(data);
+
+    im.redpanda.proto.SendPeerList sendPeerList = im.redpanda.proto.SendPeerList.parseFrom(data);
+    boolean found = false;
+    for (im.redpanda.proto.PeerInfoProto p : sendPeerList.getPeersList()) {
+      if (p.getPort() == 44444) {
+        found = true;
+        org.junit.Assert.assertArrayEquals(
+            knownNodeId.getEncryptionPubKey().getEncoded(),
+            p.getEncryptionPublicKey().toByteArray());
+      }
+    }
+    assertTrue("peer with known NodeId must be in the list", found);
+  }
 }

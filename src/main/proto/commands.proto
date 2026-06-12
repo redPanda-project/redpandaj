@@ -17,6 +17,10 @@ message PeerInfoProto {
     string ip = 1;
     int32 port = 2;
     NodeIdProto node_id = 3; // optional if not known
+    // MS04: 32-byte X25519 encryption public key of the node, so clients can pick
+    // garlic hops without importing the full 64-byte node_id export (it duplicates
+    // bytes 32..63 of node_id and is only set when node_id is known).
+    bytes encryption_public_key = 4;
 }
 
 message SendPeerList {
