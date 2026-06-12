@@ -553,7 +553,8 @@ public class OutboundServiceIntegrationTest {
   }
 
   private byte[] signRegister(byte[] ohId, long expires, long ts, byte[] nonce) {
-    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    ByteBuffer buf = ByteBuffer.allocate(2 + ohId.length + 8 + 8 + nonce.length);
+    buf.put(OutboundAuth.SIGNING_VERSION_ED25519);
     buf.put(Command.OUTBOUND_REGISTER_OH_REQ);
     buf.put(ohId);
     buf.putLong(expires);
@@ -563,7 +564,8 @@ public class OutboundServiceIntegrationTest {
   }
 
   private byte[] signFetch(byte[] ohId, int limit, long cursor, long ts, byte[] nonce) {
-    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length + 4 + 8);
+    ByteBuffer buf = ByteBuffer.allocate(2 + ohId.length + 8 + nonce.length + 4 + 8);
+    buf.put(OutboundAuth.SIGNING_VERSION_ED25519);
     buf.put(Command.OUTBOUND_FETCH_REQ);
     buf.put(ohId);
     buf.putLong(ts);
@@ -574,7 +576,8 @@ public class OutboundServiceIntegrationTest {
   }
 
   private byte[] signRevoke(byte[] ohId, long ts, byte[] nonce) {
-    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length);
+    ByteBuffer buf = ByteBuffer.allocate(2 + ohId.length + 8 + nonce.length);
+    buf.put(OutboundAuth.SIGNING_VERSION_ED25519);
     buf.put(Command.OUTBOUND_REVOKE_OH_REQ);
     buf.put(ohId);
     buf.putLong(ts);
@@ -583,7 +586,8 @@ public class OutboundServiceIntegrationTest {
   }
 
   private byte[] signAckFetch(byte[] ohId, long ackedSeqId, long ts, byte[] nonce) {
-    ByteBuffer buf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    ByteBuffer buf = ByteBuffer.allocate(2 + ohId.length + 8 + 8 + nonce.length);
+    buf.put(OutboundAuth.SIGNING_VERSION_ED25519);
     buf.put(Command.OUTBOUND_ACK_FETCH_REQ);
     buf.put(ohId);
     buf.putLong(ackedSeqId);
