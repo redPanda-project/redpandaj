@@ -52,27 +52,10 @@ public class OutboundAuth {
       return AuthResult.REPLAY;
     }
 
-    // 3. Verify Signature
-    NodeId verifier;
-    try {
-      verifier = NodeId.importPublic(ohAuthPublicKey);
-    } catch (Exception e) {
-      logger.warn("OutboundAuth: Could not import public key", e);
-      return AuthResult.INVALID_SIGNATURE;
-    }
-
-    if (verifier == null) {
-      logger.warn("OutboundAuth: Could not import public key");
-      return AuthResult.INVALID_SIGNATURE; // Malformed public key
-    }
-
-    try {
-      if (!verifier.verify(signingBytes, signature)) {
-        logger.warn("OutboundAuth: Signature verification failed");
-        return AuthResult.INVALID_SIGNATURE;
-      }
-    } catch (Exception e) {
-      logger.warn("OutboundAuth: Signature verification error", e);
+    // 3. Verify Signature — dual-version support (MS03 transition):
+    //    32-byte key  -> Ed25519 (v2, current)
+    //    65-byte key  -> brainpoolp256r1 SHA256withECDSA (v1, deprecated legacy light clients)
+    if (!verifySignature(ohAuthPublicKey, signingBytes, signature)) {
       return AuthResult.INVALID_SIGNATURE;
     }
 
@@ -91,5 +74,50 @@ public class OutboundAuth {
 
   private void cleanupCache(long now) {
     replayCache.entrySet().removeIf(entry -> Math.abs(now - entry.getValue()) > TIME_WINDOW_MS);
+  }
+
+  /**
+   * Verifies the signature with the algorithm selected by the public key length. Ed25519 (32-byte
+   * key, 64-byte signature) is the MS03 format; the brainpool ECDSA path only exists for legacy
+   * (pre-MS03) light clients and is removed together with protocol-v22 support.
+   */
+  @SuppressWarnings("deprecation")
+  private boolean verifySignature(byte[] ohAuthPublicKey, byte[] signingBytes, byte[] signature) {
+    try {
+      if (ohAuthPublicKey.length == NodeId.KEY_COMPONENT_LEN) {
+        // Ed25519: clients send only the 32-byte verify key as oh_auth_public_key
+        org.bouncycastle.crypto.params.Ed25519PublicKeyParameters verifyKey =
+            new org.bouncycastle.crypto.params.Ed25519PublicKeyParameters(ohAuthPublicKey, 0);
+        if (signature == null || signature.length != NodeId.SIGNATURE_LEN) {
+          logger.warn("OutboundAuth: invalid Ed25519 signature length");
+          return false;
+        }
+        org.bouncycastle.crypto.signers.Ed25519Signer signer =
+            new org.bouncycastle.crypto.signers.Ed25519Signer();
+        signer.init(false, verifyKey);
+        signer.update(signingBytes, 0, signingBytes.length);
+        if (!signer.verifySignature(signature)) {
+          logger.warn("OutboundAuth: Ed25519 signature verification failed");
+          return false;
+        }
+        return true;
+      }
+
+      if (ohAuthPublicKey.length == im.redpanda.crypt.legacy.LegacyNodeId.PUBLIC_KEYLEN) {
+        im.redpanda.crypt.legacy.LegacyNodeId verifier =
+            im.redpanda.crypt.legacy.LegacyNodeId.importPublic(ohAuthPublicKey);
+        if (!verifier.verify(signingBytes, signature)) {
+          logger.warn("OutboundAuth: legacy ECDSA signature verification failed");
+          return false;
+        }
+        return true;
+      }
+
+      logger.warn("OutboundAuth: unsupported public key length {} bytes", ohAuthPublicKey.length);
+      return false;
+    } catch (Exception e) {
+      logger.warn("OutboundAuth: Signature verification error", e);
+      return false;
+    }
   }
 }

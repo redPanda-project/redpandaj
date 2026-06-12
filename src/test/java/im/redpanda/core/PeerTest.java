@@ -222,7 +222,7 @@ public class PeerTest {
         new CipherInputStreamByteBuffer(peerInputStream, cipherReceive);
 
     peer.setPeerChiperStreams(
-        new PeerChiperStreams(
+        new LegacyCtrCipherStreams(
             peerOutputStream, peerInputStream, cipherInputStream, cipherOutputStream));
   }
 }

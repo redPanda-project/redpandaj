@@ -3,7 +3,6 @@ package im.redpanda.outbound;
 import static org.junit.Assert.assertEquals;
 
 import im.redpanda.core.NodeId;
-import java.security.KeyPair;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -16,8 +15,7 @@ public class OutboundAuthTest {
   public void setUp() {
     auth = new OutboundAuth();
     // Generate a valid keypair for testing
-    KeyPair keyPair = NodeId.generateECKeys();
-    clientNode = new NodeId(keyPair);
+    clientNode = NodeId.generateWithSimpleKey();
   }
 
   @Test
@@ -41,7 +39,7 @@ public class OutboundAuthTest {
     byte[] signature = clientNode.sign(payload);
 
     OutboundAuth.AuthResult result =
-        auth.verify(clientNode.exportPublic(), payload, signature, timestamp, ohId, nonce);
+        auth.verify(clientNode.getVerifyKeyBytes(), payload, signature, timestamp, ohId, nonce);
 
     assertEquals(OutboundAuth.AuthResult.OK, result);
   }
@@ -60,7 +58,8 @@ public class OutboundAuthTest {
     byte[] tamperedPayload = "tampered".getBytes();
 
     OutboundAuth.AuthResult result =
-        auth.verify(clientNode.exportPublic(), tamperedPayload, signature, timestamp, ohId, nonce);
+        auth.verify(
+            clientNode.getVerifyKeyBytes(), tamperedPayload, signature, timestamp, ohId, nonce);
 
     assertEquals(OutboundAuth.AuthResult.INVALID_SIGNATURE, result);
   }
@@ -77,7 +76,7 @@ public class OutboundAuthTest {
         clientNode.sign(payload); // Sig is valid, but timestamp logic is separate check
 
     OutboundAuth.AuthResult result =
-        auth.verify(clientNode.exportPublic(), payload, signature, oldTimestamp, ohId, nonce);
+        auth.verify(clientNode.getVerifyKeyBytes(), payload, signature, oldTimestamp, ohId, nonce);
 
     assertEquals(OutboundAuth.AuthResult.INVALID_TIMESTAMP, result);
   }
@@ -92,12 +91,12 @@ public class OutboundAuthTest {
 
     // First call -> OK
     OutboundAuth.AuthResult result1 =
-        auth.verify(clientNode.exportPublic(), payload, signature, timestamp, ohId, nonce);
+        auth.verify(clientNode.getVerifyKeyBytes(), payload, signature, timestamp, ohId, nonce);
     assertEquals(OutboundAuth.AuthResult.OK, result1);
 
     // Second call same params -> REPLAY
     OutboundAuth.AuthResult result2 =
-        auth.verify(clientNode.exportPublic(), payload, signature, timestamp, ohId, nonce);
+        auth.verify(clientNode.getVerifyKeyBytes(), payload, signature, timestamp, ohId, nonce);
     assertEquals(OutboundAuth.AuthResult.REPLAY, result2);
   }
 }

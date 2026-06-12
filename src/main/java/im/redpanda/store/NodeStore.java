@@ -243,7 +243,7 @@ public class NodeStore {
         continue;
       }
 
-      if (node.getNodeId().getKeyPair() == null) {
+      if (!node.getNodeId().hasKey()) {
         // this may be an old own server id...
         remove(node.getNodeId().getKademliaId());
       }

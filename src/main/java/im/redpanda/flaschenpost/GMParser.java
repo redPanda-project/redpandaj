@@ -134,11 +134,10 @@ public class GMParser {
 
     if (type == GMType.GARLIC_MESSAGE.getId()) {
 
+      // v2 (MS03): authenticity is checked by the GCM tag at decryption time — only the
+      // recipient can verify it; intermediate nodes just deduplicate and forward.
       GarlicMessage garlicMessage = new GarlicMessage(serverContext, content);
 
-      if (!garlicMessage.isSignedCorrectly()) {
-        return null;
-      }
       boolean alreadyPresent = GMStoreManager.put(garlicMessage);
 
       if (alreadyPresent) {

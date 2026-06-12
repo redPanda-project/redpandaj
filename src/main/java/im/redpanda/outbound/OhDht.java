@@ -7,23 +7,12 @@ import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.v1.OhNodeRecord;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.List;
-import org.bouncycastle.jce.ECNamedCurveTable;
-import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
-import org.bouncycastle.jce.spec.ECPrivateKeySpec;
-import org.bouncycastle.jce.spec.ECPublicKeySpec;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * MS02b OH → host-node discovery primitives.
@@ -31,9 +20,9 @@ import org.bouncycastle.math.ec.ECPoint;
  * <p>The DHT only stores self-certifying records: the Kademlia key is {@code H(dateUTC || pubkey)}
  * and content is signature-checked against the embedded pubkey. To announce {@code oh_id → host
  * node} without protocol changes, the announce keypair is <em>derived deterministically from the
- * oh_id</em> (seed = SHA256(domain tag || oh_id) → EC private key on brainpoolp256r1). Everyone who
- * knows the oh_id — and only they — can compute the same pubkey, hence the same daily-rotating
- * Kademlia key, and verify the record signature.
+ * oh_id</em> (seed = SHA256(domain tag || oh_id) → Ed25519/X25519 NodeId, see {@link
+ * NodeId#fromSeed}). Everyone who knows the oh_id — and only they — can compute the same pubkey,
+ * hence the same daily-rotating Kademlia key, and verify the record signature.
  *
  * <p>Trade-off (documented in the milestone): knowing an oh_id is already the capability to deposit
  * into the mailbox; with the derived key it additionally allows publishing/overwriting the announce
@@ -65,27 +54,15 @@ public final class OhDht {
   private OhDht() {}
 
   /**
-   * Derives the deterministic announce NodeId for an oh_id: {@code d = (SHA256(tag || oh_id) mod
-   * (n-1)) + 1}, {@code Q = d·G} on brainpoolp256r1. Same oh_id → same keypair on every node.
+   * Derives the deterministic announce NodeId for an oh_id: {@code seed = SHA256(tag || oh_id)} →
+   * {@link NodeId#fromSeed}. Same oh_id → same keypair on every node.
    */
   public static NodeId deriveAnnounceNodeId(byte[] ohId) {
     ByteBuffer seedInput = ByteBuffer.allocate(DOMAIN_TAG.length + ohId.length);
     seedInput.put(DOMAIN_TAG).put(ohId);
     byte[] seed = Sha256Hash.create(seedInput.array()).getBytes();
 
-    ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("brainpoolp256r1");
-    BigInteger n = spec.getN();
-    BigInteger d = new BigInteger(1, seed).mod(n.subtract(BigInteger.ONE)).add(BigInteger.ONE);
-    ECPoint q = spec.getG().multiply(d).normalize();
-
-    try {
-      KeyFactory keyFactory = KeyFactory.getInstance("ECDH", "BC");
-      PrivateKey privateKey = keyFactory.generatePrivate(new ECPrivateKeySpec(d, spec));
-      PublicKey publicKey = keyFactory.generatePublic(new ECPublicKeySpec(q, spec));
-      return new NodeId(new KeyPair(publicKey, privateKey));
-    } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("failed to derive OH announce keypair", e);
-    }
+    return NodeId.fromSeed(seed);
   }
 
   /**

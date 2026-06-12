@@ -51,7 +51,7 @@ public class OutboundServiceIntegrationTest {
     peer.writeBuffer.clear();
     peer.setConnected(true);
 
-    clientNode = new NodeId(NodeId.generateECKeys());
+    clientNode = NodeId.generateWithSimpleKey();
   }
 
   /** Full MS01 lifecycle: register OH → deposit message → fetch message → revoke OH. */
@@ -484,7 +484,7 @@ public class OutboundServiceIntegrationTest {
 
     return RegisterOhRequest.newBuilder()
         .setOhId(ByteString.copyFrom(ohId))
-        .setOhAuthPublicKey(ByteString.copyFrom(clientNode.exportPublic()))
+        .setOhAuthPublicKey(ByteString.copyFrom(clientNode.getVerifyKeyBytes()))
         .setRequestedExpiresAt(expires)
         .setTimestampMs(now)
         .setNonce(ByteString.copyFrom(nonce))

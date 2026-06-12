@@ -3,7 +3,6 @@ package im.redpanda.jobs;
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.*;
-import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaStore;
@@ -129,16 +128,6 @@ public class KademliaInsertJob extends Job {
               writeBuffer.put(Command.KADEMLIA_STORE);
               writeBuffer.putInt(data.length);
               writeBuffer.put(data);
-
-              // for debug only
-              ByteBuffer allocate = ByteBuffer.allocate(kadContent.getSignature().length);
-              allocate.put(kadContent.getSignature());
-              allocate.flip();
-              byte[] bytes = Utils.readSignature(allocate);
-              if (bytes.length != kadContent.getSignature().length) {
-                throw new RuntimeException("could not read own signature......" + bytes.length);
-              }
-              ////////
 
               p.setWriteBufferFilled();
 

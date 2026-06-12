@@ -4,7 +4,6 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.jobs.Job;
@@ -37,7 +36,9 @@ import org.apache.logging.log4j.Logger;
  */
 public class InboundCommandProcessor {
   private static final Logger logger = LogManager.getLogger();
-  public static final int MIN_SIGNATURE_LEN = 70;
+
+  /** Ed25519 signatures are fixed-size (64 bytes, no DER framing). */
+  public static final int SIGNATURE_LEN = NodeId.SIGNATURE_LEN;
 
   private final ServerContext serverContext;
 
@@ -317,7 +318,12 @@ public class InboundCommandProcessor {
     for (PeerInfoProto peerProto : sendPeerList.getPeersList()) {
       NodeId nodeId = null;
       if (peerProto.hasNodeId()) {
-        nodeId = NodeId.importPublic(peerProto.getNodeId().getPublicKeyBytes().toByteArray());
+        try {
+          nodeId = NodeId.importPublic(peerProto.getNodeId().getPublicKeyBytes().toByteArray());
+        } catch (IllegalArgumentException e) {
+          // malformed or legacy (pre-MS03) key in the peer list — skip this entry
+          continue;
+        }
       }
       String ip = peerProto.getIp();
       int port = peerProto.getPort();
@@ -457,15 +463,13 @@ public class InboundCommandProcessor {
   }
 
   private int handleUpdateAnswerContent(ByteBuffer readBuffer, Peer peer) {
-    if (8 + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+    if (8 + 4 + SIGNATURE_LEN > readBuffer.remaining()) {
       return 0;
     }
     long othersTimestamp = readBuffer.getLong();
     int toReadBytes = readBuffer.getInt();
-    byte[] signatureBytes = Utils.readSignature(readBuffer);
-    if (signatureBytes == null) {
-      return 0;
-    }
+    byte[] signatureBytes = new byte[SIGNATURE_LEN];
+    readBuffer.get(signatureBytes);
     int lenOfSignature = signatureBytes.length;
     if (toReadBytes > readBuffer.remaining()) {
       return 0;
@@ -676,15 +680,13 @@ public class InboundCommandProcessor {
   }
 
   private int handleAndroidUpdateAnswerContent(ByteBuffer readBuffer, Peer peer) {
-    if (8 + 4 + MIN_SIGNATURE_LEN > readBuffer.remaining()) {
+    if (8 + 4 + SIGNATURE_LEN > readBuffer.remaining()) {
       return 0;
     }
     long othersTimestamp = readBuffer.getLong();
     int toReadBytes = readBuffer.getInt();
-    byte[] signature = Utils.readSignature(readBuffer);
-    if (signature == null) {
-      return 0;
-    }
+    byte[] signature = new byte[SIGNATURE_LEN];
+    readBuffer.get(signature);
     int signatureLen = signature.length;
     if (toReadBytes > readBuffer.remaining()) {
       return 0;

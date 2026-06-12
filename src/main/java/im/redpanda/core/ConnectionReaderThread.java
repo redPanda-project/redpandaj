@@ -29,7 +29,6 @@ public class ConnectionReaderThread implements Runnable {
       System.getProperty("redpanda.android.update.file", "android.apk");
 
   public static final int STD_TIMEOUT = 10;
-  public static final int MIN_SIGNATURE_LEN = 70;
   private static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
   public static final ReentrantLock threadLock = new ReentrantLock(false);
   public static final ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
@@ -90,6 +89,27 @@ public class ConnectionReaderThread implements Runnable {
 
     if (clientType > 128 || clientType < 0) {
       peerInHandshake.setLightClient(true);
+    }
+
+    /**
+     * MS03 dual-version support: v23 is the current protocol (Ed25519/X25519/AES-GCM). v22 is only
+     * accepted for light clients during the transition phase (deprecated legacy crypto) — v22 full
+     * nodes use incompatible identities (brainpool) and are rejected.
+     */
+    boolean acceptedLegacy =
+        Server.ACCEPT_LEGACY_V22_LIGHT_CLIENTS
+            && version == Server.LEGACY_VERSION
+            && peerInHandshake.isLightClient();
+    if (version < Server.VERSION && !acceptedLegacy) {
+      System.out.println(
+          "unsupported protocol version %s (lightClient=%s), disconnecting..."
+              .formatted(version, peerInHandshake.isLightClient()));
+      try {
+        peerInHandshake.getSocketChannel().close();
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+      return false;
     }
 
     byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
@@ -204,7 +224,7 @@ public class ConnectionReaderThread implements Runnable {
         peerInHandshake.setPeer(peer);
 
         if (peerInHandshake.getPeer().getNodeId() == null
-            || peerInHandshake.getPeer().getNodeId().keyPair == null) {
+            || !peerInHandshake.getPeer().getNodeId().hasKey()) {
           peerInHandshake.setStatus(1);
           requestPublicKey(peerInHandshake);
         } else {
@@ -226,7 +246,7 @@ public class ConnectionReaderThread implements Runnable {
     } else {
 
       // lets check if the NodeId has a keypair
-      if (peerInHandshake.getPeer().getNodeId().keyPair == null) {
+      if (!peerInHandshake.getPeer().getNodeId().hasKey()) {
         peerInHandshake.setStatus(1);
         requestPublicKey(peerInHandshake);
       } else {
@@ -374,10 +394,18 @@ public class ConnectionReaderThread implements Runnable {
 
   public static void sendPublicKeyToPeer(
       ServerContext serverContext, PeerInHandshake peerInHandshake) {
-    ByteBuffer buffer = ByteBuffer.allocate(1 + 65);
+    /**
+     * v23: 64-byte Ed25519/X25519 public export of our NodeId. v22 (legacy light clients): 65-byte
+     * brainpool public key of our transition identity.
+     */
+    byte[] publicKey =
+        peerInHandshake.isProtocolV23()
+            ? serverContext.getNodeId().exportPublic()
+            : serverContext.getLegacyNodeId().exportPublic();
+    ByteBuffer buffer = ByteBuffer.allocate(1 + publicKey.length);
 
     buffer.put(Command.SEND_PUBLIC_KEY);
-    buffer.put(serverContext.getNodeId().exportPublic());
+    buffer.put(publicKey);
     buffer.flip();
 
     try {

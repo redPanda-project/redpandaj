@@ -28,6 +28,27 @@ public class ServerContext {
   private OutboundHandleStore outboundHandleStore;
   private OutboundMailboxStore outboundMailboxStore;
 
+  /** Lazy fallback for tests that build a ServerContext without LocalSettings. */
+  @Deprecated private im.redpanda.crypt.legacy.LegacyNodeId fallbackLegacyNodeId;
+
+  /**
+   * The brainpool identity served to protocol-v22 light clients (MS03 transition phase only).
+   *
+   * @deprecated removed together with v22 support
+   */
+  @Deprecated
+  public im.redpanda.crypt.legacy.LegacyNodeId getLegacyNodeId() {
+    if (localSettings != null) {
+      return localSettings.getLegacyIdentity();
+    }
+    synchronized (this) {
+      if (fallbackLegacyNodeId == null) {
+        fallbackLegacyNodeId = im.redpanda.crypt.legacy.LegacyNodeId.generate();
+      }
+      return fallbackLegacyNodeId;
+    }
+  }
+
   public static ServerContext buildDefaultServerContext() {
     ServerContext serverContext = new ServerContext();
     serverContext.setPort(-1);

@@ -1,52 +1,81 @@
 package im.redpanda.flaschenpost;
 
 import im.redpanda.core.*;
-import im.redpanda.crypt.Utils;
+import im.redpanda.crypt.CryptoUtils;
 import java.nio.ByteBuffer;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import javax.crypto.*;
-import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.AEADBadTagException;
+import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
+import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 
+/**
+ * Garlic message v2 (MS03): authenticated encryption with AES-256-GCM, ephemeral X25519 key
+ * exchange and HKDF-SHA256 key derivation.
+ *
+ * <p>Wire format:
+ *
+ * <pre>
+ * [1  version/GMType = 0x02]
+ * [4  totalLen (bytes after this field)]
+ * [20 destination KademliaId]
+ * [12 nonce (random)]
+ * [32 ephemeral X25519 public key]
+ * [4  ciphertextLen]
+ * [N  ciphertext + 16-byte GCM tag]
+ * </pre>
+ *
+ * <p>Key derivation: {@code key = HKDF-SHA256(ikm = X25519(ephemeralPriv, targetEncPub), salt =
+ * ephemeralPub, info = "garlic-v2")}. The AAD is the 20-byte destination KademliaId, binding the
+ * ciphertext to its intended recipient. There is no separate signature anymore — the GCM tag
+ * authenticates the message; a tampered ciphertext fails with {@link AEADBadTagException} and the
+ * packet is dropped.
+ */
 public class GarlicMessage extends Flaschenpost {
 
-  public static final String ALGORITHM = "AES/CTR/NoPadding";
-  public static final String PROVIDER = "SunJCE";
-  public static final int IV_LEN = 16;
+  public static final byte VERSION = 0x02;
+  public static final byte[] HKDF_INFO = "garlic-v2".getBytes();
+  public static final int NONCE_LEN = CryptoUtils.GCM_NONCE_LEN;
+  public static final int EPHEMERAL_KEY_LEN = CryptoUtils.X25519_KEY_LEN;
+
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   /**
-   * This is the {@link NodeId} containing the public key of the target {@link
+   * This is the {@link NodeId} containing the public keys of the target {@link
    * im.redpanda.core.Peer}/{@link im.redpanda.core.Node} and is only used for the creation process.
    */
   private NodeId targetsNodeId;
 
   /**
-   * The NodeId used for encryption. This NodeId should not be reused! There is always a new NodeId
-   * for every new garlic message.
+   * The ephemeral X25519 key used for encryption. It is never reused: there is always a new
+   * ephemeral key for every new garlic message.
    */
-  private final NodeId encryptionNodeId;
+  private X25519PrivateKeyParameters ephemeralKey;
+
+  /** The 32-byte public part of the ephemeral key (sent on the wire). */
+  private byte[] ephemeralPublicKey;
+
+  /** 12-byte random GCM nonce. */
+  private byte[] nonce;
 
   /** The Content of the GarlicMessage is a List of other GMContent objects. */
-  private final byte[] iv;
-
   private final ArrayList<GMContent> nestedMessages;
+
+  /** ciphertext including the 16-byte GCM tag */
   private byte[] encryptedInformation;
-  private byte[] signature;
 
   public GarlicMessage(ServerContext serverContext, NodeId targetsNodeId) {
     super(serverContext, targetsNodeId.getKademliaId());
 
     this.targetsNodeId = targetsNodeId;
     this.nestedMessages = new ArrayList<>();
-    this.iv = new byte[16];
-    Server.secureRandom.nextBytes(this.iv);
-
-    this.encryptionNodeId = NodeId.generateWithSimpleKey();
+    this.nonce = new byte[NONCE_LEN];
+    RANDOM.nextBytes(this.nonce);
+    this.ephemeralKey = new X25519PrivateKeyParameters(RANDOM);
+    this.ephemeralPublicKey = ephemeralKey.generatePublicKey().getEncoded();
   }
 
   public GarlicMessage(ServerContext serverContext, byte[] bytes) {
@@ -56,7 +85,10 @@ public class GarlicMessage extends Flaschenpost {
 
     ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
-    buffer.get(); // Skip gmType
+    byte version = buffer.get();
+    if (version != VERSION) {
+      throw new RuntimeException("Unsupported garlic message version: " + version);
+    }
 
     int overallByteLen = buffer.getInt();
 
@@ -67,17 +99,18 @@ public class GarlicMessage extends Flaschenpost {
 
     destination = KademliaId.fromBuffer(buffer);
 
-    byte[] ivBytes = new byte[IV_LEN];
-    buffer.get(ivBytes);
-    iv = ivBytes;
+    nonce = new byte[NONCE_LEN];
+    buffer.get(nonce);
 
-    encryptionNodeId = NodeId.fromBufferGetPublic(buffer);
+    ephemeralPublicKey = new byte[EPHEMERAL_KEY_LEN];
+    buffer.get(ephemeralPublicKey);
 
     int encryptedLength = buffer.getInt();
+    if (encryptedLength < CryptoUtils.GCM_TAG_LEN || encryptedLength > buffer.remaining()) {
+      throw new RuntimeException("invalid garlic message ciphertext length: " + encryptedLength);
+    }
     encryptedInformation = new byte[encryptedLength];
     buffer.get(encryptedInformation);
-
-    signature = Utils.readSignature(buffer);
 
     nestedMessages = new ArrayList<>();
   }
@@ -115,57 +148,53 @@ public class GarlicMessage extends Flaschenpost {
               + contentToEncrypt.limit());
     }
 
-    SecretKey sharedSecret = getSharedSecret(encryptionNodeId, targetsNodeId);
-
-    IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
-
     try {
-      Cipher cipher = Cipher.getInstance(ALGORITHM, PROVIDER);
-      cipher.init(Cipher.ENCRYPT_MODE, sharedSecret, ivParameterSpec);
-      byte[] encryptedBytes = cipher.doFinal(contentToEncrypt.array());
+      byte[] key =
+          deriveKey(
+              CryptoUtils.x25519(ephemeralKey, targetsNodeId.getEncryptionPubKey()),
+              ephemeralPublicKey);
 
-      byte[] signature = encryptionNodeId.sign(encryptedBytes);
+      byte[] encryptedBytes =
+          CryptoUtils.encryptGcm(key, nonce, contentToEncrypt.array(), destination.getBytes());
 
       int overallLength =
           1
               + 4
               + KademliaId.ID_LENGTH_BYTES
-              + IV_LEN
-              + NodeId.PUBLIC_KEYLEN
+              + NONCE_LEN
+              + EPHEMERAL_KEY_LEN
               + 4
-              + encryptedBytes.length
-              + signature.length;
+              + encryptedBytes.length;
 
-      ByteBuffer encryptedAndSignedBytes = ByteBuffer.allocate(overallLength);
-      encryptedAndSignedBytes.put(getGMType().getId());
-      encryptedAndSignedBytes.putInt(overallLength - 1 - 4);
-      encryptedAndSignedBytes.put(destination.getBytes());
-      encryptedAndSignedBytes.put(iv);
-      encryptedAndSignedBytes.put(encryptionNodeId.exportPublic());
-      encryptedAndSignedBytes.putInt(encryptedBytes.length);
-      encryptedAndSignedBytes.put(encryptedBytes);
-      encryptedAndSignedBytes.put(signature);
+      ByteBuffer encryptedAndAuthenticatedBytes = ByteBuffer.allocate(overallLength);
+      encryptedAndAuthenticatedBytes.put(getGMType().getId());
+      encryptedAndAuthenticatedBytes.putInt(overallLength - 1 - 4);
+      encryptedAndAuthenticatedBytes.put(destination.getBytes());
+      encryptedAndAuthenticatedBytes.put(nonce);
+      encryptedAndAuthenticatedBytes.put(ephemeralPublicKey);
+      encryptedAndAuthenticatedBytes.putInt(encryptedBytes.length);
+      encryptedAndAuthenticatedBytes.put(encryptedBytes);
 
-      if (encryptedAndSignedBytes.position() != encryptedAndSignedBytes.limit()) {
+      if (encryptedAndAuthenticatedBytes.position() != encryptedAndAuthenticatedBytes.limit()) {
         throw new RuntimeException(
-            "contentToEncrypt has wrong size: "
-                + encryptedAndSignedBytes.position()
+            "garlic message content has wrong size: "
+                + encryptedAndAuthenticatedBytes.position()
                 + " "
-                + encryptedAndSignedBytes.limit());
+                + encryptedAndAuthenticatedBytes.limit());
       }
 
-      setContent(encryptedAndSignedBytes.array());
+      this.encryptedInformation = encryptedBytes;
+      setContent(encryptedAndAuthenticatedBytes.array());
 
-    } catch (NoSuchAlgorithmException
-        | NoSuchProviderException
-        | NoSuchPaddingException
-        | InvalidKeyException
-        | InvalidAlgorithmParameterException
-        | IllegalBlockSizeException
-        | BadPaddingException e) {
+    } catch (GeneralSecurityException e) {
       Log.sentry(e);
       e.printStackTrace();
     }
+  }
+
+  private static byte[] deriveKey(byte[] sharedSecret, byte[] ephemeralPublicKey) {
+    return CryptoUtils.hkdfSha256(
+        sharedSecret, ephemeralPublicKey, HKDF_INFO, CryptoUtils.AES_KEY_LEN);
   }
 
   protected void tryParseContent() {
@@ -176,23 +205,13 @@ public class GarlicMessage extends Flaschenpost {
 
   protected void parseContent() {
 
-    if (!isSignedCorrectly()) {
-      return;
-    }
-
     if (!isTargetedToUs()) {
       throw new RuntimeException(
           "We can not decrypt this garlic message since it is not targeted to us!");
     }
 
-    SecretKey sharedSecret = getSharedSecret(serverContext.getNodeId(), encryptionNodeId);
-
-    IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
-
     try {
-      Cipher cipher = Cipher.getInstance(ALGORITHM, PROVIDER);
-      cipher.init(Cipher.DECRYPT_MODE, sharedSecret, ivParameterSpec);
-      byte[] decryptedBytes = cipher.doFinal(encryptedInformation);
+      byte[] decryptedBytes = decryptPayload();
 
       ByteBuffer decryptedBuffer = ByteBuffer.wrap(decryptedBytes);
       int numberOfNeastedMessages = decryptedBuffer.getInt();
@@ -215,44 +234,30 @@ public class GarlicMessage extends Flaschenpost {
         }
       }
 
-    } catch (NoSuchAlgorithmException
-        | NoSuchProviderException
-        | NoSuchPaddingException
-        | InvalidKeyException
-        | InvalidAlgorithmParameterException
-        | IllegalBlockSizeException
-        | BadPaddingException e) {
+    } catch (AEADBadTagException e) {
+      // authentication failed: tampered ciphertext, wrong recipient binding (AAD) or wrong key —
+      // drop the packet without parsing anything
+      Log.put("garlic message authentication failed, dropping packet...", 50);
+    } catch (GeneralSecurityException e) {
       Log.sentry(e);
       e.printStackTrace();
     }
   }
 
   /**
-   * We check the signature of the garlic message.
+   * Decrypts the GCM payload with our own X25519 encryption key.
    *
-   * @return
+   * @throws AEADBadTagException if the ciphertext was tampered with or not targeted to us
    */
-  public boolean isSignedCorrectly() {
-    boolean verified = encryptionNodeId.verify(encryptedInformation, signature);
-    if (!verified) {
-      System.out.println("signature could not be verified for a Garlic Message...");
-      Log.sentry("signature could not be verified for a Garlic Message...");
-    }
-    return verified;
-  }
+  byte[] decryptPayload() throws GeneralSecurityException {
+    byte[] key =
+        deriveKey(
+            CryptoUtils.x25519(
+                serverContext.getNodeId().getEncryptionKey(),
+                new X25519PublicKeyParameters(ephemeralPublicKey, 0)),
+            ephemeralPublicKey);
 
-  private SecretKey getSharedSecret(NodeId privateKey, NodeId pub) {
-    try {
-      KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
-      keyAgreement.init(privateKey.getKeyPair().getPrivate());
-      keyAgreement.doPhase(pub.getKeyPair().getPublic(), true);
-
-      return keyAgreement.generateSecret("AES");
-    } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException e) {
-      Log.sentry(e);
-      e.printStackTrace();
-      return null;
-    }
+    return CryptoUtils.decryptGcm(key, nonce, encryptedInformation, destination.getBytes());
   }
 
   @Override
@@ -271,20 +276,20 @@ public class GarlicMessage extends Flaschenpost {
 
     GarlicMessage that = (GarlicMessage) o;
 
-    if (!encryptionNodeId.equals(that.encryptionNodeId)) {
+    if (!Arrays.equals(ephemeralPublicKey, that.ephemeralPublicKey)) {
       return false;
     }
-    if (!Arrays.equals(encryptedInformation, that.encryptedInformation)) {
+    if (!Arrays.equals(nonce, that.nonce)) {
       return false;
     }
-    return Arrays.equals(signature, that.signature);
+    return Arrays.equals(encryptedInformation, that.encryptedInformation);
   }
 
   @Override
   public int hashCode() {
-    int result = encryptionNodeId.hashCode();
+    int result = Arrays.hashCode(ephemeralPublicKey);
+    result = 31 * result + Arrays.hashCode(nonce);
     result = 31 * result + Arrays.hashCode(encryptedInformation);
-    result = 31 * result + Arrays.hashCode(signature);
     return result;
   }
 }

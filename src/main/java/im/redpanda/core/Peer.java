@@ -370,8 +370,11 @@ public class Peer implements Comparable<Peer> {
         return 0;
       }
 
-      if (readBuffer.remaining() < remaining) {
-        int newSize = Math.min(readBuffer.position() + remaining + 1024, 1024 * 1024 * 60);
+      // framed streams may release previously buffered frame bytes in this round as well
+      int maxPlaintext = remaining + getPeerChiperStreams().pendingDecryptBytes();
+
+      if (readBuffer.remaining() < maxPlaintext) {
+        int newSize = Math.min(readBuffer.position() + maxPlaintext + 1024, 1024 * 1024 * 60);
         if (newSize == readBuffer.remaining()) {
           throw new PeerProtocolException(
               "buffer could not be increased, size is %s ".formatted(newSize));

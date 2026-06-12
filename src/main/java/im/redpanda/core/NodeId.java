@@ -1,371 +1,315 @@
 package im.redpanda.core;
 
+import im.redpanda.crypt.CryptoUtils;
 import im.redpanda.crypt.Sha256Hash;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
-import java.security.*;
-import java.security.spec.EncodedKeySpec;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
-import org.bouncycastle.jce.ECNamedCurveTable;
-import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
+import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
+import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
+import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
+import org.bouncycastle.crypto.signers.Ed25519Signer;
 
 /**
- * This class represents a NodeId for every Peer in the network. This is an ellipic curve diffie
- * hellman key, where the public key is required and the private key is optional. The associated
- * KademliaId is computed from a SHA256 hash of the public key. We use HashCash to make the
- * computation of many valid keys expensive.
+ * MS03 node identity: a dual keypair with strict key separation.
  *
- * <p>The curve 'brainpoolp256r1' may change later as well as the import and export methods.
+ * <ul>
+ *   <li><b>Signing</b>: Ed25519 — node identity, message/content signatures (64-byte deterministic
+ *       signatures).
+ *   <li><b>Encryption</b>: X25519 — Diffie-Hellman key exchange (garlic messages, TCP v23 session
+ *       keys).
+ * </ul>
+ *
+ * <p>The {@link KademliaId} is derived from the SHA-256 of the 32-byte Ed25519 verify key. HashCash
+ * makes the computation of many valid identities expensive: the double SHA-256 of the verify key
+ * must start with at least {@link #POW_MIN_LEADING_ZERO_BITS} zero bits.
+ *
+ * <p>Export formats (MS03 wire formats):
+ *
+ * <pre>
+ * public  (64 bytes):  [32 verifyKey][32 encryptionPubKey]
+ * private (128 bytes): [32 signingKey][32 verifyKey][32 encryptionKey][32 encryptionPubKey]
+ * </pre>
  */
 public class NodeId implements Serializable {
 
-  static {
-    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-  }
+  /** Public export length: 32-byte Ed25519 verify key + 32-byte X25519 encryption key. */
+  public static final int PUBLIC_KEYLEN = 64;
 
-  public static final int PUBLIC_KEYLEN_LONG = 92;
-  public static final int PUBLIC_KEYLEN = 65;
-  public static final int PRIVATE_KEYLEN = 252;
-  public static byte[] curveParametersASN1;
+  /** Private export length: both private keys with their public counterparts. */
+  public static final int PRIVATE_KEYLEN = 128;
 
-  KeyPair keyPair;
+  /** Ed25519 signatures are always 64 bytes (no DER encoding). */
+  public static final int SIGNATURE_LEN = 64;
+
+  /** Length of a single key component (Ed25519/X25519 keys are 32 bytes each). */
+  public static final int KEY_COMPONENT_LEN = 32;
+
+  /** HashCash: required leading zero bits of SHA256d(verifyKey) — Tier 0. */
+  public static final int POW_MIN_LEADING_ZERO_BITS = 8;
+
+  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+  private transient Ed25519PrivateKeyParameters signingKey;
+  private transient Ed25519PublicKeyParameters verifyKey;
+  private transient X25519PrivateKeyParameters encryptionKey;
+  private transient X25519PublicKeyParameters encryptionPubKey;
+
   KademliaId kademliaId;
 
-  /**
-   * Generates a new NodeId from a ECDH keypair. The KademliaId is automatically computed when
-   * calling the get method.
-   *
-   * @param keyPair
-   */
-  public NodeId(KeyPair keyPair) {
-    this.keyPair = keyPair;
+  private NodeId(
+      Ed25519PrivateKeyParameters signingKey,
+      Ed25519PublicKeyParameters verifyKey,
+      X25519PrivateKeyParameters encryptionKey,
+      X25519PublicKeyParameters encryptionPubKey) {
+    this.signingKey = signingKey;
+    this.verifyKey = verifyKey;
+    this.encryptionKey = encryptionKey;
+    this.encryptionPubKey = encryptionPubKey;
   }
 
-  /**
-   * Obtains a NodeId object from a given KademliaId, the keypair is unknown.
-   *
-   * @param kademliaId
-   */
+  /** Obtains a NodeId object from a given KademliaId, the keys are unknown. */
   public NodeId(KademliaId kademliaId) {
     this.kademliaId = kademliaId;
   }
 
-  public static NodeId generateWithSimpleKey() {
-    return new NodeId(generateECKeys());
-  }
-
-  /** Generates a new NodeId with a new random key. */
+  /**
+   * Generates a new NodeId with a fresh random dual keypair satisfying the HashCash requirement
+   * (skipped in unit tests for speed, as before).
+   */
   public NodeId() {
     while (true) {
-      // System.out.print(".");
-      keyPair = generateECKeys();
-      Sha256Hash sha256Hash = Sha256Hash.createDouble(keyPair.getPublic().getEncoded());
-      byte[] bytes = sha256Hash.getBytes();
+      NodeId candidate = generateWithSimpleKey();
+      this.signingKey = candidate.signingKey;
+      this.verifyKey = candidate.verifyKey;
+      this.encryptionKey = candidate.encryptionKey;
+      this.encryptionPubKey = candidate.encryptionPubKey;
 
-      // if (bytes[0] == 0 && bytes[1] == 0) {
-
-      if (Log.isJUnitTest()) {
-        break;
-      }
-
-      if (bytes[0] == 0) {
-        // todo change later for prod to more 0's
-        /** This key is valid */
+      if (Log.isJUnitTest() || checkValid()) {
         break;
       }
     }
+  }
+
+  /** Generates a new NodeId with a new random key without the HashCash requirement. */
+  public static NodeId generateWithSimpleKey() {
+    Ed25519PrivateKeyParameters signing = new Ed25519PrivateKeyParameters(SECURE_RANDOM);
+    X25519PrivateKeyParameters encryption = new X25519PrivateKeyParameters(SECURE_RANDOM);
+    return new NodeId(
+        signing, signing.generatePublicKey(), encryption, encryption.generatePublicKey());
+  }
+
+  /**
+   * Deterministically derives a NodeId from a 32-byte seed: the Ed25519 signing key is the seed
+   * itself, the X25519 encryption key is SHA-256 of the seed (key separation). Same seed → same
+   * NodeId on every node. Used for the self-certifying OH announce records (see {@code OhDht}).
+   */
+  public static NodeId fromSeed(byte[] seed) {
+    if (seed == null || seed.length != KEY_COMPONENT_LEN) {
+      throw new IllegalArgumentException("seed must be exactly 32 bytes");
+    }
+    Ed25519PrivateKeyParameters signing = new Ed25519PrivateKeyParameters(seed, 0);
+    X25519PrivateKeyParameters encryption =
+        new X25519PrivateKeyParameters(Sha256Hash.create(seed).getBytes(), 0);
+    return new NodeId(
+        signing, signing.generatePublicKey(), encryption, encryption.generatePublicKey());
+  }
+
+  /**
+   * Checks if this NodeId satisfies the HashCash requirement: the double SHA-256 of the 32-byte
+   * verify key starts with at least {@link #POW_MIN_LEADING_ZERO_BITS} zero bits.
+   */
+  public boolean checkValid() {
+    Sha256Hash sha256Hash = Sha256Hash.createDouble(verifyKey.getEncoded());
+    return CryptoUtils.countLeadingZeroBits(sha256Hash.getBytes()) >= POW_MIN_LEADING_ZERO_BITS;
   }
 
   public boolean hasPrivate() {
-    if (keyPair == null) {
-      return false;
-    }
-    return keyPair.getPrivate() != null;
+    return signingKey != null;
   }
 
-  /**
-   * Checks if this NodeId satisfies the required property (first byte from SHA256-double from
-   * public key bytes should be zero).
-   *
-   * @return
-   */
-  public boolean checkValid() {
-    Sha256Hash sha256Hash = Sha256Hash.createDouble(keyPair.getPublic().getEncoded());
-    byte[] bytes = sha256Hash.getBytes();
-    return bytes[0] == 0;
+  public boolean hasKey() {
+    return verifyKey != null;
   }
 
-  public static KeyPair generateECKeys() {
-    try {
-      ECNamedCurveParameterSpec parameterSpec =
-          ECNamedCurveTable.getParameterSpec("brainpoolp256r1");
-      KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("ECDH", "BC");
-
-      keyPairGenerator.initialize(parameterSpec);
-      KeyPair keyPair = keyPairGenerator.generateKeyPair();
-
-      return keyPair;
-    } catch (NoSuchAlgorithmException
-        | InvalidAlgorithmParameterException
-        | NoSuchProviderException e) {
-      e.printStackTrace();
-      return null;
-    }
-  }
-
-  public static NodeId importWithPrivate(byte[] bytes) {
-
-    ByteBuffer buffer = ByteBuffer.wrap(bytes);
-
-    int len = buffer.getInt();
-    byte[] privateKeyBytes = new byte[len];
-    buffer.get(privateKeyBytes);
-    EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-
-    len = buffer.getInt();
-    byte[] publicKeyBytes = new byte[len];
-    buffer.get(publicKeyBytes);
-    EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
-
-    KeyFactory keyFactory = null;
-    try {
-      keyFactory = KeyFactory.getInstance("ECDH", "BC");
-      PrivateKey newPrivateKey = keyFactory.generatePrivate(privateKeySpec);
-      PublicKey newPublicKey = keyFactory.generatePublic(publicKeySpec);
-
-      KeyPair keyPair = new KeyPair(newPublicKey, newPrivateKey);
-      return new NodeId(keyPair);
-    } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeySpecException e) {
-      e.printStackTrace();
-    }
-
-    return null;
-  }
-
-  /**
-   * The KademliaId is automatically computed upon the first call of this method.
-   *
-   * @return
-   */
+  /** The KademliaId is the SHA-256 of the 32-byte Ed25519 verify key (first 20 bytes). */
   public KademliaId getKademliaId() {
     if (kademliaId == null) {
-      kademliaId = fromPublicKey(keyPair.getPublic());
+      kademliaId = fromVerifyKey(verifyKey.getEncoded());
     }
     return kademliaId;
   }
 
-  public static KademliaId fromPublicKey(PublicKey key) {
-    Sha256Hash sha256Hash = Sha256Hash.create(exportPublic(key));
-
-    byte[] bytes = sha256Hash.getBytes();
-
-    return KademliaId.fromFirstBytes(bytes);
+  private static KademliaId fromVerifyKey(byte[] verifyKeyBytes) {
+    return KademliaId.fromFirstBytes(Sha256Hash.create(verifyKeyBytes).getBytes());
   }
 
-  public byte[] exportWithPrivate() {
-    ByteBuffer buffer = ByteBuffer.allocate(252);
-    byte[] encoded = keyPair.getPrivate().getEncoded();
-    buffer.putInt(encoded.length);
-    buffer.put(encoded);
-
-    encoded = keyPair.getPublic().getEncoded();
-    buffer.putInt(encoded.length);
-    buffer.put(encoded);
+  /** Exports the public keys: {@code [32 verifyKey][32 encryptionPubKey]}. */
+  public byte[] exportPublic() {
+    ByteBuffer buffer = ByteBuffer.allocate(PUBLIC_KEYLEN);
+    buffer.put(verifyKey.getEncoded());
+    buffer.put(encryptionPubKey.getEncoded());
     return buffer.array();
   }
 
-  public byte[] exportPublic() {
-    // Todo: save the value after first creation... speeed!
-    return exportPublic(this.keyPair.getPublic());
+  /**
+   * Exports both keypairs: {@code [32 signingKey][32 verifyKey][32 encryptionKey][32
+   * encryptionPubKey]}.
+   */
+  public byte[] exportWithPrivate() {
+    if (!hasPrivate()) {
+      throw new IllegalStateException("this NodeId has no private keys to export!");
+    }
+    ByteBuffer buffer = ByteBuffer.allocate(PRIVATE_KEYLEN);
+    buffer.put(signingKey.getEncoded());
+    buffer.put(verifyKey.getEncoded());
+    buffer.put(encryptionKey.getEncoded());
+    buffer.put(encryptionPubKey.getEncoded());
+    return buffer.array();
   }
 
-  public boolean hasKey() {
-    return this.keyPair != null;
-  }
-
-  public static byte[] exportPublic(PublicKey publicKey) {
-    byte[] encoded = publicKey.getEncoded();
-
-    // we need only the last 65 bytes since the first bytes are already given by the
-    // curve!
-
-    ByteBuffer buffer = ByteBuffer.wrap(encoded);
-    byte[] bytes = new byte[PUBLIC_KEYLEN];
-    buffer.position(PUBLIC_KEYLEN_LONG - PUBLIC_KEYLEN);
-    buffer.get(bytes);
-
-    return bytes;
-  }
-
+  /** Imports a 64-byte public export. */
   public static NodeId importPublic(byte[] bytes) {
+    if (bytes == null || bytes.length != PUBLIC_KEYLEN) {
+      throw new IllegalArgumentException(
+          "public NodeId export must be exactly " + PUBLIC_KEYLEN + " bytes");
+    }
+    Ed25519PublicKeyParameters verify = new Ed25519PublicKeyParameters(bytes, 0);
+    X25519PublicKeyParameters encryption = new X25519PublicKeyParameters(bytes, KEY_COMPONENT_LEN);
+    return new NodeId(null, verify, null, encryption);
+  }
 
-    byte[] bytesFull = new byte[PUBLIC_KEYLEN_LONG];
-    ByteBuffer.wrap(bytesFull).put(getCurveParametersForASN1Format()).put(bytes);
+  /** Imports a 128-byte private export. */
+  public static NodeId importWithPrivate(byte[] bytes) {
+    if (bytes == null || bytes.length != PRIVATE_KEYLEN) {
+      throw new IllegalArgumentException(
+          "private NodeId export must be exactly " + PRIVATE_KEYLEN + " bytes");
+    }
+    Ed25519PrivateKeyParameters signing = new Ed25519PrivateKeyParameters(bytes, 0);
+    X25519PrivateKeyParameters encryption =
+        new X25519PrivateKeyParameters(bytes, 2 * KEY_COMPONENT_LEN);
 
-    EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(bytesFull);
+    Ed25519PublicKeyParameters verify = signing.generatePublicKey();
+    X25519PublicKeyParameters encryptionPub = encryption.generatePublicKey();
 
-    KeyFactory keyFactory = null;
+    if (!Arrays.equals(verify.getEncoded(), Arrays.copyOfRange(bytes, 32, 64))
+        || !Arrays.equals(encryptionPub.getEncoded(), Arrays.copyOfRange(bytes, 96, 128))) {
+      throw new IllegalArgumentException("public keys in private export do not match private keys");
+    }
+    return new NodeId(signing, verify, encryption, encryptionPub);
+  }
+
+  public static NodeId fromBufferGetPublic(ByteBuffer buffer) {
+    byte[] publicKeyBytes = new byte[PUBLIC_KEYLEN];
+    buffer.get(publicKeyBytes);
+    return importPublic(publicKeyBytes);
+  }
+
+  /** Signs the bytes with Ed25519 — deterministic 64-byte signature (no hashing beforehand). */
+  public byte[] sign(byte[] bytesToSign) {
+    if (!hasPrivate()) {
+      throw new RuntimeException(
+          "this NodeId can not be used for signing since there is no private key!");
+    }
+    Ed25519Signer signer = new Ed25519Signer();
+    signer.init(true, signingKey);
+    signer.update(bytesToSign, 0, bytesToSign.length);
+    return signer.generateSignature();
+  }
+
+  /** Verifies an Ed25519 signature (64 bytes) over the given bytes. */
+  public boolean verify(byte[] bytesToVerify, byte[] signature) {
+    if (verifyKey == null || signature == null || signature.length != SIGNATURE_LEN) {
+      return false;
+    }
     try {
-      keyFactory = KeyFactory.getInstance("ECDH", "BC");
-      PublicKey newPublicKey = keyFactory.generatePublic(publicKeySpec);
-
-      KeyPair keyPair = new KeyPair(newPublicKey, null);
-      return new NodeId(keyPair);
-    } catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeySpecException e) {
-      e.printStackTrace();
+      Ed25519Signer signer = new Ed25519Signer();
+      signer.init(false, verifyKey);
+      signer.update(bytesToVerify, 0, bytesToVerify.length);
+      return signer.verifySignature(signature);
+    } catch (RuntimeException e) {
+      return false;
     }
-
-    return null;
   }
 
-  public static byte[] getCurveParametersForASN1Format() {
-    if (curveParametersASN1 == null) {
-      // generate the first bytes for the X209 ASN1 format
-      PublicKey aPublic = generateECKeys().getPublic();
-      ByteBuffer wrap = ByteBuffer.wrap(aPublic.getEncoded());
-      byte[] bytes = new byte[PUBLIC_KEYLEN_LONG - PUBLIC_KEYLEN];
-      wrap.get(bytes);
-      curveParametersASN1 = bytes;
-    }
-    return curveParametersASN1;
+  /** The 32-byte Ed25519 verify key. */
+  public byte[] getVerifyKeyBytes() {
+    return verifyKey.getEncoded();
   }
 
-  /**
-   * Two NodeId are equal if their KademliaId is equal.
-   *
-   * @param obj
-   * @return
-   */
-  @Override
-  public boolean equals(Object obj) {
-
-    if (this == obj) {
-      return true;
-    }
-
-    if (obj instanceof NodeId id) {
-      return getKademliaId().equals(id.getKademliaId());
-    }
-
-    return false;
+  public X25519PublicKeyParameters getEncryptionPubKey() {
+    return encryptionPubKey;
   }
 
-  public KeyPair getKeyPair() {
-    return keyPair;
+  public X25519PrivateKeyParameters getEncryptionKey() {
+    return encryptionKey;
   }
 
   /**
-   * Sets the keypair of this object if not already provided and will check against the KademliaId
-   * that this keypair fits to the already provided KademliaId.
-   *
-   * @param keyPair
+   * Sets the keys of this object from another NodeId if not already provided and checks that the
+   * keys fit to the already provided KademliaId.
    */
-  public void setKeyPair(KeyPair keyPair) throws KeypairDoesNotMatchException {
-    if (this.keyPair != null) {
-      throw new RuntimeException("keypair is already set for this NodeId!");
+  public void setKeys(NodeId source) throws KeypairDoesNotMatchException {
+    if (this.verifyKey != null) {
+      throw new RuntimeException("keys are already set for this NodeId!");
     }
-    if (keyPair == null) {
-      throw new RuntimeException("provided keypair must not be null when setting NodeId keypair!");
+    if (source == null || !source.hasKey()) {
+      throw new RuntimeException("provided NodeId must contain keys when setting NodeId keys!");
     }
     if (kademliaId == null) {
-      throw new RuntimeException(
-          "To check the keypair there has to be already a known KademliaId!");
+      throw new RuntimeException("To check the keys there has to be already a known KademliaId!");
     }
-
-    KademliaId kademliaId = fromPublicKey(keyPair.getPublic());
-
-    if (!kademliaId.equals(this.kademliaId)) {
+    if (!source.getKademliaId().equals(this.kademliaId)) {
       throw new KeypairDoesNotMatchException();
-    } else {
-      this.keyPair = keyPair;
     }
+    this.signingKey = source.signingKey;
+    this.verifyKey = source.verifyKey;
+    this.encryptionKey = source.encryptionKey;
+    this.encryptionPubKey = source.encryptionPubKey;
   }
 
   public static class KeypairDoesNotMatchException extends Exception {}
 
-  /**
-   * Hashes the bytes with SHA256 and computes the signature in ASN.1 format, for more info see:
-   * https://crypto.stackexchange.com/questions/1795/how-can-i-convert-a-der-ecdsa-signature-to-asn-1
-   *
-   * @param bytesToSign
-   * @return
-   */
-  public byte[] sign(byte[] bytesToSign) {
-
-    if (getKeyPair() == null || getKeyPair().getPrivate() == null) {
-      throw new RuntimeException(
-          "this NodeId can not be used for signing since there is no private key!");
+  /** Two NodeId are equal if their KademliaId is equal. */
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
     }
-    /*
-     * Create a Signature object and initialize it with the private key
-     */
-    try {
-      Signature ecdsa = Signature.getInstance("SHA256withECDSA");
-
-      ecdsa.initSign(getKeyPair().getPrivate());
-
-      ecdsa.update(bytesToSign);
-
-      /*
-       * Now that all the data to be signed has been read in, generate a
-       * signature for it
-       */
-
-      byte[] realSig = ecdsa.sign();
-      // System.out.println("Signature: " + Utils.bytesToHexString(realSig));
-
-      return realSig;
-
-    } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-      Log.sentry(e);
-      e.printStackTrace();
-    }
-
-    return null;
-  }
-
-  /**
-   * Verifies the bytes with the signature, this method uses SHA256withECDSA such that the bytes
-   * should not be hashed by sha256 before using this method!
-   *
-   * @param bytesToVerify
-   * @param signature
-   * @return
-   */
-  public boolean verify(byte[] bytesToVerify, byte[] signature) {
-    try {
-      Signature ecdsa2 = Signature.getInstance("SHA256withECDSA");
-      ecdsa2.initVerify(getKeyPair().getPublic());
-
-      ecdsa2.update(bytesToVerify);
-
-      return ecdsa2.verify(signature);
-    } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-      Log.sentry(e);
-      e.printStackTrace();
+    if (obj instanceof NodeId id) {
+      return getKademliaId().equals(id.getKademliaId());
     }
     return false;
   }
 
-  private void readObject(ObjectInputStream aInputStream)
-      throws ClassNotFoundException, IOException {
+  @Override
+  public int hashCode() {
+    return getKademliaId().hashCode();
+  }
+
+  @Override
+  public String toString() {
+    return getKademliaId().toString();
+  }
+
+  private void readObject(ObjectInputStream aInputStream) throws IOException {
     boolean hasPrivate = aInputStream.readBoolean();
-
     byte[] bytes = new byte[hasPrivate ? PRIVATE_KEYLEN : PUBLIC_KEYLEN];
-    aInputStream.read(bytes);
-
-    NodeId nodeId;
-    if (hasPrivate) {
-      nodeId = importWithPrivate(bytes);
-    } else {
-      nodeId = importPublic(bytes);
+    aInputStream.readFully(bytes);
+    try {
+      NodeId nodeId = hasPrivate ? importWithPrivate(bytes) : importPublic(bytes);
+      this.signingKey = nodeId.signingKey;
+      this.verifyKey = nodeId.verifyKey;
+      this.encryptionKey = nodeId.encryptionKey;
+      this.encryptionPubKey = nodeId.encryptionPubKey;
+    } catch (IllegalArgumentException e) {
+      throw new IOException("could not deserialize NodeId", e);
     }
-    keyPair = nodeId.getKeyPair();
   }
 
   private void writeObject(ObjectOutputStream aOutputStream) throws IOException {
@@ -375,22 +319,5 @@ public class NodeId implements Serializable {
     } else {
       aOutputStream.write(exportPublic());
     }
-  }
-
-  @Override
-  public String toString() {
-    return getKademliaId().toString();
-  }
-
-  public static NodeId fromBufferGetPublic(ByteBuffer buffer) {
-    byte[] publicKeyBytes = new byte[PUBLIC_KEYLEN];
-    buffer.get(publicKeyBytes);
-
-    return importPublic(publicKeyBytes);
-  }
-
-  @Override
-  public int hashCode() {
-    return getKademliaId().hashCode();
   }
 }

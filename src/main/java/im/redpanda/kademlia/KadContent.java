@@ -141,10 +141,17 @@ public class KadContent {
     signature = nodeId.sign(hash.getBytes());
   }
 
+  /** Verifies the Ed25519 signature (64 bytes) against the embedded 64-byte public key export. */
   public boolean verify() {
     Sha256Hash hash = createHash();
 
-    NodeId pubNodId = NodeId.importPublic(pubkey);
+    NodeId pubNodId;
+    try {
+      pubNodId = NodeId.importPublic(pubkey);
+    } catch (IllegalArgumentException e) {
+      // malformed or legacy (pre-MS03, 65-byte brainpool) public key
+      return false;
+    }
 
     return pubNodId.verify(hash.getBytes(), getSignature());
   }

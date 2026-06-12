@@ -117,4 +117,45 @@ public class GarlicMessageTest {
 
     assertNull(parsedAgainGarlicMessage);
   }
+
+  @Test
+  public void tamperedCiphertextFailsWithAeadBadTagException() {
+    NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
+
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(new GMAck(789));
+
+    byte[] content = garlicMessage.getContent();
+    // flip a bit inside the ciphertext (last byte is part of the GCM tag/ciphertext)
+    content[content.length - 1] ^= 0x01;
+
+    GarlicMessage tampered = new GarlicMessage(serverContext, content);
+    assertTrue(tampered.isTargetedToUs());
+
+    assertThrows(javax.crypto.AEADBadTagException.class, () -> tampered.decryptPayload());
+
+    // the high-level parse path must drop the payload without content and without throwing
+    tampered.parseContent();
+    assertTrue(tampered.getGMContent().isEmpty());
+  }
+
+  @Test
+  public void aadBindsCiphertextToDestination() {
+    NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
+
+    GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
+    garlicMessage.addGMContent(new GMAck(101));
+
+    byte[] content = garlicMessage.getContent();
+
+    // rewrite the destination to our own KademliaId is a no-op; instead simulate a relabelled
+    // packet: change one byte of the destination so the AAD no longer matches
+    int destinationOffset = 1 + 4; // version + totalLen
+    content[destinationOffset] ^= 0x01;
+
+    GarlicMessage relabelled = new GarlicMessage(serverContext, content);
+    // if the manipulated destination happens to match us (it does not), decryption would still
+    // fail because the AAD differs from the one used at encryption time
+    assertThrows(java.security.GeneralSecurityException.class, () -> relabelled.decryptPayload());
+  }
 }

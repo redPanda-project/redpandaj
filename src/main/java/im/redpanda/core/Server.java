@@ -14,7 +14,25 @@ import org.slf4j.LoggerFactory;
 
 public class Server {
 
-  public static final int VERSION = 22;
+  /**
+   * Protocol version. 23 = MS03 crypto (Ed25519/X25519/AES-256-GCM). 22 (legacy crypto) is still
+   * accepted for light clients during the transition phase, see {@link
+   * ConnectionReaderThread#parseHandshake}.
+   */
+  public static final int VERSION = 23;
+
+  /** Deprecated transition protocol version (brainpool/AES-CTR), light clients only. */
+  @Deprecated(forRemoval = true)
+  public static final int LEGACY_VERSION = 22;
+
+  /**
+   * Transition switch: accept v22 light-client handshakes. Set to {@code false} (and remove the
+   * legacy path) once all light clients have migrated to MS03 crypto. The duration of the
+   * transition phase is an operational decision, see the MS03 milestone decisions.
+   */
+  @Deprecated(forRemoval = true)
+  public static final boolean ACCEPT_LEGACY_V22_LIGHT_CLIENTS = true;
+
   public static final String MAGIC = "k3gV";
   private static volatile boolean shuttingDown = false;
   private static final AtomicInteger outBytes = new AtomicInteger(0);

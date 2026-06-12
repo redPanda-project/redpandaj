@@ -1,14 +1,17 @@
-Title: ECCrypto AES/GCM IV Handling and Ciphertext Format
+Title: CryptoUtils AES-256-GCM Nonce Handling and Ciphertext Format
 
 Summary
-- Purpose: Prevent IV reuse and define a stable ciphertext format.
+- Purpose: Prevent nonce reuse and define a stable authenticated ciphertext format (MS03).
+- The pre-MS03 ECCrypto demo class (brainpool ECDH + hex string helpers) was removed.
 
 Behavior
-- Fresh IV: Each encryptString call generates a new 16-byte IV using SecureRandom.
-- Encoding: encryptString returns hex(IV || ciphertext), where ciphertext includes the GCM tag.
-- Decryption: decryptString expects hex(IV || ciphertext) and returns the original UTF-8 string.
+- Fresh nonce: every GarlicMessage v2 uses a new random 12-byte GCM nonce; TCP v23 frames use a
+  per-direction 96-bit counter nonce that is never reused within a session.
+- Encoding: AES-256-GCM ciphertexts always carry the 16-byte GCM tag appended (ciphertext || tag).
+- AAD: garlic messages bind the ciphertext to the 20-byte destination KademliaId via the GCM
+  additional authenticated data.
+- Decryption: a wrong tag raises AEADBadTagException — never silently corrupted plaintext.
 
 Verification
-- Unit test: Encrypting the same plaintext twice with the same key yields different ciphertexts.
-- Unit test: decryptString(encryptString(key, text)) returns text.
-
+- Unit test: GarlicMessage v2 roundtrip; tampered ciphertext fails with AEADBadTagException.
+- Unit test: GcmFramedStreams roundtrip; a flipped bit in a frame causes a decryption failure.

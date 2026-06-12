@@ -30,7 +30,7 @@ public class OutboundIntegrationTest {
     peer.setConnected(true);
 
     // Generate valid client identity
-    clientNode = new NodeId(NodeId.generateECKeys());
+    clientNode = NodeId.generateWithSimpleKey();
   }
 
   @Test
@@ -163,7 +163,7 @@ public class OutboundIntegrationTest {
 
     return RegisterOhRequest.newBuilder()
         .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
-        .setOhAuthPublicKey(com.google.protobuf.ByteString.copyFrom(clientNode.exportPublic()))
+        .setOhAuthPublicKey(com.google.protobuf.ByteString.copyFrom(clientNode.getVerifyKeyBytes()))
         .setRequestedExpiresAt(expires)
         .setTimestampMs(now)
         .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
