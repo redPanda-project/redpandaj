@@ -197,12 +197,10 @@ public final class GarlicRouter {
     OutboundService.DepositResult result =
         outboundService.depositMessage(ohId, payload, sessionTag);
     if (result == OutboundService.DepositResult.NOT_FOUND) {
-      // not our OH — the MS02b forward conserves the return path so the host node acks
-      boolean accepted =
-          OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag, returnPath.serialize());
-      if (!accepted) {
-        RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
-      }
+      // not our OH — the MS02b forward conserves the return path so the host node acks.
+      // The hop budget starts at 0 here, so the forward is always accepted; the hop-limit
+      // handle_expired R-ACK is handled on the FlaschenpostPut path (InboundCommandProcessor).
+      OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag, returnPath.serialize());
       return;
     }
     RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));

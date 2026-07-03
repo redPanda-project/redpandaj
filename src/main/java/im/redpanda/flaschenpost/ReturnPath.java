@@ -42,6 +42,25 @@ public record ReturnPath(byte[] ackOhId, byte[] ackSessionTag, List<Hop> hops) {
   /** Maximum serialized size of a return-path block (245 bytes at {@link #MAX_HOPS}). */
   public static final int MAX_SERIALIZED_LEN = FIXED_LEN + MAX_HOPS * HOP_LEN;
 
+  /** Validates the wire-format invariants up front so {@link #serialize()} cannot fail late. */
+  public ReturnPath {
+    if (ackOhId.length != KademliaId.ID_LENGTH_BYTES) {
+      throw new IllegalArgumentException("invalid ack_oh_id length: " + ackOhId.length);
+    }
+    if (ackSessionTag.length != FlaschenpostV2.SESSION_TAG_LEN) {
+      throw new IllegalArgumentException("invalid ack_session_tag length: " + ackSessionTag.length);
+    }
+    if (hops.size() > MAX_HOPS) {
+      throw new IllegalArgumentException("too many return-path hops: " + hops.size());
+    }
+    for (Hop hop : hops) {
+      if (hop.encryptionPub().length != CryptoUtils.X25519_KEY_LEN) {
+        throw new IllegalArgumentException(
+            "invalid hop encryption key length: " + hop.encryptionPub().length);
+      }
+    }
+  }
+
   /**
    * Parses a return-path block from the buffer's current position, consuming exactly the block.
    *

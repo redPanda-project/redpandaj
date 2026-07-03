@@ -430,6 +430,28 @@ public class RoutingAckRouterTest {
   }
 
   @Test
+  public void returnPath_constructor_rejectsInvalidComponents() {
+    ReturnPath.Hop hop =
+        new ReturnPath.Hop(relay.getNonce(), relay.getNodeId().getEncryptionPubKey().getEncoded());
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> new ReturnPath(randomBytes(19), ackSessionTag, List.of(hop)))
+        .isInstanceOf(IllegalArgumentException.class);
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> new ReturnPath(aliceOhId, randomBytes(15), List.of(hop)))
+        .isInstanceOf(IllegalArgumentException.class);
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> new ReturnPath(aliceOhId, ackSessionTag, List.of(hop, hop, hop, hop, hop)))
+        .isInstanceOf(IllegalArgumentException.class);
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                new ReturnPath(
+                    aliceOhId,
+                    ackSessionTag,
+                    List.of(new ReturnPath.Hop(relay.getNonce(), randomBytes(31)))))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   public void returnPath_parseExact_rejectsTrailingBytes() {
     byte[] serialized = returnPath(relay).serialize();
     byte[] withTrailing = new byte[serialized.length + 1];
