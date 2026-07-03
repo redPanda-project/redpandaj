@@ -54,6 +54,26 @@ public final class OhForwarder {
    */
   public static boolean forward(
       ServerContext serverContext, byte[] ohId, byte[] content, int hopCount, byte[] sessionTag) {
+    return forward(serverContext, ohId, content, hopCount, sessionTag, null);
+  }
+
+  /**
+   * Forwards a deposit for a non-local OH toward its host node, additionally preserving an MS06
+   * return-path block (or {@code null}/empty when no R-ACK was requested) so the host node can send
+   * the {@code RoutingAck} after its deposit decision. See {@link #forward(ServerContext, byte[],
+   * byte[], int, byte[])} for the forwarding semantics.
+   *
+   * @param hopCount the hop count the packet arrived with
+   * @return {@code true} if forwarding was initiated (hop budget available), {@code false} if the
+   *     packet was dropped at the hop limit
+   */
+  public static boolean forward(
+      ServerContext serverContext,
+      byte[] ohId,
+      byte[] content,
+      int hopCount,
+      byte[] sessionTag,
+      byte[] returnPath) {
     if (hopCount >= MAX_HOPS) {
       log.debug("dropping FlaschenpostPut for unknown OH at hop limit {}", hopCount);
       return false;
@@ -64,7 +84,13 @@ public final class OhForwarder {
         record -> {
           byte[] nodeIdBytes = record.getNodeId().toByteArray();
           routeToNode(
-              serverContext, new KademliaId(nodeIdBytes), ohId, content, hopCount, sessionTag);
+              serverContext,
+              new KademliaId(nodeIdBytes),
+              ohId,
+              content,
+              hopCount,
+              sessionTag,
+              returnPath);
         },
         () -> log.debug("OH host resolution failed, dropping forwarded deposit"));
     return true;
@@ -80,10 +106,11 @@ public final class OhForwarder {
       byte[] ohId,
       byte[] content,
       int hopCount,
-      byte[] sessionTag) {
+      byte[] sessionTag,
+      byte[] returnPath) {
     Peer nextPeer = selectNextPeer(serverContext, targetNodeId);
     if (nextPeer != null) {
-      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1, sessionTag);
+      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1, sessionTag, returnPath);
     }
   }
 

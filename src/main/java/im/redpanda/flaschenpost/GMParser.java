@@ -344,6 +344,21 @@ public class GMParser {
    */
   public static void sendFpToPeer(
       Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount, byte[] sessionTag) {
+    sendFpToPeer(peerToSendFP, content, ohId, hopCount, sessionTag, null);
+  }
+
+  /**
+   * Writes a FlaschenpostPut that additionally preserves an MS06 return-path block ({@code
+   * null}/empty when no R-ACK was requested), so the node making the final deposit decision can
+   * send the {@code RoutingAck}.
+   */
+  public static void sendFpToPeer(
+      Peer peerToSendFP,
+      byte[] content,
+      byte[] ohId,
+      int hopCount,
+      byte[] sessionTag,
+      byte[] returnPath) {
     peerToSendFP.getWriteBufferLock().lock();
     try {
       var builder =
@@ -357,6 +372,9 @@ public class GMParser {
       }
       if (sessionTag != null && sessionTag.length > 0) {
         builder.setSessionTag(com.google.protobuf.ByteString.copyFrom(sessionTag));
+      }
+      if (returnPath != null && returnPath.length > 0) {
+        builder.setReturnPath(com.google.protobuf.ByteString.copyFrom(returnPath));
       }
       byte[] data = builder.build().toByteArray();
 

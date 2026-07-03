@@ -7,6 +7,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.GarlicRouter;
 import im.redpanda.flaschenpost.OhForwarder;
+import im.redpanda.flaschenpost.ReturnPath;
+import im.redpanda.flaschenpost.RoutingAckSender;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
@@ -862,14 +864,41 @@ public class InboundCommandProcessor {
         return;
       }
       byte[] sessionTag = sessionTagBytes.toByteArray();
+      // MS06: a return-path block arrives here when a CMD_DELIVER_ACKED deliver was forwarded
+      // by a non-host final garlic hop (OhForwarder, like the MS05 session tag). Structurally
+      // invalid blocks reject the deposit like an invalid session tag.
+      ByteString returnPathBytes = putMsg.getReturnPath();
+      ReturnPath returnPath = null;
+      if (!returnPathBytes.isEmpty()) {
+        if (returnPathBytes.size() > ReturnPath.MAX_SERIALIZED_LEN) {
+          respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
+          return;
+        }
+        returnPath = ReturnPath.parseExact(returnPathBytes.toByteArray());
+        if (returnPath == null) {
+          respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
+          return;
+        }
+      }
       OutboundService.DepositResult result =
           outboundService.depositMessage(ohId, content, sessionTag);
       if (result == OutboundService.DepositResult.NOT_FOUND) {
         // MS02b: not our OH — forward toward the host node (resolved via the DHT announce),
-        // preserving the oh_id (and MS05 session tag) on every hop. Best-effort: OK means
-        // "accepted for forwarding".
+        // preserving the oh_id (and MS05 session tag / MS06 return path) on every hop.
+        // Best-effort: OK means "accepted for forwarding".
         boolean accepted =
-            OhForwarder.forward(serverContext, ohId, content, putMsg.getHopCount(), sessionTag);
+            OhForwarder.forward(
+                serverContext,
+                ohId,
+                content,
+                putMsg.getHopCount(),
+                sessionTag,
+                returnPathBytes.isEmpty() ? null : returnPathBytes.toByteArray());
+        if (!accepted && returnPath != null) {
+          // final station for this packet (hop limit) and the OH is unknown here — tell the
+          // sender the handle could not be resolved instead of leaving it to the timeout
+          RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
+        }
         respondToDeposit(
             peer,
             putMsg,
@@ -880,6 +909,10 @@ public class InboundCommandProcessor {
       }
       if (result != OutboundService.DepositResult.DEPOSITED) {
         logger.debug("FlaschenpostPut deposit not stored: {}", result);
+      }
+      if (returnPath != null) {
+        // MS06: this node made the final deposit decision — send the R-ACK
+        RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));
       }
       respondToDeposit(peer, putMsg, OutboundService.depositResultToStatus(result));
       return;

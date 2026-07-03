@@ -74,6 +74,11 @@ message FlaschenpostPut {
     // OH host and the deliver falls back to this MS02b forwarding. Empty (unset) for direct
     // deposits and untagged delivers; the host node stores it on the MailItem.
     bytes session_tag = 5;
+    // MS06: serialized return-path block ([20 ack_oh_id][16 ack_session_tag][1 hop_count]
+    // [hop_count x (20 kad_id + 32 enc_pub)]), preserved when a CMD_DELIVER_ACKED deliver falls
+    // back to this MS02b forwarding — the node that makes the final deposit decision builds and
+    // sends the R-ACK (see ReturnPath / RoutingAckSender). Empty (unset) = no R-ACK requested.
+    bytes return_path = 6;
 }
 
 // Unified envelope for future-proofing or batching, 
