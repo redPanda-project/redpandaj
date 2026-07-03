@@ -68,6 +68,7 @@ public final class GarlicRouter {
       case FlaschenpostV2.CMD_FORWARD -> handleForward(serverContext, plaintext);
       case FlaschenpostV2.CMD_DELIVER -> handleDeliver(serverContext, plaintext, false);
       case FlaschenpostV2.CMD_DELIVER_TAGGED -> handleDeliver(serverContext, plaintext, true);
+      case FlaschenpostV2.CMD_DELIVER_ACKED -> handleDeliverAcked(serverContext, plaintext);
       default -> log.debug("unknown flaschenpost v2 layer command {}, dropping", cmd);
     }
   }
@@ -142,6 +143,67 @@ public final class GarlicRouter {
     } else if (result != OutboundService.DepositResult.DEPOSITED) {
       log.debug("flaschenpost v2 deliver not stored: {}", result);
     }
+  }
+
+  /**
+   * CMD_DELIVER_ACKED (MS06): {@code [1 cmd][20 oh_id][1 tag_len (0|16)][tag_len session_tag]
+   * [return_path][4 payload_len][payload][ignored padding]} — a deliver that requests an R-ACK.
+   *
+   * <p>The deposit semantics match {@link #handleDeliver}; additionally the node that makes the
+   * final deposit decision sends a {@code RoutingAck} back through the return path. If the OH is
+   * hosted elsewhere, the return path rides along on the MS02b {@code FlaschenpostPut} (like the
+   * MS05 session tag) and the host node acks. Malformed layers are dropped silently — the return
+   * path is only structurally validated (lengths, hop bounds), its contents are the sender's
+   * responsibility (an unreachable ack path just means no R-ACK arrives).
+   */
+  private static void handleDeliverAcked(ServerContext serverContext, byte[] plaintext) {
+    // minimum: cmd + oh_id + tag_len byte + empty tag + fixed return path + payload_len
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + 1 + ReturnPath.FIXED_LEN + 4) {
+      log.debug("flaschenpost v2 acked deliver layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
+    buffer.get(ohId);
+    int tagLen = buffer.get() & 0xFF;
+    if (tagLen != 0 && tagLen != FlaschenpostV2.SESSION_TAG_LEN) {
+      log.debug("flaschenpost v2 acked deliver tag length invalid, dropping");
+      return;
+    }
+    if (buffer.remaining() < tagLen) {
+      log.debug("flaschenpost v2 acked deliver layer too short, dropping");
+      return;
+    }
+    byte[] sessionTag = new byte[tagLen];
+    buffer.get(sessionTag);
+    ReturnPath returnPath = ReturnPath.parse(buffer);
+    if (returnPath == null || buffer.remaining() < 4) {
+      log.debug("flaschenpost v2 acked deliver return path invalid, dropping");
+      return;
+    }
+    int payloadLen = buffer.getInt();
+    if (payloadLen < 0 || payloadLen > buffer.remaining()) {
+      log.debug("flaschenpost v2 acked deliver payload length invalid, dropping");
+      return;
+    }
+    byte[] payload = new byte[payloadLen];
+    buffer.get(payload);
+
+    OutboundService outboundService = serverContext.getOutboundService();
+    if (outboundService == null) {
+      return;
+    }
+    OutboundService.DepositResult result =
+        outboundService.depositMessage(ohId, payload, sessionTag);
+    if (result == OutboundService.DepositResult.NOT_FOUND) {
+      // not our OH — the MS02b forward conserves the return path so the host node acks.
+      // The hop budget starts at 0 here, so the forward is always accepted; the hop-limit
+      // handle_expired R-ACK is handled on the FlaschenpostPut path (InboundCommandProcessor).
+      OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag, returnPath.serialize());
+      return;
+    }
+    RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));
   }
 
   /**

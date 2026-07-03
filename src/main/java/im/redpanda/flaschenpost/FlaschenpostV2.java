@@ -36,12 +36,20 @@ import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
  * CMD_FORWARD        (0x01): [1 cmd][20 inner next_hop][12 nonce][32 ephemeral_pub][4 ct_len][ct + tag]
  * CMD_DELIVER        (0x02): [1 cmd][20 oh_id][4 payload_len][payload][optional padding]
  * CMD_DELIVER_TAGGED (0x03): [1 cmd][20 oh_id][16 session_tag][4 payload_len][payload][optional padding]
+ * CMD_DELIVER_ACKED  (0x04): [1 cmd][20 oh_id][1 tag_len (0|16)][tag_len session_tag]
+ *                            [return_path][4 payload_len][payload][optional padding]
  * </pre>
  *
  * <p>{@code CMD_DELIVER_TAGGED} (MS05) is the reverse-garlic deliver: identical to {@code
  * CMD_DELIVER} plus a 16-byte session tag that is stored on the mailbox {@code MailItem}, so the
  * fetching client can correlate the reply with a conversation. The tag stays inside the innermost
  * encrypted layer — relays never see it.
+ *
+ * <p>{@code CMD_DELIVER_ACKED} (MS06) is a deliver that requests an R-ACK: it carries an optional
+ * session tag (length-prefixed, so tagged replies and untagged forward messages share one command)
+ * followed by a {@link ReturnPath} block. The node that makes the final deposit decision builds a
+ * {@code RoutingAck} and sends it back through the return-path hops as a standard MS04 onion (see
+ * {@link RoutingAckSender}).
  *
  * <p>After peeling a {@code CMD_FORWARD} layer, the relay rebuilds a fresh 2048-byte packet with a
  * new random {@code packet_id}, the inner {@code next_hop} and the remaining plaintext as body,
@@ -69,6 +77,12 @@ public final class FlaschenpostV2 {
    * together with the 16-byte session tag that follows the oh_id.
    */
   public static final byte CMD_DELIVER_TAGGED = 0x03;
+
+  /**
+   * Layer command (MS06, R-ACK): final hop — deposit the payload like {@link #CMD_DELIVER} / {@link
+   * #CMD_DELIVER_TAGGED} and send a {@code RoutingAck} back via the contained {@link ReturnPath}.
+   */
+  public static final byte CMD_DELIVER_ACKED = 0x04;
 
   /** Length of the reverse-garlic session tag inside a {@link #CMD_DELIVER_TAGGED} layer. */
   public static final int SESSION_TAG_LEN = 16;
