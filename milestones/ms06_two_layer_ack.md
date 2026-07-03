@@ -29,10 +29,10 @@ Der Node, der die finale Deposit-Entscheidung für eine Garlic-Nachricht trifft 
 ## Spec (umgesetzt)
 
 > **Hinweis:** Die ursprüngliche Spec sah einen von Alice **vorverschlüsselten** Return-Path
-> vor, in den der OH-Node nur den R-ACK-Payload „einsetzt". Das ist mit stateless
+> vor, in den der OH-Node nur den R-ACK-Payload „einsetzt“. Das ist mit stateless
 > GCM-Relays nicht umsetzbar — exakt das Argument aus
 > [MS05 Decision 6](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms05_reverse_garlic.md#decisions-backend-ms05-2026-06-13):
-> jede Layer ist GCM-authentifiziert, nachträglich lässt sich keine Payload einfügen.
+> jede Schicht ist GCM-authentifiziert, nachträglich lässt sich keine Payload einfügen.
 > Der Return-Path enthält daher **Hop-Deskriptoren**, und der ackende Node baut die
 > R-ACK-Onion selbst (wie Bob beim RGB-Reply).
 
