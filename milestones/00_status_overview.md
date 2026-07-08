@@ -40,7 +40,7 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 | OH Auth (Ed25519 + replay) | `OutboundAuth.java` | Done — Ed25519 + Signing-Versions-Byte (MS03), Legacy-ECDSA-Fallback bis v22-Removal |
 | Garlic encryption (single layer) | `GarlicMessage.java` | Done — v2: AES-256-GCM + X25519 + HKDF, AAD = Ziel-KademliaId (MS03) |
 | Multi-hop garlic relay | `FlaschenpostV2.java`, `GarlicRouter.java` | Done — fixe 2048-B-Pakete, Layer-Peeling, Rebuild + Re-Padding, packet_id-Dedup (MS04); `CMD_DELIVER_TAGGED` mit `session_tag`-Deposit (MS05); `CMD_DELIVER_ACKED` mit Return-Path-Block (MS06) |
-| R-ACK generation | `ReturnPath.java`, `RoutingAckSender.java` | Done — `RoutingAck` als MS04-Onion über Sender-gewählte Return-Path-Hops, Status-Mapping, `FlaschenpostPut.return_path` im MS02b-Fallback (MS06) |
+| R-ACK Generation | `ReturnPath.java`, `RoutingAckSender.java` | Done — `RoutingAck` als MS04-Onion über Sender-gewählte Return-Path-Hops, Status-Mapping, `FlaschenpostPut.return_path` im MS02b-Fallback (MS06) |
 | Kademlia DHT | `KadStoreManager.java` | Done (in-memory) — Ed25519-Signaturen (MS03) |
 | TCP handshake + stream encryption | `ConnectionHandler.java`, `GcmFramedStreams.java` | Done — v23: framed AES-256-GCM, Counter-Nonces; v22 nur noch Light Clients (MS03) |
 | Node identity | `NodeId.java` | Done — Ed25519 (sign) + X25519 (encrypt) Dual-Keypair (MS03) |
