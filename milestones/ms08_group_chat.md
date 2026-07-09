@@ -4,7 +4,7 @@
 
 > **Frontend-Alignment**: Kein Backend-Blocker für [Frontend MS08](../frontend/ms08_group_chat.md).
 > Group Chat ist reine Frontend-Logik (Fan-Out, Key Rotation, Member Management).
-> Bestätigt durch den sdd05-Fan-out-Spike (2026-07-08): Modell 3 („Multi-OH-Fan-out-Node",
+> Bestätigt durch den sdd05-Fan-out-Spike (2026-07-08): Modell 3 („Multi-OH-Fan-out-Node“,
 > der einzige Backend-relevante Kandidat) wurde wegen Metadaten-Konzentration abgelehnt —
 > siehe [Decisions in der Master-Spec](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms08_group_chat.md#decisions-fan-out-spike-sdd05-2026-07-08).
 
