@@ -73,15 +73,39 @@ public class InboundCommandProcessorAsyncUpdatesTest {
       assertEquals(1, consumed);
 
       try {
-        awaitCondition(() -> peer.writeBuffer.position() > 0, 5000);
+        // The writer thread mutates (and may replace) peer.writeBuffer under
+        // writeBufferLock; poll under the same lock for visibility.
+        awaitCondition(
+            () -> {
+              peer.writeBufferLock.lock();
+              try {
+                return peer.writeBuffer.position() > 0;
+              } finally {
+                peer.writeBufferLock.unlock();
+              }
+            },
+            5000);
         break;
       } catch (AssertionError e) {
         if (attempts >= 3) {
           throw e;
         }
+        // Reset the buffer so a late write from this attempt cannot satisfy the
+        // next attempt's await with a partially observed state.
+        peer.writeBufferLock.lock();
+        try {
+          peer.writeBuffer.clear();
+        } finally {
+          peer.writeBufferLock.unlock();
+        }
       }
     }
-    assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
+    peer.writeBufferLock.lock();
+    try {
+      assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
+    } finally {
+      peer.writeBufferLock.unlock();
+    }
   }
 
   @Test
