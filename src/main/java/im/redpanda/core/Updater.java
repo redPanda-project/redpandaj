@@ -7,6 +7,7 @@ import im.redpanda.crypt.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -82,6 +83,15 @@ public class Updater {
     // write it to the file insertNewUpdate() reads, owner-readable only.
     Path keyFile = Path.of("privateSigningKey.txt");
     try {
+      try {
+        // Create with 0600 upfront so the key is never world-readable, not even
+        // between creation and the setPosixFilePermissions below.
+        Files.createFile(
+            keyFile,
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+      } catch (FileAlreadyExistsException | UnsupportedOperationException ignored) {
+        // pre-existing file or non-POSIX filesystem; permissions re-applied below
+      }
       Files.writeString(keyFile, Base58.encode(nodeId.exportWithPrivate()));
       try {
         Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
