@@ -1,6 +1,6 @@
 # Backend Milestones — Status Overview
 
-> Last updated: 2026-07-08
+> Last updated: 2026-07-09
 
 Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den fertigen Backend-APIs auf.
 
@@ -25,7 +25,7 @@ Backend-Milestones werden **immer zuerst** umgesetzt. Das Frontend setzt auf den
 | [MS05](ms05_reverse_garlic.md) | Reverse Garlic (Relay-Seite) | Done | Frontend MS05 kann starten (`CMD_DELIVER_TAGGED` (0x03), `MailItem.session_tag`, RGB-Modell = Hop-Deskriptoren laut Master-Spec Decision 6) |
 | [MS06](ms06_two_layer_ack.md) | R-ACK Generation | Done | Frontend MS06 kann starten (`CMD_DELIVER_ACKED` (0x04), `ReturnPath`-Block, `RoutingAck`-Payload — redpandaj [#229](https://github.com/redPanda-project/redpandaj/pull/229), 2026-07-03) |
 | [MS07](ms07_push_notifications.md) | Push Sender (FCM/APNs) | Missing | Frontend MS07 blocked — Push-Infrastruktur muss serverseitig stehen |
-| [MS08](ms08_group_chat.md) | (keine Backend-Änderungen) | N/A | Frontend MS08 kann nach MS05 starten |
+| [MS08](ms08_group_chat.md) | (keine Backend-Änderungen) | N/A | Frontend MS08 Done (2026-07-09, mobile [#40](https://github.com/redPanda-project/redpanda-mobile/pull/40)) — wie vorhergesagt ohne Backend-Änderungen umgesetzt |
 | [MS09](ms09_incentive_system.md) | Reputation & Anti-Sybil | Missing | Frontend MS09 blocked — ReputationService muss verfügbar sein |
 
 ## Component Readiness
