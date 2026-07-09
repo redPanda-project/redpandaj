@@ -48,10 +48,11 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       run: |
-        if [ -z "$SONAR_TOKEN" ]; then
-          # Dependabot-triggered runs get no repo secrets. Tests already gated the
-          # PR in the coverage step above, so only the Sonar analysis is skipped.
-          echo "SONAR_TOKEN not available (e.g. Dependabot run); skipping Sonar analysis."
+        # Dependabot runs read from the separate Dependabot secret store (its
+        # SONAR_TOKEN is invalid there), so gate on the actor, not the token.
+        # Tests already gated the PR in the coverage step above.
+        if [ "${{ github.actor }}" = "dependabot[bot]" ] || [ -z "$SONAR_TOKEN" ]; then
+          echo "Dependabot run or SONAR_TOKEN not available; skipping Sonar analysis."
         else
           mvn -B jacoco:prepare-agent verify jacoco:report sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj
         fi
