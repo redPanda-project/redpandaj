@@ -45,11 +45,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
 
   @Test
   public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws IOException {
-    // Prepare a small jar file at default path
     byte[] data = "jar".getBytes();
-    try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
-      fos.write(data);
-    }
 
     // Set signature and timestamp to pass initial guards
     ctx.getLocalSettings().setUpdateTimestamp(System.currentTimeMillis());
@@ -61,10 +57,30 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     // Big enough buffer; code may grow it, but start with capacity
     peer.writeBuffer = ByteBuffer.allocate(1024);
 
-    int consumed = proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
-    assertEquals(1, consumed);
+    // Surefire forks share the working directory: SettingsInitTest (another fork)
+    // deletes redpanda.jar, and on loaded CI runners the async upload task can take
+    // well over 2s. Retry the whole request so neither interference fails the test.
+    int attempts = 0;
+    while (true) {
+      attempts++;
+      // (Re-)create the jar right before each request in case another fork deleted it
+      try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
+        fos.write(data);
+      }
 
-    awaitCondition(() -> peer.writeBuffer.position() > 0, 2000);
+      int consumed =
+          proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
+      assertEquals(1, consumed);
+
+      try {
+        awaitCondition(() -> peer.writeBuffer.position() > 0, 5000);
+        break;
+      } catch (AssertionError e) {
+        if (attempts >= 3) {
+          throw e;
+        }
+      }
+    }
     assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
   }
 
