@@ -626,6 +626,10 @@ public class InboundCommandProcessor {
               System.out.println("we send the android.apk update to a peer!");
               byte[] data = Files.readAllBytes(path);
               NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+              if (publicUpdaterKey == null) {
+                System.out.println("No public updater key available, cannot verify update.");
+                return;
+              }
               ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
               bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
               bytesToHash.put(data);
