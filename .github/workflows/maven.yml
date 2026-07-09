@@ -43,17 +43,18 @@ jobs:
       run: mvn -B clean
     - name: coverage
       run: mvn -B jacoco:prepare-agent install jacoco:report
-    - name: Verify Sonar token presence
-      run: |
-        if [ -z "${{ secrets.SONAR_TOKEN }}" ]; then
-          echo "SONAR_TOKEN is not configured; Sonar analysis cannot run. Please add the secret."
-          exit 1
-        fi
     - name: Build and analyze
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: mvn -B jacoco:prepare-agent verify jacoco:report sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj
+      run: |
+        if [ -z "$SONAR_TOKEN" ]; then
+          # Dependabot-triggered runs get no repo secrets. Tests already gated the
+          # PR in the coverage step above, so only the Sonar analysis is skipped.
+          echo "SONAR_TOKEN not available (e.g. Dependabot run); skipping Sonar analysis."
+        else
+          mvn -B jacoco:prepare-agent verify jacoco:report sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj
+        fi
 
   e2e:
     name: E2E Integration Tests
