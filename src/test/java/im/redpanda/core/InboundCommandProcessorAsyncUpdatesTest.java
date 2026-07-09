@@ -45,11 +45,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
 
   @Test
   public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws IOException {
-    // Prepare a small jar file at default path
     byte[] data = "jar".getBytes();
-    try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
-      fos.write(data);
-    }
 
     // Set signature and timestamp to pass initial guards
     ctx.getLocalSettings().setUpdateTimestamp(System.currentTimeMillis());
@@ -61,11 +57,55 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     // Big enough buffer; code may grow it, but start with capacity
     peer.writeBuffer = ByteBuffer.allocate(1024);
 
-    int consumed = proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
-    assertEquals(1, consumed);
+    // Surefire forks share the working directory: SettingsInitTest (another fork)
+    // deletes redpanda.jar, and on loaded CI runners the async upload task can take
+    // well over 2s. Retry the whole request so neither interference fails the test.
+    int attempts = 0;
+    while (true) {
+      attempts++;
+      // (Re-)create the jar right before each request in case another fork deleted it
+      try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
+        fos.write(data);
+      }
 
-    awaitCondition(() -> peer.writeBuffer.position() > 0, 2000);
-    assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
+      int consumed =
+          proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
+      assertEquals(1, consumed);
+
+      try {
+        // The writer thread mutates (and may replace) peer.writeBuffer under
+        // writeBufferLock; poll under the same lock for visibility.
+        awaitCondition(
+            () -> {
+              peer.writeBufferLock.lock();
+              try {
+                return peer.writeBuffer.position() > 0;
+              } finally {
+                peer.writeBufferLock.unlock();
+              }
+            },
+            5000);
+        break;
+      } catch (AssertionError e) {
+        if (attempts >= 3) {
+          throw e;
+        }
+        // Reset the buffer so a late write from this attempt cannot satisfy the
+        // next attempt's await with a partially observed state.
+        peer.writeBufferLock.lock();
+        try {
+          peer.writeBuffer.clear();
+        } finally {
+          peer.writeBufferLock.unlock();
+        }
+      }
+    }
+    peer.writeBufferLock.lock();
+    try {
+      assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
+    } finally {
+      peer.writeBufferLock.unlock();
+    }
   }
 
   @Test
