@@ -623,9 +623,12 @@ public class InboundCommandProcessor {
             }
             Path path = Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
             try {
-              System.out.println("we send the android.apk update to a peer!");
-              byte[] data = Files.readAllBytes(path);
               NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
+              if (publicUpdaterKey == null) {
+                System.out.println("No public updater key available, cannot verify update.");
+                return;
+              }
+              byte[] data = Files.readAllBytes(path);
               ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
               bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
               bytesToHash.put(data);
@@ -639,6 +642,7 @@ public class InboundCommandProcessor {
                         + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                 return;
               }
+              System.out.println("we send the android.apk update to a peer!");
               byte[] androidSignature =
                   serverContext.getLocalSettings().getUpdateAndroidSignature();
               ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);

@@ -7,9 +7,11 @@ import im.redpanda.crypt.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.Security;
 
 public class Updater {
@@ -77,7 +79,29 @@ public class Updater {
     NodeId nodeId = new NodeId();
 
     System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
-    System.out.println("Priv: " + Base58.encode(nodeId.exportWithPrivate()) + "\n\n\n\n");
+    // The private key must never be written to stdout (it may end up in logs);
+    // write it to the file insertNewUpdate() reads, owner-readable only.
+    Path keyFile = Path.of("privateSigningKey.txt");
+    try {
+      try {
+        // Create with 0600 upfront so the key is never world-readable, not even
+        // between creation and the setPosixFilePermissions below.
+        Files.createFile(
+            keyFile,
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+      } catch (FileAlreadyExistsException | UnsupportedOperationException ignored) {
+        // pre-existing file or non-POSIX filesystem; permissions re-applied below
+      }
+      Files.writeString(keyFile, Base58.encode(nodeId.exportWithPrivate()));
+      try {
+        Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
+      } catch (UnsupportedOperationException ignored) {
+        // non-POSIX filesystem (e.g. Windows); file is still not printed anywhere
+      }
+      System.out.println("Priv: written to " + keyFile.toAbsolutePath());
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   public static void insertNewUpdate() throws IOException, AddressFormatException {
