@@ -97,6 +97,12 @@ public class HandshakeVersionsE2EIT {
     try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
       assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
 
+      // startup logs a benign FileNotFoundException for the not-yet-existing localSettings —
+      // only the output produced by the reject itself must be exception-free (stdout and stderr
+      // are append-only, so per-stream prefixes give an exact delta)
+      String stdoutBaseline = node.getStdout();
+      String stderrBaseline = node.getStderr();
+
       try (Socket socket = new Socket("127.0.0.1", port)) {
         socket.setSoTimeout(20_000);
         byte[] kademliaId = new byte[20];
@@ -127,14 +133,26 @@ public class HandshakeVersionsE2EIT {
             bytesBeforeClose <= 30);
       }
 
-      node.stop(Duration.ofSeconds(10));
-
-      String output = node.getCombinedOutput();
+      // the pipe reader may lag slightly behind the socket close — poll for the counter line
+      String rejectLog = "";
+      long deadline = System.currentTimeMillis() + 10_000;
+      while (System.currentTimeMillis() < deadline) {
+        rejectLog =
+            node.getStdout().substring(stdoutBaseline.length())
+                + node.getStderr().substring(stderrBaseline.length());
+        if (rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1")) {
+          break;
+        }
+        Thread.sleep(200);
+      }
       assertTrue(
-          "expected the rejected-v22 counter log line, got:\n" + output,
-          output.contains("rejected legacy v22 light client handshake, total rejected: 1"));
+          "expected the rejected-v22 counter log line, got:\n" + rejectLog,
+          rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1"));
       assertFalse(
-          "the reject must not cause a server exception:\n" + output, output.contains("Exception"));
+          "the reject must not cause a server exception:\n" + rejectLog,
+          rejectLog.contains("Exception"));
+
+      node.stop(Duration.ofSeconds(10));
     }
   }
 
