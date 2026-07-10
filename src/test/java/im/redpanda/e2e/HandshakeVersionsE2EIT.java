@@ -3,6 +3,7 @@ package im.redpanda.e2e;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.GcmFramedStreams;
@@ -16,6 +17,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -108,14 +110,21 @@ public class HandshakeVersionsE2EIT {
         socket.getOutputStream().write(handshake.array());
         socket.getOutputStream().flush();
 
-        // the node must close the connection instead of answering with its own handshake
-        int read;
+        // the node must close the connection; depending on timing it may have written its own
+        // 30-byte handshake before parsing (and rejecting) ours, but never anything beyond it
+        int bytesBeforeClose = 0;
         try {
-          read = socket.getInputStream().read();
+          while (socket.getInputStream().read() != -1) {
+            bytesBeforeClose++;
+          }
+        } catch (SocketTimeoutException timeout) {
+          fail("node did not disconnect the v22 light client");
         } catch (IOException resetByPeer) {
-          read = -1; // a TCP reset is also a disconnect
+          // a TCP reset is also a disconnect
         }
-        assertEquals("node must disconnect a v22 light client", -1, read);
+        assertTrue(
+            "node must not proceed past its own handshake, but sent " + bytesBeforeClose + " bytes",
+            bytesBeforeClose <= 30);
       }
 
       node.stop(Duration.ofSeconds(10));

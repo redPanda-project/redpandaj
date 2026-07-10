@@ -27,9 +27,11 @@ public class Server {
 
   /**
    * Transition switch: accept v22 light-client handshakes. Phase 1 shutdown 2026-07 (sdd02, MS03
-   * Decision 10); emergency re-enable = flip back to {@code true}. Removal of the whole legacy path
-   * is tracked in PLAN-v22-removal (Phase 2). Rejected v22 attempts are counted in {@link
-   * ConnectionReaderThread#REJECTED_LEGACY_V22_ATTEMPTS}.
+   * Decision 10); emergency re-enable = flip back to {@code true}. Rejected v22 attempts are
+   * counted in {@link ConnectionReaderThread#REJECTED_LEGACY_V22_ATTEMPTS}.
+   *
+   * @deprecated kept one release period as an emergency switch only; removed together with the
+   *     whole legacy path in sdd02 Phase 2 (PLAN-v22-removal).
    */
   @Deprecated(forRemoval = true)
   public static final boolean ACCEPT_LEGACY_V22_LIGHT_CLIENTS = false;

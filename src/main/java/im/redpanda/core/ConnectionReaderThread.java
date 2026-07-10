@@ -80,6 +80,9 @@ public class ConnectionReaderThread implements Runnable {
     Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
   }
 
+  // S5738: the deprecated v22 gate must stay evaluated here until sdd02 Phase 2 removes the
+  // legacy path (PLAN-v22-removal)
+  @SuppressWarnings("java:S5738")
   public static boolean parseHandshake(
       ServerContext serverContext, PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
