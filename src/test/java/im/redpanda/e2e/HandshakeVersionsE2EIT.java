@@ -153,6 +153,7 @@ public class HandshakeVersionsE2EIT {
           rejectLog.contains("Exception"));
 
       node.stop(Duration.ofSeconds(10));
+      assertEquals("node exit code\n" + node.getCombinedOutput(), 0, node.exitCode());
     }
   }
 
