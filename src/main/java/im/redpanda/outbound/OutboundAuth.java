@@ -83,7 +83,8 @@ public class OutboundAuth {
       return AuthResult.INVALID_TIMESTAMP;
     }
 
-    // 2. Check Replay
+    // 2. Check Replay — fast path only; the authoritative, race-free check is the putIfAbsent
+    // below (two threads passing containsKey concurrently must not both get accepted)
     String ohIdHex = Utils.bytesToHexString(ohId);
     String replayKey = ohIdHex + "_" + Utils.bytesToHexString(nonce);
     if (replayCache.containsKey(replayKey)) {
@@ -117,17 +118,23 @@ public class OutboundAuth {
     }
     sourceCount.incrementAndGet();
 
-    // Auth successful -> store nonce to prevent replay
-    replayCache.put(replayKey, timestampMs);
+    // Auth successful -> record the nonce atomically; putIfAbsent guarantees at most one caller
+    // ever gets OK for a given (ohId, nonce), even if both raced past the containsKey above
+    if (replayCache.putIfAbsent(replayKey, timestampMs) != null) {
+      sourceCount.decrementAndGet();
+      logger.warn("OutboundAuth: Replay detected for key {}", replayKey);
+      return AuthResult.REPLAY;
+    }
 
     return AuthResult.OK;
   }
 
   /**
-   * Removes entries older than {@link #TIME_WINDOW_MS} (relative to {@code now}) and rebuilds the
-   * per-source counters from the remaining entries. Triggered from {@link #verify} at most once per
-   * {@link #CLEANUP_INTERVAL_MS} (or early via {@link #GLOBAL_SAFETY_LIMIT}). The rebuild is O(n)
-   * once per interval — deliberately simpler than incremental bookkeeping, and empty sources
+   * Removes entries whose timestamp lies outside the ±{@link #TIME_WINDOW_MS} window around {@code
+   * now} — past or future, matching the clock-skew semantics of the timestamp check — and rebuilds
+   * the per-source counters from the remaining entries. Triggered from {@link #verify} at most once
+   * per {@link #CLEANUP_INTERVAL_MS} (or early via {@link #GLOBAL_SAFETY_LIMIT}). The rebuild is
+   * O(n) once per interval — deliberately simpler than incremental bookkeeping, and empty sources
    * disappear automatically. Package-private for tests.
    */
   void cleanupCache(long now) {
