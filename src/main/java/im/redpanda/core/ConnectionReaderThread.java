@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -37,6 +38,14 @@ public class ConnectionReaderThread implements Runnable {
   static final Semaphore updateUploadLock = new Semaphore(1);
 
   static final ReentrantLock updateDownloadLock = new ReentrantLock();
+
+  /**
+   * Counts v22 light-client handshakes rejected since the sdd02 phase-1 shutdown (would have been
+   * accepted while {@link Server#ACCEPT_LEGACY_V22_LIGHT_CLIENTS} was {@code true}). Process-local
+   * observability counter, intentionally not persisted; logged without any IP (privacy).
+   */
+  public static final AtomicLong REJECTED_LEGACY_V22_ATTEMPTS = new AtomicLong();
+
   private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
   private final ServerContext serverContext;
   private final InboundCommandProcessor inboundProcessor;
@@ -71,6 +80,9 @@ public class ConnectionReaderThread implements Runnable {
     Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
   }
 
+  // S5738: the deprecated v22 gate must stay evaluated here until sdd02 Phase 2 removes the
+  // legacy path (PLAN-v22-removal)
+  @SuppressWarnings("java:S5738")
   public static boolean parseHandshake(
       ServerContext serverContext, PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
@@ -92,16 +104,24 @@ public class ConnectionReaderThread implements Runnable {
     }
 
     /**
-     * MS03 dual-version support: v23 is the current protocol (Ed25519/X25519/AES-GCM). v22 is only
-     * accepted for light clients during the transition phase (deprecated legacy crypto) — v22 full
-     * nodes use incompatible identities (brainpool) and are rejected. Unknown (e.g. future)
-     * versions are rejected as well: we cannot speak a protocol we do not know.
+     * MS03 dual-version support: v23 is the current protocol (Ed25519/X25519/AES-GCM). v22 light
+     * clients were accepted during the transition phase (deprecated legacy crypto) until the sdd02
+     * phase-1 shutdown (MS03 Decision 10) — v22 full nodes use incompatible identities (brainpool)
+     * and were always rejected. Unknown (e.g. future) versions are rejected as well: we cannot
+     * speak a protocol we do not know.
      */
     boolean acceptedLegacy =
         Server.ACCEPT_LEGACY_V22_LIGHT_CLIENTS
             && version == Server.LEGACY_VERSION
             && peerInHandshake.isLightClient();
     if (version != Server.VERSION && !acceptedLegacy) {
+      if (version == Server.LEGACY_VERSION && peerInHandshake.isLightClient()) {
+        // would have been accepted before the shutdown — count for residual-usage observability
+        Log.put(
+            "rejected legacy v22 light client handshake, total rejected: %d"
+                .formatted(REJECTED_LEGACY_V22_ATTEMPTS.incrementAndGet()),
+            10);
+      }
       Log.put(
           "unsupported protocol version %s (lightClient=%s), disconnecting..."
               .formatted(version, peerInHandshake.isLightClient()),

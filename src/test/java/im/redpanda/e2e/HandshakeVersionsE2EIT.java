@@ -1,15 +1,15 @@
 package im.redpanda.e2e;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.GcmFramedStreams;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.PeerInHandshake;
 import im.redpanda.crypt.CryptoUtils;
-import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.crypt.legacy.LegacyNodeId;
 import im.redpanda.testutil.TestNodeProcess;
 import java.io.EOFException;
 import java.io.IOException;
@@ -17,16 +17,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Arrays;
-import javax.crypto.Cipher;
-import javax.crypto.KeyAgreement;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 import org.junit.Rule;
@@ -39,11 +35,10 @@ import org.junit.rules.TemporaryFolder;
  * <ul>
  *   <li>v23 light client: 64-byte key exchange, ephemeral X25519, HKDF, framed AES-256-GCM —
  *       ping/pong roundtrip works and a flipped bit in a frame kills the connection.
- *   <li>v22 legacy light client (pre-MS03 mobile app): 65-byte brainpool keys, AES-CTR — still
- *       accepted during the transition phase.
+ *   <li>v22 legacy light client (pre-MS03 mobile app): rejected since the sdd02 phase-1 shutdown
+ *       (MS03 Decision 10) — clean disconnect, no server exception, reject counter increments.
  * </ul>
  */
-@SuppressWarnings("deprecation")
 public class HandshakeVersionsE2EIT {
 
   private static final String MAGIC = "k3gV";
@@ -95,26 +90,70 @@ public class HandshakeVersionsE2EIT {
   }
 
   @Test
-  public void v22LegacyLightClientIsStillAcceptedDuringTransition() throws Exception {
+  public void v22LegacyLightClientIsRejectedAfterShutdown() throws Exception {
     Path nodeDir = temporaryFolder.newFolder("nodeV22").toPath();
     int port = nextFreePort();
 
     try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
       assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
 
-      try (V22LegacyClient client = V22LegacyClient.connect(port)) {
-        byte firstCommand = client.readEncryptedCommand();
-        assertEquals(Command.PING, firstCommand);
+      // startup logs a benign FileNotFoundException for the not-yet-existing localSettings —
+      // only the output produced by the reject itself must be exception-free (stdout and stderr
+      // are append-only, so per-stream prefixes give an exact delta)
+      String stdoutBaseline = node.getStdout();
+      String stderrBaseline = node.getStderr();
 
-        // initial ping completes the handshake, the second one is answered with a pong
-        client.sendEncrypted(new byte[] {Command.PING});
-        LightClientBase.pause();
+      try (Socket socket = new Socket("127.0.0.1", port)) {
+        socket.setSoTimeout(20_000);
+        byte[] kademliaId = new byte[20];
+        RANDOM.nextBytes(kademliaId);
+        ByteBuffer handshake = ByteBuffer.allocate(30);
+        handshake.put(MAGIC.getBytes());
+        handshake.put((byte) 22);
+        handshake.put((byte) 160); // light client marker
+        handshake.put(kademliaId);
+        handshake.putInt(0);
+        socket.getOutputStream().write(handshake.array());
+        socket.getOutputStream().flush();
 
-        client.sendEncrypted(new byte[] {Command.PING});
-        assertEquals(Command.PONG, client.readEncryptedCommand());
+        // the node must close the connection; depending on timing it may have written its own
+        // 30-byte handshake before parsing (and rejecting) ours, but never anything beyond it
+        int bytesBeforeClose = 0;
+        try {
+          while (socket.getInputStream().read() != -1) {
+            bytesBeforeClose++;
+          }
+        } catch (SocketTimeoutException timeout) {
+          fail("node did not disconnect the v22 light client");
+        } catch (IOException resetByPeer) {
+          // a TCP reset is also a disconnect
+        }
+        assertTrue(
+            "node must not proceed past its own handshake, but sent " + bytesBeforeClose + " bytes",
+            bytesBeforeClose <= 30);
       }
 
+      // the pipe reader may lag slightly behind the socket close — poll for the counter line
+      String rejectLog = "";
+      long deadline = System.currentTimeMillis() + 10_000;
+      while (System.currentTimeMillis() < deadline) {
+        rejectLog =
+            node.getStdout().substring(stdoutBaseline.length())
+                + node.getStderr().substring(stderrBaseline.length());
+        if (rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1")) {
+          break;
+        }
+        Thread.sleep(200);
+      }
+      assertTrue(
+          "expected the rejected-v22 counter log line, got:\n" + rejectLog,
+          rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1"));
+      assertFalse(
+          "the reject must not cause a server exception:\n" + rejectLog,
+          rejectLog.contains("Exception"));
+
       node.stop(Duration.ofSeconds(10));
+      assertEquals("node exit code\n" + node.getCombinedOutput(), 0, node.exitCode());
     }
   }
 
@@ -301,86 +340,6 @@ public class HandshakeVersionsE2EIT {
       byte[] bytes = Arrays.copyOf(frame.array(), frame.position());
       bytes[bytes.length - 1] ^= 0x01; // flip one bit in the GCM tag
       out.write(bytes);
-      out.flush();
-    }
-  }
-
-  /** Protocol v22 (deprecated): brainpool ECDH + AES-CTR, exactly like the pre-MS03 mobile app. */
-  private static final class V22LegacyClient extends LightClientBase {
-    private Cipher encryptCipher;
-    private Cipher decryptCipher;
-
-    private V22LegacyClient(int port) throws IOException {
-      super(port);
-    }
-
-    static V22LegacyClient connect(int port) throws Exception {
-      V22LegacyClient client = new V22LegacyClient(port);
-      client.handshake();
-      return client;
-    }
-
-    private void handshake() throws Exception {
-      LegacyNodeId identity = LegacyNodeId.generate();
-      sendHandshake(22, identity.getKademliaId().getBytes());
-
-      out.write(new byte[] {Command.REQUEST_PUBLIC_KEY});
-      out.flush();
-      readPlaintextCommandAnswering(identity.exportPublic(), Command.SEND_PUBLIC_KEY);
-      byte[] nodePublicKey = readFully(LegacyNodeId.PUBLIC_KEYLEN);
-
-      pause();
-      byte[] randomFromUs = new byte[8];
-      RANDOM.nextBytes(randomFromUs);
-      ByteBuffer activate = ByteBuffer.allocate(1 + 8);
-      activate.put(Command.ACTIVATE_ENCRYPTION);
-      activate.put(randomFromUs);
-      out.write(activate.array());
-      out.flush();
-
-      readPlaintextCommandAnswering(identity.exportPublic(), Command.ACTIVATE_ENCRYPTION);
-      byte[] randomFromNode = readFully(8);
-
-      // static-static ECDH exactly like the legacy client
-      KeyAgreement keyAgreement = KeyAgreement.getInstance("ECDH", "BC");
-      keyAgreement.init(identity.getKeyPair().getPrivate());
-      keyAgreement.doPhase(LegacyNodeId.importPublic(nodePublicKey).getKeyPair().getPublic(), true);
-      byte[] sharedSecret = keyAgreement.generateSecret("AES").getEncoded();
-
-      SecretKey sendKey = legacyKey(sharedSecret, randomFromUs, randomFromNode);
-      SecretKey receiveKey = legacyKey(sharedSecret, randomFromNode, randomFromUs);
-      IvParameterSpec sendIv = legacyIv(randomFromUs, randomFromNode);
-      IvParameterSpec receiveIv = legacyIv(randomFromNode, randomFromUs);
-
-      encryptCipher = Cipher.getInstance("AES/CTR/NoPadding", "SunJCE");
-      encryptCipher.init(Cipher.ENCRYPT_MODE, sendKey, sendIv);
-      decryptCipher = Cipher.getInstance("AES/CTR/NoPadding", "SunJCE");
-      decryptCipher.init(Cipher.DECRYPT_MODE, receiveKey, receiveIv);
-    }
-
-    private static SecretKey legacyKey(
-        byte[] sharedSecret, byte[] firstRandom, byte[] secondRandom) {
-      ByteBuffer keyBytes = ByteBuffer.allocate(sharedSecret.length + 16);
-      keyBytes.put(sharedSecret);
-      keyBytes.put(firstRandom);
-      keyBytes.put(secondRandom);
-      return new SecretKeySpec(Sha256Hash.create(keyBytes.array()).getBytes(), "AES");
-    }
-
-    private static IvParameterSpec legacyIv(byte[] firstRandom, byte[] secondRandom) {
-      ByteBuffer iv = ByteBuffer.allocate(16);
-      iv.put(firstRandom);
-      iv.put(secondRandom);
-      return new IvParameterSpec(iv.array());
-    }
-
-    byte readEncryptedCommand() throws Exception {
-      byte[] encrypted = readFully(1);
-      return decryptCipher.update(encrypted)[0];
-    }
-
-    void sendEncrypted(byte[] plaintext) throws Exception {
-      out.write(encryptCipher.update(plaintext));
       out.flush();
     }
   }
