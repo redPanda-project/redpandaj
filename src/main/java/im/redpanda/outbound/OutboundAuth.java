@@ -3,6 +3,8 @@ package im.redpanda.outbound;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Utils;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -19,13 +21,39 @@ public class OutboundAuth {
    */
   public static final byte SIGNING_VERSION_ED25519 = 0x02;
 
-  // Allow requests within ±5 minutes of server time
-  // Allow requests within ±5 minutes of server time
-  private static final long TIME_WINDOW_MS = 5L * 60L * 1000L;
+  /**
+   * Validity window for signed outbound commands (timestamps up to this far in the past OR future
+   * are accepted — clock-skew tolerance); also the replay-cache retention time. The cache is not
+   * persisted across restarts (accepted residual risk: replay of a command captured within the
+   * window during the seconds of a node restart — see sdd02 decision 3). Package-private for tests.
+   */
+  static final long TIME_WINDOW_MS = 5L * 60L * 1000L;
 
-  // Simple replay cache: (ohId + nonce) -> timestamp
-  // In a real prod environment, this should be LRU or expire based on timestamp
+  /** How often at most {@link #cleanupCache(long)} runs (time-based, not size-triggered). */
+  private static final long CLEANUP_INTERVAL_MS = 60_000L;
+
+  /**
+   * Maximum replay-cache entries per source (oh_id) within the retention window. When reached,
+   * further commands from that source are rejected — never evicted, so flooding one source can
+   * neither displace other sources' entries nor reopen the replay window for its own.
+   * Package-private for tests.
+   */
+  static final int MAX_ENTRIES_PER_SOURCE = 1_000;
+
+  /** Safety valve only (forces an early cleanup); not reached in normal operation. */
+  private static final int GLOBAL_SAFETY_LIMIT = 100_000;
+
+  // Replay cache: (ohIdHex + "_" + nonceHex) -> command timestamp
   private final ConcurrentHashMap<String, Long> replayCache = new ConcurrentHashMap<>();
+
+  /**
+   * Entries per source (key = ohIdHex); rebuilt from scratch on every cleanup. Counters may be off
+   * by a few under concurrent verifies — acceptable, the cap is a flood limit, not an exact quota.
+   */
+  private final ConcurrentHashMap<String, AtomicInteger> entriesPerSource =
+      new ConcurrentHashMap<>();
+
+  private final AtomicLong lastCleanupMs = new AtomicLong(0);
 
   public enum AuthResult {
     OK,
@@ -55,14 +83,11 @@ public class OutboundAuth {
       return AuthResult.INVALID_TIMESTAMP;
     }
 
-    // 2. Check Replay
-    String replayKey = Utils.bytesToHexString(ohId) + "_" + Utils.bytesToHexString(nonce);
+    // 2. Check Replay — fast path only; the authoritative, race-free check is the putIfAbsent
+    // below (two threads passing containsKey concurrently must not both get accepted)
+    String ohIdHex = Utils.bytesToHexString(ohId);
+    String replayKey = ohIdHex + "_" + Utils.bytesToHexString(nonce);
     if (replayCache.containsKey(replayKey)) {
-      // In a robust implementation, we'd check if the entry is old enough to be
-      // forgotten,
-      // but for now, if it's in the map, it's a replay (assuming map is cleaned up or
-      // small enough
-      // for PoC)
       logger.warn("OutboundAuth: Replay detected for key {}", replayKey);
       return AuthResult.REPLAY;
     }
@@ -74,21 +99,51 @@ public class OutboundAuth {
       return AuthResult.INVALID_SIGNATURE;
     }
 
-    // Auth successful -> store nonce to prevent replay
-    replayCache.put(replayKey, timestampMs);
-
-    // Cleanup cache occasionally (simple strategy: remove entries older than
-    // window)
-    // NOTE: This is a lazy cleanup for PoC.
-    if (replayCache.size() > 10000) {
+    // Time-based cleanup, at most once per interval; the CAS keeps concurrent verifies from
+    // cleaning up in parallel. Runs before the cap check so a capped source recovers as soon as
+    // its entries have expired.
+    long last = lastCleanupMs.get();
+    if ((now - last > CLEANUP_INTERVAL_MS || replayCache.size() > GLOBAL_SAFETY_LIMIT)
+        && lastCleanupMs.compareAndSet(last, now)) {
       cleanupCache(now);
+    }
+
+    // Per-source cap: reject, never evict (evicting would reopen the replay window — an attacker
+    // could flood until an earlier command of his is displaced and then replay it). With no free
+    // slot the nonce cannot be recorded, so freshness cannot be guaranteed -> REPLAY.
+    AtomicInteger sourceCount = entriesPerSource.computeIfAbsent(ohIdHex, k -> new AtomicInteger());
+    if (sourceCount.get() >= MAX_ENTRIES_PER_SOURCE) {
+      logger.warn("OutboundAuth: per-source replay-cache cap reached for {}, rejecting", ohIdHex);
+      return AuthResult.REPLAY;
+    }
+    sourceCount.incrementAndGet();
+
+    // Auth successful -> record the nonce atomically; putIfAbsent guarantees at most one caller
+    // ever gets OK for a given (ohId, nonce), even if both raced past the containsKey above
+    if (replayCache.putIfAbsent(replayKey, timestampMs) != null) {
+      sourceCount.decrementAndGet();
+      logger.warn("OutboundAuth: Replay detected for key {}", replayKey);
+      return AuthResult.REPLAY;
     }
 
     return AuthResult.OK;
   }
 
-  private void cleanupCache(long now) {
+  /**
+   * Removes entries whose timestamp lies outside the ±{@link #TIME_WINDOW_MS} window around {@code
+   * now} — past or future, matching the clock-skew semantics of the timestamp check — and rebuilds
+   * the per-source counters from the remaining entries. Triggered from {@link #verify} at most once
+   * per {@link #CLEANUP_INTERVAL_MS} (or early via {@link #GLOBAL_SAFETY_LIMIT}). The rebuild is
+   * O(n) once per interval — deliberately simpler than incremental bookkeeping, and empty sources
+   * disappear automatically. Package-private for tests.
+   */
+  void cleanupCache(long now) {
     replayCache.entrySet().removeIf(entry -> Math.abs(now - entry.getValue()) > TIME_WINDOW_MS);
+    entriesPerSource.clear();
+    for (String key : replayCache.keySet()) {
+      String source = key.substring(0, key.indexOf('_'));
+      entriesPerSource.computeIfAbsent(source, k -> new AtomicInteger()).incrementAndGet();
+    }
   }
 
   /**
