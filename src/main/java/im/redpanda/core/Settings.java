@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import java.io.File;
+import java.util.Arrays;
 
 public class Settings {
 
@@ -39,9 +40,31 @@ public class Settings {
     }
   }
 
-  public static String[] knownNodes = {
+  private static final String[] DEFAULT_KNOWN_NODES = {
     "195.201.25.223:59558", "redpanda.im:59559", "127.0.0.1:59558"
   };
+
+  /**
+   * Bootstrap peers as {@code host:port}. Overridable without rebuilding via the system property
+   * {@code redpanda.knownNodes} (same key the E2E launcher uses) or the environment variable {@code
+   * REDPANDA_KNOWN_NODES}, both as a comma-separated list; the property wins over the environment,
+   * blank values fall back to the defaults.
+   */
+  public static String[] knownNodes =
+      parseKnownNodes(
+          System.getProperty("redpanda.knownNodes", System.getenv("REDPANDA_KNOWN_NODES")));
+
+  static String[] parseKnownNodes(String configured) {
+    if (configured == null) {
+      return DEFAULT_KNOWN_NODES.clone();
+    }
+    String[] entries =
+        Arrays.stream(configured.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .toArray(String[]::new);
+    return entries.length == 0 ? DEFAULT_KNOWN_NODES.clone() : entries;
+  }
 
   public static String[] blacklistIps = {};
 

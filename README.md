@@ -103,8 +103,8 @@ chmod +x build.sh
 ## Data & configuration
 
 - Local state is stored in `./data/` (e.g., `data/localSettings<port>.dat`).
-- Default port: **59558** (`Settings.DEFAULT_PORT`)
-- Seed/known nodes are currently hardcoded in `Settings.knownNodes` (this will evolve as discovery hardening improves).
+- Default port: **59558** (`Settings.DEFAULT_PORT`); override with the `PORT` environment variable.
+- Bootstrap/known nodes default to the list in `Settings.knownNodes` and can be overridden without a rebuild via the system property `redpanda.knownNodes` or the environment variable `REDPANDA_KNOWN_NODES` (comma-separated `host:port` entries; blank values keep the defaults), e.g. `REDPANDA_KNOWN_NODES="5.75.137.166:59558,46.224.156.238:59558" java -jar redpanda.jar`.
 
 ---
 
