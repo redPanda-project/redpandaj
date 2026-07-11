@@ -20,8 +20,12 @@ public class Updater {
    * Base58 of the 64-byte MS03 public NodeId export ([32 Ed25519 verify key][32 X25519 key]) of the
    * core developers' update-signing identity. Regenerated for MS03 — pre-MS03 (brainpool) update
    * signatures are no longer accepted.
+   *
+   * <p>INTERIM TESTNET KEY (2026-07-11): generated for the first real v23 network; to be rotated by
+   * the human key ceremony (T13) once the updater hardening (T10) has landed.
    */
-  public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS = "MS03_PLACEHOLDER_PUBLIC_KEY";
+  public static final String PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS =
+      "pSX1GUpVfPuNUPvC5LZZQtRyt1f8xk9JvnYeWocXtVEgeXNwK3VPQe626HmA45af9zipa47W5gu26wnJT19FMaQ";
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
