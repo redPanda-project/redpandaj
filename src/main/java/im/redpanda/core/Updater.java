@@ -13,8 +13,19 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.Security;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class Updater {
+
+  private static final Logger logger = LogManager.getLogger();
+
+  /**
+   * Build-time floor for accepted update timestamps (rollback protection). Raise this to the
+   * release-signing timestamp with every signed release (see updater key-ceremony runbook in the
+   * docs repo). Updates with timestamp &lt;= this value are rejected even on a fresh LocalSettings.
+   */
+  public static final long MIN_UPDATE_TIMESTAMP_MS = 1783728000000L; // 2026-07-11T00:00:00Z
 
   /**
    * Base58 of the 64-byte MS03 public NodeId export ([32 Ed25519 verify key][32 X25519 key]) of the
@@ -31,13 +42,47 @@ public class Updater {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
+  /**
+   * Lazily-decoded, cached updater public key. {@code null} both before the first lookup and after
+   * a failed decode (fail-closed) — {@link #decoded} distinguishes the two so the warning is only
+   * logged once.
+   */
+  private static volatile NodeId cachedPublicUpdaterKey;
+
+  private static volatile boolean decoded;
+
   public static NodeId getPublicUpdaterKey() {
-    try {
-      return NodeId.importPublic(Base58.decode(PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS));
-    } catch (AddressFormatException | IllegalArgumentException e) {
-      e.printStackTrace();
+    if (!decoded) {
+      synchronized (Updater.class) {
+        if (!decoded) {
+          try {
+            cachedPublicUpdaterKey =
+                NodeId.importPublic(Base58.decode(PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS));
+          } catch (AddressFormatException | IllegalArgumentException e) {
+            logger.warn("update channel fail-closed: no production updater key configured");
+            cachedPublicUpdaterKey = null;
+          }
+          decoded = true;
+        }
+      }
     }
-    return null;
+    return cachedPublicUpdaterKey;
+  }
+
+  /** Test-only override of the cached updater key; bypasses the normal decode path. */
+  static void setPublicUpdaterKeyForTests(NodeId key) {
+    synchronized (Updater.class) {
+      cachedPublicUpdaterKey = key;
+      decoded = true;
+    }
+  }
+
+  /** Test-only reset of the lazy-holder cache so the next call re-decodes normally. */
+  static void resetPublicUpdaterKeyForTests() {
+    synchronized (Updater.class) {
+      cachedPublicUpdaterKey = null;
+      decoded = false;
+    }
   }
 
   /**
@@ -46,7 +91,11 @@ public class Updater {
    * @param args
    */
   public static void main(String[] args) {
-    // createNewKeys();
+    if (args.length > 0 && "--create-keys".equals(args[0])) {
+      // CLI entry point for the offline key ceremony (T13) — never invoked from CI/build.
+      createNewKeys();
+      return;
+    }
 
     if (!Path.of("privateSigningKey.txt").toFile().exists()) {
       System.out.println("No private key for signing found, skipping insert update into network.");
