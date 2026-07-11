@@ -440,31 +440,6 @@
 
 
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>java</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <mainClass>im.redpanda.core.Updater</mainClass>
-                    <arguments>
-                        <argument>argument1</argument>
-                    </arguments>
-                    <systemProperties>
-                        <systemProperty>
-                            <key>myproperty</key>
-                            <value>myvalue</value>
-                        </systemProperty>
-                    </systemProperties>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
@@ -568,6 +543,41 @@
                             <includes>
                                 <include>**/*IT.java</include>
                             </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <!-- Signs and inserts the update into the network (Updater.main); only meant to be
+                 run explicitly by the release/signing process (see updater key-ceremony runbook
+                 in the docs repo), never as part of a plain `mvn package`. -->
+            <id>release-signing</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>java</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <mainClass>im.redpanda.core.Updater</mainClass>
+                            <arguments>
+                                <argument>argument1</argument>
+                            </arguments>
+                            <systemProperties>
+                                <systemProperty>
+                                    <key>myproperty</key>
+                                    <value>myvalue</value>
+                                </systemProperty>
+                            </systemProperties>
                         </configuration>
                     </plugin>
                 </plugins>

@@ -52,6 +52,38 @@ public class InboundCommandProcessor {
    */
   static Runnable restartAction = () -> System.exit(0);
 
+  /** System property overriding {@link #updateJarPath()}; used by tests to avoid CWD sharing. */
+  private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
+
+  /** System property overriding {@link #updateApkPath()}; used by tests to avoid CWD sharing. */
+  private static final String APK_PATH_PROPERTY = "redpanda.update.apk.path";
+
+  /**
+   * Path of the local redpanda.jar that gets uploaded to peers requesting it. Defaults to the usual
+   * seed-node vs. client layout, overridable via {@value #JAR_PATH_PROPERTY} (tests only, so
+   * Surefire forks sharing the working directory don't collide).
+   */
+  static Path updateJarPath() {
+    String override = System.getProperty(JAR_PATH_PROPERTY);
+    if (override != null) {
+      return Path.of(override);
+    }
+    return Settings.isSeedNode() ? Path.of("target/redpanda.jar") : Path.of("redpanda.jar");
+  }
+
+  /**
+   * Path of the local android.apk that gets uploaded to peers requesting it / that a received
+   * update is written to. Defaults to {@link ConnectionReaderThread#ANDROID_UPDATE_FILE},
+   * overridable via {@value #APK_PATH_PROPERTY} (tests only).
+   */
+  static Path updateApkPath() {
+    String override = System.getProperty(APK_PATH_PROPERTY);
+    if (override != null) {
+      return Path.of(override);
+    }
+    return Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+  }
+
   private final ServerContext serverContext;
 
   @FunctionalInterface
@@ -443,8 +475,7 @@ public class InboundCommandProcessor {
               Thread.sleep(200);
             } catch (InterruptedException ignored) {
             }
-            Path path =
-                Settings.isSeedNode() ? Path.of("target/redpanda.jar") : Path.of("redpanda.jar");
+            Path path = updateJarPath();
             try {
               System.out.println("we send the update to a peer!");
               byte[] data = Files.readAllBytes(path);
@@ -582,7 +613,7 @@ public class InboundCommandProcessor {
   }
 
   private int handleAndroidUpdateRequestTimestamp(Peer peer) {
-    File file = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    File file = updateApkPath().toFile();
     if (!file.exists()) {
       return 1;
     }
@@ -659,7 +690,7 @@ public class InboundCommandProcessor {
               Thread.sleep(200);
             } catch (InterruptedException ignored) {
             }
-            Path path = Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+            Path path = updateApkPath();
             try {
               NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
               if (publicUpdaterKey == null) {
@@ -784,8 +815,7 @@ public class InboundCommandProcessor {
         return consumedBytes;
       }
 
-      try (FileOutputStream fos =
-          new FileOutputStream(ConnectionReaderThread.ANDROID_UPDATE_FILE)) {
+      try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
         fos.write(data);
       } catch (IOException e) {
         e.printStackTrace();
