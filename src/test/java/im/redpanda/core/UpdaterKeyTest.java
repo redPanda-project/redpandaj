@@ -15,6 +15,6 @@ public class UpdaterKeyTest {
   public void publicUpdaterKeyIsImportable() {
     NodeId key = Updater.getPublicUpdaterKey();
     assertNotNull(key);
-    assertEquals(64, key.exportPublic().length);
+    assertEquals(NodeId.PUBLIC_KEYLEN, key.exportPublic().length);
   }
 }
