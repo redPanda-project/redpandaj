@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import java.io.File;
+import java.util.Arrays;
 
 public class Settings {
 
@@ -39,9 +40,60 @@ public class Settings {
     }
   }
 
-  public static String[] knownNodes = {
+  private static final String[] DEFAULT_KNOWN_NODES = {
     "195.201.25.223:59558", "redpanda.im:59559", "127.0.0.1:59558"
   };
+
+  /**
+   * Bootstrap peers as {@code host:port}. Overridable without rebuilding via the system property
+   * {@code redpanda.knownNodes} (same key the E2E launcher uses) or the environment variable {@code
+   * REDPANDA_KNOWN_NODES}, both as a comma-separated list; the property wins over the environment,
+   * blank values fall back to the defaults.
+   */
+  public static String[] knownNodes =
+      parseKnownNodes(
+          System.getProperty("redpanda.knownNodes", System.getenv("REDPANDA_KNOWN_NODES")));
+
+  static String[] parseKnownNodes(String configured) {
+    if (configured == null) {
+      return DEFAULT_KNOWN_NODES.clone();
+    }
+    String[] entries =
+        Arrays.stream(configured.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .filter(Settings::isValidKnownNode)
+            .toArray(String[]::new);
+    return entries.length == 0 ? DEFAULT_KNOWN_NODES.clone() : entries;
+  }
+
+  /** Accepts {@code host:port} or a bracketed IPv6 literal, matching what reseeding can parse. */
+  private static boolean isValidKnownNode(String entry) {
+    if (entry.startsWith("[")) {
+      if (entry.endsWith("]") && entry.length() > 2) {
+        return true;
+      }
+      return warnInvalidKnownNode(entry);
+    }
+    String[] split = entry.split(":");
+    if (split.length != 2 || split[0].isEmpty()) {
+      return warnInvalidKnownNode(entry);
+    }
+    try {
+      int port = Integer.parseInt(split[1]);
+      if (port < 1 || port > 65535) {
+        return warnInvalidKnownNode(entry);
+      }
+    } catch (NumberFormatException e) {
+      return warnInvalidKnownNode(entry);
+    }
+    return true;
+  }
+
+  private static boolean warnInvalidKnownNode(String entry) {
+    System.err.println("ignoring invalid known-node entry: '" + entry + "' (expected host:port)");
+    return false;
+  }
 
   public static String[] blacklistIps = {};
 

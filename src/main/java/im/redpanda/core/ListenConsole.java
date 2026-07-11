@@ -43,6 +43,12 @@ public class ListenConsole extends Thread {
 
       String readLine = bufferedReader.readLine();
 
+      if (readLine == null) {
+        // stdin is closed (e.g. running headless under systemd) — no console available.
+        System.out.println("stdin closed, disabling interactive console");
+        return;
+      }
+
       if (peerList.size() == 0) {
         System.out.println("no peers..., set log level to 400");
         Log.LEVEL = 400;
