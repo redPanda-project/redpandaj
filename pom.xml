@@ -569,15 +569,6 @@
                         </executions>
                         <configuration>
                             <mainClass>im.redpanda.core.Updater</mainClass>
-                            <arguments>
-                                <argument>argument1</argument>
-                            </arguments>
-                            <systemProperties>
-                                <systemProperty>
-                                    <key>myproperty</key>
-                                    <value>myvalue</value>
-                                </systemProperty>
-                            </systemProperties>
                         </configuration>
                     </plugin>
                 </plugins>

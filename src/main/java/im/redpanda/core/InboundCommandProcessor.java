@@ -64,9 +64,9 @@ public class InboundCommandProcessor {
    * Surefire forks sharing the working directory don't collide).
    */
   static Path updateJarPath() {
-    String override = System.getProperty(JAR_PATH_PROPERTY);
+    Path override = pathOverride(JAR_PATH_PROPERTY);
     if (override != null) {
-      return Path.of(override);
+      return override;
     }
     return Settings.isSeedNode() ? Path.of("target/redpanda.jar") : Path.of("redpanda.jar");
   }
@@ -77,11 +77,29 @@ public class InboundCommandProcessor {
    * overridable via {@value #APK_PATH_PROPERTY} (tests only).
    */
   static Path updateApkPath() {
-    String override = System.getProperty(APK_PATH_PROPERTY);
+    Path override = pathOverride(APK_PATH_PROPERTY);
     if (override != null) {
-      return Path.of(override);
+      return override;
     }
     return Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+  }
+
+  /**
+   * Reads a path-override system property, ignoring it (falling back to the caller's default) when
+   * it is blank or not a valid path, so a misconfigured test property can't crash the update
+   * handlers with an unchecked {@link java.nio.file.InvalidPathException}.
+   */
+  private static Path pathOverride(String property) {
+    String value = System.getProperty(property);
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return Path.of(value);
+    } catch (java.nio.file.InvalidPathException e) {
+      logger.warn("ignoring invalid {} override: {}", property, value);
+      return null;
+    }
   }
 
   private final ServerContext serverContext;
