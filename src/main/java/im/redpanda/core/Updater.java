@@ -59,7 +59,9 @@ public class Updater {
             cachedPublicUpdaterKey =
                 NodeId.importPublic(Base58.decode(PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS));
           } catch (AddressFormatException | IllegalArgumentException e) {
-            logger.warn("update channel fail-closed: no production updater key configured");
+            logger.warn(
+                "update channel fail-closed: no production updater key configured ({})",
+                e.toString());
             cachedPublicUpdaterKey = null;
           }
           decoded = true;
@@ -129,12 +131,20 @@ public class Updater {
 
   public static void createNewKeys() {
 
+    Path keyFile = Path.of("privateSigningKey.txt");
+    if (Files.exists(keyFile)) {
+      // Never overwrite an existing signing key (accidental key loss during the key
+      // ceremony); move the old file away first if a new key is really intended.
+      System.out.println(
+          "Refusing to create new keys: " + keyFile.toAbsolutePath() + " already exists.");
+      return;
+    }
+
     NodeId nodeId = new NodeId();
 
     System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
     // The private key must never be written to stdout (it may end up in logs);
     // write it to the file insertNewUpdate() reads, owner-readable only.
-    Path keyFile = Path.of("privateSigningKey.txt");
     try {
       try {
         // Create with 0600 upfront so the key is never world-readable, not even

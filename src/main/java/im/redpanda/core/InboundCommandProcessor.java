@@ -500,6 +500,13 @@ public class InboundCommandProcessor {
     byte[] signatureBytes = new byte[SIGNATURE_LEN];
     readBuffer.get(signatureBytes);
     int lenOfSignature = signatureBytes.length;
+    if (toReadBytes < 0) {
+      // Network-controlled length: a negative value is a protocol violation and would
+      // throw NegativeArraySizeException below (reader thread DoS).
+      logger.warn("negative update content length from peer, disconnecting: {}", toReadBytes);
+      peer.disconnect("negative update content length");
+      return 0;
+    }
     if (toReadBytes > readBuffer.remaining()) {
       return 0;
     }
@@ -737,6 +744,14 @@ public class InboundCommandProcessor {
     byte[] signature = new byte[SIGNATURE_LEN];
     readBuffer.get(signature);
     int signatureLen = signature.length;
+    if (toReadBytes < 0) {
+      // Network-controlled length: a negative value is a protocol violation and would
+      // throw NegativeArraySizeException below (reader thread DoS).
+      logger.warn(
+          "negative android update content length from peer, disconnecting: {}", toReadBytes);
+      peer.disconnect("negative android update content length");
+      return 0;
+    }
     if (toReadBytes > readBuffer.remaining()) {
       return 0;
     }

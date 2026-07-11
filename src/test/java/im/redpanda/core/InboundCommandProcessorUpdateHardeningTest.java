@@ -44,6 +44,7 @@ public class InboundCommandProcessorUpdateHardeningTest {
     InboundCommandProcessor.restartAction = () -> System.exit(0);
     new File("tmp_redpanda.jar").delete();
     new File("update").delete();
+    new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).delete();
     new File(Settings.SAVE_DIR + "/localSettings" + TEST_PORT + ".dat").delete();
   }
 
@@ -187,6 +188,119 @@ public class InboundCommandProcessorUpdateHardeningTest {
     // JVM (this test process) is still alive to observe it.
     awaitCondition(() -> restartCount.get() == 1, 5000);
     assertEquals(1, restartCount.get());
+  }
+
+  @Test
+  public void negativeContentLength_disconnectsPeer() {
+    ByteBuffer in = ByteBuffer.allocate(8 + 4 + NodeId.SIGNATURE_LEN);
+    in.putLong(Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L);
+    in.putInt(-1); // network-controlled length: protocol violation
+    in.put(fakeSignature());
+    in.flip();
+
+    Peer peer = newPeer(8806);
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_CONTENT, in, peer);
+
+    assertEquals(0, consumed);
+    assertFalse("peer must be disconnected on negative content length", peer.isConnected());
+    assertFalse("tmp file must not be written", new File("tmp_redpanda.jar").exists());
+  }
+
+  @Test
+  public void androidNegativeContentLength_disconnectsPeer() {
+    ByteBuffer in = ByteBuffer.allocate(8 + 4 + NodeId.SIGNATURE_LEN);
+    in.putLong(Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L);
+    in.putInt(Integer.MIN_VALUE);
+    in.put(fakeSignature());
+    in.flip();
+
+    Peer peer = newPeer(8807);
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, peer);
+
+    assertEquals(0, consumed);
+    assertFalse("peer must be disconnected on negative android content length", peer.isConnected());
+    assertFalse(
+        "apk file must not be written",
+        new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).exists());
+  }
+
+  @Test
+  public void androidFutureSkew_rejected() {
+    long othersTs = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(25);
+    byte[] data = new byte[] {3, 3, 3};
+    byte[] sig = fakeSignature();
+
+    ByteBuffer in = buildUpdateAnswerContent(othersTs, sig, data);
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, newPeer(8808));
+
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+    assertFalse(
+        "apk file must not be written",
+        new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).exists());
+  }
+
+  @Test
+  public void androidDowngrade_rejected_belowBuildFloor_onFreshLocalSettings() {
+    byte[] data = new byte[] {4, 4, 4, 4};
+    byte[] sig = fakeSignature();
+    // Not above the compile-time floor -> rejected before any verification.
+    ByteBuffer in = buildUpdateAnswerContent(Updater.MIN_UPDATE_TIMESTAMP_MS, sig, data);
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, newPeer(8809));
+
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+    assertFalse(
+        "apk file must not be written",
+        new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).exists());
+    assertEquals(0L, ctx.getLocalSettings().getUpdateAndroidTimestamp());
+  }
+
+  @Test
+  public void updateAnswerTimestamp_futureSkew_rejected() {
+    Settings.loadUpdates = true;
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(System.currentTimeMillis() + TimeUnit.HOURS.toMillis(25));
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_TIMESTAMP, in, newPeer(8810));
+
+    assertEquals(1 + 8, consumed);
+  }
+
+  @Test
+  public void updateAnswerTimestamp_belowBuildFloor_noDownload() {
+    Settings.loadUpdates = true;
+    // Above the fresh local timestamp (-1) but not above the build floor -> no download.
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(Updater.MIN_UPDATE_TIMESTAMP_MS);
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_TIMESTAMP, in, newPeer(8811));
+
+    assertEquals(1 + 8, consumed);
+  }
+
+  @Test
+  public void androidUpdateAnswerTimestamp_futureSkew_rejected() {
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(System.currentTimeMillis() + TimeUnit.HOURS.toMillis(25));
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, in, newPeer(8812));
+
+    assertEquals(1 + 8, consumed);
+  }
+
+  @Test
+  public void androidUpdateAnswerTimestamp_belowBuildFloor_noDownload() {
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(Updater.MIN_UPDATE_TIMESTAMP_MS);
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, in, newPeer(8813));
+
+    assertEquals(1 + 8, consumed);
   }
 
   private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
