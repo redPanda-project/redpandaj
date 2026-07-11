@@ -6,14 +6,21 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 public class InboundCommandProcessorAsyncUpdatesTest {
+
+  private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
+
+  @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
 
   private ServerContext ctx;
   private InboundCommandProcessor proc;
@@ -31,7 +38,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   @After
   public void cleanup() {
     // Remove files created by tests
-    new File("redpanda.jar").delete();
+    System.clearProperty(JAR_PATH_PROPERTY);
     new File("tmp_redpanda.jar").delete();
     new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).delete();
   }
@@ -47,6 +54,15 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws IOException {
     byte[] data = "jar".getBytes();
 
+    // Point the handler at a private temp-dir jar so this test cannot collide with other
+    // Surefire forks sharing the working directory (e.g. SettingsInitTest, which creates and
+    // deletes a CWD-relative redpanda.jar).
+    Path jarPath = tempFolder.newFile("redpanda.jar").toPath();
+    System.setProperty(JAR_PATH_PROPERTY, jarPath.toString());
+    try (FileOutputStream fos = new FileOutputStream(jarPath.toFile())) {
+      fos.write(data);
+    }
+
     // Set signature and timestamp to pass initial guards
     ctx.getLocalSettings().setUpdateTimestamp(System.currentTimeMillis());
     ctx.getLocalSettings().setUpdateSignature(fakeSignature());
@@ -57,49 +73,22 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     // Big enough buffer; code may grow it, but start with capacity
     peer.writeBuffer = ByteBuffer.allocate(1024);
 
-    // Surefire forks share the working directory: SettingsInitTest (another fork)
-    // deletes redpanda.jar, and on loaded CI runners the async upload task can take
-    // well over 2s. Retry the whole request so neither interference fails the test.
-    int attempts = 0;
-    while (true) {
-      attempts++;
-      // (Re-)create the jar right before each request in case another fork deleted it
-      try (FileOutputStream fos = new FileOutputStream("redpanda.jar")) {
-        fos.write(data);
-      }
+    int consumed = proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
+    assertEquals(1, consumed);
 
-      int consumed =
-          proc.parseCommand(Command.UPDATE_REQUEST_CONTENT, ByteBuffer.allocate(0), peer);
-      assertEquals(1, consumed);
+    // The writer thread mutates (and may replace) peer.writeBuffer under writeBufferLock; poll
+    // under the same lock for visibility.
+    awaitCondition(
+        () -> {
+          peer.writeBufferLock.lock();
+          try {
+            return peer.writeBuffer.position() > 0;
+          } finally {
+            peer.writeBufferLock.unlock();
+          }
+        },
+        5000);
 
-      try {
-        // The writer thread mutates (and may replace) peer.writeBuffer under
-        // writeBufferLock; poll under the same lock for visibility.
-        awaitCondition(
-            () -> {
-              peer.writeBufferLock.lock();
-              try {
-                return peer.writeBuffer.position() > 0;
-              } finally {
-                peer.writeBufferLock.unlock();
-              }
-            },
-            5000);
-        break;
-      } catch (AssertionError e) {
-        if (attempts >= 3) {
-          throw e;
-        }
-        // Reset the buffer so a late write from this attempt cannot satisfy the
-        // next attempt's await with a partially observed state.
-        peer.writeBufferLock.lock();
-        try {
-          peer.writeBuffer.clear();
-        } finally {
-          peer.writeBufferLock.unlock();
-        }
-      }
-    }
     peer.writeBufferLock.lock();
     try {
       assertEquals(Command.UPDATE_ANSWER_CONTENT, peer.writeBuffer.get(0));
