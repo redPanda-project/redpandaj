@@ -65,6 +65,40 @@ public class SaverTest {
   }
 
   @Test
+  public void testSavePeersSkipsPeerWithoutVerifyKey() {
+    // Simulates the first-boot race: a bootstrap peer's KademliaId is known (e.g. from the DHT)
+    // but its handshake has not completed yet, so its NodeId has no verify key. Saving must not
+    // throw and must still persist the other, fully-identified peers.
+    ArrayList<Peer> peers = new ArrayList<>();
+
+    Peer keyedPeer = new Peer("127.0.0.1", 1234);
+    keyedPeer.setNodeId(new NodeId());
+    peers.add(keyedPeer);
+
+    Peer bootstrapPeer = new Peer("10.0.0.1", 4321);
+    bootstrapPeer.setNodeId(new NodeId(new KademliaId()));
+    peers.add(bootstrapPeer);
+
+    Saver.savePeers(peers);
+
+    File file = new File(TEST_FILE);
+    assertTrue(file.exists());
+
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+
+    assertNotNull(loadedPeers);
+    assertEquals(1, loadedPeers.size());
+
+    Peer loadedKeyedPeer = loadedPeers.get(keyedPeer.getKademliaId());
+    assertNotNull(loadedKeyedPeer);
+    assertEquals(keyedPeer.getIp(), loadedKeyedPeer.getIp());
+    assertEquals(keyedPeer.getPort(), loadedKeyedPeer.getPort());
+
+    assertTrue(
+        loadedPeers.values().stream().noneMatch(p -> p.getIp().equals(bootstrapPeer.getIp())));
+  }
+
+  @Test
   public void testLoadMissingFile() {
     // Ensure file does not exist
     File file = new File(TEST_FILE);

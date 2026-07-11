@@ -18,7 +18,9 @@ public class Saver {
     ArrayList<PeerSaveable> arrayList = new ArrayList<>();
 
     for (Peer peer : peers) {
-      if (peer.getNodeId() != null) {
+      // Bootstrap peers may have a NodeId with a known KademliaId but no verify key yet
+      // (handshake not completed) - skip those, serializing them would NPE in NodeId#writeObject.
+      if (peer.getNodeId() != null && peer.getNodeId().hasKey()) {
         arrayList.add(peer.toSaveable());
       }
     }
