@@ -43,6 +43,15 @@ public class InboundCommandProcessor {
   /** Ed25519 signatures are fixed-size (64 bytes, no DER framing). */
   public static final int SIGNATURE_LEN = NodeId.SIGNATURE_LEN;
 
+  /** Reject update timestamps further in the future than this (clock-skew / spoofing guard). */
+  private static final long MAX_FUTURE_SKEW_MS = 24L * 60 * 60 * 1000;
+
+  /**
+   * Invoked to apply an installed update. Default restarts the JVM; tests replace this with a
+   * counter so the positive-path test never actually exits the test JVM.
+   */
+  static Runnable restartAction = () -> System.exit(0);
+
   private final ServerContext serverContext;
 
   @FunctionalInterface
@@ -383,11 +392,17 @@ public class InboundCommandProcessor {
       return 0;
     }
     long othersTimestamp = readBuffer.getLong();
+    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
+      logger.warn("rejecting update timestamp too far in the future: {}", othersTimestamp);
+      return 1 + 8;
+    }
+    long floor =
+        Math.max(
+            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
       System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
     }
-    if (othersTimestamp > serverContext.getLocalSettings().getUpdateTimestamp()
-        && Settings.isLoadUpdates()) {
+    if (othersTimestamp > floor && Settings.isLoadUpdates()) {
       Runnable runnable =
           () -> {
             ConnectionReaderThread.updateDownloadLock.lock();
@@ -485,18 +500,33 @@ public class InboundCommandProcessor {
     byte[] signatureBytes = new byte[SIGNATURE_LEN];
     readBuffer.get(signatureBytes);
     int lenOfSignature = signatureBytes.length;
+    if (toReadBytes < 0) {
+      // Network-controlled length: a negative value is a protocol violation and would
+      // throw NegativeArraySizeException below (reader thread DoS).
+      logger.warn("negative update content length from peer, disconnecting: {}", toReadBytes);
+      peer.disconnect("negative update content length");
+      return 0;
+    }
     if (toReadBytes > readBuffer.remaining()) {
       return 0;
     }
     byte[] data = new byte[toReadBytes];
     readBuffer.get(data);
-    if (othersTimestamp > serverContext.getLocalSettings().getUpdateTimestamp()) {
+    int consumedBytes = 1 + 8 + 4 + lenOfSignature + data.length;
+    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
+      logger.warn("rejecting update: timestamp too far in the future: {}", othersTimestamp);
+      return consumedBytes;
+    }
+    long floor =
+        Math.max(
+            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
+    if (othersTimestamp > floor) {
 
       // Verify signature before writing anything
       NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
       if (publicUpdaterKey == null) {
         System.out.println("No public updater key available, cannot verify update.");
-        return 1 + 8 + 4 + lenOfSignature + data.length;
+        return consumedBytes;
       }
 
       ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
@@ -505,14 +535,14 @@ public class InboundCommandProcessor {
 
       if (!publicUpdaterKey.verify(toHash.array(), signatureBytes)) {
         System.out.println("Update verification failed! Signature invalid.");
-        return 1 + 8 + 4 + lenOfSignature + data.length;
+        return consumedBytes;
       }
 
       try (FileOutputStream fos = new FileOutputStream("tmp_redpanda.jar")) {
         fos.write(data);
       } catch (IOException e) {
         Log.sentry(e);
-        return 1 + 8 + 4 + lenOfSignature + data.length;
+        return consumedBytes;
       }
 
       try {
@@ -540,7 +570,7 @@ public class InboundCommandProcessor {
                     Thread.sleep(2000);
                   } catch (InterruptedException e) {
                   }
-                  System.exit(0);
+                  restartAction.run();
                 });
 
       } catch (IOException e) {
@@ -548,7 +578,7 @@ public class InboundCommandProcessor {
         System.out.println("Failed to install update: " + e.getMessage());
       }
     }
-    return 1 + 8 + 4 + lenOfSignature + data.length;
+    return consumedBytes;
   }
 
   private int handleAndroidUpdateRequestTimestamp(Peer peer) {
@@ -569,6 +599,14 @@ public class InboundCommandProcessor {
       return 0;
     }
     long othersTimestamp = readBuffer.getLong();
+    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
+      logger.warn("rejecting android update timestamp too far in the future: {}", othersTimestamp);
+      return 1 + 8;
+    }
+    long floor =
+        Math.max(
+            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
+            Updater.MIN_UPDATE_TIMESTAMP_MS);
     Log.put(
         "Update found from: "
             + new Date(othersTimestamp)
@@ -578,7 +616,7 @@ public class InboundCommandProcessor {
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
       System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
     }
-    if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
+    if (othersTimestamp > floor) {
       Runnable runnable =
           () -> {
             ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
@@ -706,18 +744,35 @@ public class InboundCommandProcessor {
     byte[] signature = new byte[SIGNATURE_LEN];
     readBuffer.get(signature);
     int signatureLen = signature.length;
+    if (toReadBytes < 0) {
+      // Network-controlled length: a negative value is a protocol violation and would
+      // throw NegativeArraySizeException below (reader thread DoS).
+      logger.warn(
+          "negative android update content length from peer, disconnecting: {}", toReadBytes);
+      peer.disconnect("negative android update content length");
+      return 0;
+    }
     if (toReadBytes > readBuffer.remaining()) {
       return 0;
     }
     byte[] data = new byte[toReadBytes];
     readBuffer.get(data);
-    if (othersTimestamp > serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
+    int consumedBytes = 1 + 8 + 4 + signatureLen + data.length;
+    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
+      logger.warn("rejecting android update: timestamp too far in the future: {}", othersTimestamp);
+      return consumedBytes;
+    }
+    long floor =
+        Math.max(
+            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
+            Updater.MIN_UPDATE_TIMESTAMP_MS);
+    if (othersTimestamp > floor) {
 
       // Verify signature
       NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
       if (publicUpdaterKey == null) {
         System.out.println("No public updater key available, cannot verify android update.");
-        return 1 + 8 + 4 + signatureLen + data.length;
+        return consumedBytes;
       }
 
       ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
@@ -726,7 +781,7 @@ public class InboundCommandProcessor {
 
       if (!publicUpdaterKey.verify(toHash.array(), signature)) {
         System.out.println("Android update verification failed! Signature invalid.");
-        return 1 + 8 + 4 + signatureLen + data.length;
+        return consumedBytes;
       }
 
       try (FileOutputStream fos =
@@ -739,7 +794,7 @@ public class InboundCommandProcessor {
       serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
       serverContext.getLocalSettings().save(serverContext.getPort());
     }
-    return 1 + 8 + 4 + signatureLen + data.length;
+    return consumedBytes;
   }
 
   private void handleJobAck(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
