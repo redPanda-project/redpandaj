@@ -34,4 +34,22 @@ public class SettingsKnownNodesTest {
         new String[] {"node.example.org:59558"},
         Settings.parseKnownNodes("node.example.org:59558,, "));
   }
+
+  @Test
+  public void dropsInvalidEntriesButKeepsValidOnes() {
+    assertArrayEquals(
+        new String[] {"5.75.137.166:59558"},
+        Settings.parseKnownNodes(
+            "no-port,host:notaport,host:0,host:70000,:59558,a:b:c,5.75.137.166:59558"));
+  }
+
+  @Test
+  public void allInvalidFallsBackToDefaults() {
+    assertArrayEquals(DEFAULTS, Settings.parseKnownNodes("no-port,host:notaport"));
+  }
+
+  @Test
+  public void acceptsBracketedIpv6() {
+    assertArrayEquals(new String[] {"[2001:db8::1]"}, Settings.parseKnownNodes("[2001:db8::1]"));
+  }
 }

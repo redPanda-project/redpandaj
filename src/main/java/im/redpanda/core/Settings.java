@@ -62,8 +62,37 @@ public class Settings {
         Arrays.stream(configured.split(","))
             .map(String::trim)
             .filter(s -> !s.isEmpty())
+            .filter(Settings::isValidKnownNode)
             .toArray(String[]::new);
     return entries.length == 0 ? DEFAULT_KNOWN_NODES.clone() : entries;
+  }
+
+  /** Accepts {@code host:port} or a bracketed IPv6 literal, matching what reseeding can parse. */
+  private static boolean isValidKnownNode(String entry) {
+    if (entry.startsWith("[")) {
+      if (entry.endsWith("]") && entry.length() > 2) {
+        return true;
+      }
+      return warnInvalidKnownNode(entry);
+    }
+    String[] split = entry.split(":");
+    if (split.length != 2 || split[0].isEmpty()) {
+      return warnInvalidKnownNode(entry);
+    }
+    try {
+      int port = Integer.parseInt(split[1]);
+      if (port < 1 || port > 65535) {
+        return warnInvalidKnownNode(entry);
+      }
+    } catch (NumberFormatException e) {
+      return warnInvalidKnownNode(entry);
+    }
+    return true;
+  }
+
+  private static boolean warnInvalidKnownNode(String entry) {
+    System.err.println("ignoring invalid known-node entry: '" + entry + "' (expected host:port)");
+    return false;
   }
 
   public static String[] blacklistIps = {};
