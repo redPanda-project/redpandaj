@@ -693,9 +693,14 @@ public class ConnectionHandler extends Thread {
         System.out.println("got wrong first command, lets disconnect");
         peerInHandshake.getSocketChannel().close();
       }
-
-      tempHandshakeReadBuffer.compact();
     } finally {
+      // ByteBufferPool.returnObject requires position == 0 && limit == capacity, or it
+      // invalidates the buffer (destroying it + logging a Sentry warning) instead of pooling it.
+      // The early return above (no complete frame yet - an expected, regular occurrence, not an
+      // error) left the buffer flipped but not compacted, which would otherwise trip that check
+      // on every such read; clear() normalizes every exit path (including exceptions) in one place
+      // instead of relying on a compact() call before each return.
+      tempHandshakeReadBuffer.clear();
       ByteBufferPool.returnObject(tempHandshakeReadBuffer);
     }
   }

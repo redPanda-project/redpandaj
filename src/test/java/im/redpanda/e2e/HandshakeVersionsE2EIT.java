@@ -111,7 +111,7 @@ public class HandshakeVersionsE2EIT {
         byte firstCommand = client.readEncryptedCommand();
         assertEquals(Command.PING, firstCommand);
 
-        // proof the handshake actually completed and the frame counter is correctly synced: a
+        // prove the handshake actually completed and the frame counter is correctly synced: a
         // second, genuinely separate ping must be answered with a pong. Before the fix this hangs
         // (the node cancelled the connection after the "unexpected GCM frame nonce" exception).
         client.sendEncrypted(new byte[] {Command.PING});
