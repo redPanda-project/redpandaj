@@ -228,20 +228,30 @@ public class InboundCommandProcessor {
 
     int parsedBytesLocally = -1;
 
-    while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
-      int newPosition = readBuffer.position();
-      byte b = readBuffer.get();
-      Log.put("command: " + b + " " + readBuffer, 200);
-      parsedBytesLocally = parseCommand(b, readBuffer, peer);
-      if (!peer.isConnected()) {
-        return;
+    // compact() must run even if a handler throws, otherwise the buffer state is left
+    // inconsistent (flipped, position/limit not restored) and the connection keeps retrying
+    // the same malformed packet. But if a handler disconnected the peer (or grew the buffer),
+    // Peer.disconnect()/decryptInputData() already returned this exact buffer instance to
+    // ByteBufferPool (and possibly handed it to a different peer/thread) — compacting it here
+    // would then corrupt that other owner's buffer, so only compact if we still own it.
+    try {
+      while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
+        int newPosition = readBuffer.position();
+        byte b = readBuffer.get();
+        Log.put("command: " + b + " " + readBuffer, 200);
+        parsedBytesLocally = parseCommand(b, readBuffer, peer);
+        if (!peer.isConnected()) {
+          return;
+        }
+        peer.lastCommand = b;
+        newPosition += parsedBytesLocally;
+        readBuffer.position(newPosition);
       }
-      peer.lastCommand = b;
-      newPosition += parsedBytesLocally;
-      readBuffer.position(newPosition);
+    } finally {
+      if (peer.readBuffer == readBuffer) {
+        readBuffer.compact();
+      }
     }
-
-    readBuffer.compact();
   }
 
   public int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
@@ -1027,6 +1037,22 @@ public class InboundCommandProcessor {
 
     // Legacy: Try to route via GarlicMessage destination header
     if (tryDepositToLocalOh(content)) {
+      return;
+    }
+
+    // REDPANDAJ-2DR hardening: an empty oh_id falls into legacy garlic parsing, which was
+    // written to only ever see GarlicMessage/GMAck bytes. A raw E2E-encrypted client payload can
+    // collide with a known GMType id (e.g. 0x04 == ACK) and must be rejected explicitly instead
+    // of silently dropped by GMParser.parse's defensive fallback — otherwise the sender never
+    // learns the deposit failed and keeps retrying blindly. Scoped to the empty-oh_id case only:
+    // a non-empty oh_id that fell through here because outboundService is unset must keep its
+    // pre-existing (unconditional) legacy behavior, not be rejected as if it were this case.
+    if (ohIdBytes.isEmpty() && !GMParser.isValidFrame(serverContext, content)) {
+      logger.warn(
+          "Rejecting FlaschenpostPut with empty oh_id whose content is not a valid GM frame,"
+              + " length: {}",
+          content.length);
+      respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
       return;
     }
 

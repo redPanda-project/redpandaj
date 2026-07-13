@@ -168,8 +168,17 @@ public class GMParser {
 
     } else if (type == GMType.ACK.getId()) {
 
-      GMAck gmAck = new GMAck(content);
-      gmAck.parseContent();
+      // A network-supplied ACK payload may be malformed (wrong length/truncated), or an
+      // end-to-end encrypted client payload whose first byte just happens to be the ACK type
+      // byte. Dropping it here keeps the malformed packet from unwinding the read loop.
+      GMAck gmAck;
+      try {
+        gmAck = new GMAck(content);
+        gmAck.parseContent();
+      } catch (RuntimeException e) {
+        Log.put("dropping malformed GMAck: " + e.getMessage(), 50);
+        return null;
+      }
 
       Job runningJob = Job.getRunningJob(gmAck.getAckid());
 
@@ -184,7 +193,52 @@ public class GMParser {
       return gmAck;
     }
 
-    throw new RuntimeException("Unknown GMType at parsing: " + type);
+    // Unknown type byte from the network (e.g. an encrypted client payload) — drop it instead
+    // of throwing, which would unwind the reader loop and leave the connection retrying.
+    Log.put("dropping GM with unknown type: " + type, 50);
+    return null;
+  }
+
+  /**
+   * Cheap structural pre-check: is {@code content} a parseable GM frame (a well-formed {@link
+   * GarlicMessage} or {@link GMAck})? Unlike {@link #parse}, this never mutates any state — no
+   * dedup-store insert, no job lookups, no forwarding — so it is safe to call purely to decide
+   * whether content deserves a BAD_REQUEST response before invoking {@link #parse}.
+   *
+   * <p>Used by the {@code FlaschenpostPut} legacy (empty {@code oh_id}) path (REDPANDAJ-2DR): a raw
+   * E2E-encrypted client payload can accidentally start with a byte that collides with a known
+   * {@link GMType} id (e.g. {@code 0x04} == {@link GMType#ACK}), and such content must be rejected
+   * explicitly instead of silently swallowed by {@link #parse}'s defensive drop.
+   *
+   * @return {@code true} if content is a well-formed frame of a known type (regardless of whether
+   *     {@link #parse} would then treat it as a duplicate); {@code false} if the type byte is
+   *     unknown or the frame is malformed/truncated for its type.
+   */
+  public static boolean isValidFrame(ServerContext serverContext, byte[] content) {
+    if (content == null || content.length == 0) {
+      return false;
+    }
+
+    byte type = content[0];
+
+    if (type == GMType.GARLIC_MESSAGE.getId()) {
+      try {
+        new GarlicMessage(serverContext, content);
+        return true;
+      } catch (RuntimeException e) {
+        return false;
+      }
+    } else if (type == GMType.ACK.getId()) {
+      try {
+        GMAck gmAck = new GMAck(content);
+        gmAck.parseContent();
+        return true;
+      } catch (RuntimeException e) {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   private static void sendGarlicMessageToPeer(

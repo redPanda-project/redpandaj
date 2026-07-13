@@ -119,10 +119,82 @@ public class GMParserAdditionalTest {
     }
   }
 
-  @Test(expected = RuntimeException.class)
-  public void parseUnknownTypeThrows() {
+  @Test
+  public void parseUnknownTypeDrops() {
+    // An unknown type byte from the network must be dropped (null), not thrown — otherwise the
+    // exception unwinds the reader loop and the connection keeps retrying (Sentry REDPANDAJ-2DR).
     byte[] content = new byte[] {(byte) 99, 0, 0, 0};
-    GMParser.parse(ServerContext.buildDefaultServerContext(), content);
+    assertNull(GMParser.parse(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  @Test
+  public void parseAckTypeWithGarbagePayloadDrops() {
+    // Reproduces REDPANDAJ-2DR: an end-to-end encrypted client payload whose first byte is 0x04
+    // (== GMType.ACK) followed by ciphertext. GMAck.parseContent throws on the bad length; parse
+    // must catch it, drop the packet and return null instead of unwinding the reader loop.
+    byte[] content =
+        new byte[] {GMType.ACK.getId(), (byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef, 0x2a};
+    assertNull(GMParser.parse(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  @Test
+  public void parseAckTypeOnlyDrops() {
+    // A truncated ACK (type byte only, no length/ackid) must also be dropped, not throw.
+    byte[] content = new byte[] {GMType.ACK.getId()};
+    assertNull(GMParser.parse(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  // --- REDPANDAJ-2DR: isValidFrame pre-check used by the FlaschenpostPut legacy path ---
+
+  @Test
+  public void isValidFrame_nullOrEmptyContent_isFalse() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    assertFalse(GMParser.isValidFrame(serverContext, null));
+    assertFalse(GMParser.isValidFrame(serverContext, new byte[0]));
+  }
+
+  @Test
+  public void isValidFrame_unknownTypeByte_isFalse() {
+    byte[] content = new byte[] {(byte) 99, 0, 0, 0};
+    assertFalse(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  @Test
+  public void isValidFrame_malformedAck_isFalse() {
+    // Same shape as the REDPANDAJ-2DR reproduction: an E2E-encrypted payload whose first byte
+    // collides with GMType.ACK, followed by ciphertext that is not a valid GMAck body.
+    byte[] content =
+        new byte[] {GMType.ACK.getId(), (byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef, 0x2a};
+    assertFalse(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  @Test
+  public void isValidFrame_truncatedAck_isFalse() {
+    byte[] content = new byte[] {GMType.ACK.getId()};
+    assertFalse(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), content));
+  }
+
+  @Test
+  public void isValidFrame_wellFormedAck_isTrue() {
+    ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
+    ack.put(GMType.ACK.getId());
+    ack.putInt(4);
+    ack.putInt(42);
+    assertTrue(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), ack.array()));
+  }
+
+  @Test
+  public void isValidFrame_wellFormedGarlicMessage_isTrue() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    byte[] content = garlicMessageBytes(serverContext, serverContext.getNodeId());
+    assertTrue(GMParser.isValidFrame(serverContext, content));
+  }
+
+  @Test
+  public void isValidFrame_malformedGarlicMessage_isFalse() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    byte[] content = new byte[] {GMType.GARLIC_MESSAGE.getId(), 0, 0, 0, 5, 1, 2}; // truncated
+    assertFalse(GMParser.isValidFrame(serverContext, content));
   }
 
   @Test
