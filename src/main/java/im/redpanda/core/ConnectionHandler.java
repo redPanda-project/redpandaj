@@ -5,6 +5,7 @@
  */
 package im.redpanda.core;
 
+import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -621,38 +622,24 @@ public class ConnectionHandler extends Thread {
 
             byteBuffer.compact();
             ByteBufferPool.returnObject(byteBuffer);
+
+            /**
+             * REDPANDAJ-2DS: if the peer's ACTIVATE_ENCRYPTION and its first GCM frame (counter 0)
+             * were coalesced by the kernel into this single read(), 'allocate' still holds the
+             * ciphertext of that first frame after the plaintext branch above consumed only the
+             * ACTIVATE_ENCRYPTION command. Encryption is active now (activateEncryption() just
+             * ran), so feed the leftover bytes into decrypt() right away instead of silently
+             * dropping them - dropping them would desync the receive counter and the next frame
+             * would fail with "unexpected GCM frame nonce".
+             */
+            if (allocate.hasRemaining()) {
+              handleFirstEncryptedCommand(peerInHandshake, allocate);
+            }
           }
 
         } else {
           /** The encryption is active in this section, lets check that first ping */
-          System.out.println("received first encrypted command...");
-
-          ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(64);
-
-          peerInHandshake.getPeerChiperStreams().decrypt(allocate, tempHandshakeReadBuffer);
-
-          tempHandshakeReadBuffer.flip();
-
-          byte decryptedCommand = tempHandshakeReadBuffer.get();
-
-          if (decryptedCommand == Command.PING) {
-            System.out.println("received first ping...");
-
-            /**
-             * We can now safely transfer the open connection from the peerInHandshake to the actual
-             * peer
-             */
-            Peer peer = peerInHandshake.getPeer();
-            setupConnection(peer, peerInHandshake);
-
-            copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peer);
-          } else {
-            System.out.println("got wrong first command, lets disconnect");
-            peerInHandshake.getSocketChannel().close();
-          }
-
-          tempHandshakeReadBuffer.compact();
-          ByteBufferPool.returnObject(tempHandshakeReadBuffer);
+          handleFirstEncryptedCommand(peerInHandshake, allocate);
         }
       }
 
@@ -663,6 +650,58 @@ public class ConnectionHandler extends Thread {
       Log.put("Handshake failed with throwable...", 5);
       Log.sentry(e);
       key.cancel();
+    }
+  }
+
+  /**
+   * Decrypts one ciphertext buffer expected to contain the peer's first GCM frame (counter 0) and
+   * finishes the handshake if it is a PING. Used both for the normal case (a dedicated read event
+   * with encryption already active) and for leftover bytes that arrived coalesced with
+   * ACTIVATE_ENCRYPTION in the same read() (REDPANDAJ-2DS).
+   */
+  private void handleFirstEncryptedCommand(PeerInHandshake peerInHandshake, ByteBuffer cipherText)
+      throws IOException, PeerProtocolException {
+    System.out.println("received first encrypted command...");
+
+    ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(64);
+
+    try {
+      peerInHandshake.getPeerChiperStreams().decrypt(cipherText, tempHandshakeReadBuffer);
+
+      tempHandshakeReadBuffer.flip();
+
+      if (!tempHandshakeReadBuffer.hasRemaining()) {
+        // the frame's ciphertext was not fully available yet (e.g. split across reads);
+        // GcmFramedStreams buffers it internally and will decode it once the rest arrives.
+        return;
+      }
+
+      byte decryptedCommand = tempHandshakeReadBuffer.get();
+
+      if (decryptedCommand == Command.PING) {
+        System.out.println("received first ping...");
+
+        /**
+         * We can now safely transfer the open connection from the peerInHandshake to the actual
+         * peer
+         */
+        Peer peer = peerInHandshake.getPeer();
+        setupConnection(peer, peerInHandshake);
+
+        copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peer);
+      } else {
+        System.out.println("got wrong first command, lets disconnect");
+        peerInHandshake.getSocketChannel().close();
+      }
+    } finally {
+      // ByteBufferPool.returnObject requires position == 0 && limit == capacity, or it
+      // invalidates the buffer (destroying it + logging a Sentry warning) instead of pooling it.
+      // The early return above (no complete frame yet - an expected, regular occurrence, not an
+      // error) left the buffer flipped but not compacted, which would otherwise trip that check
+      // on every such read; clear() normalizes every exit path (including exceptions) in one place
+      // instead of relying on a compact() call before each return.
+      tempHandshakeReadBuffer.clear();
+      ByteBufferPool.returnObject(tempHandshakeReadBuffer);
     }
   }
 

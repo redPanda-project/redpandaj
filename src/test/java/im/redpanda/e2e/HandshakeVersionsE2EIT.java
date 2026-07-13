@@ -89,6 +89,43 @@ public class HandshakeVersionsE2EIT {
     }
   }
 
+  /**
+   * REDPANDAJ-2DS regression: if the peer's ACTIVATE_ENCRYPTION and its first GCM frame (counter 0)
+   * arrive coalesced in a single read() on the node's side, the node must not silently drop the
+   * frame. Before the fix, {@code handlePeerInHandshake} consumed only the ACTIVATE_ENCRYPTION
+   * command from its 117-byte read buffer and discarded the rest; the connection got stuck with a
+   * desynced receive counter and the next real frame failed with "unexpected GCM frame nonce
+   * (expected counter 0)".
+   */
+  @Test
+  public void v23HandshakeSurvivesCoalescedActivateEncryptionAndFirstFrame() throws Exception {
+    Path nodeDir = temporaryFolder.newFolder("nodeV23Coalesced").toPath();
+    int port = nextFreePort();
+
+    try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
+      assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
+
+      try (V23Client client = V23Client.connectWithCoalescedFirstFrame(port)) {
+        // the node sends its own initial ping as soon as it activates encryption, regardless of
+        // whether our first frame was coalesced into the same read() as our ACTIVATE_ENCRYPTION
+        byte firstCommand = client.readEncryptedCommand();
+        assertEquals(Command.PING, firstCommand);
+
+        // prove the handshake actually completed and the frame counter is correctly synced: a
+        // second, genuinely separate ping must be answered with a pong. Before the fix this hangs
+        // (the node cancelled the connection after the "unexpected GCM frame nonce" exception).
+        client.sendEncrypted(new byte[] {Command.PING});
+        assertEquals(
+            "node must complete the handshake and answer a ping even when ACTIVATE_ENCRYPTION and"
+                + " the first GCM frame were coalesced into one read()",
+            Command.PONG,
+            client.readEncryptedCommand());
+      }
+
+      node.stop(Duration.ofSeconds(10));
+    }
+  }
+
   @Test
   public void v22LegacyLightClientIsRejectedAfterShutdown() throws Exception {
     Path nodeDir = temporaryFolder.newFolder("nodeV22").toPath();
@@ -274,6 +311,62 @@ public class HandshakeVersionsE2EIT {
       V23Client client = new V23Client(port);
       client.handshake();
       return client;
+    }
+
+    /**
+     * Like {@link #connect(int)}, but writes ACTIVATE_ENCRYPTION and the first GCM frame (counter
+     * 0) in a single {@code write()} call with no pause in between, so the kernel is free to
+     * coalesce them into a single {@code read()} on the node's side (REDPANDAJ-2DS repro).
+     */
+    static V23Client connectWithCoalescedFirstFrame(int port) throws IOException {
+      V23Client client = new V23Client(port);
+      client.handshakeWithCoalescedFirstFrame();
+      return client;
+    }
+
+    private void handshakeWithCoalescedFirstFrame() throws IOException {
+      NodeId identity = NodeId.generateWithSimpleKey();
+      sendHandshake(23, identity.getKademliaId().getBytes());
+
+      out.write(new byte[] {Command.REQUEST_PUBLIC_KEY});
+      out.flush();
+      readPlaintextCommandAnswering(identity.exportPublic(), Command.SEND_PUBLIC_KEY);
+      byte[] nodePublicKey = readFully(NodeId.PUBLIC_KEYLEN);
+
+      // the node sends its own ACTIVATE_ENCRYPTION as soon as it validates our public key (it
+      // does not wait for ours) - read it first so we can derive the session keys and encrypt
+      // our first frame *before* we ever put our ACTIVATE_ENCRYPTION on the wire.
+      readPlaintextCommandAnswering(identity.exportPublic(), Command.ACTIVATE_ENCRYPTION);
+      byte[] nodeEphemeral = readFully(32);
+
+      X25519PrivateKeyParameters ephemeral = new X25519PrivateKeyParameters(RANDOM);
+      byte[] shared =
+          CryptoUtils.x25519(ephemeral, new X25519PublicKeyParameters(nodeEphemeral, 0));
+      byte[] ourVerify = identity.getVerifyKeyBytes();
+      byte[] nodeVerify = Arrays.copyOfRange(nodePublicKey, 0, 32);
+      byte[] minKey = Arrays.compareUnsigned(ourVerify, nodeVerify) <= 0 ? ourVerify : nodeVerify;
+      byte[] maxKey = minKey == ourVerify ? nodeVerify : ourVerify;
+      byte[] clientKey =
+          CryptoUtils.hkdfSha256(shared, minKey, PeerInHandshake.HKDF_INFO_TCP_CLIENT, 32);
+      byte[] serverKey =
+          CryptoUtils.hkdfSha256(shared, maxKey, PeerInHandshake.HKDF_INFO_TCP_SERVER, 32);
+      streams = new GcmFramedStreams(clientKey, serverKey);
+
+      // now build ACTIVATE_ENCRYPTION(+ our ephemeral key) and our first encrypted frame
+      // (PING, counter 0) back to back in one buffer and write them in a single write() call.
+      ByteBuffer activate = ByteBuffer.allocate(1 + 32);
+      activate.put(Command.ACTIVATE_ENCRYPTION);
+      activate.put(ephemeral.generatePublicKey().getEncoded());
+      activate.flip();
+
+      ByteBuffer firstFrame = ByteBuffer.allocate(1 + GcmFramedStreams.FRAME_OVERHEAD);
+      streams.encrypt(ByteBuffer.wrap(new byte[] {Command.PING}), firstFrame);
+      firstFrame.flip();
+
+      ByteBuffer combined = ByteBuffer.allocate(activate.remaining() + firstFrame.remaining());
+      combined.put(activate).put(firstFrame);
+      out.write(combined.array(), 0, combined.position());
+      out.flush();
     }
 
     private void handshake() throws IOException {
