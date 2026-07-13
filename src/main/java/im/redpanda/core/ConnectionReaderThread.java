@@ -568,11 +568,15 @@ public class ConnectionReaderThread implements Runnable {
       long diff = System.currentTimeMillis() - a;
 
       if (diff > 5000L) {
-        // Enriched with the last command byte and peer so the event is self-explanatory without
-        // having to correlate timestamps against other log lines (REDPANDAJ-2DQ).
+        // Enriched with the peer and the last successfully-parsed command byte (unsigned, since
+        // command bytes go up to 141 and print negative as a plain signed byte) so the event is
+        // self-explanatory without having to correlate timestamps against other log lines
+        // (REDPANDAJ-2DQ). Note peer.lastCommand reflects the last command parsed in this read
+        // batch, which is the stalling one only if a single command was processed; if several
+        // commands were parsed in one read(), an earlier one in the same batch may be the culprit.
         Log.sentry(
-            "command took over 5 seconds to parse: %d ms, last command byte: %d, peer: %s"
-                .formatted(diff, peer.lastCommand, peer));
+            "command took over 5 seconds to parse: %d ms, last parsed command byte: %d, peer: %s"
+                .formatted(diff, Byte.toUnsignedInt(peer.lastCommand), peer));
       }
 
       ConnectionHandler.doneRead.add(peer);

@@ -644,6 +644,10 @@ public class InboundCommandProcessor {
                 try {
                   Thread.sleep(2000);
                 } catch (InterruptedException e) {
+                  // Preserve the interrupt status and skip the restart instead of silently
+                  // continuing as if the delay had completed normally (e.g. on shutdown).
+                  Thread.currentThread().interrupt();
+                  return;
                 }
                 restartAction.run();
               });
@@ -876,7 +880,10 @@ public class InboundCommandProcessor {
     try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
       fos.write(data);
     } catch (IOException e) {
+      // Do not persist the new timestamp/signature if the apk was not actually written: that
+      // would make LocalSettings claim an update is installed while the file is missing/corrupt.
       e.printStackTrace();
+      return;
     }
     serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
     serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
