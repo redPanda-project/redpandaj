@@ -52,6 +52,14 @@ public class InboundCommandProcessor {
    */
   static Runnable restartAction = () -> System.exit(0);
 
+  /**
+   * Test-only hook invoked with the thread that performs the update install disk I/O ({@link
+   * #installJarUpdate} / {@link #installApkUpdate}); lets tests assert the write actually runs off
+   * the calling (ConnectionReaderThread, in production) thread (REDPANDAJ-2DQ). No-op in
+   * production.
+   */
+  static java.util.function.Consumer<Thread> installThreadHookForTests = t -> {};
+
   /** System property overriding {@link #updateJarPath()}; used by tests to avoid CWD sharing. */
   private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
 
@@ -228,20 +236,30 @@ public class InboundCommandProcessor {
 
     int parsedBytesLocally = -1;
 
-    while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
-      int newPosition = readBuffer.position();
-      byte b = readBuffer.get();
-      Log.put("command: " + b + " " + readBuffer, 200);
-      parsedBytesLocally = parseCommand(b, readBuffer, peer);
-      if (!peer.isConnected()) {
-        return;
+    // compact() must run even if a handler throws, otherwise the buffer state is left
+    // inconsistent (flipped, position/limit not restored) and the connection keeps retrying
+    // the same malformed packet. But if a handler disconnected the peer (or grew the buffer),
+    // Peer.disconnect()/decryptInputData() already returned this exact buffer instance to
+    // ByteBufferPool (and possibly handed it to a different peer/thread) — compacting it here
+    // would then corrupt that other owner's buffer, so only compact if we still own it.
+    try {
+      while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
+        int newPosition = readBuffer.position();
+        byte b = readBuffer.get();
+        Log.put("command: " + b + " " + readBuffer, 200);
+        parsedBytesLocally = parseCommand(b, readBuffer, peer);
+        if (!peer.isConnected()) {
+          return;
+        }
+        peer.lastCommand = b;
+        newPosition += parsedBytesLocally;
+        readBuffer.position(newPosition);
       }
-      peer.lastCommand = b;
-      newPosition += parsedBytesLocally;
-      readBuffer.position(newPosition);
+    } finally {
+      if (peer.readBuffer == readBuffer) {
+        readBuffer.compact();
+      }
     }
-
-    readBuffer.compact();
   }
 
   public int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
@@ -587,47 +605,67 @@ public class InboundCommandProcessor {
         return consumedBytes;
       }
 
-      try (FileOutputStream fos = new FileOutputStream("tmp_redpanda.jar")) {
-        fos.write(data);
-      } catch (IOException e) {
-        Log.sentry(e);
-        return consumedBytes;
-      }
-
-      try {
-        // Install the update
-        // Save to 'update' file so the shell script can pick it up and restart
-        Files.move(
-            Path.of("tmp_redpanda.jar"), Path.of("update"), StandardCopyOption.REPLACE_EXISTING);
-
-        // Update local settings
-        serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
-        serverContext.getLocalSettings().setUpdateSignature(signatureBytes);
-        serverContext.getLocalSettings().save(serverContext.getPort());
-
-        System.out.println(
-            "Update successfully verified and saved to 'update'. New timestamp: "
-                + othersTimestamp);
-        System.out.println("Stopping server to apply update...");
-
-        // Exit asynchronously to allow current method to return and log to be written
-        // Exit asynchronously to allow current method to return and log to be written
-        Thread.ofVirtual()
-            .start(
-                () -> {
-                  try {
-                    Thread.sleep(2000);
-                  } catch (InterruptedException e) {
-                  }
-                  restartAction.run();
-                });
-
-      } catch (IOException e) {
-        Log.sentry(e);
-        System.out.println("Failed to install update: " + e.getMessage());
-      }
+      // Writing the (potentially tens-of-MB) jar to disk, moving it into place and persisting
+      // settings are blocking disk I/O; offload it to the thread pool so the ConnectionReaderThread
+      // is not stalled while it happens (REDPANDAJ-2DQ), matching the request-side handlers (see
+      // handleUpdateRequestContent above). Everything the reader thread would otherwise need to
+      // read from the connection buffer has already been captured above (othersTimestamp,
+      // signatureBytes, data), so nothing here races the reader moving on to the next command.
+      ConnectionReaderThread.threadPool.submit(
+          () -> installJarUpdate(othersTimestamp, signatureBytes, data));
     }
     return consumedBytes;
+  }
+
+  /**
+   * Writes a verified jar update to disk, installs it and triggers the restart. Runs on {@link
+   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ) — keep the
+   * write, move, settings save and restart trigger together and in this order so the process never
+   * restarts (or persists a timestamp/signature) before the jar is actually in place.
+   */
+  private void installJarUpdate(long othersTimestamp, byte[] signatureBytes, byte[] data) {
+    installThreadHookForTests.accept(Thread.currentThread());
+    try (FileOutputStream fos = new FileOutputStream("tmp_redpanda.jar")) {
+      fos.write(data);
+    } catch (IOException e) {
+      Log.sentry(e);
+      return;
+    }
+
+    try {
+      // Install the update
+      // Save to 'update' file so the shell script can pick it up and restart
+      Files.move(
+          Path.of("tmp_redpanda.jar"), Path.of("update"), StandardCopyOption.REPLACE_EXISTING);
+
+      // Update local settings
+      serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
+      serverContext.getLocalSettings().setUpdateSignature(signatureBytes);
+      serverContext.getLocalSettings().save(serverContext.getPort());
+
+      System.out.println(
+          "Update successfully verified and saved to 'update'. New timestamp: " + othersTimestamp);
+      System.out.println("Stopping server to apply update...");
+
+      // Exit asynchronously to allow current method to return and log to be written
+      Thread.ofVirtual()
+          .start(
+              () -> {
+                try {
+                  Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                  // Preserve the interrupt status and skip the restart instead of silently
+                  // continuing as if the delay had completed normally (e.g. on shutdown).
+                  Thread.currentThread().interrupt();
+                  return;
+                }
+                restartAction.run();
+              });
+
+    } catch (IOException e) {
+      Log.sentry(e);
+      System.out.println("Failed to install update: " + e.getMessage());
+    }
   }
 
   private int handleAndroidUpdateRequestTimestamp(Peer peer) {
@@ -833,16 +871,33 @@ public class InboundCommandProcessor {
         return consumedBytes;
       }
 
-      try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
-        fos.write(data);
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-      serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
-      serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
-      serverContext.getLocalSettings().save(serverContext.getPort());
+      // Writing the apk to disk and persisting settings is blocking disk I/O; offload it to the
+      // thread pool so the ConnectionReaderThread is not stalled while it happens (REDPANDAJ-2DQ),
+      // matching the request-side handlers. othersTimestamp/signature/data are already captured
+      // above so nothing here races the reader moving on to the next command.
+      ConnectionReaderThread.threadPool.submit(
+          () -> installApkUpdate(othersTimestamp, signature, data));
     }
     return consumedBytes;
+  }
+
+  /**
+   * Writes a verified apk update to disk and persists the new timestamp/signature. Runs on {@link
+   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ).
+   */
+  private void installApkUpdate(long othersTimestamp, byte[] signature, byte[] data) {
+    installThreadHookForTests.accept(Thread.currentThread());
+    try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
+      fos.write(data);
+    } catch (IOException e) {
+      // Do not persist the new timestamp/signature if the apk was not actually written: that
+      // would make LocalSettings claim an update is installed while the file is missing/corrupt.
+      e.printStackTrace();
+      return;
+    }
+    serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
+    serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
+    serverContext.getLocalSettings().save(serverContext.getPort());
   }
 
   private void handleJobAck(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
@@ -1027,6 +1082,22 @@ public class InboundCommandProcessor {
 
     // Legacy: Try to route via GarlicMessage destination header
     if (tryDepositToLocalOh(content)) {
+      return;
+    }
+
+    // REDPANDAJ-2DR hardening: an empty oh_id falls into legacy garlic parsing, which was
+    // written to only ever see GarlicMessage/GMAck bytes. A raw E2E-encrypted client payload can
+    // collide with a known GMType id (e.g. 0x04 == ACK) and must be rejected explicitly instead
+    // of silently dropped by GMParser.parse's defensive fallback — otherwise the sender never
+    // learns the deposit failed and keeps retrying blindly. Scoped to the empty-oh_id case only:
+    // a non-empty oh_id that fell through here because outboundService is unset must keep its
+    // pre-existing (unconditional) legacy behavior, not be rejected as if it were this case.
+    if (ohIdBytes.isEmpty() && !GMParser.isValidFrame(serverContext, content)) {
+      logger.warn(
+          "Rejecting FlaschenpostPut with empty oh_id whose content is not a valid GM frame,"
+              + " length: {}",
+          content.length);
+      respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
       return;
     }
 
