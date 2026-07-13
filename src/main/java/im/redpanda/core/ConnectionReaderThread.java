@@ -568,7 +568,11 @@ public class ConnectionReaderThread implements Runnable {
       long diff = System.currentTimeMillis() - a;
 
       if (diff > 5000L) {
-        Log.sentry("command took over 5 seconds to parse: %s".formatted(diff));
+        // Enriched with the last command byte and peer so the event is self-explanatory without
+        // having to correlate timestamps against other log lines (REDPANDAJ-2DQ).
+        Log.sentry(
+            "command took over 5 seconds to parse: %d ms, last command byte: %d, peer: %s"
+                .formatted(diff, peer.lastCommand, peer));
       }
 
       ConnectionHandler.doneRead.add(peer);
