@@ -371,6 +371,113 @@ public class InboundCommandProcessorFlaschenpostPutTest {
     assertEquals(1 + 4 + putData.length, consumed);
   }
 
+  /**
+   * REDPANDAJ-2DR regression: a light client sent a FlaschenpostPut with empty oh_id and content =
+   * an end-to-end encrypted payload whose first byte is 0x04 (== GMType.ACK). The legacy path fell
+   * into GMParser, GMAck.parseContent threw on the bad length, and the RuntimeException unwound the
+   * reader loop, leaving the connection retrying and generating a fresh Sentry event per retry. The
+   * handler must now reject the packet (BAD_REQUEST, opt-in response only) without throwing, and
+   * consume the frame regardless.
+   */
+  @Test
+  public void flaschenpostPut_emptyOhIdWithEncryptedAckLikePayload_isDroppedWithoutThrowing() {
+    byte[] encryptedPayload = new byte[48];
+    encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
+    for (int i = 1; i < encryptedPayload.length; i++) {
+      encryptedPayload[i] = (byte) (0x40 + i);
+    }
+
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(encryptedPayload))
+            .setOhId(ByteString.EMPTY)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9011, ctx.getNodeId());
+    peer.setConnected(true);
+    ctx.getPeerList().add(peer);
+
+    // Must not throw and must consume the full frame.
+    int consumed = proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+    assertEquals(1 + 4 + putData.length, consumed);
+  }
+
+  /**
+   * REDPANDAJ-2DR: same malformed/E2E-encrypted-looking payload as above, but from a light client
+   * that opted into {@code want_response} — it must receive an explicit BAD_REQUEST instead of
+   * silence, so it learns the deposit failed rather than retrying blindly for hours.
+   */
+  @Test
+  public void flaschenpostPut_emptyOhIdWithInvalidContent_lightClientWantResponse_getsBadRequest() {
+    byte[] encryptedPayload = new byte[48];
+    encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
+    for (int i = 1; i < encryptedPayload.length; i++) {
+      encryptedPayload[i] = (byte) (0x40 + i);
+    }
+
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(encryptedPayload))
+            .setOhId(ByteString.EMPTY)
+            .setWantResponse(true)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9012, ctx.getNodeId());
+    peer.setConnected(true);
+    peer.setLightClient(true);
+    peer.writeBuffer = ByteBuffer.allocate(8192);
+    ctx.getPeerList().add(peer);
+
+    int consumed = proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+    assertEquals(1 + 4 + putData.length, consumed);
+
+    ByteBuffer buf = peer.writeBuffer;
+    buf.flip();
+    assertEquals(Command.FLASCHENPOST_PUT_RES, buf.get());
+    int len = buf.getInt();
+    byte[] payload = new byte[len];
+    buf.get(payload);
+    try {
+      assertEquals(
+          im.redpanda.outbound.v1.Status.BAD_REQUEST,
+          im.redpanda.outbound.v1.FlaschenpostPutResponse.parseFrom(payload).getStatus());
+    } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  /**
+   * REDPANDAJ-2DR: a valid GMAck sent legacy-style (no oh_id) must still be processed normally by
+   * GMParser and must NOT be rejected as BAD_REQUEST — only genuinely malformed/unrecognized
+   * content triggers the new pre-check.
+   */
+  @Test
+  public void flaschenpostPut_emptyOhIdWithValidAck_isNotRejected() {
+    byte[] ackBytes = buildAckPayload(123);
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(ackBytes))
+            .setOhId(ByteString.EMPTY)
+            .setWantResponse(true)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9013, ctx.getNodeId());
+    peer.setConnected(true);
+    peer.setLightClient(true);
+    peer.writeBuffer = ByteBuffer.allocate(8192);
+    ctx.getPeerList().add(peer);
+
+    int consumed = proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+    assertEquals(1 + 4 + putData.length, consumed);
+
+    // A valid (if legacy) ACK never reaches respondToDeposit at all — no FlaschenpostPutResponse
+    // is written, matching pre-existing legacy fire-and-forget behavior.
+    assertEquals(0, peer.writeBuffer.position());
+  }
+
   // --- MS02b: opt-in deposit status responses (want_response) ---
 
   /** Light client with want_response gets an OK FlaschenpostPutResponse on successful deposit. */
