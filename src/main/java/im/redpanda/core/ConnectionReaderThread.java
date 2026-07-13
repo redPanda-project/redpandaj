@@ -352,10 +352,15 @@ public class ConnectionReaderThread implements Runnable {
       peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
     }
 
-    ByteBuffer readBuffer = peer.readBuffer;
-
     /** Decrypt all bytes from the readBufferCrypted to the readBuffer */
     peer.decryptInputData(myReaderBuffer);
+
+    // decryptInputData() may have grown the plaintext buffer: it returns the old, now-stale
+    // buffer instance to the ByteBufferPool and stores a larger one in peer.readBuffer. We must
+    // therefore read peer.readBuffer AFTER decrypting — using a reference captured beforehand
+    // would hand a pooled/reused buffer to loopCommands, whose flip()/compact() then corrupts
+    // pool state (observed as an invalid ByteBuffer[pos=0 lim=0] on the next borrowObject).
+    ByteBuffer readBuffer = peer.readBuffer;
 
     inboundProcessor.loopCommands(peer, readBuffer);
 

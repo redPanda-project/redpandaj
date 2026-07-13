@@ -192,6 +192,57 @@ public class PeerTest {
     assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
   }
 
+  /**
+   * Regression for REDPANDAJ-2DT / REDPANDAJ-2DV: when {@code decryptInputData} must grow the
+   * plaintext buffer it returns the old, too-small buffer instance to the {@link ByteBufferPool}
+   * and stores a new, larger one in {@code peer.readBuffer}. A caller (ConnectionReaderThread) that
+   * captured a reference to {@code peer.readBuffer} <em>before</em> the call must therefore re-read
+   * the field afterwards — continuing to use the stale reference flips/compacts a buffer that is
+   * already idle in the pool, corrupting it to {@code pos=0 lim=0} and surfacing later as
+   * "borrowObject found an invalid ByteBuffer". This test pins the swap-and-return contract that
+   * the fix relies on.
+   */
+  @Test
+  public void decryptInputDataGrow_swapsReadBufferAndReturnsOldInstanceToPool()
+      throws PeerProtocolException,
+          NoSuchPaddingException,
+          NoSuchAlgorithmException,
+          NoSuchProviderException,
+          InvalidAlgorithmParameterException,
+          InvalidKeyException {
+    Peer peer = new Peer("ip", 59558, new NodeId());
+
+    setUpTestCipherStreams(peer);
+
+    peer.readBuffer = ByteBufferPool.borrowObject(16);
+    // Mimic ConnectionReaderThread.readConnection capturing the reference before decrypting.
+    ByteBuffer staleReferenceBeforeDecrypt = peer.readBuffer;
+    assertThat(staleReferenceBeforeDecrypt.remaining()).isEqualTo(16);
+
+    long longToTest = new Random().nextLong();
+    ByteBuffer bufferIn = ByteBuffer.allocate(60);
+    bufferIn.putLong(longToTest);
+    bufferIn.putLong(longToTest);
+    bufferIn.putLong(longToTest);
+    ByteBuffer bufferOut = ByteBuffer.allocate(60);
+    bufferIn.flip();
+    peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+
+    peer.decryptInputData(bufferOut);
+
+    // The buffer had to grow, so peer.readBuffer must now be a different, larger instance...
+    assertThat(peer.readBuffer)
+        .as("decryptInputData must swap in a larger buffer on growth")
+        .isNotSameAs(staleReferenceBeforeDecrypt);
+    assertThat(peer.readBuffer.capacity()).isGreaterThan(staleReferenceBeforeDecrypt.capacity());
+
+    // ...and the old instance must have been handed back to the pool in a valid, idle state
+    // (pos=0, lim=cap). The bug corrupted exactly this buffer via a stale caller reference.
+    assertThat(staleReferenceBeforeDecrypt.position()).isEqualTo(0);
+    assertThat(staleReferenceBeforeDecrypt.limit())
+        .isEqualTo(staleReferenceBeforeDecrypt.capacity());
+  }
+
   private void setUpTestCipherStreams(Peer peer)
       throws NoSuchAlgorithmException,
           NoSuchProviderException,
