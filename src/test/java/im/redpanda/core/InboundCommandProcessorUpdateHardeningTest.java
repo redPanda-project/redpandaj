@@ -42,6 +42,7 @@ public class InboundCommandProcessorUpdateHardeningTest {
   public void cleanup() {
     Updater.resetPublicUpdaterKeyForTests();
     InboundCommandProcessor.restartAction = () -> System.exit(0);
+    InboundCommandProcessor.installThreadHookForTests = t -> {};
     new File("tmp_redpanda.jar").delete();
     new File("update").delete();
     new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).delete();
@@ -188,6 +189,84 @@ public class InboundCommandProcessorUpdateHardeningTest {
     // JVM (this test process) is still alive to observe it.
     awaitCondition(() -> restartCount.get() == 1, 5000);
     assertEquals(1, restartCount.get());
+  }
+
+  @Test
+  public void validUpdate_offloadsDiskWriteToThreadPool() throws Exception {
+    // Regression test for REDPANDAJ-2DQ: handleUpdateAnswerContent used to do its
+    // FileOutputStream/Files.move/LocalSettings.save work synchronously on the calling thread
+    // (the ConnectionReaderThread in production), which could stall the reader for as long as the
+    // disk write takes. Assert the write happens off the calling thread.
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    // Must not fall through to the default restartAction (System.exit(0)) — this test's install
+    // really does succeed and reach the restart trigger 2s later, on a background thread that
+    // outlives this test method. If we returned before it fires, @After's cleanup() would already
+    // have reset restartAction back to the System.exit(0) default by the time it does, killing the
+    // Surefire fork mid-suite — so, like validUpdate_installs_andInvokesRestartAction, we must wait
+    // for it here instead of just no-op-ing and returning early.
+    AtomicInteger restartCount = new AtomicInteger();
+    InboundCommandProcessor.restartAction = restartCount::incrementAndGet;
+
+    java.util.concurrent.atomic.AtomicReference<Thread> writerThread =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    InboundCommandProcessor.installThreadHookForTests = writerThread::set;
+
+    byte[] data = "fake-jar-bytes-for-offload-check".getBytes();
+    long othersTs = Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L;
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    ByteBuffer in = buildUpdateAnswerContent(othersTs, sig, data);
+
+    Thread callingThread = Thread.currentThread();
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_CONTENT, in, newPeer(8814));
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+
+    File updateFile = new File("update");
+    awaitCondition(updateFile::exists, 5000);
+    awaitCondition(() -> writerThread.get() != null, 5000);
+
+    assertFalse(
+        "the jar write/install must not run on the calling (reader) thread",
+        callingThread.equals(writerThread.get()));
+
+    // Wait for the delayed restart trigger too (see comment above) so cleanup() doesn't race it.
+    awaitCondition(() -> restartCount.get() == 1, 5000);
+    assertEquals(1, restartCount.get());
+  }
+
+  @Test
+  public void androidValidUpdate_installsAsynchronously() throws Exception {
+    // Android analog of validUpdate_installs_andInvokesRestartAction: no positive-path test
+    // existed for handleAndroidUpdateAnswerContent before REDPANDAJ-2DQ moved its disk write off
+    // the ConnectionReaderThread; assert the eventual side effects (apk file + settings) land.
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    byte[] data = "fake-apk-bytes".getBytes();
+    long othersTs = Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L;
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    ByteBuffer in = buildUpdateAnswerContent(othersTs, sig, data);
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, newPeer(8815));
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+
+    File apkFile = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    awaitCondition(apkFile::exists, 5000);
+    assertTrue(
+        "installed apk file must contain the received data",
+        java.util.Arrays.equals(data, Files.readAllBytes(apkFile.toPath())));
+
+    awaitCondition(() -> ctx.getLocalSettings().getUpdateAndroidTimestamp() == othersTs, 5000);
+    assertTrue(java.util.Arrays.equals(sig, ctx.getLocalSettings().getUpdateAndroidSignature()));
   }
 
   @Test
