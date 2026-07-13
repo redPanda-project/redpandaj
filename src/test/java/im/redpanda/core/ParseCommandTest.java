@@ -38,6 +38,11 @@ public class ParseCommandTest {
     Peer peerForDebug = getPeerForDebug();
     serverContext.getPeerList().add(peerForDebug);
     peerForDebug.setConnected(true);
+    // loopCommands only compacts the buffer it still owns via peer.readBuffer (REDPANDAJ-2DR
+    // hardening: a handler that disconnects the peer already returns/nulls peer.readBuffer, so
+    // compacting a stale local reference afterwards would corrupt a buffer some other peer may
+    // already have borrowed from the pool). Wire it up the same way ConnectionReaderThread does.
+    peerForDebug.readBuffer = allocate;
     processor.loopCommands(peerForDebug, allocate);
 
     // lets go to read mode and check for remaining bytes
@@ -49,6 +54,7 @@ public class ParseCommandTest {
     allocate.put(Command.SEND_PEERLIST);
     allocate.putInt(1);
 
+    peerForDebug.readBuffer = allocate;
     processor.loopCommands(peerForDebug, allocate);
 
     // lets go to read mode and check for remaining bytes
@@ -67,6 +73,7 @@ public class ParseCommandTest {
     allocate.putInt(1);
 
     peerForDebug.setConnected(true);
+    peerForDebug.readBuffer = allocate;
     processor.loopCommands(peerForDebug, allocate);
 
     // lets go to read mode and check for remaining bytes
@@ -74,6 +81,43 @@ public class ParseCommandTest {
 
     assertThat(allocate.get()).isEqualTo(Command.SEND_PEERLIST);
     assertThat(allocate.getInt()).isEqualTo(1);
+  }
+
+  /**
+   * REDPANDAJ-2DR (Copilot review finding): {@code loopCommands}'s {@code finally} block must not
+   * blindly {@code compact()} the buffer once a handler has disconnected the peer mid-loop. {@link
+   * Peer#disconnect(String)} already resets the buffer to (position=0, limit=capacity) and returns
+   * that exact instance to {@link ByteBufferPool} — potentially to a different peer/thread already
+   * — so compacting it afterwards would corrupt whatever state the new owner sees. This drives a
+   * real disconnecting handler (negative update content length) through the actual loop instead of
+   * asserting on the guard directly.
+   */
+  @Test
+  public void loopCommands_doesNotTouchBufferAfterHandlerDisconnectsPeer() {
+    ServerContext serverContext = new ServerContext();
+    InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
+
+    ByteBuffer buffer = ByteBufferPool.borrowObject(1024);
+    buffer.put(Command.UPDATE_ANSWER_CONTENT);
+    buffer.putLong(Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L);
+    buffer.putInt(-1); // network-controlled negative length -> handler disconnects the peer
+    buffer.put(new byte[NodeId.SIGNATURE_LEN]);
+
+    Peer peer = getPeerForDebug();
+    serverContext.getPeerList().add(peer);
+    peer.setConnected(true);
+    peer.readBuffer = buffer;
+
+    processor.loopCommands(peer, buffer);
+
+    assertThat(peer.isConnected()).isFalse();
+    assertThat(peer.readBuffer)
+        .as("Peer.disconnect() must have returned the buffer, clearing the field")
+        .isNull();
+    // If loopCommands had wrongly compact()-ed the buffer after disconnect() already reset and
+    // returned it, position would be pulled up towards capacity instead of staying at 0.
+    assertThat(buffer.position()).isEqualTo(0);
+    assertThat(buffer.limit()).isEqualTo(buffer.capacity());
   }
 
   @Test

@@ -230,7 +230,10 @@ public class InboundCommandProcessor {
 
     // compact() must run even if a handler throws, otherwise the buffer state is left
     // inconsistent (flipped, position/limit not restored) and the connection keeps retrying
-    // the same malformed packet.
+    // the same malformed packet. But if a handler disconnected the peer (or grew the buffer),
+    // Peer.disconnect()/decryptInputData() already returned this exact buffer instance to
+    // ByteBufferPool (and possibly handed it to a different peer/thread) — compacting it here
+    // would then corrupt that other owner's buffer, so only compact if we still own it.
     try {
       while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
         int newPosition = readBuffer.position();
@@ -245,7 +248,9 @@ public class InboundCommandProcessor {
         readBuffer.position(newPosition);
       }
     } finally {
-      readBuffer.compact();
+      if (peer.readBuffer == readBuffer) {
+        readBuffer.compact();
+      }
     }
   }
 
@@ -1039,8 +1044,10 @@ public class InboundCommandProcessor {
     // written to only ever see GarlicMessage/GMAck bytes. A raw E2E-encrypted client payload can
     // collide with a known GMType id (e.g. 0x04 == ACK) and must be rejected explicitly instead
     // of silently dropped by GMParser.parse's defensive fallback — otherwise the sender never
-    // learns the deposit failed and keeps retrying blindly.
-    if (!GMParser.isValidFrame(serverContext, content)) {
+    // learns the deposit failed and keeps retrying blindly. Scoped to the empty-oh_id case only:
+    // a non-empty oh_id that fell through here because outboundService is unset must keep its
+    // pre-existing (unconditional) legacy behavior, not be rejected as if it were this case.
+    if (ohIdBytes.isEmpty() && !GMParser.isValidFrame(serverContext, content)) {
       logger.warn(
           "Rejecting FlaschenpostPut with empty oh_id whose content is not a valid GM frame,"
               + " length: {}",

@@ -219,6 +219,46 @@ public class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
+   * REDPANDAJ-2DR (Copilot review finding): the empty-oh_id BAD_REQUEST pre-check must be scoped to
+   * {@code oh_id.isEmpty()}, not merely "the MS01 direct-deposit block was skipped" — a non-empty
+   * oh_id also falls through to the legacy path when {@code outboundService} is null (server
+   * misconfiguration), and that pre-existing fallthrough behavior must be preserved unconditionally
+   * rather than being newly rejected as if oh_id were absent.
+   */
+  @Test
+  public void flaschenpostPut_withOhIdButNullOutboundService_invalidContentIsNotRejected() {
+    ServerContext noServiceCtx = ServerContext.buildDefaultServerContext();
+    InboundCommandProcessor noServiceProc = new InboundCommandProcessor(noServiceCtx);
+
+    byte[] ohId = sampleOhId();
+    // Content that is not a valid GM frame at all (unknown type byte) — would trip the new
+    // isValidFrame pre-check if it were wrongly applied here.
+    byte[] invalidContent = new byte[] {(byte) 0x2a, 1, 2, 3};
+
+    FlaschenpostPut putMsg =
+        FlaschenpostPut.newBuilder()
+            .setContent(copyFrom(invalidContent))
+            .setOhId(ByteString.copyFrom(ohId))
+            .setWantResponse(true)
+            .build();
+    byte[] putData = putMsg.toByteArray();
+
+    Peer peer = new Peer("127.0.0.1", 9014, noServiceCtx.getNodeId());
+    peer.setConnected(true);
+    peer.setLightClient(true);
+    peer.writeBuffer = ByteBuffer.allocate(8192);
+    noServiceCtx.getPeerList().add(peer);
+
+    int consumed = noServiceProc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
+
+    assertEquals(1 + 4 + putData.length, consumed);
+    // respondToDeposit requires a non-null outboundService, so no response is written either way
+    // — but the point of this test is that reaching that point never throws or misclassifies a
+    // non-empty oh_id as the empty-oh_id legacy case.
+    assertEquals(0, peer.writeBuffer.position());
+  }
+
+  /**
    * When {@code oh_id} is absent and the content is a valid GarlicMessage with a destination that
    * matches a registered OH, {@code tryDepositToLocalOh} deposits the message and returns early.
    */
