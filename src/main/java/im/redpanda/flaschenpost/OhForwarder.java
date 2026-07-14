@@ -75,9 +75,19 @@ public final class OhForwarder {
       byte[] sessionTag,
       byte[] returnPath) {
     if (hopCount >= MAX_HOPS) {
+      // Hop-limit drop. This is the ONLY drop point that returns false, i.e. reports the drop
+      // back to the synchronous caller. The caller (InboundCommandProcessor#handleFlaschenpostPut)
+      // is still able to answer the peer here and sends the HANDLE_EXPIRED R-ACK itself, so we
+      // MUST NOT ack here — doing so would double-ack the packet. All drops that happen inside the
+      // asynchronous resolve callbacks below (resolve failure, no route) are the opposite case: the
+      // caller has already answered OK and can no longer ack, so those paths ack here instead.
       log.debug("dropping FlaschenpostPut for unknown OH at hop limit {}", hopCount);
       return false;
     }
+    // Parse the MS06 return path once for the R-ACK. The raw bytes are still forwarded verbatim on
+    // the wire (routeToNode below); this parsed copy only decides whether an async drop can ack.
+    // A malformed/absent block yields null → keep the pre-MS06 silent-drop behavior.
+    ReturnPath ackPath = parseAckPath(returnPath);
     OhResolveJob.resolve(
         serverContext,
         ohId,
@@ -90,10 +100,36 @@ public final class OhForwarder {
               content,
               hopCount,
               sessionTag,
-              returnPath);
+              returnPath,
+              ackPath);
         },
-        () -> log.debug("OH host resolution failed, dropping forwarded deposit"));
+        () -> onResolveFailed(serverContext, ackPath));
     return true;
+  }
+
+  /**
+   * Parses the raw return-path bytes into a {@link ReturnPath} for R-ACK purposes. Returns {@code
+   * null} when no return path was carried or the block is malformed — in both cases the caller
+   * keeps the silent-drop behavior (there is nobody safe to ack).
+   */
+  static ReturnPath parseAckPath(byte[] returnPath) {
+    if (returnPath == null || returnPath.length == 0) {
+      return null;
+    }
+    return ReturnPath.parseExact(returnPath);
+  }
+
+  /**
+   * Async resolve-failure drop: the sender was already answered OK by the caller, so without this
+   * R-ACK it would wait out its full R-ACK timeout. Sends exactly one {@code HANDLE_EXPIRED} ack
+   * when the deposit carried a valid return path (see the double-ack invariant in {@link
+   * #forward(ServerContext, byte[], byte[], int, byte[], byte[])}); otherwise a plain silent drop.
+   */
+  static void onResolveFailed(ServerContext serverContext, ReturnPath ackPath) {
+    log.debug("OH host resolution failed, dropping forwarded deposit");
+    if (ackPath != null) {
+      RoutingAckSender.send(serverContext, ackPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
+    }
   }
 
   /**
@@ -107,10 +143,19 @@ public final class OhForwarder {
       byte[] content,
       int hopCount,
       byte[] sessionTag,
-      byte[] returnPath) {
+      byte[] returnPath,
+      ReturnPath ackPath) {
     Peer nextPeer = selectNextPeer(serverContext, targetNodeId);
     if (nextPeer != null) {
       GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1, sessionTag, returnPath);
+      return;
+    }
+    // Resolved the host node but found no usable next hop: another async drop after the caller
+    // already answered OK. Ack HANDLE_EXPIRED (best available status) so the sender does not wait
+    // out its timeout. This runs only on the resolve-SUCCESS branch, mutually exclusive with the
+    // resolve-failure ack in onResolveFailed, so still exactly one ack per packet.
+    if (ackPath != null) {
+      RoutingAckSender.send(serverContext, ackPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
     }
   }
 

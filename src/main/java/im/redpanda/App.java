@@ -169,7 +169,8 @@ public class App {
     new OhAnnounceJob(serverContext).start();
     serverContext
         .getOutboundService()
-        .setOhRegisteredListener(ohId -> OhAnnounceJob.announceSoon(serverContext, ohId));
+        .setOhRegisteredListener(
+            ohId -> OhAnnounceJob.announceNewRegistration(serverContext, ohId));
   }
 
   private static void initLogger() {
