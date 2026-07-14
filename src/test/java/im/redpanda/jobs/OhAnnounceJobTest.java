@@ -2,6 +2,7 @@ package im.redpanda.jobs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.OhAnnounceJob.SingleAnnounceJob;
 import java.security.SecureRandom;
@@ -23,7 +24,7 @@ public class OhAnnounceJobTest {
   @Before
   public void setUp() {
     serverContext = ServerContext.buildDefaultServerContext();
-    ohId = new byte[20];
+    ohId = new byte[KademliaId.ID_LENGTH_BYTES];
     RANDOM.nextBytes(ohId);
   }
 
