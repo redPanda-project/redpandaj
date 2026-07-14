@@ -35,6 +35,8 @@ public class OhForwarderTest {
   private ServerContext nodeA;
 
   private InboundCommandProcessor processorA;
+  private OutboundHandleStore handleStoreA;
+  private OutboundMailboxStore mailboxA;
 
   /** Host node B — hosts the OH mailbox. */
   private ServerContext nodeB;
@@ -48,8 +50,9 @@ public class OhForwarderTest {
   @Before
   public void setUp() {
     nodeA = ServerContext.buildDefaultServerContext();
-    nodeA.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    handleStoreA = new OutboundHandleStore();
+    mailboxA = new OutboundMailboxStore();
+    nodeA.setOutboundService(new OutboundService(handleStoreA, mailboxA));
     processorA = new InboundCommandProcessor(nodeA);
 
     nodeB = ServerContext.buildDefaultServerContext();
@@ -169,6 +172,96 @@ public class OhForwarderTest {
   public void routeToNode_withoutDirectPeer_dropsWhenNoCloserCandidate() {
     // No peers at all — routing must simply drop without throwing
     OhForwarder.routeToNode(
-        nodeA, NodeId.generateWithSimpleKey().getKademliaId(), ohId, new byte[8], 0, null, null);
+        nodeA,
+        NodeId.generateWithSimpleKey().getKademliaId(),
+        ohId,
+        new byte[8],
+        0,
+        null,
+        null,
+        null);
+  }
+
+  // --- MS06 R-ACK on async drop (first-delivery-latency) ---
+
+  /** Registers an ack-OH mailbox on node A and returns a hop_count=0 return path for it. */
+  private ReturnPath registerLocalAckPathA() {
+    byte[] ackOhId = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ackOhId);
+    long now = System.currentTimeMillis();
+    handleStoreA.put(
+        ackOhId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
+    byte[] ackSessionTag = new byte[OutboundService.SESSION_TAG_BYTES];
+    RANDOM.nextBytes(ackSessionTag);
+    return new ReturnPath(ackOhId, ackSessionTag, List.of());
+  }
+
+  /** Fetches the single R-ACK deposited into node A's ack-OH mailbox, asserting exactly one. */
+  private im.redpanda.outbound.v1.RoutingAck fetchSingleAckA(ReturnPath ackPath) throws Exception {
+    List<MailItem> items = mailboxA.fetchMessages(ackPath.ackOhId(), 10, 0);
+    assertThat(items).hasSize(1);
+    return im.redpanda.outbound.v1.RoutingAck.parseFrom(items.get(0).getPayload().toByteArray());
+  }
+
+  @Test
+  public void resolveFailure_withReturnPath_sendsExactlyOneHandleExpiredAck() throws Exception {
+    ReturnPath ackPath = registerLocalAckPathA();
+
+    // simulate the async resolve-failure callback directly (a real DHT search would only fail
+    // after a randomized network round-trip — the callback is the unit under test)
+    OhForwarder.onResolveFailed(nodeA, ackPath);
+
+    im.redpanda.outbound.v1.RoutingAck rAck = fetchSingleAckA(ackPath);
+    assertThat(rAck.getStatus()).isEqualTo(RoutingAckSender.STATUS_HANDLE_EXPIRED);
+  }
+
+  @Test
+  public void resolveFailure_withoutReturnPath_isPlainDrop() {
+    // parseAckPath returns null for absent / empty return paths → no ack, no exception
+    assertThat(OhForwarder.parseAckPath(null)).isNull();
+    assertThat(OhForwarder.parseAckPath(new byte[0])).isNull();
+    OhForwarder.onResolveFailed(nodeA, null); // must not throw and must deposit nothing
+  }
+
+  @Test
+  public void parseAckPath_malformedReturnPath_isNullSoDropStaysSilent() {
+    // a structurally invalid return-path block must NOT ack (nobody safe to ack) — plain drop
+    assertThat(OhForwarder.parseAckPath(new byte[] {1, 2, 3})).isNull();
+    OhForwarder.onResolveFailed(nodeA, OhForwarder.parseAckPath(new byte[] {1, 2, 3}));
+  }
+
+  @Test
+  public void noRoute_withReturnPath_sendsExactlyOneHandleExpiredAck() throws Exception {
+    ReturnPath ackPath = registerLocalAckPathA();
+
+    // resolve succeeded but there is no peer to forward toward → async no-route drop must ack
+    OhForwarder.routeToNode(
+        nodeA,
+        NodeId.generateWithSimpleKey().getKademliaId(),
+        ohId,
+        new byte[8],
+        0,
+        null,
+        null,
+        ackPath);
+
+    im.redpanda.outbound.v1.RoutingAck rAck = fetchSingleAckA(ackPath);
+    assertThat(rAck.getStatus()).isEqualTo(RoutingAckSender.STATUS_HANDLE_EXPIRED);
+  }
+
+  @Test
+  public void hopLimitDrop_doesNotAck_soCallerAcksWithoutDoubleAck() throws Exception {
+    // a valid, LOCALLY resolvable ack path so any accidental ack would land where we can see it
+    ReturnPath ackPath = registerLocalAckPathA();
+
+    boolean accepted =
+        OhForwarder.forward(
+            nodeA, ohId, new byte[8], OhForwarder.MAX_HOPS, null, ackPath.serialize());
+
+    // forward must report the drop (false) so the caller acks; it must NOT ack here itself
+    assertThat(accepted).isFalse();
+    assertThat(mailboxA.fetchMessages(ackPath.ackOhId(), 10, 0))
+        .as("hop-limit drop must not ack — the caller does")
+        .isEmpty();
   }
 }
