@@ -124,8 +124,9 @@ message AckFetchResponse {
 ## Connection-Notify (2026-07-17)
 
 Node meldet neue Mailbox-Post in Echtzeit über die **bestehende Peer-Verbindung** — kein Push, kein
-Drittanbieter, unabhängig von MS07. Vollständige Spec + Decisions: siehe
-[Master-Spec MS02 → Connection-Notify](../ms02_reliable_delivery.md#connection-notify-2026-07-17).
+Drittanbieter, unabhängig von MS07. Vollständige Spec + Decisions: siehe Master-Spec MS02 →
+Connection-Notify
+([docs](https://github.com/redPanda-project/docs/blob/main/docs/milestones/ms02_reliable_delivery.md#connection-notify-2026-07-17)).
 
 ### Neue Commands
 

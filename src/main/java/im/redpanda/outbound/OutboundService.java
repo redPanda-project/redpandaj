@@ -351,7 +351,9 @@ public class OutboundService {
       }
       Peer peer = ref.get();
       if (peer == null || !peer.isConnected()) {
-        subscriptions.remove(key);
+        // Conditional remove: only drop the exact stale entry we inspected, so a concurrent
+        // re-subscribe that already replaced the binding for this oh_id is not clobbered (ABA).
+        subscriptions.remove(key, ref);
         return;
       }
       Notify notify = Notify.newBuilder().setOhId(ByteString.copyFrom(ohId)).build();
