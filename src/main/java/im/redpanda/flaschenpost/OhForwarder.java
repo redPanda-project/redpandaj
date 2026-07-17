@@ -5,11 +5,14 @@ import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.Job;
 import im.redpanda.jobs.OhResolveJob;
 import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
 import java.util.ArrayList;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,6 +30,36 @@ public final class OhForwarder {
 
   /** Maximum number of node-to-node forwards before a packet is dropped. */
   public static final int MAX_HOPS = 3;
+
+  /**
+   * Delay before the single retry of a deposit whose first host resolution failed. Chosen to cover
+   * the observed race window: a light client whose OH registration was cut off re-registers after
+   * its 10 s response timeout, so by retry time the OH is registered (and announced) again.
+   */
+  static final long RETRY_DELAY_MS = 15_000;
+
+  /**
+   * Cap on concurrently parked deposits awaiting their retry. Each payload is at most {@link
+   * im.redpanda.outbound.OutboundMailboxStore#MAX_ITEM_BYTES} (pre-checked by the caller), so the
+   * buffer is memory-bounded at ~4 MiB; the single fixed-delay retry doubles as the TTL.
+   */
+  static final int MAX_PENDING_RETRIES = 64;
+
+  /** Number of currently parked deposits. Package-private for tests. */
+  static final AtomicInteger pendingRetries = new AtomicInteger();
+
+  /**
+   * Everything needed to re-attempt a deposit after a failed host resolution. {@code returnPath}
+   * keeps the raw wire bytes (forwarded verbatim), {@code ackPath} the parsed copy that decides
+   * whether a drop can R-ACK (both may be {@code null}).
+   */
+  record PendingDeposit(
+      byte[] ohId,
+      byte[] content,
+      int hopCount,
+      byte[] sessionTag,
+      byte[] returnPath,
+      ReturnPath ackPath) {}
 
   private OhForwarder() {}
 
@@ -88,22 +121,14 @@ public final class OhForwarder {
     // the wire (routeToNode below); this parsed copy only decides whether an async drop can ack.
     // A malformed/absent block yields null → keep the pre-MS06 silent-drop behavior.
     ReturnPath ackPath = parseAckPath(returnPath);
+    PendingDeposit deposit =
+        new PendingDeposit(ohId, content, hopCount, sessionTag, returnPath, ackPath);
     OhResolveJob.resolve(
         serverContext,
         ohId,
-        record -> {
-          byte[] nodeIdBytes = record.getNodeId().toByteArray();
-          routeToNode(
-              serverContext,
-              new KademliaId(nodeIdBytes),
-              ohId,
-              content,
-              hopCount,
-              sessionTag,
-              returnPath,
-              ackPath);
-        },
-        () -> onResolveFailed(serverContext, ackPath));
+        record ->
+            routeToNode(serverContext, new KademliaId(record.getNodeId().toByteArray()), deposit),
+        () -> onResolveFailed(serverContext, deposit, false));
     return true;
   }
 
@@ -120,42 +145,144 @@ public final class OhForwarder {
   }
 
   /**
-   * Async resolve-failure drop: the sender was already answered OK by the caller, so without this
-   * R-ACK it would wait out its full R-ACK timeout. Sends exactly one {@code HANDLE_EXPIRED} ack
+   * Async resolve-failure handling. A first failure does NOT drop: the announce record of a freshly
+   * (re-)registered OH may simply not exist yet — the observed failure mode is a light client whose
+   * registration was cut off mid-connection, re-registering ~10 s later while the sender's deposit
+   * already arrived (T32). The deposit is parked for a single delayed retry instead (bounded
+   * buffer, see {@link #MAX_PENDING_RETRIES}).
+   *
+   * <p>Only the retry's failure ({@code finalAttempt}) or a full buffer drops for real. The sender
+   * was already answered OK by the caller, so the drop sends exactly one {@code HANDLE_EXPIRED} ack
    * when the deposit carried a valid return path (see the double-ack invariant in {@link
    * #forward(ServerContext, byte[], byte[], int, byte[], byte[])}); otherwise a plain silent drop.
    */
-  static void onResolveFailed(ServerContext serverContext, ReturnPath ackPath) {
+  static void onResolveFailed(
+      ServerContext serverContext, PendingDeposit deposit, boolean finalAttempt) {
+    if (!finalAttempt && parkForRetry(serverContext, deposit)) {
+      return;
+    }
     log.debug("OH host resolution failed, dropping forwarded deposit");
-    if (ackPath != null) {
-      RoutingAckSender.send(serverContext, ackPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
+    if (deposit.ackPath() != null) {
+      RoutingAckSender.send(
+          serverContext, deposit.ackPath(), RoutingAckSender.STATUS_HANDLE_EXPIRED);
     }
   }
 
   /**
-   * Routes the packet toward {@code targetNodeId}: directly if connected, otherwise via the
-   * cheapest next hop in the weighted node graph (same selection as garlic routing).
+   * Parks the deposit for one delayed retry. Returns {@code false} when the bounded buffer is full
+   * — the caller then drops immediately (pre-retry behavior).
+   */
+  private static boolean parkForRetry(ServerContext serverContext, PendingDeposit deposit) {
+    if (pendingRetries.incrementAndGet() > MAX_PENDING_RETRIES) {
+      pendingRetries.decrementAndGet();
+      log.debug("pending-deposit buffer full, dropping without retry");
+      return false;
+    }
+    new RetryDepositJob(serverContext, deposit).start();
+    return true;
+  }
+
+  /**
+   * The delayed retry: tries the local deposit first — the observed race is the OH (re-)registering
+   * on THIS node right after the failed resolve, which needs no announce record at all — then
+   * resolves again. The second resolve failure is final.
+   */
+  static void retryDeposit(ServerContext serverContext, PendingDeposit deposit) {
+    if (depositLocally(serverContext, deposit)) {
+      return;
+    }
+    OhResolveJob.resolve(
+        serverContext,
+        deposit.ohId(),
+        record ->
+            routeToNode(serverContext, new KademliaId(record.getNodeId().toByteArray()), deposit),
+        () -> onResolveFailed(serverContext, deposit, true));
+  }
+
+  /**
+   * Attempts the local deposit for a parked or self-resolved packet. Returns {@code true} when the
+   * deposit was decided here (stored or terminally rejected, with the matching R-ACK when a return
+   * path was carried), {@code false} when the OH is unknown locally and the caller should keep
+   * resolving/routing.
+   */
+  private static boolean depositLocally(ServerContext serverContext, PendingDeposit deposit) {
+    OutboundService outboundService = serverContext.getOutboundService();
+    if (outboundService == null) {
+      return false;
+    }
+    OutboundService.DepositResult result =
+        outboundService.depositMessage(deposit.ohId(), deposit.content(), deposit.sessionTag());
+    if (result == OutboundService.DepositResult.NOT_FOUND) {
+      return false;
+    }
+    if (deposit.ackPath() != null) {
+      RoutingAckSender.send(serverContext, deposit.ackPath(), RoutingAckSender.statusFor(result));
+    }
+    return true;
+  }
+
+  /**
+   * Routes the packet toward {@code targetNodeId}: deposited locally if the record points at this
+   * node itself (the OH registered here between the local NOT_FOUND check and the resolve
+   * callback), directly if connected, otherwise via the cheapest next hop in the weighted node
+   * graph (same selection as garlic routing).
    */
   static void routeToNode(
-      ServerContext serverContext,
-      KademliaId targetNodeId,
-      byte[] ohId,
-      byte[] content,
-      int hopCount,
-      byte[] sessionTag,
-      byte[] returnPath,
-      ReturnPath ackPath) {
+      ServerContext serverContext, KademliaId targetNodeId, PendingDeposit deposit) {
+    KademliaId self = serverContext.getNonce();
+    if (self != null && targetNodeId.equals(self)) {
+      if (!depositLocally(serverContext, deposit) && deposit.ackPath() != null) {
+        // announce points at us but the OH is not registered here (expired/revoked) — final drop
+        RoutingAckSender.send(
+            serverContext, deposit.ackPath(), RoutingAckSender.STATUS_HANDLE_EXPIRED);
+      }
+      return;
+    }
     Peer nextPeer = selectNextPeer(serverContext, targetNodeId);
     if (nextPeer != null) {
-      GMParser.sendFpToPeer(nextPeer, content, ohId, hopCount + 1, sessionTag, returnPath);
+      GMParser.sendFpToPeer(
+          nextPeer,
+          deposit.content(),
+          deposit.ohId(),
+          deposit.hopCount() + 1,
+          deposit.sessionTag(),
+          deposit.returnPath());
       return;
     }
     // Resolved the host node but found no usable next hop: another async drop after the caller
     // already answered OK. Ack HANDLE_EXPIRED (best available status) so the sender does not wait
     // out its timeout. This runs only on the resolve-SUCCESS branch, mutually exclusive with the
     // resolve-failure ack in onResolveFailed, so still exactly one ack per packet.
-    if (ackPath != null) {
-      RoutingAckSender.send(serverContext, ackPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
+    if (deposit.ackPath() != null) {
+      RoutingAckSender.send(
+          serverContext, deposit.ackPath(), RoutingAckSender.STATUS_HANDLE_EXPIRED);
+    }
+  }
+
+  /** One-shot job holding a parked deposit until its single delayed retry fires. */
+  static class RetryDepositJob extends Job {
+
+    private final PendingDeposit deposit;
+
+    RetryDepositJob(ServerContext serverContext, PendingDeposit deposit) {
+      // skipImminentRun: only the delayed run does work, mirroring OhResolveJob.DelayedSearchJob
+      super(serverContext, RETRY_DELAY_MS, false, true);
+      this.deposit = deposit;
+    }
+
+    @Override
+    public void init() {
+      // no setup needed
+    }
+
+    @Override
+    public void work() {
+      try {
+        pendingRetries.decrementAndGet();
+        retryDeposit(serverContext, deposit);
+      } finally {
+        done();
+      }
     }
   }
 
