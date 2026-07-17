@@ -48,4 +48,12 @@ public final class Command {
   public static final byte OUTBOUND_ACK_FETCH_REQ = (byte) 156;
   public static final byte OUTBOUND_ACK_FETCH_RES = (byte) 157;
   public static final byte FLASCHENPOST_PUT_RES = (byte) 158;
+
+  // Connection-Notify (T38): opt-in "new mail" signal over the existing peer connection.
+  // Subscribe is a signed request/response (ownership proof reuses the Fetch signing scheme);
+  // Notify is a one-way node → client message carrying only the oh_id. Never sent to clients
+  // that did not subscribe (unknown commands desync their read loop).
+  public static final byte OUTBOUND_SUBSCRIBE_REQ = (byte) 159;
+  public static final byte OUTBOUND_SUBSCRIBE_RES = (byte) 160;
+  public static final byte OUTBOUND_NOTIFY = (byte) 161;
 }

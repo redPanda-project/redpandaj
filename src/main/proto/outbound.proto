@@ -131,3 +131,29 @@ message RevokeOhResponse {
   Status status = 1;
   int64 server_time_ms = 2;
 }
+
+// Connection-Notify (T38): opt-in real-time "new mail" signal over the existing peer connection.
+// Subscribe proves OH ownership exactly like FetchRequest — Ed25519 signature verified against the
+// oh_auth_public_key stored at register, same OutboundAuth timestamp/replay handling. The node then
+// binds oh_id → this peer connection (in-memory only, dropped on disconnect). On every successful
+// deposit into a subscribed mailbox the node sends a one-way Notify carrying only the oh_id; the
+// client reacts with a normal signed FetchRequest (cursor/ack/dedup/decrypt unchanged).
+//   Signing bytes: [CMD_BYTE=159 | oh_id | timestamp_ms(8) | nonce]  (0x02 version prefix applied
+//   by OutboundAuth, like every signed outbound command).
+message SubscribeRequest {
+  bytes oh_id = 1;
+  int64 timestamp_ms = 2;
+  bytes nonce = 3;
+  bytes signature = 4;
+}
+
+message SubscribeResponse {
+  Status status = 1;
+  int64 server_time_ms = 2;
+}
+
+// One-way node → client (command 161). Carries ONLY the oh_id — no payload, no metadata, no
+// sequence id: the client already has a fully signed fetch path and uses it to learn what changed.
+message Notify {
+  bytes oh_id = 1;
+}
