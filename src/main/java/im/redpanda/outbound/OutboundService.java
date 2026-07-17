@@ -3,6 +3,7 @@ package im.redpanda.outbound;
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
+import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.OutboundAuth.AuthResult;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.AckFetchRequest;
@@ -11,11 +12,15 @@ import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.FetchResponse;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
+import im.redpanda.outbound.v1.Notify;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import im.redpanda.outbound.v1.RegisterOhResponse;
 import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
+import im.redpanda.outbound.v1.SubscribeRequest;
+import im.redpanda.outbound.v1.SubscribeResponse;
+import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.ArrayDeque;
@@ -24,6 +29,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class OutboundService {
 
@@ -85,6 +91,19 @@ public class OutboundService {
    */
   private final Map<Peer, Deque<Long>> registerHistory =
       Collections.synchronizedMap(new WeakHashMap<>());
+
+  /**
+   * Connection-Notify (T38) subscription registry: oh_id (hex) → the peer connection that proved
+   * ownership via a signed {@link SubscribeRequest}. The value is a {@link WeakReference} so a
+   * disconnected peer's binding vanishes with the {@code Peer} object (same self-cleaning rationale
+   * as {@link #registerHistory}) — no persisted subscription state, no dead-peer leak. The deposit
+   * side additionally prunes any binding whose peer is gone or no longer connected, so a Notify is
+   * never sent to a disconnected client. Re-subscribe is idempotent (overwrites the same key);
+   * multiple OHs may map to the same peer, and an oh_id is bound to at most one connection
+   * (last-writer-wins — the OH owner controls this via its signing key).
+   */
+  private final ConcurrentHashMap<String, WeakReference<Peer>> subscriptions =
+      new ConcurrentHashMap<>();
 
   public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
     this.handleStore = handleStore;
@@ -262,6 +281,87 @@ public class OutboundService {
   }
 
   /**
+   * Connection-Notify (T38): handles a Subscribe request. Verifies OH ownership exactly like {@link
+   * #handleFetch} (Ed25519 signature against the stored OH key, same timestamp/replay handling),
+   * then binds {@code oh_id → this peer connection} so future deposits into that mailbox trigger a
+   * one-way {@link Notify}. The binding is in-memory only and ends when the peer disconnects; a
+   * repeated subscribe is idempotent.
+   *
+   * <p>Signing bytes: {@code [CMD_BYTE | oh_id | timestamp(8) | nonce]} — prefixed with the MS03
+   * version byte by {@link OutboundAuth} for Ed25519 verification (same layout as Revoke).
+   */
+  public void handleSubscribe(Peer peer, SubscribeRequest req) {
+    long now = System.currentTimeMillis();
+    byte[] ohId = req.getOhId().toByteArray();
+    byte[] nonce = req.getNonce().toByteArray();
+    long timestamp = req.getTimestampMs();
+
+    // Input validation
+    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
+        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+      sendSubscribeResponse(peer, Status.BAD_REQUEST);
+      return;
+    }
+
+    HandleRecord handle = handleStore.get(ohId);
+    if (handle == null || handle.getExpiresAtMs() < now) {
+      sendSubscribeResponse(peer, Status.NOT_FOUND);
+      return;
+    }
+
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length);
+    signBuf.put(Command.OUTBOUND_SUBSCRIBE_REQ);
+    signBuf.put(ohId);
+    signBuf.putLong(timestamp);
+    signBuf.put(nonce);
+
+    AuthResult result =
+        auth.verify(
+            handle.getOhAuthPublicKey(),
+            signBuf.array(),
+            req.getSignature().toByteArray(),
+            timestamp,
+            ohId,
+            nonce);
+
+    if (result != AuthResult.OK) {
+      sendSubscribeResponse(peer, mapAuthToStatus(result));
+      return;
+    }
+
+    // Bind oh_id → this connection (idempotent overwrite; last-writer-wins across connections).
+    subscriptions.put(Utils.bytesToHexString(ohId), new WeakReference<>(peer));
+    sendSubscribeResponse(peer, Status.OK);
+  }
+
+  /**
+   * Connection-Notify (T38): fire-and-forget one-way {@link Notify} to the connection subscribed
+   * for {@code ohId}, if any. Called after every successful deposit (all deposit paths funnel
+   * through {@link #depositMessage}). Strictly opt-in: only a peer that sent a valid {@link
+   * SubscribeRequest} is in the registry, so existing clients never receive command 161. Any send
+   * failure is swallowed — a deposit must never be affected by notification delivery. Prunes the
+   * binding if its peer has been garbage-collected or is no longer connected.
+   */
+  private void notifySubscriber(byte[] ohId) {
+    try {
+      String key = Utils.bytesToHexString(ohId);
+      WeakReference<Peer> ref = subscriptions.get(key);
+      if (ref == null) {
+        return;
+      }
+      Peer peer = ref.get();
+      if (peer == null || !peer.isConnected()) {
+        subscriptions.remove(key);
+        return;
+      }
+      Notify notify = Notify.newBuilder().setOhId(ByteString.copyFrom(ohId)).build();
+      writeResponse(peer, Command.OUTBOUND_NOTIFY, notify.toByteArray());
+    } catch (RuntimeException e) {
+      logger.warn("Connection-Notify: failed to notify subscriber", e);
+    }
+  }
+
+  /**
    * Handles an AckFetch request: verifies the signature, deletes all mailbox items with sequence_id
    * &lt;= acked_sequence_id, and responds with OK.
    *
@@ -369,11 +469,18 @@ public class OutboundService {
             .setPayload(ByteString.copyFrom(payload))
             .setSessionTag(ByteString.copyFrom(sessionTag))
             .build();
-    return switch (mailboxStore.addMessage(ohId, item)) {
-      case ADDED -> DepositResult.DEPOSITED;
-      case REJECTED_ITEM_TOO_LARGE -> DepositResult.BAD_REQUEST;
-      case REJECTED_MAILBOX_FULL, REJECTED_BYTE_QUOTA -> DepositResult.QUOTA_EXCEEDED;
-    };
+    DepositResult result =
+        switch (mailboxStore.addMessage(ohId, item)) {
+          case ADDED -> DepositResult.DEPOSITED;
+          case REJECTED_ITEM_TOO_LARGE -> DepositResult.BAD_REQUEST;
+          case REJECTED_MAILBOX_FULL, REJECTED_BYTE_QUOTA -> DepositResult.QUOTA_EXCEEDED;
+        };
+    // Connection-Notify (T38): signal the subscribed connection (if any) that new mail arrived.
+    // Only on an actual deposit — a rejected deposit stores nothing, so there is nothing to fetch.
+    if (result == DepositResult.DEPOSITED) {
+      notifySubscriber(ohId);
+    }
+    return result;
   }
 
   /**
@@ -490,6 +597,15 @@ public class OutboundService {
             .setServerTimeMs(System.currentTimeMillis())
             .build();
     writeResponse(peer, Command.OUTBOUND_REVOKE_OH_RES, res.toByteArray());
+  }
+
+  private void sendSubscribeResponse(Peer peer, Status status) {
+    SubscribeResponse res =
+        SubscribeResponse.newBuilder()
+            .setStatus(status)
+            .setServerTimeMs(System.currentTimeMillis())
+            .build();
+    writeResponse(peer, Command.OUTBOUND_SUBSCRIBE_RES, res.toByteArray());
   }
 
   private void sendAckFetchResponse(Peer peer, Status status) {

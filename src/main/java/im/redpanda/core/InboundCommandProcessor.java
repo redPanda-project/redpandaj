@@ -19,6 +19,7 @@ import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import im.redpanda.outbound.v1.RevokeOhRequest;
+import im.redpanda.outbound.v1.SubscribeRequest;
 import im.redpanda.proto.*;
 import im.redpanda.proto.FlaschenpostPut;
 import java.io.File;
@@ -161,6 +162,15 @@ public class InboundCommandProcessor {
         (peer, buf, payload) -> {
           int len = (payload != null) ? payload.length : 0;
           outboundService.handleAckFetch(peer, AckFetchRequest.parseFrom(payload));
+          return 1 + 4 + len;
+        });
+    // Connection-Notify (T38): opt-in subscribe. OUTBOUND_SUBSCRIBE_RES/OUTBOUND_NOTIFY are only
+    // ever written back to the client, never parsed here.
+    commandHandlers.put(
+        Command.OUTBOUND_SUBSCRIBE_REQ,
+        (peer, buf, payload) -> {
+          int len = (payload != null) ? payload.length : 0;
+          outboundService.handleSubscribe(peer, SubscribeRequest.parseFrom(payload));
           return 1 + 4 + len;
         });
 
@@ -323,7 +333,8 @@ public class InboundCommandProcessor {
         || command == Command.OUTBOUND_REGISTER_OH_REQ
         || command == Command.OUTBOUND_FETCH_REQ
         || command == Command.OUTBOUND_REVOKE_OH_REQ
-        || command == Command.OUTBOUND_ACK_FETCH_REQ;
+        || command == Command.OUTBOUND_ACK_FETCH_REQ
+        || command == Command.OUTBOUND_SUBSCRIBE_REQ;
   }
 
   private byte[] readMessage(ByteBuffer readBuffer) {

@@ -121,7 +121,65 @@ message AckFetchResponse {
 - [x] Mailbox-Overflow (>500 Items) setzt `mailbox_overflow = true` in der nächsten `FetchResponse`
 - [x] Signing-Bytes für `AckFetch` sind dokumentiert: `[CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce]`
 
+## Connection-Notify (2026-07-17)
+
+Node meldet neue Mailbox-Post in Echtzeit über die **bestehende Peer-Verbindung** — kein Push, kein
+Drittanbieter, unabhängig von MS07. Vollständige Spec + Decisions: siehe
+[Master-Spec MS02 → Connection-Notify](../ms02_reliable_delivery.md#connection-notify-2026-07-17).
+
+### Neue Commands
+
+```
+Client → Node:  [159 OUTBOUND_SUBSCRIBE_REQ] [4 len] [SubscribeRequest]
+Node → Client:  [160 OUTBOUND_SUBSCRIBE_RES] [4 len] [SubscribeResponse]
+Node → Client:  [161 OUTBOUND_NOTIFY]        [4 len] [Notify]   (one-way, nur oh_id)
+```
+
+**Signing-Bytes Subscribe** (0x02-Präfix wird von `OutboundAuth` ergänzt):
+`[CMD_BYTE=159 | oh_id | timestamp_ms(8, big-endian) | nonce]` — verifiziert gegen den beim Register
+hinterlegten OH-Pubkey, gleiche Timestamp-/Replay-Prüfung wie Fetch.
+
+### Protobuf (`outbound.proto`)
+
+```protobuf
+message SubscribeRequest {
+  bytes oh_id = 1;
+  int64 timestamp_ms = 2;
+  bytes nonce = 3;
+  bytes signature = 4;
+}
+
+message SubscribeResponse {
+  Status status = 1;
+  int64 server_time_ms = 2;
+}
+
+message Notify {
+  bytes oh_id = 1;   // one-way node → client, kein Payload
+}
+```
+
+### Backend Changes
+
+| File | Action |
+|------|--------|
+| `Command.java` | `OUTBOUND_SUBSCRIBE_REQ=159`, `OUTBOUND_SUBSCRIBE_RES=160`, `OUTBOUND_NOTIFY=161` |
+| `OutboundService.java` | `handleSubscribe()` (Auth wie Fetch), In-Memory-Subscription-Registry (`oh_id → Peer`, Cleanup bei Disconnect), Notify im `depositMessage`-Choke-Point |
+| `InboundCommandProcessor.java` | `OUTBOUND_SUBSCRIBE_REQ` als Payload-Command registrieren |
+| **New**: `OutboundSubscribeNotifyTest.java` | Auth (gültig/ungültig/Replay/NOT_FOUND), Notify an abonnierte vs. nicht-abonnierte Mailbox, Disconnect-Cleanup, Idempotenz |
+
+### Acceptance Criteria (Connection-Notify)
+
+- [ ] `Subscribe` prüft Ownership wie Fetch (valid → `OK`, bad sig → `INVALID_SIGNATURE`, Replay →
+  `REPLAY`, unbekannte oh_id → `NOT_FOUND`)
+- [ ] Deposit in abonnierte Mailbox sendet genau ein `Notify(oh_id)`
+- [ ] Deposit in **nicht**-abonnierte Mailbox sendet kein `Notify` (opt-in)
+- [ ] Disconnect entfernt die Subscription (kein Notify an / kein Leak toter Peers)
+- [ ] Re-Subscribe idempotent; mehrere OHs pro Verbindung
+
 ## Open Questions
 
 1. Soll `AckFetch` ein eigener Command sein oder als Flag auf `FetchRequest` piggybacked?
 2. Soll der Overflow-Counter pro OH persistent sein, oder reicht ein transientes Flag?
+3. ~~Overflow-Notify in Echtzeit?~~ **Beantwortet 2026-07-17: Overflow bleibt in `FetchResponse`;
+   Connection-Notify macht das Ankunfts-Signal echtzeitfähig (Master-Spec Decision 5).**
