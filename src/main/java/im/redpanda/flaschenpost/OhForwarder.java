@@ -178,7 +178,15 @@ public final class OhForwarder {
       log.debug("pending-deposit buffer full, dropping without retry");
       return false;
     }
-    new RetryDepositJob(serverContext, deposit).start();
+    try {
+      new RetryDepositJob(serverContext, deposit).start();
+    } catch (RuntimeException e) {
+      // scheduling failed (e.g. executor shutting down) — undo the reservation so the buffer
+      // cannot leak full, and let the caller fall back to the immediate final drop
+      pendingRetries.decrementAndGet();
+      log.debug("failed to schedule deposit retry, dropping: {}", e.getMessage());
+      return false;
+    }
     return true;
   }
 
