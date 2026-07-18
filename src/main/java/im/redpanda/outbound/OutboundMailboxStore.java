@@ -209,8 +209,12 @@ public class OutboundMailboxStore {
     usedBytes.addAndGet(serialized.length);
     if (db != null) {
       // T40: persist the just-assigned sequence id so the counter survives a restart even after
-      // the item is later acked and deleted. Rides the same commit as the item write.
-      seqCountersPersisted.put(ohKey, seqId);
+      // the item is later acked and deleted. Rides the same commit as the item write. The null
+      // check covers a partially failed init() (db opened, map creation failed) — the store then
+      // degrades to the pre-T40 in-memory counter behavior instead of throwing.
+      if (seqCountersPersisted != null) {
+        seqCountersPersisted.put(ohKey, seqId);
+      }
       db.commit();
     }
     return AddResult.ADDED;
