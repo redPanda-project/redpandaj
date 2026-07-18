@@ -319,6 +319,69 @@ public class OutboundServiceIntegrationTest {
     assertThat(res.getNextCursor()).isZero();
   }
 
+  // --- T40 (b): stale-cursor heal in handleFetch ---
+
+  @Test
+  public void testFetch_staleCursorAboveLastAssigned_healsAndRedelivers() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    // Counter is fresh: two items present, last assigned = 2
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+
+    // A stale-high cursor (47) from a previous mailbox life — nothing was ever assigned that high.
+    // The heal resets the effective cursor to 0, so both items are redelivered.
+    service.handleFetch(peer, createSignedFetchRequest(47));
+    FetchResponse res = readFetchResponse();
+
+    assertThat(res.getStatus()).isEqualTo(Status.OK);
+    assertThat(res.getItemsCount()).isEqualTo(2);
+    assertThat(res.getItems(0).getSequenceId()).isEqualTo(1L);
+    assertThat(res.getItems(1).getSequenceId()).isEqualTo(2L);
+    assertThat(res.getNextCursor()).isEqualTo(2L);
+  }
+
+  @Test
+  public void testFetch_staleCursorEmptyMailbox_healsCursorToZero() throws Exception {
+    // Empty mailbox, counter 0 (nothing ever assigned): a stale cursor of 47 heals to 0, and the
+    // empty-result next_cursor must echo the effective cursor (0), never the raw request cursor.
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    service.handleFetch(peer, createSignedFetchRequest(47));
+    FetchResponse res = readFetchResponse();
+
+    assertThat(res.getStatus()).isEqualTo(Status.OK);
+    assertThat(res.getItemsCount()).isZero();
+    assertThat(res.getNextCursor()).isZero();
+  }
+
+  @Test
+  public void testFetch_normalCursor_notHealed() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    // Items 1 and 2 present, last assigned = 2
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+    service.depositMessage(ohId, MSG2.getBytes(StandardCharsets.UTF_8));
+
+    // Normal in-range cursor 1 (<= lastAssigned): no heal — returns exactly item 2.
+    service.handleFetch(peer, createSignedFetchRequest(1));
+    FetchResponse res = readFetchResponse();
+    assertThat(res.getItemsCount()).isEqualTo(1);
+    assertThat(res.getItems(0).getSequenceId()).isEqualTo(2L);
+    assertThat(res.getNextCursor()).isEqualTo(2L);
+
+    // Cursor exactly at lastAssigned (2): 0 items, and the cursor is echoed unchanged (no heal).
+    service.handleFetch(peer, createSignedFetchRequest(2));
+    FetchResponse atWatermark = readFetchResponse();
+    assertThat(atWatermark.getItemsCount()).isZero();
+    assertThat(atWatermark.getNextCursor()).isEqualTo(2L);
+  }
+
   // --- MS02 AC: AckFetch deletes items with sequence_id <= acked_sequence_id ---
 
   @Test
