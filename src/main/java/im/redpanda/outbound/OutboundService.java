@@ -230,14 +230,14 @@ public class OutboundService {
     // T40 stale-cursor heal: the signature above covers the client's original cursor (do not touch
     // the signed byte layout). After verification, guard against a cursor higher than any sequence
     // ever assigned for this OH — the fingerprint of a pre-persistence node restart that rewound
-    // the
-    // mailbox sequence. No deposit can then satisfy seq > cursor, so fetch stays stuck returning 0
-    // items forever. Reset to 0 and redeliver whatever survives; the light client deduplicates by
-    // message_id and blindly adopts next_cursor, so broken channels self-heal without an app
-    // update.
+    // the mailbox sequence. No deposit can then satisfy seq > cursor, so fetch stays stuck
+    // returning 0 items forever. Reset to 0 and redeliver whatever survives; the light client
+    // deduplicates by message_id and blindly adopts next_cursor, so broken channels self-heal
+    // without an app update. A negative cursor is equally out of range (it would leak "-" into the
+    // composite item keys) and clamps to 0 the same way.
     long cursor = req.getCursor();
     long lastAssigned = mailboxStore.lastAssignedSeq(ohId);
-    if (cursor > lastAssigned) {
+    if (cursor < 0 || cursor > lastAssigned) {
       cursor = 0;
     }
 
