@@ -34,7 +34,7 @@ public class SystemUpTimeDataTest {
     assertThat(systemUpTimeData.getUptimePercent()).isGreaterThan(0d);
   }
 
-  @Test
+  @Test(timeout = 60_000)
   public void serializeWhileMutating_doesNotThrow() throws Exception {
     TreeSet<Long> hits = new TreeSet<>();
     long oldBase = System.currentTimeMillis() - Duration.ofDays(30).toMillis();
