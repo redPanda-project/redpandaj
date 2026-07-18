@@ -382,6 +382,24 @@ public class OutboundServiceIntegrationTest {
     assertThat(atWatermark.getNextCursor()).isEqualTo(2L);
   }
 
+  @Test
+  public void testFetch_negativeCursor_clampsToZero() throws Exception {
+    byte[] ohId = clientNode.getKademliaId().getBytes();
+    service.handleRegister(peer, createSignedRegisterRequest());
+    readRegisterResponse();
+
+    service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
+
+    // A negative cursor is out of range and must behave like cursor 0, never leak into the
+    // composite item keys.
+    service.handleFetch(peer, createSignedFetchRequest(-5));
+    FetchResponse res = readFetchResponse();
+    assertThat(res.getStatus()).isEqualTo(Status.OK);
+    assertThat(res.getItemsCount()).isEqualTo(1);
+    assertThat(res.getItems(0).getSequenceId()).isEqualTo(1L);
+    assertThat(res.getNextCursor()).isEqualTo(1L);
+  }
+
   // --- MS02 AC: AckFetch deletes items with sequence_id <= acked_sequence_id ---
 
   @Test
