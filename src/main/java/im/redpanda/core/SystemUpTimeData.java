@@ -25,14 +25,14 @@ public class SystemUpTimeData implements Serializable {
     upHits = new TreeSet<>();
   }
 
-  public void reportNow() {
+  public synchronized void reportNow() {
     clearTooOldHits();
     log.info("current uptime: " + getUptimePercent());
     upHits.add(ceilToLastFullHour(System.currentTimeMillis()));
     log.info("current uptime: " + getUptimePercent() + " after update");
   }
 
-  public void clearTooOldHits() {
+  public synchronized void clearTooOldHits() {
     while (!upHits.isEmpty()
         && upHits.getFirst()
             < System.currentTimeMillis() - Duration.ofDays(UPTIME_WINDOW_IN_DAYS).toMillis()) {
@@ -40,8 +40,17 @@ public class SystemUpTimeData implements Serializable {
     }
   }
 
-  public double getUptimePercent() {
+  public synchronized double getUptimePercent() {
     return (double) upHits.size() / MAX_HITS_IN_WINDOW;
+  }
+
+  /**
+   * Serialization must hold the same lock as the mutators: SaveJobs writes this object from the
+   * jobs pool while UpTimeReporterJob updates {@code upHits} concurrently (REDPANDAJ-2E6).
+   */
+  @Serial
+  private synchronized void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    out.defaultWriteObject();
   }
 
   public int getUptimePercentAsInt() {

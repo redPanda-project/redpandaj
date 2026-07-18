@@ -2,6 +2,9 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.time.Duration;
 import java.util.TreeSet;
 import org.junit.Test;
 
@@ -29,6 +32,28 @@ public class SystemUpTimeDataTest {
     systemUpTimeData.reportNow();
     systemUpTimeData.clearTooOldHits();
     assertThat(systemUpTimeData.getUptimePercent()).isGreaterThan(0d);
+  }
+
+  @Test
+  public void serializeWhileMutating_doesNotThrow() throws Exception {
+    TreeSet<Long> hits = new TreeSet<>();
+    long oldBase = System.currentTimeMillis() - Duration.ofDays(30).toMillis();
+    for (long i = 0; i < 200_000; i++) {
+      hits.add(oldBase + i);
+    }
+    SystemUpTimeData systemUpTimeData = new SystemUpTimeData(hits);
+
+    Thread mutator = new Thread(systemUpTimeData::clearTooOldHits);
+    mutator.start();
+    try {
+      while (mutator.isAlive()) {
+        try (ObjectOutputStream out = new ObjectOutputStream(OutputStream.nullOutputStream())) {
+          out.writeObject(systemUpTimeData);
+        }
+      }
+    } finally {
+      mutator.join();
+    }
   }
 
   @Test
