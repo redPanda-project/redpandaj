@@ -38,6 +38,15 @@ public class OutboundMailboxStore {
   private final ConcurrentHashMap<String, AtomicLong> seqCounters = new ConcurrentHashMap<>();
 
   /**
+   * Persisted last-assigned sequence id per mailbox: ohId_hex → last assigned sequence id (T40).
+   * Written through on every assignment so the sequence keeps climbing across a node restart even
+   * after all items of a mailbox have been acked and deleted. Without it the counter would restart
+   * at 1 and any light client holding a higher persisted cursor would never see later deposits.
+   * {@code null} in the in-memory-only (test) mode where {@code db == null}.
+   */
+  private Map<String, Long> seqCountersPersisted;
+
+  /**
    * In-memory byte usage per mailbox: ohId_hex → total stored bytes (serialized MailItem sizes).
    * Rebuilt from the persisted map on startup, updated on every add/delete.
    */
@@ -91,14 +100,25 @@ public class OutboundMailboxStore {
     init();
   }
 
+  /** Test constructor: file-backed store at an explicit path (restart/persistence tests). */
+  OutboundMailboxStore(String dbPath) {
+    this.dbPath = dbPath;
+    init();
+  }
+
   @SuppressWarnings("unchecked")
   private void init() {
     if (dbPath == null) return;
     try {
-      Files.createDirectories(Path.of("data"));
+      Path parent = Path.of(dbPath).getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
       db = DBMaker.fileDB(dbPath).transactionEnable().make();
       mailboxItems =
           db.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY).createOrOpen();
+      seqCountersPersisted =
+          db.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG).createOrOpen();
       // Restore in-memory sequence and byte counters from persisted entries
       for (Map.Entry<String, byte[]> entry : mailboxItems.entrySet()) {
         String key = entry.getKey();
@@ -113,6 +133,17 @@ public class OutboundMailboxStore {
               .computeIfAbsent(ohKey, k -> new AtomicLong(0L))
               .addAndGet(entry.getValue().length);
         }
+      }
+      // T40: restore the sequence counter from the persisted last-assigned id as well. This is the
+      // second, authoritative input: max(persistedLastAssigned + 1, maxSurvivingItemSeq + 1). A
+      // fully-acked mailbox has no surviving items, so only the persisted value keeps the sequence
+      // from restarting at 1 after a restart.
+      for (Map.Entry<String, Long> entry : seqCountersPersisted.entrySet()) {
+        String ohKey = entry.getKey();
+        long lastAssigned = entry.getValue();
+        seqCounters
+            .computeIfAbsent(ohKey, k -> new AtomicLong(1L))
+            .updateAndGet(current -> Math.max(current, lastAssigned + 1));
       }
     } catch (Exception e) {
       Log.sentry(e);
@@ -176,7 +207,16 @@ public class OutboundMailboxStore {
     nextSeqId(ohKey);
     mailboxItems.put(itemKey(ohKey, seqId), serialized);
     usedBytes.addAndGet(serialized.length);
-    if (db != null) db.commit();
+    if (db != null) {
+      // T40: persist the just-assigned sequence id so the counter survives a restart even after
+      // the item is later acked and deleted. Rides the same commit as the item write. The null
+      // check covers a partially failed init() (db opened, map creation failed) — the store then
+      // degrades to the pre-T40 in-memory counter behavior instead of throwing.
+      if (seqCountersPersisted != null) {
+        seqCountersPersisted.put(ohKey, seqId);
+      }
+      db.commit();
+    }
     return AddResult.ADDED;
   }
 
@@ -246,7 +286,27 @@ public class OutboundMailboxStore {
     }
     overflowFlags.remove(ohIdHex);
     byteCounters.remove(ohIdHex);
-    if (db != null && changed) db.commit();
+    // T40: this is the handle-expiry path — the whole mailbox is gone and the client is forced
+    // through NOT_FOUND, which resets its cursor to 0 on re-register. Drop the sequence counter so
+    // a re-registered mailbox starts fresh at 1. Only removed here, never anywhere else.
+    seqCounters.remove(ohIdHex);
+    boolean counterRemoved = false;
+    if (seqCountersPersisted != null) {
+      counterRemoved = seqCountersPersisted.remove(ohIdHex) != null;
+    }
+    if (db != null && (changed || counterRemoved)) db.commit();
+  }
+
+  /**
+   * T40: the last sequence id ever assigned for this OH (0 if none). Used by the fetch handler to
+   * detect a stale client cursor that is higher than anything ever stored — a symptom of a
+   * pre-persistence node restart — and heal it by resetting to 0.
+   */
+  public synchronized long lastAssignedSeq(byte[] ohId) {
+    String ohKey = Utils.bytesToHexString(ohId);
+    AtomicLong counter = seqCounters.get(ohKey);
+    // seqCounters holds the next (1-based) id to assign, so last assigned = next - 1.
+    return counter == null ? 0L : counter.get() - 1;
   }
 
   /** Reduces the in-memory byte counter for an OH, never going below zero. */

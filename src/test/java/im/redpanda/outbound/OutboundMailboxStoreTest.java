@@ -4,12 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.outbound.v1.MailItem;
+import java.io.File;
 import java.util.List;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 public class OutboundMailboxStoreTest {
+
+  @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
 
   private OutboundMailboxStore store;
   private byte[] ohId;
@@ -18,6 +23,10 @@ public class OutboundMailboxStoreTest {
   public void setUp() {
     store = new OutboundMailboxStore(); // Uses in-memory
     ohId = Hex.decode("123456");
+  }
+
+  private static MailItem msg(String payload) {
+    return MailItem.newBuilder().setPayload(ByteString.copyFromUtf8(payload)).build();
   }
 
   // --- AC: MailItem has monotone sequence_id per OH ---
@@ -247,6 +256,83 @@ public class OutboundMailboxStoreTest {
   }
 
   // --- MS02b AC: per-mailbox byte quota independent of item count ---
+
+  // --- T40 (a): persisted sequence counter survives a restart of a fully-acked mailbox ---
+
+  @Test
+  public void addMessage_afterRestartOfFullyAckedMailbox_continuesSequence() throws Exception {
+    String path = new File(tempFolder.newFolder(), "outbound_mailbox.mapdb").getAbsolutePath();
+
+    OutboundMailboxStore first = new OutboundMailboxStore(path);
+    try {
+      first.addMessage(ohId, msg("m1"));
+      List<MailItem> stored = first.fetchMessages(ohId, 10, 0);
+      assertThat(stored).hasSize(1);
+      assertThat(stored.get(0).getSequenceId()).isEqualTo(1L);
+
+      // Ack (delete) everything — the mailbox is now empty, no surviving item carries the sequence
+      first.deleteUpTo(ohId, 1);
+      assertThat(first.fetchMessages(ohId, 10, 0)).isEmpty();
+    } finally {
+      first.close();
+    }
+
+    // Reopen on the same path: the counter must resume at 2, not restart at 1
+    OutboundMailboxStore reopened = new OutboundMailboxStore(path);
+    try {
+      reopened.addMessage(ohId, msg("m2"));
+      List<MailItem> stored = reopened.fetchMessages(ohId, 10, 0);
+      assertThat(stored).hasSize(1);
+      assertThat(stored.get(0).getSequenceId()).isEqualTo(2L);
+    } finally {
+      reopened.close();
+    }
+  }
+
+  // --- T40 cleanup: deleteAllByHexKey drops the persisted counter, next mailbox life restarts at 1
+
+  @Test
+  public void deleteAllByHexKey_resetsPersistedCounter() throws Exception {
+    String path = new File(tempFolder.newFolder(), "outbound_mailbox.mapdb").getAbsolutePath();
+
+    OutboundMailboxStore first = new OutboundMailboxStore(path);
+    try {
+      first.addMessage(ohId, msg("m1"));
+      first.addMessage(ohId, msg("m2"));
+      assertThat(first.lastAssignedSeq(ohId)).isEqualTo(2L);
+
+      // Handle-expiry cleanup path: the whole mailbox and its counter are wiped
+      first.deleteAllByHexKey(Hex.toHexString(ohId));
+      assertThat(first.lastAssignedSeq(ohId)).isZero();
+    } finally {
+      first.close();
+    }
+
+    // A fresh store on the same path assigns seq 1 again for that OH
+    OutboundMailboxStore reopened = new OutboundMailboxStore(path);
+    try {
+      reopened.addMessage(ohId, msg("m3"));
+      List<MailItem> stored = reopened.fetchMessages(ohId, 10, 0);
+      assertThat(stored).hasSize(1);
+      assertThat(stored.get(0).getSequenceId()).isEqualTo(1L);
+    } finally {
+      reopened.close();
+    }
+  }
+
+  // --- T40 (b) unit-level: lastAssignedSeq tracks the highest id ever assigned ---
+
+  @Test
+  public void lastAssignedSeq_reflectsAssignmentsAndIsZeroForUnknownOh() {
+    assertThat(store.lastAssignedSeq(ohId)).isZero();
+    store.addMessage(ohId, msg("a"));
+    assertThat(store.lastAssignedSeq(ohId)).isEqualTo(1L);
+    store.addMessage(ohId, msg("b"));
+    assertThat(store.lastAssignedSeq(ohId)).isEqualTo(2L);
+    // Deleting items does not lower the last-assigned watermark
+    store.deleteUpTo(ohId, 2);
+    assertThat(store.lastAssignedSeq(ohId)).isEqualTo(2L);
+  }
 
   @Test
   public void addMessage_byteQuotaReached_rejectsBeforeItemCap() {

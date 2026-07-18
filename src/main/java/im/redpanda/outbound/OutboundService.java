@@ -227,11 +227,25 @@ public class OutboundService {
       return;
     }
 
-    // Fetch logic — cursor is now afterSequence
-    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), req.getCursor());
-    // next_cursor = highest sequence_id returned, or current cursor if no items
-    long nextCursor =
-        items.isEmpty() ? req.getCursor() : items.get(items.size() - 1).getSequenceId();
+    // T40 stale-cursor heal: the signature above covers the client's original cursor (do not touch
+    // the signed byte layout). After verification, guard against a cursor higher than any sequence
+    // ever assigned for this OH — the fingerprint of a pre-persistence node restart that rewound
+    // the
+    // mailbox sequence. No deposit can then satisfy seq > cursor, so fetch stays stuck returning 0
+    // items forever. Reset to 0 and redeliver whatever survives; the light client deduplicates by
+    // message_id and blindly adopts next_cursor, so broken channels self-heal without an app
+    // update.
+    long cursor = req.getCursor();
+    long lastAssigned = mailboxStore.lastAssignedSeq(ohId);
+    if (cursor > lastAssigned) {
+      cursor = 0;
+    }
+
+    // Fetch logic — cursor is now afterSequence (the effective, possibly healed, cursor)
+    List<MailItem> items = mailboxStore.fetchMessages(ohId, req.getLimit(), cursor);
+    // next_cursor = highest sequence_id returned, or the EFFECTIVE cursor if no items (never the
+    // raw request cursor — echoing the stale high value would defeat the heal above).
+    long nextCursor = items.isEmpty() ? cursor : items.get(items.size() - 1).getSequenceId();
     boolean overflow = mailboxStore.checkAndClearOverflow(ohId);
     sendFetchResponse(peer, Status.OK, nextCursor, items, overflow);
   }
