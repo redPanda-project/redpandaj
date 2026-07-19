@@ -141,21 +141,22 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
           continue;
         }
 
-        if (currentLength == 0) {
-          Node targetNode = serverContext.getNodeStore().getNodeGraph().getEdgeTarget(edge);
-          Peer targetPeer = serverContext.getPeerList().get(targetNode.getNodeId().getKademliaId());
-          if (targetPeer == null || !targetPeer.isConnected()) {
-            continue;
-          }
-        }
-
+        // the edge may have been removed from the graph since we copied the
+        // edge list, check membership before resolving its target
+        // (Sentry REDPANDAJ-2DW, REDPANDAJ-2E5)
         if (!nodeGraph.containsEdge(edge)) {
           continue;
         }
         Node target = nodeGraph.getEdgeTarget(edge);
-
-        if (nodes.contains(target)) {
+        if (target == null || nodes.contains(target)) {
           continue;
+        }
+
+        if (currentLength == 0) {
+          Peer targetPeer = serverContext.getPeerList().get(target.getNodeId().getKademliaId());
+          if (targetPeer == null || !targetPeer.isConnected()) {
+            continue;
+          }
         }
 
         currentNode = target;
