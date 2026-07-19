@@ -40,8 +40,14 @@ public class ConnectionReaderThread implements Runnable {
   static final ReentrantLock updateDownloadLock = new ReentrantLock();
 
   /**
-   * Counts v22 light-client handshakes rejected since the sdd02 phase-1 shutdown (would have been
-   * accepted while {@link Server#ACCEPT_LEGACY_V22_LIGHT_CLIENTS} was {@code true}). Process-local
+   * The retired v22 protocol version (brainpool/AES-CTR). The code path was removed in sdd02 phase
+   * 2; the constant only remains so residual v22 traffic stays observable via {@link
+   * #REJECTED_LEGACY_V22_ATTEMPTS}.
+   */
+  private static final int RETIRED_LEGACY_VERSION = 22;
+
+  /**
+   * Counts v22 light-client handshakes rejected since the sdd02 phase-1 shutdown. Process-local
    * observability counter, intentionally not persisted; logged without any IP (privacy).
    */
   public static final AtomicLong REJECTED_LEGACY_V22_ATTEMPTS = new AtomicLong();
@@ -80,9 +86,6 @@ public class ConnectionReaderThread implements Runnable {
     Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> Log.putCritical(throwable));
   }
 
-  // S5738: the deprecated v22 gate must stay evaluated here until sdd02 Phase 2 removes the
-  // legacy path (PLAN-v22-removal)
-  @SuppressWarnings("java:S5738")
   public static boolean parseHandshake(
       ServerContext serverContext, PeerInHandshake peerInHandshake, ByteBuffer buffer) {
 
@@ -104,18 +107,13 @@ public class ConnectionReaderThread implements Runnable {
     }
 
     /**
-     * MS03 dual-version support: v23 is the current protocol (Ed25519/X25519/AES-GCM). v22 light
-     * clients were accepted during the transition phase (deprecated legacy crypto) until the sdd02
-     * phase-1 shutdown (MS03 Decision 10) — v22 full nodes use incompatible identities (brainpool)
-     * and were always rejected. Unknown (e.g. future) versions are rejected as well: we cannot
-     * speak a protocol we do not know.
+     * Only v23 (Ed25519/X25519/AES-GCM) is spoken. The v22 transition path (deprecated legacy
+     * crypto, light clients only) was shut down in the sdd02 phase-1 release and removed in phase
+     * 2. Unknown (e.g. future) versions are rejected as well: we cannot speak a protocol we do not
+     * know.
      */
-    boolean acceptedLegacy =
-        Server.ACCEPT_LEGACY_V22_LIGHT_CLIENTS
-            && version == Server.LEGACY_VERSION
-            && peerInHandshake.isLightClient();
-    if (version != Server.VERSION && !acceptedLegacy) {
-      if (version == Server.LEGACY_VERSION && peerInHandshake.isLightClient()) {
+    if (version != Server.VERSION) {
+      if (version == RETIRED_LEGACY_VERSION && peerInHandshake.isLightClient()) {
         // would have been accepted before the shutdown — count for residual-usage observability
         Log.put(
             "rejected legacy v22 light client handshake, total rejected: %d"
@@ -421,14 +419,8 @@ public class ConnectionReaderThread implements Runnable {
 
   public static void sendPublicKeyToPeer(
       ServerContext serverContext, PeerInHandshake peerInHandshake) {
-    /**
-     * v23: 64-byte Ed25519/X25519 public export of our NodeId. v22 (legacy light clients): 65-byte
-     * brainpool public key of our transition identity.
-     */
-    byte[] publicKey =
-        peerInHandshake.isProtocolV23()
-            ? serverContext.getNodeId().exportPublic()
-            : serverContext.getLegacyNodeId().exportPublic();
+    /** v23: 64-byte Ed25519/X25519 public export of our NodeId. */
+    byte[] publicKey = serverContext.getNodeId().exportPublic();
     ByteBuffer buffer = ByteBuffer.allocate(1 + publicKey.length);
 
     buffer.put(Command.SEND_PUBLIC_KEY);

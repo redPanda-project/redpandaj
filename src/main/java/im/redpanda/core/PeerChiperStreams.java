@@ -4,9 +4,9 @@ import im.redpanda.core.exceptions.PeerProtocolException;
 import java.nio.ByteBuffer;
 
 /**
- * Per-connection encryption of the TCP byte stream. Implementations: {@link GcmFramedStreams}
- * (protocol v23, framed AES-256-GCM) and {@link LegacyCtrCipherStreams} (protocol v22, AES-CTR,
- * deprecated transition path).
+ * Per-connection encryption of the TCP byte stream. Implementation: {@link GcmFramedStreams}
+ * (protocol v23, framed AES-256-GCM). The v22 AES-CTR implementation was removed together with
+ * protocol-v22 support (sdd02 phase 2).
  */
 public interface PeerChiperStreams {
 

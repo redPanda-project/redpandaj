@@ -3,7 +3,6 @@ package im.redpanda.outbound;
 import static org.junit.Assert.assertEquals;
 
 import im.redpanda.core.NodeId;
-import im.redpanda.crypt.legacy.LegacyNodeId;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -89,38 +88,24 @@ public class OutboundAuthTest {
   }
 
   /**
-   * MS03 dual-version transition: legacy (pre-MS03) light clients sign the unversioned v1 bytes
-   * with brainpool ECDSA and send their 65-byte public key — still accepted until protocol-v22
-   * support is removed.
+   * sdd02 phase 2: the pre-MS03 brainpool ECDSA fallback is gone — a 65-byte public key (the
+   * retired legacy format) is rejected as an unsupported key length, whatever the signature.
    */
   @Test
-  @SuppressWarnings("deprecation")
-  public void testVerify_LegacyEcdsaV1FormatStillAccepted() {
-    LegacyNodeId legacyClient = LegacyNodeId.generate();
-
+  public void testVerify_LegacyEcdsa65ByteKeyRejected() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceLegacy".getBytes();
     byte[] ohId = "legacyOhId".getBytes();
 
-    // v1 signing bytes: no version byte
-    byte[] signature = legacyClient.sign(payload);
+    byte[] legacy65ByteKey = new byte[65];
+    legacy65ByteKey[0] = 0x04; // uncompressed-point marker of the old export format
+    byte[] someSignature = new byte[70];
 
     OutboundAuth.AuthResult result =
-        auth.verify(legacyClient.exportPublic(), payload, signature, timestamp, ohId, nonce);
+        auth.verify(legacy65ByteKey, payload, someSignature, timestamp, ohId, nonce);
 
-    assertEquals(OutboundAuth.AuthResult.OK, result);
-
-    // tampered payload must still fail
-    OutboundAuth.AuthResult tampered =
-        auth.verify(
-            legacyClient.exportPublic(),
-            "tampered".getBytes(),
-            signature,
-            timestamp,
-            ohId,
-            "nonceLegacy2".getBytes());
-    assertEquals(OutboundAuth.AuthResult.INVALID_SIGNATURE, tampered);
+    assertEquals(OutboundAuth.AuthResult.INVALID_SIGNATURE, result);
   }
 
   @Test
