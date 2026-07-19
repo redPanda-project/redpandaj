@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.Getter;
@@ -218,18 +219,26 @@ public class NodeStore {
 
   public void maintainNodes() {
 
-    decayRandomEdge();
+    // all graph mutations have to run under the write lock, otherwise jobs
+    // holding the lock (e.g. PeerPerformanceTestGarlicMessageJob) can observe
+    // edges vanishing mid-iteration (Sentry REDPANDAJ-2DW)
+    readWriteLock.writeLock().lock();
+    try {
+      decayRandomEdge();
 
-    addServerEdges();
+      addServerEdges();
 
-    removeNodeIfNoGoodLinkAvailable();
+      removeNodeIfNoGoodLinkAvailable();
 
-    removeBadScoredNode();
+      removeBadScoredNode();
 
-    addRandomNodeToGraph();
+      addRandomNodeToGraph();
 
-    if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
-      addRandomEdgeIfWaitedEnough();
+      if (nodeGraph.edgeSet().size() < MAX_EDGES_IN_GRAPH) {
+        addRandomEdgeIfWaitedEnough();
+      }
+    } finally {
+      readWriteLock.writeLock().unlock();
     }
   }
 
@@ -285,7 +294,18 @@ public class NodeStore {
     if (nodeGraph.outgoingEdgesOf(serverNode).size() < 15
         || nodeGraph.incomingEdgesOf(serverNode).size() < 15) {
 
-      for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
+      // snapshot under the peer list read lock, the live list is modified by
+      // network threads (Sentry REDPANDAJ-2DZ)
+      ArrayList<Peer> peersSnapshot;
+      Lock peerListLock = serverContext.getPeerList().getReadWriteLock().readLock();
+      peerListLock.lock();
+      try {
+        peersSnapshot = new ArrayList<>(serverContext.getPeerList().getPeerArrayList());
+      } finally {
+        peerListLock.unlock();
+      }
+
+      for (Peer peer : peersSnapshot) {
         if (!peer.isConnected()
             || peer.getNode() == null
             || !nodeGraph.containsVertex(peer.getNode())) {

@@ -14,7 +14,8 @@ import im.redpanda.proto.KademliaIdProto;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,7 +41,10 @@ public class KademliaSearchJob extends Job {
   private static final int SUCCESS = 1;
 
   private final KademliaId id;
-  private TreeMap<Peer, Integer> peers = null;
+
+  // ConcurrentSkipListMap: ack() is called from network threads while work()
+  // iterates this map on a job thread (Sentry REDPANDAJ-2E9)
+  private ConcurrentNavigableMap<Peer, Integer> peers = null;
   private final ArrayList<KadContent> contents = new ArrayList<>();
 
   public KademliaSearchJob(ServerContext serverContext, KademliaId id) {
@@ -76,7 +80,7 @@ public class KademliaSearchJob extends Job {
     }
 
     // key is not blacklisted, lets sort the peers by the destination key
-    peers = new TreeMap<>(new PeerComparator(id));
+    peers = new ConcurrentSkipListMap<>(new PeerComparator(id));
 
     PeerList peerList = serverContext.getPeerList();
 
@@ -198,23 +202,26 @@ public class KademliaSearchJob extends Job {
 
   protected ArrayList<KadContent> success() {
 
-    if (contents.isEmpty()) {
-      return null;
+    synchronized (contents) {
+      if (contents.isEmpty()) {
+        return null;
+      }
+
+      // lets get the newest one!
+      contents.sort(
+          (o1, o2) ->
+              o1.getTimestamp() < o2.getTimestamp()
+                  ? -1
+                  : o1.getTimestamp() > o2.getTimestamp() ? 1 : 0);
+
+      return contents;
     }
-
-    // lets get the newest one!
-    contents.sort(
-        (o1, o2) ->
-            o1.getTimestamp() < o1.getTimestamp()
-                ? -1
-                : o1.getTimestamp() > o1.getTimestamp() ? 1 : 0);
-
-    return contents;
   }
 
   public void ack(KadContent c, Peer p) {
-    // todo: concurrency?
-    contents.add(c);
+    synchronized (contents) {
+      contents.add(c);
+    }
     peers.put(p, SUCCESS);
   }
 

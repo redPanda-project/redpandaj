@@ -8,7 +8,8 @@ import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
@@ -20,7 +21,10 @@ public class KademliaInsertJob extends Job {
   private static final int SUCCESS = 1;
 
   private final KadContent kadContent;
-  private TreeMap<Peer, Integer> peers = null;
+
+  // ConcurrentSkipListMap: ack() is called from network threads while work()
+  // iterates this map on a job thread (Sentry REDPANDAJ-2E1)
+  private ConcurrentNavigableMap<Peer, Integer> peers = null;
 
   public KademliaInsertJob(ServerContext serverContext, KadContent kadContent) {
     super(serverContext);
@@ -37,7 +41,7 @@ public class KademliaInsertJob extends Job {
     serverContext.getKadStoreManager().put(kadContent);
 
     // lets sort the peers by the destination key
-    peers = new TreeMap<>(new PeerComparator(kadContent.getId()));
+    peers = new ConcurrentSkipListMap<>(new PeerComparator(kadContent.getId()));
 
     // insert all nodes
     Lock lock = peerList.getReadWriteLock().readLock();
