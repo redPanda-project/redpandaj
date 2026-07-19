@@ -24,8 +24,11 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
   }
 
   public static ScheduledFuture<?> insert(Runnable runnable, long delayInMS) {
-    return jobScheduler.scheduleWithFixedDelay(
-        runnable, delayInMS, delayInMS, TimeUnit.MILLISECONDS);
+    // scheduleWithFixedDelay rejects a period <= 0. Jittered delays sampled
+    // from [0, n] (e.g. OhResolveJob.DelayedSearchJob) can legitimately hit 0,
+    // which must mean "as soon as possible", not an IllegalArgumentException.
+    long delay = Math.max(1, delayInMS);
+    return jobScheduler.scheduleWithFixedDelay(runnable, delay, delay, TimeUnit.MILLISECONDS);
   }
 
   @Override

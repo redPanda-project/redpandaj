@@ -49,6 +49,12 @@ public class SettingsKnownNodesTest {
   }
 
   @Test
+  public void noneDisablesBootstrapping() {
+    assertArrayEquals(new String[0], Settings.parseKnownNodes("none"));
+    assertArrayEquals(new String[0], Settings.parseKnownNodes(" NONE "));
+  }
+
+  @Test
   public void acceptsBracketedIpv6() {
     assertArrayEquals(new String[] {"[2001:db8::1]"}, Settings.parseKnownNodes("[2001:db8::1]"));
   }

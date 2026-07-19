@@ -48,15 +48,22 @@ public class Settings {
    * Bootstrap peers as {@code host:port}. Overridable without rebuilding via the system property
    * {@code redpanda.knownNodes} (same key the E2E launcher uses) or the environment variable {@code
    * REDPANDA_KNOWN_NODES}, both as a comma-separated list; the property wins over the environment,
-   * blank values fall back to the defaults.
+   * blank values fall back to the defaults. The literal value {@code none} (case-insensitive)
+   * disables bootstrapping entirely — the node starts without any seed peers, which isolated test
+   * setups rely on.
    */
   public static String[] knownNodes =
       parseKnownNodes(
           System.getProperty("redpanda.knownNodes", System.getenv("REDPANDA_KNOWN_NODES")));
 
+  static final String NO_KNOWN_NODES = "none";
+
   static String[] parseKnownNodes(String configured) {
     if (configured == null) {
       return DEFAULT_KNOWN_NODES.clone();
+    }
+    if (configured.trim().equalsIgnoreCase(NO_KNOWN_NODES)) {
+      return new String[0];
     }
     String[] entries =
         Arrays.stream(configured.split(","))
