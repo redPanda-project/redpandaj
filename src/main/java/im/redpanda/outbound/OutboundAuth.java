@@ -92,9 +92,9 @@ public class OutboundAuth {
       return AuthResult.REPLAY;
     }
 
-    // 3. Verify Signature — dual-version support (MS03 transition):
-    //    32-byte key  -> Ed25519 over [0x02 | signingBytes]      (v2, current)
-    //    65-byte key  -> brainpool SHA256withECDSA, no version    (v1, deprecated light clients)
+    // 3. Verify Signature: 32-byte key -> Ed25519 over [0x02 | signingBytes] (v2). The v1
+    //    brainpool ECDSA fallback (65-byte key, pre-MS03 light clients) was removed with
+    //    protocol-v22 support; any other key length is rejected.
     if (!verifySignature(ohAuthPublicKey, signingBytes, signature)) {
       return AuthResult.INVALID_SIGNATURE;
     }
@@ -147,13 +147,11 @@ public class OutboundAuth {
   }
 
   /**
-   * Verifies the signature with the algorithm and signing-byte version selected by the public key
-   * length. Ed25519 (32-byte key, 64-byte signature) is the MS03 format and signs the versioned
-   * bytes {@code [0x02 | signingBytes]}; the brainpool ECDSA path signs the unversioned v1 bytes
-   * and only exists for legacy (pre-MS03) light clients — removed together with protocol-v22
-   * support.
+   * Verifies an Ed25519 signature (32-byte verify key, 64-byte signature, MS03 format) over the
+   * versioned bytes {@code [0x02 | signingBytes]}. Any other public key length is rejected — the
+   * pre-MS03 brainpool ECDSA fallback (65-byte key, unversioned v1 bytes) was removed together with
+   * protocol-v22 support (sdd02 phase 2).
    */
-  @SuppressWarnings("deprecation")
   private boolean verifySignature(byte[] ohAuthPublicKey, byte[] signingBytes, byte[] signature) {
     try {
       if (ohAuthPublicKey.length == NodeId.KEY_COMPONENT_LEN) {
@@ -172,16 +170,6 @@ public class OutboundAuth {
         signer.update(signingBytes, 0, signingBytes.length);
         if (!signer.verifySignature(signature)) {
           logger.warn("OutboundAuth: Ed25519 signature verification failed");
-          return false;
-        }
-        return true;
-      }
-
-      if (ohAuthPublicKey.length == im.redpanda.crypt.legacy.LegacyNodeId.PUBLIC_KEYLEN) {
-        im.redpanda.crypt.legacy.LegacyNodeId verifier =
-            im.redpanda.crypt.legacy.LegacyNodeId.importPublic(ohAuthPublicKey);
-        if (!verifier.verify(signingBytes, signature)) {
-          logger.warn("OutboundAuth: legacy ECDSA signature verification failed");
           return false;
         }
         return true;

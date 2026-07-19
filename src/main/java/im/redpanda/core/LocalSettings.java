@@ -20,13 +20,11 @@ public class LocalSettings implements Serializable {
 
   @Serial private static final long serialVersionUID = 639L;
 
+  // NOTE (v22 removal, sdd02 phase 2): settings files written before 2026-07 additionally
+  // contain a serialized im.redpanda.crypt.legacy.LegacyNodeId in the removed field
+  // `legacyIdentity`. Java deserialization reads and discards such values via the tombstone
+  // stub of that class — see LegacyNodeId and LocalSettingsLegacyFixtureTest.
   private NodeId myIdentity;
-
-  /**
-   * Brainpool identity served to protocol-v22 light clients during the MS03 transition phase.
-   * Removed together with v22 support.
-   */
-  @Deprecated private im.redpanda.crypt.legacy.LegacyNodeId legacyIdentity;
 
   private long updateTimestamp;
   private byte[] updateSignature;
@@ -40,7 +38,6 @@ public class LocalSettings implements Serializable {
 
   public LocalSettings() {
     myIdentity = new NodeId();
-    legacyIdentity = im.redpanda.crypt.legacy.LegacyNodeId.generate();
     updateTimestamp = -1;
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     systemUpTimeData = new SystemUpTimeData();
@@ -123,15 +120,6 @@ public class LocalSettings implements Serializable {
 
   public NodeId getMyIdentity() {
     return myIdentity;
-  }
-
-  /** The v22 transition identity (generated lazily for settings saved before MS03). */
-  @Deprecated
-  public im.redpanda.crypt.legacy.LegacyNodeId getLegacyIdentity() {
-    if (legacyIdentity == null) {
-      legacyIdentity = im.redpanda.crypt.legacy.LegacyNodeId.generate();
-    }
-    return legacyIdentity;
   }
 
   public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {

@@ -14,8 +14,8 @@ import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 /**
  * MS03 crypto primitives: X25519 key agreement, HKDF-SHA256 key derivation and AES-256-GCM
  * authenticated encryption. All higher-level protocol code (NodeId, GarlicMessage v2, TCP v23)
- * builds on these helpers — no other crypto primitives may be used outside the deprecated v22
- * legacy path in {@link im.redpanda.crypt.legacy}.
+ * builds on these helpers — no other crypto primitives may be used. (The retired v22 legacy path
+ * and its brainpool primitives were removed in sdd02 phase 2.)
  */
 public final class CryptoUtils {
 

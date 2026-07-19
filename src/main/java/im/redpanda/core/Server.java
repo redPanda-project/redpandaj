@@ -15,26 +15,11 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
   /**
-   * Protocol version. 23 = MS03 crypto (Ed25519/X25519/AES-256-GCM). 22 (legacy crypto) was
-   * accepted for light clients during the transition phase until the sdd02 phase-1 shutdown, see
-   * {@link ConnectionReaderThread#parseHandshake} and {@link #ACCEPT_LEGACY_V22_LIGHT_CLIENTS}.
+   * Protocol version. 23 = MS03 crypto (Ed25519/X25519/AES-256-GCM). The retired v22 protocol
+   * (brainpool/AES-CTR) was shut down in the sdd02 phase-1 release (2026-07, MS03 Decision 10) and
+   * its code path removed in phase 2; see {@link ConnectionReaderThread#parseHandshake}.
    */
   public static final int VERSION = 23;
-
-  /** Deprecated transition protocol version (brainpool/AES-CTR), light clients only. */
-  @Deprecated(forRemoval = true)
-  public static final int LEGACY_VERSION = 22;
-
-  /**
-   * Transition switch: accept v22 light-client handshakes. Phase 1 shutdown 2026-07 (sdd02, MS03
-   * Decision 10); emergency re-enable = flip back to {@code true}. Rejected v22 attempts are
-   * counted in {@link ConnectionReaderThread#REJECTED_LEGACY_V22_ATTEMPTS}.
-   *
-   * @deprecated kept one release period as an emergency switch only; removed together with the
-   *     whole legacy path in sdd02 Phase 2 (PLAN-v22-removal).
-   */
-  @Deprecated(forRemoval = true)
-  public static final boolean ACCEPT_LEGACY_V22_LIGHT_CLIENTS = false;
 
   public static final String MAGIC = "k3gV";
   private static volatile boolean shuttingDown = false;
