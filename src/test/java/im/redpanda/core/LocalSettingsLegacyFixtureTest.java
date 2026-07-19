@@ -31,7 +31,9 @@ public class LocalSettingsLegacyFixtureTest {
       expectedIdentity = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
     }
 
-    try (InputStream raw = getClass().getResourceAsStream("/fixtures/localSettings_v22era.dat");
+    final InputStream raw = getClass().getResourceAsStream("/fixtures/localSettings_v22era.dat");
+    assertNotNull("settings fixture missing", raw);
+    try (raw;
         ObjectInputStream in = new ObjectInputStream(raw)) {
       LocalSettings settings = (LocalSettings) in.readObject();
       assertEquals(
