@@ -127,10 +127,14 @@ public class PeerTest {
     ByteBuffer bufferOut = ByteBuffer.allocate(60);
     bufferIn.flip();
     peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+    // decryptInputData reports CONSUMED ciphertext bytes — with the framed
+    // GCM streams that is plaintext + frame overhead, not the plaintext size.
+    int cipherBytes = bufferOut.position();
 
     int decryptedBytes = peer.decryptInputData(bufferOut);
     peer.readBuffer.flip();
-    assertThat(decryptedBytes).isEqualTo(8);
+    assertThat(decryptedBytes).isEqualTo(cipherBytes);
+    assertThat(peer.readBuffer.remaining()).isEqualTo(8);
     assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
   }
 
@@ -152,10 +156,12 @@ public class PeerTest {
     ByteBuffer bufferOut = ByteBuffer.allocate(60);
     bufferIn.flip();
     peer.getPeerChiperStreams().encrypt(bufferIn, bufferOut);
+    int cipherBytes = bufferOut.position();
 
     int decryptedBytes = peer.decryptInputData(bufferOut);
     peer.readBuffer.flip();
-    assertThat(decryptedBytes).isEqualTo(24);
+    assertThat(decryptedBytes).isEqualTo(cipherBytes);
+    assertThat(peer.readBuffer.remaining()).isEqualTo(24);
     assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
     assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
     assertThat(peer.readBuffer.getLong()).isEqualTo(longToTest);
