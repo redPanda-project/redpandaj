@@ -84,6 +84,22 @@ public final class FlaschenpostV2 {
    */
   public static final byte CMD_DELIVER_ACKED = 0x04;
 
+  /**
+   * Layer command (T43, channel rendezvous): final hop — store the carried channel-rendezvous
+   * KadContent in the DHT on behalf of a DHT-fremd light client. Layer plaintext: {@code [1 cmd][4
+   * len][KademliaStore proto]}. The node validates the record ({@code ChannelDht}) and replicates
+   * it; there is no response (best-effort, the client verifies via a later lookup).
+   */
+  public static final byte CMD_RECORD_STORE = 0x05;
+
+  /**
+   * Layer command (T43, channel rendezvous): final hop — look the channel-rendezvous record up in
+   * the DHT on behalf of a DHT-fremd light client and return it via the contained {@link
+   * ReturnPath}. Layer plaintext: {@code [1 cmd][20 kademlia_key][return_path]}. The answer is a
+   * reverse-garlic tagged deliver into the client's own OH mailbox (see {@code ReverseGarlic}).
+   */
+  public static final byte CMD_RECORD_LOOKUP = 0x06;
+
   /** Length of the reverse-garlic session tag inside a {@link #CMD_DELIVER_TAGGED} layer. */
   public static final int SESSION_TAG_LEN = 16;
 

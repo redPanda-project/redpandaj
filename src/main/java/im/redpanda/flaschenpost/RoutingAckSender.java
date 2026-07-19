@@ -1,20 +1,14 @@
 package im.redpanda.flaschenpost;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.outbound.v1.RoutingAck;
-import java.nio.ByteBuffer;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
-import java.util.List;
-import lombok.extern.slf4j.Slf4j;
-import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 
 /**
  * MS06 R-ACK dispatch: builds the {@link RoutingAck} for a deposit decision and sends it back
- * through the sender-chosen {@link ReturnPath} as a standard MS04 onion (innermost layer = {@code
- * CMD_DELIVER_TAGGED} into the sender's own OH mailbox, tagged with the ack session tag).
+ * through the sender-chosen {@link ReturnPath} via {@link ReverseGarlic} (a standard MS04 onion
+ * whose innermost {@code CMD_DELIVER_TAGGED} layer lands in the sender's own OH mailbox, tagged
+ * with the ack session tag).
  *
  * <p>Best-effort and fire-and-forget like the rest of the flaschenpost layer: build or routing
  * failures are logged and dropped, there are no retries (the sender's R-ACK timeout plus MS02-style
@@ -22,7 +16,6 @@ import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
  * innermost layer), so acknowledgment loops are impossible by construction. Amplification is
  * bounded at factor one: a 2048-byte acked deliver triggers at most one 2048-byte R-ACK packet.
  */
-@Slf4j
 public final class RoutingAckSender {
 
   /** RoutingAck.status: message stored in the target OH mailbox. */
@@ -36,8 +29,6 @@ public final class RoutingAckSender {
 
   /** RoutingAck.status: deposit rejected as bad request (e.g. oversized payload). */
   public static final int STATUS_REJECTED = 3;
-
-  private static final SecureRandom RANDOM = new SecureRandom();
 
   private RoutingAckSender() {}
 
@@ -56,11 +47,11 @@ public final class RoutingAckSender {
   }
 
   /**
-   * Builds the RoutingAck payload and sends it along the return path. With hops the packet is a
-   * standard MS04 onion routed toward the first hop; without hops ({@code hop_count = 0}) this node
-   * acts as the final station itself: local deposit into the ack OH, falling back to the MS02b
-   * forward toward its host node. The forwarded deposit carries no return path — R-ACKs are never
-   * acknowledged.
+   * Builds the RoutingAck payload and sends it along the return path via {@link ReverseGarlic}.
+   * With hops the packet is a standard MS04 onion routed toward the first hop; without hops ({@code
+   * hop_count = 0}) the depositing node acts as the final station itself (local deposit into the
+   * ack OH, MS02b-forwarding if remote). The forwarded deposit carries no return path — R-ACKs are
+   * never acknowledged.
    */
   public static void send(ServerContext serverContext, ReturnPath returnPath, int status) {
     byte[] rAck =
@@ -69,76 +60,6 @@ public final class RoutingAckSender {
             .setStatus(status)
             .build()
             .toByteArray();
-
-    List<ReturnPath.Hop> hops = returnPath.hops();
-    if (hops.isEmpty()) {
-      deliverLocally(serverContext, returnPath, rAck);
-      return;
-    }
-
-    byte[] packet;
-    try {
-      packet = buildAckOnion(returnPath, rAck);
-    } catch (GeneralSecurityException | IllegalArgumentException e) {
-      log.debug("failed to build R-ACK onion, dropping: {}", e.getMessage());
-      return;
-    }
-    GarlicRouter.routeToNextHop(serverContext, hops.get(0).kademliaId(), packet);
-  }
-
-  /** Deposits the R-ACK on this node (hop_count = 0), MS02b-forwarding if the OH is remote. */
-  private static void deliverLocally(
-      ServerContext serverContext, ReturnPath returnPath, byte[] rAck) {
-    OutboundService outboundService = serverContext.getOutboundService();
-    if (outboundService == null) {
-      return;
-    }
-    OutboundService.DepositResult result =
-        outboundService.depositMessage(returnPath.ackOhId(), rAck, returnPath.ackSessionTag());
-    if (result == OutboundService.DepositResult.NOT_FOUND) {
-      OhForwarder.forward(serverContext, returnPath.ackOhId(), rAck, 0, returnPath.ackSessionTag());
-    } else if (result != OutboundService.DepositResult.DEPOSITED) {
-      log.debug("R-ACK not stored locally: {}", result);
-    }
-  }
-
-  /**
-   * Builds the R-ACK packet exactly like a client-side MS04 send: innermost {@code
-   * CMD_DELIVER_TAGGED} layer for the last hop, wrapped in {@code CMD_FORWARD} layers along the
-   * return path in reverse order.
-   */
-  private static byte[] buildAckOnion(ReturnPath returnPath, byte[] rAck)
-      throws GeneralSecurityException {
-    List<ReturnPath.Hop> hops = returnPath.hops();
-    ReturnPath.Hop last = hops.get(hops.size() - 1);
-
-    ByteBuffer deliver =
-        ByteBuffer.allocate(
-            1 + KademliaId.ID_LENGTH_BYTES + FlaschenpostV2.SESSION_TAG_LEN + 4 + rAck.length);
-    deliver.put(FlaschenpostV2.CMD_DELIVER_TAGGED);
-    deliver.put(returnPath.ackOhId());
-    deliver.put(returnPath.ackSessionTag());
-    deliver.putInt(rAck.length);
-    deliver.put(rAck);
-
-    byte[] body =
-        FlaschenpostV2.encryptLayer(
-            new X25519PublicKeyParameters(last.encryptionPub(), 0),
-            last.kademliaId(),
-            deliver.array());
-
-    for (int i = hops.size() - 2; i >= 0; i--) {
-      ReturnPath.Hop hop = hops.get(i);
-      ByteBuffer forward = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + body.length);
-      forward.put(FlaschenpostV2.CMD_FORWARD);
-      forward.put(hops.get(i + 1).kademliaId().getBytes());
-      forward.put(body);
-      body =
-          FlaschenpostV2.encryptLayer(
-              new X25519PublicKeyParameters(hop.encryptionPub(), 0),
-              hop.kademliaId(),
-              forward.array());
-    }
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), hops.get(0).kademliaId(), body);
+    ReverseGarlic.sendTaggedPayload(serverContext, returnPath, rAck);
   }
 }

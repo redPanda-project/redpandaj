@@ -1,10 +1,16 @@
 package im.redpanda.flaschenpost;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.KademliaInsertJob;
+import im.redpanda.jobs.RecordLookupJob;
+import im.redpanda.kademlia.KadContent;
+import im.redpanda.outbound.ChannelDht;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
@@ -35,6 +41,17 @@ import lombok.extern.slf4j.Slf4j;
 public final class GarlicRouter {
 
   private static final SecureRandom RANDOM = new SecureRandom();
+
+  /**
+   * Global rate limiter for inbound channel-rendezvous record stores (T43). Stores arrive
+   * garlic-wrapped with no attributable source, so a single global cap bounds the DHT-write
+   * amplification a flood can trigger on this node.
+   */
+  private static final RecordStoreRateLimiter RECORD_STORE_RATE_LIMITER =
+      new RecordStoreRateLimiter(
+          RecordStoreRateLimiter.DEFAULT_CAPACITY,
+          RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
+          System.currentTimeMillis());
 
   private GarlicRouter() {}
 
@@ -69,6 +86,8 @@ public final class GarlicRouter {
       case FlaschenpostV2.CMD_DELIVER -> handleDeliver(serverContext, plaintext, false);
       case FlaschenpostV2.CMD_DELIVER_TAGGED -> handleDeliver(serverContext, plaintext, true);
       case FlaschenpostV2.CMD_DELIVER_ACKED -> handleDeliverAcked(serverContext, plaintext);
+      case FlaschenpostV2.CMD_RECORD_STORE -> handleRecordStore(serverContext, plaintext);
+      case FlaschenpostV2.CMD_RECORD_LOOKUP -> handleRecordLookup(serverContext, plaintext);
       default -> log.debug("unknown flaschenpost v2 layer command {}, dropping", cmd);
     }
   }
@@ -204,6 +223,81 @@ public final class GarlicRouter {
       return;
     }
     RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));
+  }
+
+  /**
+   * CMD_RECORD_STORE (T43): {@code [1 cmd][4 len][KademliaStore proto][ignored padding]}. Stores a
+   * channel-rendezvous record in the DHT on behalf of a DHT-fremd client. The record content is
+   * opaque to us; we only enforce the self-certifying signature, the fixed padded size and the 48 h
+   * TTL ({@link ChannelDht}) plus a global store rate limit. Best-effort, no response — the client
+   * verifies by a later lookup. Malformed layers are dropped silently.
+   */
+  private static void handleRecordStore(ServerContext serverContext, byte[] plaintext) {
+    if (plaintext.length < 1 + 4) {
+      log.debug("flaschenpost v2 record store layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    int len = buffer.getInt();
+    if (len < 0 || len > buffer.remaining()) {
+      log.debug("flaschenpost v2 record store length invalid, dropping");
+      return;
+    }
+    byte[] storeBytes = new byte[len];
+    buffer.get(storeBytes);
+
+    KademliaStore storeMsg;
+    try {
+      storeMsg = KademliaStore.parseFrom(storeBytes);
+    } catch (InvalidProtocolBufferException e) {
+      log.debug("flaschenpost v2 record store payload not parseable, dropping");
+      return;
+    }
+    long now = System.currentTimeMillis();
+    KadContent record =
+        new KadContent(
+            storeMsg.getTimestamp(),
+            storeMsg.getPublicKey().toByteArray(),
+            storeMsg.getContent().toByteArray(),
+            storeMsg.getSignature().toByteArray());
+    if (!ChannelDht.isValidRecord(record, now)) {
+      log.debug("flaschenpost v2 record store record invalid (sig/size/ttl), dropping");
+      return;
+    }
+    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
+      log.debug("channel record store rate limit hit, dropping");
+      return;
+    }
+    // Store locally first so the record is immediately resolvable on this node. Only replicate if
+    // the local put was accepted — KadStoreManager can still reject on its own timestamp bounds,
+    // and
+    // replicating a record we ourselves won't keep would be pointless.
+    if (serverContext.getKadStoreManager().put(record)) {
+      new KademliaInsertJob(serverContext, record).start();
+    }
+  }
+
+  /**
+   * CMD_RECORD_LOOKUP (T43): {@code [1 cmd][20 kademlia_key][return_path][ignored padding]}. Looks
+   * the channel-rendezvous record up in the DHT on behalf of a DHT-fremd client and returns it via
+   * the return path (reverse garlic into the client's own OH mailbox, see {@link RecordLookupJob}).
+   * The return path is only structurally validated; malformed layers are dropped silently.
+   */
+  private static void handleRecordLookup(ServerContext serverContext, byte[] plaintext) {
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + ReturnPath.FIXED_LEN) {
+      log.debug("flaschenpost v2 record lookup layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    KademliaId searchedKey = KademliaId.fromBuffer(buffer);
+    ReturnPath returnPath = ReturnPath.parse(buffer);
+    if (returnPath == null) {
+      log.debug("flaschenpost v2 record lookup return path invalid, dropping");
+      return;
+    }
+    RecordLookupJob.lookup(serverContext, searchedKey, returnPath);
   }
 
   /**
