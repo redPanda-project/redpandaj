@@ -6,7 +6,6 @@ import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.kademlia.KadContent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.security.Security;
 import java.util.List;
 
@@ -56,16 +55,12 @@ public final class ChannelDht {
 
   /**
    * Fixed serialized size of every rendezvous record content. One bucket for all channels so record
-   * size leaks nothing (per the spec's single-padding-bucket decision). The content is opaque:
-   * {@code [4 ciphertextLen][ciphertext][random padding]} up to this size.
+   * size leaks nothing (per the spec's single-padding-bucket decision). The content is fully opaque
+   * to nodes: the client's {@code [nonce][AEAD ciphertext of a fixed-size plaintext]} blob, sized
+   * to exactly this many bytes. All length/padding metadata lives <em>inside</em> the encrypted
+   * plaintext, so no cleartext field ever reveals the real payload size.
    */
   public static final int RECORD_SIZE_BYTES = 512;
-
-  /** Length prefix (bytes) in front of the opaque ciphertext inside the padded record. */
-  public static final int CIPHERTEXT_LEN_PREFIX = 4;
-
-  /** Largest ciphertext that still fits the fixed record after the length prefix. */
-  public static final int MAX_CIPHERTEXT_BYTES = RECORD_SIZE_BYTES - CIPHERTEXT_LEN_PREFIX;
 
   /**
    * Maximum age of a rendezvous record before it is considered stale. The spec sets a 48 h TTL;
@@ -74,7 +69,12 @@ public final class ChannelDht {
    */
   public static final long MAX_RECORD_AGE_MS = 1000L * 60 * 60 * (48 + 2); // 48h TTL + 2h slack
 
-  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+  /**
+   * Tolerated clock skew for records dated ahead of now. Records further in the future are rejected
+   * so a clock-skewed (or malicious) peer cannot make a future-dated record win the newest-wins
+   * selection. Mirrors {@link im.redpanda.kademlia.KadStoreManager}'s 15-minute future bound.
+   */
+  public static final long MAX_FUTURE_SKEW_MS = 1000L * 60 * 15; // 15 min
 
   private ChannelDht() {}
 
@@ -100,61 +100,35 @@ public final class ChannelDht {
   }
 
   /**
-   * Builds the signed, fixed-size rendezvous KadContent for a channel. {@code ciphertext} is the
-   * already k_enc-encrypted channel state; it is framed as {@code [4 len][ciphertext][random
-   * padding]} and signed with the derived record key. Reference for the client-side build (T44).
+   * Builds the signed rendezvous KadContent for a channel. {@code opaqueContent} is the client's
+   * already-encrypted, fixed-size record blob (nonce + AEAD ciphertext of a fixed-size plaintext);
+   * it must be exactly {@link #RECORD_SIZE_BYTES} bytes and is signed with the derived record key.
+   * Reference for the client-side build (T44). Nodes never parse the content.
    *
-   * @throws IllegalArgumentException if the ciphertext does not fit the fixed record
+   * @throws IllegalArgumentException if {@code opaqueContent} is not exactly the fixed bucket size
    */
-  public static KadContent buildRecordContent(byte[] channelSecret, byte[] ciphertext, long nowMs) {
-    byte[] padded = padToFixedSize(ciphertext);
+  public static KadContent buildRecordContent(
+      byte[] channelSecret, byte[] opaqueContent, long nowMs) {
+    if (opaqueContent.length != RECORD_SIZE_BYTES) {
+      throw new IllegalArgumentException(
+          "channel record content must be exactly "
+              + RECORD_SIZE_BYTES
+              + " bytes, was "
+              + opaqueContent.length);
+    }
     NodeId recordNodeId = deriveRecordNodeId(channelSecret);
-    KadContent kadContent = new KadContent(nowMs, recordNodeId.exportPublic(), padded);
+    KadContent kadContent =
+        new KadContent(nowMs, recordNodeId.exportPublic(), opaqueContent.clone());
     kadContent.signWith(recordNodeId);
     return kadContent;
   }
 
-  /** Frames and pads the opaque ciphertext to exactly {@link #RECORD_SIZE_BYTES}. */
-  private static byte[] padToFixedSize(byte[] ciphertext) {
-    if (ciphertext.length > MAX_CIPHERTEXT_BYTES) {
-      throw new IllegalArgumentException(
-          "channel record ciphertext too large: "
-              + ciphertext.length
-              + " > "
-              + MAX_CIPHERTEXT_BYTES);
-    }
-    ByteBuffer buffer = ByteBuffer.allocate(RECORD_SIZE_BYTES);
-    buffer.putInt(ciphertext.length);
-    buffer.put(ciphertext);
-    byte[] padding = new byte[buffer.remaining()];
-    SECURE_RANDOM.nextBytes(padding);
-    buffer.put(padding);
-    return buffer.array();
-  }
-
-  /**
-   * Extracts the opaque ciphertext from a padded record content, or {@code null} if the framing is
-   * malformed. Used by clients (T44) after a successful lookup; nodes never need this.
-   */
-  public static byte[] extractCiphertext(byte[] recordContent) {
-    if (recordContent == null || recordContent.length != RECORD_SIZE_BYTES) {
-      return null;
-    }
-    ByteBuffer buffer = ByteBuffer.wrap(recordContent);
-    int len = buffer.getInt();
-    if (len < 0 || len > buffer.remaining()) {
-      return null;
-    }
-    byte[] ciphertext = new byte[len];
-    buffer.get(ciphertext);
-    return ciphertext;
-  }
-
   /**
    * Validates a single record as accepted for storage / serving: signed by the embedded pubkey
-   * (self-certifying — the pubkey pins the Kademlia key), exactly the fixed padded size (uniformity
-   * is part of the anti-profiling contract) and not older than {@link #MAX_RECORD_AGE_MS}. The
-   * content stays opaque — the node deliberately cannot tell which channel it belongs to.
+   * (self-certifying — the pubkey pins the Kademlia key), exactly the fixed bucket size (uniformity
+   * is part of the anti-profiling contract), not older than {@link #MAX_RECORD_AGE_MS} and not
+   * further than {@link #MAX_FUTURE_SKEW_MS} in the future. The content stays opaque — the node
+   * deliberately cannot tell which channel it belongs to.
    */
   public static boolean isValidRecord(KadContent content, long nowMs) {
     if (content == null || content.getContent() == null) {
@@ -164,6 +138,9 @@ public final class ChannelDht {
       return false;
     }
     if (nowMs - content.getTimestamp() > MAX_RECORD_AGE_MS) {
+      return false;
+    }
+    if (content.getTimestamp() - nowMs > MAX_FUTURE_SKEW_MS) {
       return false;
     }
     return content.verify();

@@ -101,8 +101,8 @@ public class RecordDhtRouterTest {
   public void storeThenLookup_roundTripsRecordBackThroughReturnPath() throws Exception {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
-    byte[] ciphertext = randomBytes(120);
-    KadContent record = ChannelDht.buildRecordContent(secret, ciphertext, now);
+    byte[] content = randomBytes(ChannelDht.RECORD_SIZE_BYTES);
+    KadContent record = ChannelDht.buildRecordContent(secret, content, now);
     KademliaId key = ChannelDht.rendezvousKademliaId(secret, now);
 
     // 1) store
@@ -125,8 +125,9 @@ public class RecordDhtRouterTest {
     assertThat(returned.getContent().toByteArray())
         .as("the exact stored record content is returned")
         .isEqualTo(record.getContent());
-    assertThat(ChannelDht.extractCiphertext(returned.getContent().toByteArray()))
-        .isEqualTo(ciphertext);
+    assertThat(returned.getContent().toByteArray())
+        .as("returned opaque content matches what was stored")
+        .isEqualTo(content);
   }
 
   @Test

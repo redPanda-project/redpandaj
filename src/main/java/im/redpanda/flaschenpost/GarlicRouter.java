@@ -254,24 +254,28 @@ public final class GarlicRouter {
       log.debug("flaschenpost v2 record store payload not parseable, dropping");
       return;
     }
+    long now = System.currentTimeMillis();
     KadContent record =
         new KadContent(
             storeMsg.getTimestamp(),
             storeMsg.getPublicKey().toByteArray(),
             storeMsg.getContent().toByteArray(),
             storeMsg.getSignature().toByteArray());
-    if (!ChannelDht.isValidRecord(record, System.currentTimeMillis())) {
+    if (!ChannelDht.isValidRecord(record, now)) {
       log.debug("flaschenpost v2 record store record invalid (sig/size/ttl), dropping");
       return;
     }
-    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(System.currentTimeMillis())) {
+    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
       log.debug("channel record store rate limit hit, dropping");
       return;
     }
-    // KademliaInsertJob.init() also stores locally; store here too so the record is immediately
-    // resolvable on this node even before the replication job runs.
-    serverContext.getKadStoreManager().put(record);
-    new KademliaInsertJob(serverContext, record).start();
+    // Store locally first so the record is immediately resolvable on this node. Only replicate if
+    // the local put was accepted — KadStoreManager can still reject on its own timestamp bounds,
+    // and
+    // replicating a record we ourselves won't keep would be pointless.
+    if (serverContext.getKadStoreManager().put(record)) {
+      new KademliaInsertJob(serverContext, record).start();
+    }
   }
 
   /**

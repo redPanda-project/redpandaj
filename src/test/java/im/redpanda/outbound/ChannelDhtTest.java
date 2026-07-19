@@ -24,10 +24,15 @@ public class ChannelDhtTest {
     return secret;
   }
 
-  private static byte[] randomCiphertext(int len) {
-    byte[] ciphertext = new byte[len];
-    RANDOM.nextBytes(ciphertext);
-    return ciphertext;
+  private static byte[] randomBytes(int len) {
+    byte[] bytes = new byte[len];
+    RANDOM.nextBytes(bytes);
+    return bytes;
+  }
+
+  /** A fixed-size opaque record blob, as a client would produce (nonce + AEAD ciphertext). */
+  private static byte[] randomRecordContent() {
+    return randomBytes(ChannelDht.RECORD_SIZE_BYTES);
   }
 
   // --- Record key derivation ---
@@ -78,12 +83,20 @@ public class ChannelDhtTest {
     long now = System.currentTimeMillis();
     for (int i = 0; i < 20; i++) {
       KadContent content =
-          ChannelDht.buildRecordContent(
-              randomChannelSecret(), randomCiphertext(1 + RANDOM.nextInt(200)), now);
+          ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
       assertThat(content.getContent())
-          .as("every rendezvous record must be padded to one bucket size")
+          .as("every rendezvous record is exactly one bucket size")
           .hasSize(ChannelDht.RECORD_SIZE_BYTES);
     }
+  }
+
+  @Test
+  public void buildRecordContent_rejectsWrongSizeContent() {
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                ChannelDht.buildRecordContent(
+                    randomChannelSecret(), randomBytes(100), System.currentTimeMillis()))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
@@ -91,21 +104,11 @@ public class ChannelDhtTest {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
 
-    KadContent content = ChannelDht.buildRecordContent(secret, randomCiphertext(100), now);
+    KadContent content = ChannelDht.buildRecordContent(secret, randomRecordContent(), now);
 
     assertThat(content.verify()).isTrue();
     assertThat(content.getId()).isEqualTo(ChannelDht.rendezvousKademliaId(secret, now));
     assertThat(content.getPubkey()).isEqualTo(ChannelDht.deriveRecordNodeId(secret).exportPublic());
-  }
-
-  @Test
-  public void buildAndExtractCiphertext_roundTrips() {
-    byte[] ciphertext = randomCiphertext(137);
-    KadContent content =
-        ChannelDht.buildRecordContent(
-            randomChannelSecret(), ciphertext, System.currentTimeMillis());
-
-    assertThat(ChannelDht.extractCiphertext(content.getContent())).isEqualTo(ciphertext);
   }
 
   // --- Validation ---
@@ -114,18 +117,18 @@ public class ChannelDhtTest {
   public void isValidRecord_acceptsFreshSignedFixedSizeRecord() {
     long now = System.currentTimeMillis();
     KadContent content =
-        ChannelDht.buildRecordContent(randomChannelSecret(), randomCiphertext(64), now);
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
 
     assertThat(ChannelDht.isValidRecord(content, now)).isTrue();
   }
 
   @Test
   public void isValidRecord_rejectsWrongSize() {
-    // Correctly derived key but content that is not padded to the fixed bucket size.
+    // Correctly derived key but content that is not the fixed bucket size.
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
     NodeId recordNodeId = ChannelDht.deriveRecordNodeId(secret);
-    KadContent content = new KadContent(now, recordNodeId.exportPublic(), randomCiphertext(100));
+    KadContent content = new KadContent(now, recordNodeId.exportPublic(), randomBytes(100));
     content.signWith(recordNodeId);
 
     assertThat(ChannelDht.isValidRecord(content, now)).isFalse();
@@ -135,7 +138,7 @@ public class ChannelDhtTest {
   public void isValidRecord_rejectsTamperedContent() {
     long now = System.currentTimeMillis();
     KadContent content =
-        ChannelDht.buildRecordContent(randomChannelSecret(), randomCiphertext(64), now);
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
     // Flip a byte after signing → signature no longer verifies.
     content.getContent()[0] ^= 0xFF;
 
@@ -147,9 +150,21 @@ public class ChannelDhtTest {
     long now = System.currentTimeMillis();
     long published = now - ChannelDht.MAX_RECORD_AGE_MS - 1000;
     KadContent content =
-        ChannelDht.buildRecordContent(randomChannelSecret(), randomCiphertext(64), published);
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), published);
 
     assertThat(ChannelDht.isValidRecord(content, now)).isFalse();
+  }
+
+  @Test
+  public void isValidRecord_rejectsRecordTooFarInFuture() {
+    long now = System.currentTimeMillis();
+    long published = now + ChannelDht.MAX_FUTURE_SKEW_MS + 60_000;
+    KadContent content =
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), published);
+
+    assertThat(ChannelDht.isValidRecord(content, now))
+        .as("a future-dated record must not win newest-wins")
+        .isFalse();
   }
 
   // --- Result selection (newest-wins, foreign-record rejection) ---
@@ -157,11 +172,14 @@ public class ChannelDhtTest {
   @Test
   public void extractNewest_picksNewestValidRecord() {
     byte[] secret = randomChannelSecret();
-    long now = System.currentTimeMillis();
+    // Fixed timestamp safely away from midnight UTC (~22:13 UTC): both records share the same UTC
+    // day so they live under the same rotated key, and the explicit nowMs keeps them within TTL —
+    // avoids a day-boundary flake from the real wall clock.
+    long now = 1_700_000_000_000L;
     KademliaId key = ChannelDht.rendezvousKademliaId(secret, now);
 
-    KadContent older = ChannelDht.buildRecordContent(secret, randomCiphertext(64), now - 10_000);
-    KadContent newer = ChannelDht.buildRecordContent(secret, randomCiphertext(64), now);
+    KadContent older = ChannelDht.buildRecordContent(secret, randomRecordContent(), now - 10_000);
+    KadContent newer = ChannelDht.buildRecordContent(secret, randomRecordContent(), now);
     // Both live under today's key.
     assertThat(older.getId()).isEqualTo(key);
     assertThat(newer.getId()).isEqualTo(key);
@@ -180,7 +198,7 @@ public class ChannelDhtTest {
 
     // A validly signed record for ANOTHER channel must not be served for this key.
     KadContent foreign =
-        ChannelDht.buildRecordContent(randomChannelSecret(), randomCiphertext(64), now);
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
 
     assertThat(ChannelDht.extractNewest(List.of(foreign), key, now)).isNull();
   }
