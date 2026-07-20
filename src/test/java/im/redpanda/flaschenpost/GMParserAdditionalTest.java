@@ -677,6 +677,53 @@ public class GMParserAdditionalTest {
   }
 
   /**
+   * Regression for REDPANDAJ-2DW/2E5-class races: if an edge on the candidate's remaining path is
+   * concurrently ripped out of the graph (maintainNodes on another thread) while Dijkstra is
+   * traversing it, jgrapht's intrusive edge specifics throw a {@link NullPointerException} rather
+   * than {@link IllegalArgumentException}. Before the fix, {@code selectBestRoutePeer} only caught
+   * {@code IllegalArgumentException} around {@code findPathBetween}, so that NPE escaped past the
+   * job and crashed the caller instead of the candidate simply being skipped.
+   */
+  @Test
+  public void selectBestRoutePeer_survivesEdgeVanishingMidDijkstraTraversal() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+
+    Node selfNode = new Node(serverContext, serverContext.getNodeId());
+    Node targetNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+    TestPeer peer = authedPeerWithNode(serverContext, "10.5.0.1", 1);
+    Node peerNode = peer.getNode();
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> realGraph =
+        new DefaultDirectedWeightedGraph<>(NodeEdge.class);
+    realGraph.addVertex(selfNode);
+    realGraph.addVertex(targetNode);
+    realGraph.addVertex(peerNode);
+    realGraph.setEdgeWeight(realGraph.addEdge(selfNode, peerNode), 1.0);
+    realGraph.setEdgeWeight(realGraph.addEdge(peerNode, targetNode), 1.0);
+
+    // Wrap the graph so that, exactly like a concurrent removeEdge/removeVertex would,
+    // getEdgeWeight throws NullPointerException the moment Dijkstra tries to weigh the
+    // peer -> target edge mid-traversal.
+    org.jgrapht.graph.GraphDelegator<Node, NodeEdge> flakyGraph =
+        new org.jgrapht.graph.GraphDelegator<>(realGraph) {
+          @Override
+          public double getEdgeWeight(NodeEdge e) {
+            if (realGraph.getEdgeSource(e).equals(peerNode)) {
+              throw new NullPointerException("edge vanished mid-traversal");
+            }
+            return super.getEdgeWeight(e);
+          }
+        };
+
+    GMParser.RouteSelection selection =
+        GMParser.selectBestRoutePeer(
+            flakyGraph, selfNode, java.util.List.of(peer), targetNode, GMParser.MAX_ROUTE_WEIGHT);
+
+    // The NPE must be swallowed (candidate skipped), not escape the call.
+    assertNull(selection.peer());
+  }
+
+  /**
    * Builds an authed + connected peer with a Node attached, so {@link Peer#getNode()} returns the
    * node (it returns null for un-authed / disconnected peers).
    */

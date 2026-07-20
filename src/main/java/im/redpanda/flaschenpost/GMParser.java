@@ -107,8 +107,9 @@ public class GMParser {
         GraphPath<Node, NodeEdge> path = null;
         try {
           path = DijkstraShortestPath.findPathBetween(graph, peerNode, targetNode);
-        } catch (IllegalArgumentException ignored) {
-          // peerNode or targetNode not in graph
+        } catch (IllegalArgumentException | NullPointerException ignored) {
+          // peerNode/targetNode not in graph, or an edge was concurrently removed
+          // mid-traversal (Sentry REDPANDAJ-2DW/2E5 pattern) — treat as no route.
         }
         if (path == null) {
           continue;
@@ -338,14 +339,24 @@ public class GMParser {
         return;
       }
 
-      Node targetNode = serverContext.getNodeStore().get(garlicMessage.destination);
-      RouteSelection selection =
-          selectBestRoutePeer(
-              serverContext.getNodeStore().getNodeGraph(),
-              serverContext.getNode(),
-              peers,
-              targetNode,
-              MAX_ROUTE_WEIGHT);
+      // maintainNodes() mutates the graph under the NodeStore write lock (Sentry
+      // REDPANDAJ-2DW/2E5 fix); take the read lock here so Dijkstra never traverses
+      // a graph that is concurrently being restructured.
+      Lock nodeStoreLock = serverContext.getNodeStore().getReadWriteLock().readLock();
+      RouteSelection selection;
+      nodeStoreLock.lock();
+      try {
+        Node targetNode = serverContext.getNodeStore().get(garlicMessage.destination);
+        selection =
+            selectBestRoutePeer(
+                serverContext.getNodeStore().getNodeGraph(),
+                serverContext.getNode(),
+                peers,
+                targetNode,
+                MAX_ROUTE_WEIGHT);
+      } finally {
+        nodeStoreLock.unlock();
+      }
       double shortestPathWeight = selection.weight();
       Peer peerWithShortestPath = selection.peer();
 
