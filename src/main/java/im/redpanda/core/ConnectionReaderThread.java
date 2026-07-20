@@ -335,7 +335,10 @@ public class ConnectionReaderThread implements Runnable {
               + (myReaderBuffer.remaining() > 0 ? myReaderBuffer.duplicate().get() : "no command"));
       breadcrumb.setLevel(SentryLevel.WARNING);
       Sentry.addBreadcrumb(breadcrumb);
-      Log.sentry("read 0 bytes...");
+      // A read() of 0 bytes on a non-blocking channel that the selector reported readable is a
+      // normal, expected condition (no data available yet / spurious readiness), not an error.
+      // Log it locally instead of raising a Sentry error on every occurrence (REDPANDAJ-2E7).
+      Log.put("read 0 bytes...", 20);
       return 0;
     } else if (read == -1) {
       Log.put("closing connection " + peer.ip + ": not readable! ", 100);
@@ -368,9 +371,21 @@ public class ConnectionReaderThread implements Runnable {
      * The readBuffer might be null if the peer is disconnected while parsing a command, the
      * disconnect method handles the return of the readBuffer...
      */
-    if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
-      ByteBufferPool.returnObject(peer.readBuffer);
-      peer.readBuffer = null;
+    // Returning peer.readBuffer to the pool must be serialized with the other threads that touch
+    // it — Peer.decryptInputData() and Peer.disconnect() both do so under writeBufferLock. Doing
+    // it lock-free here raced a concurrent disconnect returning the same buffer, producing a
+    // double-return ("Object has already been returned to this pool", REDPANDAJ-2ED) or a buffer
+    // handed to a new owner while still referenced here (borrowObject then saw pos!=0,
+    // REDPANDAJ-2E8). Take the same lock and re-read the field inside it.
+    peer.getWriteBufferLock().lock();
+    try {
+      if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
+        ByteBuffer toReturn = peer.readBuffer;
+        peer.readBuffer = null;
+        ByteBufferPool.returnObject(toReturn);
+      }
+    } finally {
+      peer.getWriteBufferLock().unlock();
     }
 
     if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {

@@ -607,6 +607,20 @@ public class ConnectionHandler extends Thread {
     } catch (IOException e) {
       Log.put("caught io exception in handshake...", 20);
       key.cancel();
+    } catch (PeerProtocolException e) {
+      // A peer that completed the v23 handshake but then sent a malformed first GCM frame (bogus
+      // length/nonce/tag, REDPANDAJ-2DX) is expected hostile-network noise (port scanners,
+      // non-conformant or stale clients), not an application bug. Drop the half-open connection
+      // quietly instead of reporting a Sentry error on every occurrence.
+      Log.put("malformed first encrypted frame, dropping handshake: " + e.getMessage(), 20);
+      key.cancel();
+      if (key.attachment() instanceof PeerInHandshake pih) {
+        try {
+          pih.getSocketChannel().close();
+        } catch (IOException ignored) {
+          // already tearing down this handshake
+        }
+      }
     } catch (Exception e) {
       Log.put("Handshake failed with throwable...", 5);
       Log.sentry(e);

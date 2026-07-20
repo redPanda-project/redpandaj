@@ -120,6 +120,36 @@ public class ParseCommandTest {
     assertThat(buffer.limit()).isEqualTo(buffer.capacity());
   }
 
+  /**
+   * REDPANDAJ-2E0: an unknown command byte (observed as command {@code 0} right after another
+   * command, i.e. a stream desync) used to throw a {@code RuntimeException} that was only logged
+   * while the peer stayed connected and kept re-hitting the same desynced byte on every read.
+   * {@code parseCommand} must now disconnect the peer instead, so the connection re-handshakes and
+   * resyncs. Drives a real unknown command through the actual loop.
+   */
+  @Test
+  public void loopCommands_disconnectsPeerOnUnknownCommand() {
+    ServerContext serverContext = new ServerContext();
+    InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
+
+    ByteBuffer buffer = ByteBufferPool.borrowObject(1024);
+    buffer.put((byte) 0); // command 0 is not a registered command -> protocol desync
+
+    Peer peer = getPeerForDebug();
+    serverContext.getPeerList().add(peer);
+    peer.setConnected(true);
+    peer.readBuffer = buffer;
+
+    processor.loopCommands(peer, buffer);
+
+    assertThat(peer.isConnected())
+        .as("an unknown command must disconnect the peer, not leave it connected and desynced")
+        .isFalse();
+    assertThat(peer.readBuffer)
+        .as("Peer.disconnect() must have returned the buffer, clearing the field")
+        .isNull();
+  }
+
   @Test
   public void testREQUEST_PEERLIST() {
     ServerContext serverContext = new ServerContext();

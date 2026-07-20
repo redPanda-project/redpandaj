@@ -312,13 +312,21 @@ public class InboundCommandProcessor {
         }
       }
     } else {
-      throw new RuntimeException(
-          "Got unknown command from peer: "
-              + command
-              + " last cmd: "
-              + peer.lastCommand
-              + " lightClient: "
-              + peer.isLightClient());
+      // Protocol desync: the byte stream no longer aligns to a command boundary (observed as
+      // command 0 right after another command, REDPANDAJ-2E0). A stream cipher cannot be resynced
+      // mid-stream, and previously this only threw a RuntimeException that got logged while the
+      // peer stayed connected and kept re-hitting the same desynced byte on every subsequent read.
+      // Disconnect like a PeerProtocolException does so the peer reconnects and re-runs the
+      // handshake, which resyncs the stream. loopCommands() sees the peer is no longer connected
+      // and stops without touching the (already returned) buffer.
+      logger.warn(
+          "protocol desync: unknown command {} from peer (last cmd {}, lightClient {}),"
+              + " disconnecting",
+          command,
+          peer.lastCommand,
+          peer.isLightClient());
+      peer.disconnect("unknown command " + command);
+      return 0;
     }
   }
 

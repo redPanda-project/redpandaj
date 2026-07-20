@@ -84,7 +84,17 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
     byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
 
-    flaschenPostInsertPeer.getNode().cleanChecks();
+    // TOCTOU (REDPANDAJ-2EC): calculatePathOrAbort() validated flaschenPostInsertPeer.getNode()
+    // != null, but it did so under the NodeStore write lock which has since been released above.
+    // The peer can disconnect in the meantime (Peer.disconnect() -> clearNode()), leaving
+    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully instead of
+    // dereferencing null.
+    Node insertNode = flaschenPostInsertPeer.getNode();
+    if (insertNode == null) {
+      done();
+      return;
+    }
+    insertNode.cleanChecks();
 
     flaschenPostInsertPeer.getWriteBufferLock().lock();
     try {
