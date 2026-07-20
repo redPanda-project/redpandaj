@@ -116,6 +116,14 @@ public class KademliaSearchJob extends Job {
 
   @Override
   public void work() {
+    // init() returns early (blacklisted id: fail() + done(), see above) before peers is
+    // set. done() cancels the recurring future, but a concurrently already-dispatched
+    // run() can still reach work() in that same window (Sentry REDPANDAJ-2E3) — bail out
+    // instead of NPEing on peers.keySet().
+    if (peers == null) {
+      return;
+    }
+
     /** check for timeout, maybe we already got an answer but not SEND_TO_NODES */
     if (getEstimatedRuntime() > 1000 * 5) {
       System.out.println("5 second timeout reached for KadSearch... ");
