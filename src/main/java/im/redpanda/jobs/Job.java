@@ -138,32 +138,27 @@ public abstract class Job implements Runnable {
    * jobs and cancel the future (obtained from scheduleWithFixedDelay)
    */
   public void done() {
-
+    // The done-flag check and the removal from runningJobs must be atomic. Previously the
+    // `if (done)` guard ran outside runningJobsLock while the actual removal (stopJob) ran under
+    // it, so two threads (e.g. the init/timeout path and an inbound answer being processed for
+    // the same job) could both observe done==false, both set it and both perform the removal;
+    // the second one then found the job already gone and threw "CODE 17dh6" (REDPANDAJ-2E2 /
+    // REDPANDAJ-2EA). Holding the lock across the whole check-and-remove makes done() idempotent:
+    // a second, losing call simply returns. The former debug-only throw is dropped — a
+    // double-done is benign cleanup, not a condition worth crashing the job thread over.
+    runningJobsLock.lock();
     try {
       if (done) {
         return;
       }
-
       done = true;
-      stopJob();
 
+      Job removed = runningJobs.remove(jobId);
+      if (removed != null && future != null) {
+        future.cancel(false);
+      }
     } catch (Throwable e) {
       Log.sentry(e);
-    }
-  }
-
-  /** remove this job from the runningJobs and cancels the future */
-  private void stopJob() {
-    runningJobsLock.lock();
-    try {
-      Job remove = runningJobs.remove(jobId);
-      if (remove != null) {
-        future.cancel(false);
-      } else {
-        // job already done, but we should never be in this case, run exception to debug
-        // this case
-        throw new RuntimeException("CODE 17dh6");
-      }
     } finally {
       runningJobsLock.unlock();
     }
