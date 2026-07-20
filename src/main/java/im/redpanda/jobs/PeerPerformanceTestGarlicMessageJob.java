@@ -208,6 +208,12 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
   private boolean dismissCheckByTimeoutIfEdgeQualityBad(
       DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
+    // the edge may have been removed from the graph concurrently since the caller
+    // copied the edge list; check membership before resolving its weight
+    // (Sentry REDPANDAJ-2DW, REDPANDAJ-2E5 pattern)
+    if (!nodeGraph.containsEdge(edge)) {
+      return true;
+    }
     if (edge.isLastCheckFailed()) {
       double edgeWeight = nodeGraph.getEdgeWeight(edge);
       if (edgeWeight >= MAX_WEIGHT) {
