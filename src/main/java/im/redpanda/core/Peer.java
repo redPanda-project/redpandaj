@@ -11,10 +11,7 @@ import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import lombok.Getter;
 
 /**
@@ -205,9 +202,14 @@ public class Peer implements Comparable<Peer> {
     connectedSince = 0;
     isIntegrated = false;
 
+    // Was previously `tryLock(2, SECONDS)` with the return value ignored: on a timeout the
+    // readBuffer/writeBuffer fields below were still touched and the buffer returned to the pool
+    // without actually holding the lock, racing a concurrent decryptInputData()/readConnection()
+    // that *does* hold it — the same double-return / invalid-buffer-state class as
+    // REDPANDAJ-2E8/2ED. None of the sections writeBufferLock guards in this class do blocking
+    // I/O (buffer allocation/copy/decrypt only), so blocking here is bounded and safe.
+    writeBufferLock.lock();
     try {
-      writeBufferLock.tryLock(2, TimeUnit.SECONDS);
-
       Log.put("DISCONNECT: " + reason, 100);
 
       setConnected(false);
@@ -244,14 +246,8 @@ public class Peer implements Comparable<Peer> {
 
       writeBuffer = null;
       writeBufferCrypted = null;
-
-      if (writeBufferLock.isHeldByCurrentThread()) {
-        writeBufferLock.unlock();
-      }
-
-    } catch (InterruptedException ex) {
-      Logger.getLogger(Peer.class.getName()).log(Level.SEVERE, null, ex);
-      Thread.currentThread().interrupt();
+    } finally {
+      writeBufferLock.unlock();
     }
 
     Server.triggerOutboundThread();
