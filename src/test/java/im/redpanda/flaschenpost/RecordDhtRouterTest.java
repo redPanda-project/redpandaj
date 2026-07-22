@@ -91,10 +91,15 @@ public class RecordDhtRouterTest {
 
   /** Encrypts a single-layer garlic packet carrying {@code plaintext} for our node. */
   private byte[] singleLayerPacket(byte[] plaintext) throws Exception {
+    return singleLayerPacket(plaintext, RANDOM.nextInt());
+  }
+
+  /** Same as {@link #singleLayerPacket(byte[])} but with an explicit {@code packet_id}. */
+  private byte[] singleLayerPacket(byte[] plaintext, int packetId) throws Exception {
     byte[] body =
         FlaschenpostV2.encryptLayer(
             node.getNodeId().getEncryptionPubKey(), node.getNonce(), plaintext);
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), node.getNonce(), body);
+    return FlaschenpostV2.buildPacket(packetId, node.getNonce(), body);
   }
 
   @Test
@@ -158,6 +163,41 @@ public class RecordDhtRouterTest {
       Thread.sleep(50);
     }
     return mailbox.fetchMessages(ohId, 10, 0);
+  }
+
+  @Test
+  public void lookup_rateLimitExhausted_dropsWithoutSearching() throws Exception {
+    // Swap in a 1-token bucket with a refill interval far longer than the lookup job's own
+    // anti-profiling jitter (up to 1.5 s, see RecordLookupJob.LOOKUP_DELAY_JITTER_MS) so the second
+    // call is deterministically over budget regardless of how long the first answer takes.
+    RecordStoreRateLimiter previous =
+        GarlicRouter.swapRecordLookupRateLimiterForTest(
+            new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));
+    try {
+      KademliaId key =
+          ChannelDht.rendezvousKademliaId(randomChannelSecret(), System.currentTimeMillis());
+      byte[] layer = recordLookupLayer(key, zeroHopReturnPath());
+
+      // 1st lookup consumes the single token and is admitted (answers not-found asynchronously).
+      // 2nd lookup arrives immediately after → bucket empty → dropped before a search ever starts.
+      // Fixed, distinct packet IDs (rather than the default random ones) so this can never be
+      // confused with a GMStoreManager packet_id-dedup drop.
+      GarlicRouter.handle(node, singleLayerPacket(layer, 1));
+      GarlicRouter.handle(node, singleLayerPacket(layer, 2));
+
+      List<MailItem> items = awaitMailbox(ackOhId);
+      // Both lookups share the same up-to-1.5 s jitter window (RecordLookupJob), so the 1st
+      // answer landing first proves nothing about the 2nd being dropped — settle past the max
+      // jitter before asserting the final count, so a regression that wrongly admits the 2nd
+      // lookup can't slip through as a late-arriving 2nd item.
+      Thread.sleep(1_700L); // > RecordLookupJob.LOOKUP_DELAY_JITTER_MS (1.5 s), package-private
+      items = mailbox.fetchMessages(ackOhId, 10, 0);
+      assertThat(items)
+          .as("only the 1st (admitted) lookup may produce an answer, the 2nd must be dropped")
+          .hasSize(1);
+    } finally {
+      GarlicRouter.swapRecordLookupRateLimiterForTest(previous);
+    }
   }
 
   @Test
