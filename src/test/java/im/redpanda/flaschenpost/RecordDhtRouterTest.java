@@ -91,10 +91,15 @@ public class RecordDhtRouterTest {
 
   /** Encrypts a single-layer garlic packet carrying {@code plaintext} for our node. */
   private byte[] singleLayerPacket(byte[] plaintext) throws Exception {
+    return singleLayerPacket(plaintext, RANDOM.nextInt());
+  }
+
+  /** Same as {@link #singleLayerPacket(byte[])} but with an explicit {@code packet_id}. */
+  private byte[] singleLayerPacket(byte[] plaintext, int packetId) throws Exception {
     byte[] body =
         FlaschenpostV2.encryptLayer(
             node.getNodeId().getEncryptionPubKey(), node.getNonce(), plaintext);
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), node.getNonce(), body);
+    return FlaschenpostV2.buildPacket(packetId, node.getNonce(), body);
   }
 
   @Test
@@ -175,8 +180,10 @@ public class RecordDhtRouterTest {
 
       // 1st lookup consumes the single token and is admitted (answers not-found asynchronously).
       // 2nd lookup arrives immediately after → bucket empty → dropped before a search ever starts.
-      GarlicRouter.handle(node, singleLayerPacket(layer));
-      GarlicRouter.handle(node, singleLayerPacket(layer));
+      // Fixed, distinct packet IDs (rather than the default random ones) so this can never be
+      // confused with a GMStoreManager packet_id-dedup drop.
+      GarlicRouter.handle(node, singleLayerPacket(layer, 1));
+      GarlicRouter.handle(node, singleLayerPacket(layer, 2));
 
       List<MailItem> items = awaitMailbox(ackOhId);
       // Both lookups share the same up-to-1.5 s jitter window (RecordLookupJob), so the 1st

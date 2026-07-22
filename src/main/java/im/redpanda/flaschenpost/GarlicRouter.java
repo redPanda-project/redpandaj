@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -59,7 +60,7 @@ public final class GarlicRouter {
    * amplification vector, independent of the store path above — hence a separate bucket rather than
    * sharing tokens with {@link #RECORD_STORE_RATE_LIMITER}.
    */
-  private static RecordStoreRateLimiter recordLookupRateLimiter =
+  private static volatile RecordStoreRateLimiter recordLookupRateLimiter =
       new RecordStoreRateLimiter(
           RecordStoreRateLimiter.DEFAULT_CAPACITY,
           RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
@@ -71,11 +72,12 @@ public final class GarlicRouter {
    * Test-only hook (T46): swaps the record-lookup rate limiter for a small, deterministic bucket so
    * tests can exercise exhaustion without depending on wall-clock timing or draining the
    * production-sized bucket shared with other tests. Returns the previous instance so the caller
-   * can restore it.
+   * can restore it. {@code volatile} on the field guarantees the swap is visible to connection
+   * threads without extra synchronization.
    */
   static RecordStoreRateLimiter swapRecordLookupRateLimiterForTest(RecordStoreRateLimiter limiter) {
     RecordStoreRateLimiter previous = recordLookupRateLimiter;
-    recordLookupRateLimiter = limiter;
+    recordLookupRateLimiter = Objects.requireNonNull(limiter);
     return previous;
   }
 
@@ -256,8 +258,9 @@ public final class GarlicRouter {
    * TTL ({@link ChannelDht}) plus a global store rate limit. Best-effort, no response — the client
    * verifies by a later lookup. Malformed layers are dropped silently.
    *
-   * <p>The rate limit is consumed before the Ed25519 signature is verified (T46): a flood of
-   * structurally well-formed but forged records would otherwise force a full signature check per
+   * <p>The rate limit is consumed after the (cheap) protobuf parse but before the Ed25519 signature
+   * is verified (T46): a flood of unparseable garbage would otherwise drain the bucket for nothing,
+   * while a flood of parseable-but-forged records would otherwise force a full signature check per
    * packet with nothing bounding that cost.
    */
   private static void handleRecordStore(ServerContext serverContext, byte[] plaintext) {
@@ -275,12 +278,6 @@ public final class GarlicRouter {
     byte[] storeBytes = new byte[len];
     buffer.get(storeBytes);
 
-    long now = System.currentTimeMillis();
-    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
-      log.debug("channel record store rate limit hit, dropping");
-      return;
-    }
-
     KademliaStore storeMsg;
     try {
       storeMsg = KademliaStore.parseFrom(storeBytes);
@@ -288,6 +285,13 @@ public final class GarlicRouter {
       log.debug("flaschenpost v2 record store payload not parseable, dropping");
       return;
     }
+
+    long now = System.currentTimeMillis();
+    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
+      log.debug("channel record store rate limit hit, dropping");
+      return;
+    }
+
     KadContent record =
         new KadContent(
             storeMsg.getTimestamp(),
@@ -314,15 +318,12 @@ public final class GarlicRouter {
    *
    * <p>Rate-limited (T46): each lookup triggers a Kademlia search and a reverse-garlic answer, the
    * same DHT-query amplification the store path guards against, so it is gated on its own bucket
-   * ({@link #recordLookupRateLimiter}) before a search is started.
+   * ({@link #recordLookupRateLimiter}) — consumed only after the structural checks below pass, so
+   * malformed lookups that never start a search can't drain the bucket for valid clients.
    */
   private static void handleRecordLookup(ServerContext serverContext, byte[] plaintext) {
     if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + ReturnPath.FIXED_LEN) {
       log.debug("flaschenpost v2 record lookup layer too short, dropping");
-      return;
-    }
-    if (!recordLookupRateLimiter.tryAcquire(System.currentTimeMillis())) {
-      log.debug("channel record lookup rate limit hit, dropping");
       return;
     }
     ByteBuffer buffer = ByteBuffer.wrap(plaintext);
@@ -331,6 +332,10 @@ public final class GarlicRouter {
     ReturnPath returnPath = ReturnPath.parse(buffer);
     if (returnPath == null) {
       log.debug("flaschenpost v2 record lookup return path invalid, dropping");
+      return;
+    }
+    if (!recordLookupRateLimiter.tryAcquire(System.currentTimeMillis())) {
+      log.debug("channel record lookup rate limit hit, dropping");
       return;
     }
     RecordLookupJob.lookup(serverContext, searchedKey, returnPath);
