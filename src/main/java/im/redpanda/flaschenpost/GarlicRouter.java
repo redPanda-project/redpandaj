@@ -53,7 +53,31 @@ public final class GarlicRouter {
           RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
           System.currentTimeMillis());
 
+  /**
+   * Own bucket for inbound channel-rendezvous record lookups (T46). A lookup triggers a Kademlia
+   * search plus a reverse-garlic answer, so an unbounded flood of lookups is its own DHT-query
+   * amplification vector, independent of the store path above — hence a separate bucket rather than
+   * sharing tokens with {@link #RECORD_STORE_RATE_LIMITER}.
+   */
+  private static RecordStoreRateLimiter recordLookupRateLimiter =
+      new RecordStoreRateLimiter(
+          RecordStoreRateLimiter.DEFAULT_CAPACITY,
+          RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
+          System.currentTimeMillis());
+
   private GarlicRouter() {}
+
+  /**
+   * Test-only hook (T46): swaps the record-lookup rate limiter for a small, deterministic bucket so
+   * tests can exercise exhaustion without depending on wall-clock timing or draining the
+   * production-sized bucket shared with other tests. Returns the previous instance so the caller
+   * can restore it.
+   */
+  static RecordStoreRateLimiter swapRecordLookupRateLimiterForTest(RecordStoreRateLimiter limiter) {
+    RecordStoreRateLimiter previous = recordLookupRateLimiter;
+    recordLookupRateLimiter = limiter;
+    return previous;
+  }
 
   /** Entry point for a received FLASCHENPOST_V2 payload (the raw 2048-byte packet). */
   public static void handle(ServerContext serverContext, byte[] packet) {
@@ -231,6 +255,10 @@ public final class GarlicRouter {
    * opaque to us; we only enforce the self-certifying signature, the fixed padded size and the 48 h
    * TTL ({@link ChannelDht}) plus a global store rate limit. Best-effort, no response — the client
    * verifies by a later lookup. Malformed layers are dropped silently.
+   *
+   * <p>The rate limit is consumed before the Ed25519 signature is verified (T46): a flood of
+   * structurally well-formed but forged records would otherwise force a full signature check per
+   * packet with nothing bounding that cost.
    */
   private static void handleRecordStore(ServerContext serverContext, byte[] plaintext) {
     if (plaintext.length < 1 + 4) {
@@ -247,6 +275,12 @@ public final class GarlicRouter {
     byte[] storeBytes = new byte[len];
     buffer.get(storeBytes);
 
+    long now = System.currentTimeMillis();
+    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
+      log.debug("channel record store rate limit hit, dropping");
+      return;
+    }
+
     KademliaStore storeMsg;
     try {
       storeMsg = KademliaStore.parseFrom(storeBytes);
@@ -254,7 +288,6 @@ public final class GarlicRouter {
       log.debug("flaschenpost v2 record store payload not parseable, dropping");
       return;
     }
-    long now = System.currentTimeMillis();
     KadContent record =
         new KadContent(
             storeMsg.getTimestamp(),
@@ -265,14 +298,9 @@ public final class GarlicRouter {
       log.debug("flaschenpost v2 record store record invalid (sig/size/ttl), dropping");
       return;
     }
-    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
-      log.debug("channel record store rate limit hit, dropping");
-      return;
-    }
     // Store locally first so the record is immediately resolvable on this node. Only replicate if
     // the local put was accepted — KadStoreManager can still reject on its own timestamp bounds,
-    // and
-    // replicating a record we ourselves won't keep would be pointless.
+    // and replicating a record we ourselves won't keep would be pointless.
     if (serverContext.getKadStoreManager().put(record)) {
       new KademliaInsertJob(serverContext, record).start();
     }
@@ -283,10 +311,18 @@ public final class GarlicRouter {
    * the channel-rendezvous record up in the DHT on behalf of a DHT-fremd client and returns it via
    * the return path (reverse garlic into the client's own OH mailbox, see {@link RecordLookupJob}).
    * The return path is only structurally validated; malformed layers are dropped silently.
+   *
+   * <p>Rate-limited (T46): each lookup triggers a Kademlia search and a reverse-garlic answer, the
+   * same DHT-query amplification the store path guards against, so it is gated on its own bucket
+   * ({@link #recordLookupRateLimiter}) before a search is started.
    */
   private static void handleRecordLookup(ServerContext serverContext, byte[] plaintext) {
     if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + ReturnPath.FIXED_LEN) {
       log.debug("flaschenpost v2 record lookup layer too short, dropping");
+      return;
+    }
+    if (!recordLookupRateLimiter.tryAcquire(System.currentTimeMillis())) {
+      log.debug("channel record lookup rate limit hit, dropping");
       return;
     }
     ByteBuffer buffer = ByteBuffer.wrap(plaintext);

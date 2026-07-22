@@ -161,6 +161,33 @@ public class RecordDhtRouterTest {
   }
 
   @Test
+  public void lookup_rateLimitExhausted_dropsWithoutSearching() throws Exception {
+    // Swap in a 1-token bucket with a refill interval far longer than the lookup job's own
+    // anti-profiling jitter (up to 1.5 s, see RecordLookupJob.LOOKUP_DELAY_JITTER_MS) so the second
+    // call is deterministically over budget regardless of how long the first answer takes.
+    RecordStoreRateLimiter previous =
+        GarlicRouter.swapRecordLookupRateLimiterForTest(
+            new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));
+    try {
+      KademliaId key =
+          ChannelDht.rendezvousKademliaId(randomChannelSecret(), System.currentTimeMillis());
+      byte[] layer = recordLookupLayer(key, zeroHopReturnPath());
+
+      // 1st lookup consumes the single token and is admitted (answers not-found asynchronously).
+      // 2nd lookup arrives immediately after → bucket empty → dropped before a search ever starts.
+      GarlicRouter.handle(node, singleLayerPacket(layer));
+      GarlicRouter.handle(node, singleLayerPacket(layer));
+
+      List<MailItem> items = awaitMailbox(ackOhId);
+      assertThat(items)
+          .as("only the 1st (admitted) lookup may produce an answer, the 2nd must be dropped")
+          .hasSize(1);
+    } finally {
+      GarlicRouter.swapRecordLookupRateLimiterForTest(previous);
+    }
+  }
+
+  @Test
   public void store_invalidRecord_isNotStored() throws Exception {
     // A record whose content is not padded to the fixed bucket size must be rejected by the node.
     byte[] secret = randomChannelSecret();
