@@ -32,10 +32,14 @@ public class Peer implements Comparable<Peer> {
   int cnt = 0;
   public long connectedSince = 0;
   private NodeId nodeId;
-  private SocketChannel socketChannel;
+  // volatile: readConnection()'s stale-connection guards compare these lock-free against a
+  // captured reference while setupConnectionForPeer() swaps them under writeBufferLock — without
+  // volatile the JMM permits a stale read, making a guard misfire and tear down the fresh
+  // replacement connection (REDPANDAJ-2EF review finding).
+  private volatile SocketChannel socketChannel;
   public ByteBuffer readBuffer;
   public ByteBuffer writeBuffer;
-  SelectionKey selectionKey;
+  volatile SelectionKey selectionKey;
   private boolean connected = false;
   public boolean isConnecting;
   public long lastPinged = 0;
