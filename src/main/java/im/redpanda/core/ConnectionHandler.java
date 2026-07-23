@@ -688,6 +688,10 @@ public class ConnectionHandler extends Thread {
     // ConnectionReaderThread.readConnection, Peer.disconnect(), Peer.decryptInputData() —
     // REDPANDAJ-2EF). Take the same lock so this post-handshake write neither races a reader
     // restoring leftover bytes nor writes into a buffer a reader has just claimed.
+    // Known pre-existing limitation (unchanged by T50): if the new connection's first socket
+    // bytes get decrypted by a reader before this copy runs, the handshake leftovers end up
+    // AFTER them in the plaintext stream — a misparse then disconnects and resyncs the
+    // connection. The lock prevents structural buffer corruption, not this ordering.
     peer.getWriteBufferLock().lock();
     try {
       if (peer.readBuffer == null) {
