@@ -263,7 +263,7 @@ public class Peer implements Comparable<Peer> {
       return;
     }
 
-    if (getSelectionKey() == null || writeBuffer == null) {
+    if (getSelectionKey() == null) {
       setConnected(false);
       return;
     }
@@ -276,13 +276,23 @@ public class Peer implements Comparable<Peer> {
     lastPinged = System.currentTimeMillis();
 
     if (writeBufferLock.tryLock()) {
-      if (writeBuffer.capacity() > 0) {
-        writeBuffer.put(Command.PING);
-        Log.put("pinged...", 100);
-      } else {
-        Log.put("didnt ping, buffer has content...", 100);
+      try {
+        // Re-read (and check) writeBuffer under the lock: disconnect() nulls it under this same
+        // lock, so checking it before acquiring the lock leaves a window in which the field turns
+        // null between the check and the tryLock() succeeding, NPE-ing on writeBuffer.capacity()
+        // below (REDPANDAJ-TD008).
+        ByteBuffer buffer = writeBuffer;
+        if (buffer == null) {
+          setConnected(false);
+        } else if (buffer.capacity() > 0) {
+          buffer.put(Command.PING);
+          Log.put("pinged...", 100);
+        } else {
+          Log.put("didnt ping, buffer has content...", 100);
+        }
+      } finally {
+        writeBufferLock.unlock();
       }
-      writeBufferLock.unlock();
     } else {
       Log.put("Could not lock for ping!", 50);
     }
@@ -508,6 +518,11 @@ public class Peer implements Comparable<Peer> {
       } catch (Exception e) {
         Log.putStd("Could not reserve enough memory for this connection. Disconnect peer...");
         disconnect("Could not reserve enough memory for this connection.");
+        // Early return (REDPANDAJ-TD010): without it the code below kept running on the peer
+        // disconnect() just tore down, re-populating socketChannel/selectionKey/cipherStreams
+        // (and, past the lock, writing into a writeBuffer that allocation never actually produced)
+        // on a peer that is now disconnected and whose buffers are null again.
+        return;
       }
 
       // set up the peer with all data from the peerInHandshake

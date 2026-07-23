@@ -160,9 +160,43 @@ public class PeerPerformanceTestGarlicMessageJobTest {
     job.done();
     job.done();
 
-    // One scoring pass counts the insert node twice (explicitly plus via the nodes loop, as it
-    // is part of the path) — a second done() must not add to that.
-    assertEquals(2, insertNode.getGmTestsFailed());
+    // One scoring pass counts the insert node exactly once (it is nodes.get(1), scored via the
+    // nodes loop; TD007 removed the historical duplicate explicit increment) — a second done()
+    // must not add to that.
+    assertEquals(1, insertNode.getGmTestsFailed());
+  }
+
+  /**
+   * Regression for TD007: {@code done()} used to score the insert peer's node twice on the success
+   * path too — once via an explicit {@code insertNode.increaseGmTestsSuccessful()} call and again
+   * via the {@code nodes} loop, because {@code insertNode} is always {@code nodes.get(1)} (the
+   * direct next hop {@code calculatePathOrAbort()} picked {@code flaschenPostInsertPeer} from). A
+   * non-insert node on the same path (e.g. {@code nodes.get(2)}) must be scored exactly once, and
+   * so must the insert node itself.
+   */
+  @Test
+  public void done_success_scoresInsertNodeOnlyOnceNotTwice() throws Exception {
+    Node ownNode = new Node(serverContext, serverContext.getNodeId());
+    Node insertNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+    Node hopNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+
+    PeerPerformanceTestGarlicMessageJob job =
+        new PeerPerformanceTestGarlicMessageJob(serverContext);
+    job.nodes = new ArrayList<>();
+    job.nodes.add(ownNode);
+    job.nodes.add(insertNode);
+    job.nodes.add(hopNode);
+    job.nodes.add(ownNode);
+
+    Peer insertPeer = new Peer("127.0.0.1", 1234, insertNode.getNodeId());
+    insertPeer.setNode(insertNode);
+    setPrivateField(job, "flaschenPostInsertPeer", insertPeer);
+    setPrivateField(job, "insertNode", insertNode);
+
+    job.success();
+
+    assertEquals(1, insertNode.getGmTestsSuccessful());
+    assertEquals(1, hopNode.getGmTestsSuccessful());
   }
 
   /**
@@ -203,9 +237,9 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
     job.work();
 
-    // done() ran and scored the timed-out test as failed in exactly one scoring pass (the insert
-    // node is counted twice per pass: explicitly plus via the nodes loop).
-    assertEquals(2, insertNode.getGmTestsFailed());
+    // done() ran and scored the timed-out test as failed in exactly one scoring pass, counting
+    // the insert node once (nodes.get(1), via the nodes loop; see TD007).
+    assertEquals(1, insertNode.getGmTestsFailed());
   }
 
   private static void setPrivateField(Object target, String name, Object value) throws Exception {
