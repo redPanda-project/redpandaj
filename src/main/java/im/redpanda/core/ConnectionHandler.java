@@ -681,11 +681,21 @@ public class ConnectionHandler extends Thread {
   }
 
   private void copyRemainingReadBytesToPeerBuffer(ByteBuffer tempHandshakeReadBuffer, Peer peer) {
-    if (tempHandshakeReadBuffer.hasRemaining()) {
+    if (!tempHandshakeReadBuffer.hasRemaining()) {
+      return;
+    }
+    // peer.readBuffer is only ever touched under writeBufferLock (claim/restore in
+    // ConnectionReaderThread.readConnection, Peer.disconnect(), Peer.decryptInputData() —
+    // REDPANDAJ-2EF). Take the same lock so this post-handshake write neither races a reader
+    // restoring leftover bytes nor writes into a buffer a reader has just claimed.
+    peer.getWriteBufferLock().lock();
+    try {
       if (peer.readBuffer == null) {
         peer.readBuffer = ByteBufferPool.borrowObject(tempHandshakeReadBuffer.remaining());
       }
       peer.readBuffer.put(tempHandshakeReadBuffer);
+    } finally {
+      peer.getWriteBufferLock().unlock();
     }
   }
 
