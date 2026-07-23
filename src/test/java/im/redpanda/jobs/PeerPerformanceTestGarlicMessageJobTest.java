@@ -1,5 +1,6 @@
 package im.redpanda.jobs;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -146,9 +147,87 @@ public class PeerPerformanceTestGarlicMessageJobTest {
     return job;
   }
 
+  /**
+   * Review follow-up for REDPANDAJ-2EG: done() can race with itself (GMAck arrival vs. timeout on
+   * the job-scheduler thread). {@code Job.done()} dedups only the cleanup — the scoring in the
+   * override must also run at most once, otherwise nodes are double-scored.
+   */
+  @Test
+  public void done_calledTwice_scoresInsertNodeOnlyOnce() throws Exception {
+    PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
+    Node insertNode = (Node) getPrivateField(job, "insertNode");
+
+    job.done();
+    job.done();
+
+    // One scoring pass counts the insert node twice (explicitly plus via the nodes loop, as it
+    // is part of the path) — a second done() must not add to that.
+    assertEquals(2, insertNode.getGmTestsFailed());
+  }
+
+  /**
+   * Review follow-up for REDPANDAJ-2EG: if init() throws inside calculatePathOrAbort() after the
+   * nodes path was populated but before insertNode was captured, the Job.run() catch-all calls
+   * done() with insertNode still null. Nothing was sent, so done() must terminate cleanly without
+   * scoring instead of throwing an NPE.
+   */
+  @Test
+  public void done_beforeInsertNodeCaptured_terminatesCleanlyWithoutScoring() throws Exception {
+    Node ownNode = new Node(serverContext, serverContext.getNodeId());
+    Node otherNode = new Node(serverContext, NodeId.generateWithSimpleKey());
+
+    PeerPerformanceTestGarlicMessageJob job =
+        new PeerPerformanceTestGarlicMessageJob(serverContext);
+    job.nodes = new ArrayList<>();
+    job.nodes.add(ownNode);
+    job.nodes.add(otherNode);
+    // insertNode and flaschenPostInsertPeer intentionally left unset (init() aborted mid-way).
+
+    job.done();
+
+    assertEquals(0, otherNode.getGmTestsFailed());
+  }
+
+  /**
+   * Review follow-up for REDPANDAJ-2EG: the timeout path must terminate the job even when the
+   * insert peer has disconnected — the old {@code getNode() != null} guard in work() left such jobs
+   * alive (and leaked in the running-jobs map) forever.
+   */
+  @Test
+  public void work_timeoutWithDisconnectedInsertPeer_terminatesJob() throws Exception {
+    PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
+    Node insertNode = (Node) getPrivateField(job, "insertNode");
+    // reRunDelay is 2500 ms; three runs exceed JOB_TIMEOUT (5000 ms).
+    setPrivateField(job, "runCounter", 3);
+    assertTrue(job.getEstimatedRuntime() > PeerPerformanceTestGarlicMessageJob.JOB_TIMEOUT);
+
+    job.work();
+
+    // done() ran and scored the timed-out test as failed in exactly one scoring pass (the insert
+    // node is counted twice per pass: explicitly plus via the nodes loop).
+    assertEquals(2, insertNode.getGmTestsFailed());
+  }
+
   private static void setPrivateField(Object target, String name, Object value) throws Exception {
-    Field field = target.getClass().getDeclaredField(name);
+    Field field = findField(target.getClass(), name);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static Object getPrivateField(Object target, String name) throws Exception {
+    Field field = findField(target.getClass(), name);
+    field.setAccessible(true);
+    return field.get(target);
+  }
+
+  private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
+    for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+      try {
+        return current.getDeclaredField(name);
+      } catch (NoSuchFieldException e) {
+        // continue with superclass
+      }
+    }
+    throw new NoSuchFieldException(name);
   }
 }

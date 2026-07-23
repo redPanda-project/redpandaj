@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
@@ -49,9 +50,18 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
    * Node of {@link #flaschenPostInsertPeer}, captured in {@code calculatePathOrAbort()} while it is
    * validated non-null under the NodeStore write lock. {@code Peer.disconnect()} calls {@code
    * clearNode()} at any time, so {@code done()} must use this stable reference instead of
-   * re-reading {@code flaschenPostInsertPeer.getNode()} (Sentry REDPANDAJ-2EG).
+   * re-reading {@code flaschenPostInsertPeer.getNode()} (Sentry REDPANDAJ-2EG). Volatile: written
+   * on the job-scheduler thread in init(), read in done() possibly from the thread parsing the
+   * GMAck.
    */
-  private Node insertNode;
+  private volatile Node insertNode;
+
+  /**
+   * done() can be entered concurrently (GMAck arrival via GMParser vs. timeout via the job
+   * scheduler). {@code Job.done()} is idempotent for the cleanup, but the scoring in our override
+   * must also run at most once (REDPANDAJ-2EG review follow-up).
+   */
+  private final AtomicBoolean scored = new AtomicBoolean(false);
 
   boolean includeReversedPath = false;
 
@@ -268,8 +278,22 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   public void done() {
     super.done();
 
+    // Only the first caller may score: done() can race with itself (GMAck thread vs. timeout on
+    // the job-scheduler thread), which used to double-score nodes and edges (REDPANDAJ-2EG
+    // review follow-up; super.done() only dedups the cleanup, not this override).
+    if (!scored.compareAndSet(false, true)) {
+      return;
+    }
+
     if (nodes.size() < 2) {
       throw new RuntimeException("job started with too less nodes, this should not happen");
+    }
+
+    // REDPANDAJ-2EG: done() can be reached before init() captured insertNode, e.g. when the
+    // Job.run() catch-all calls done() after an exception inside calculatePathOrAbort(). No
+    // garlic message was sent in that case, so there is nothing to score.
+    if (insertNode == null) {
+      return;
     }
 
     float scoreToAdd = 0;
