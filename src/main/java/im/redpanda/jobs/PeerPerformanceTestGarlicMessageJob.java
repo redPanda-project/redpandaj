@@ -216,15 +216,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     flaschenPostInsertPeer =
         serverContext.getPeerList().get(nodes.get(1).getNodeId().getKademliaId());
 
-    if (flaschenPostInsertPeer == null || flaschenPostInsertPeer.getNode() == null) {
+    // REDPANDAJ-2EG: read getNode() exactly once — the peer can disconnect (and clear its node)
+    // at any time, so a re-read after the null-check could still yield null. done() may run much
+    // later (GMAck arrival or timeout); the captured field stays valid regardless.
+    insertNode = flaschenPostInsertPeer == null ? null : flaschenPostInsertPeer.getNode();
+    if (flaschenPostInsertPeer == null || insertNode == null) {
       super.done();
       return true;
     }
-
-    // REDPANDAJ-2EG: capture the node reference while it is still validated under the NodeStore
-    // write lock. done() may run much later (GMAck arrival or timeout), by which time the peer
-    // may have disconnected and cleared its node — the field stays valid regardless.
-    insertNode = flaschenPostInsertPeer.getNode();
     return false;
   }
 
