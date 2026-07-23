@@ -1,13 +1,20 @@
 package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.Random;
 import org.junit.Test;
 
@@ -211,6 +218,134 @@ public class PeerTest {
     assertThat(staleReferenceBeforeDecrypt.position()).isEqualTo(0);
     assertThat(staleReferenceBeforeDecrypt.limit())
         .isEqualTo(staleReferenceBeforeDecrypt.capacity());
+  }
+
+  /**
+   * Regression for TD008: {@code disconnect()} nulls {@code writeBuffer} under {@code
+   * writeBufferLock}, while {@code sendPing()} used to check/use it before acquiring that lock — a
+   * full disconnect() (lock, null the field, unlock) could complete in the window between the
+   * pre-lock check and {@code tryLock()} succeeding, so the field was null again by the time the
+   * locked section dereferenced it. This test pins the end state of that race directly: {@code
+   * writeBuffer} is already null when {@code sendPing()} is entered (selectionKey still valid,
+   * exactly as a caller mid-{@code tryLock()} would observe it). Must not throw NPE.
+   */
+  @Test
+  public void sendPingWithNullWriteBufferDoesNotThrowNpe() throws Exception {
+    try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        Selector selector = Selector.open()) {
+      serverSocketChannel.configureBlocking(false);
+      serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+      int port = serverSocketChannel.socket().getLocalPort();
+
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
+        SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
+
+        Peer peer = new Peer("127.0.0.1", port, new NodeId());
+        peer.setConnected(true);
+        peer.setSocketChannel(accepted);
+        peer.setSelectionKey(key);
+        peer.writeBuffer = null;
+
+        peer.sendPing();
+
+        assertFalse(
+            "sendPing must mark the peer disconnected on a null writeBuffer", peer.isConnected());
+      }
+    }
+  }
+
+  /**
+   * Companion to {@link #sendPingWithNullWriteBufferDoesNotThrowNpe()}: the normal, non-null
+   * writeBuffer path must still queue a PING byte (guards against an overzealous TD008 fix).
+   */
+  @Test
+  public void sendPingWithNonNullWriteBufferPutsPingByte() throws Exception {
+    try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        Selector selector = Selector.open()) {
+      serverSocketChannel.configureBlocking(false);
+      serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+      int port = serverSocketChannel.socket().getLocalPort();
+
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
+        SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
+
+        Peer peer = new Peer("127.0.0.1", port, new NodeId());
+        peer.setConnected(true);
+        peer.setSocketChannel(accepted);
+        peer.setSelectionKey(key);
+        peer.writeBuffer = ByteBuffer.allocate(1024);
+
+        peer.sendPing();
+
+        assertEquals(1, peer.writeBuffer.position());
+        assertEquals(Command.PING, peer.writeBuffer.get(0));
+      }
+    }
+  }
+
+  /**
+   * Regression for TD010: on the (extremely rare) buffer-allocation failure branch of {@code
+   * setupConnectionForPeer}, the method used to keep running after calling {@code disconnect()},
+   * re-populating socketChannel/selectionKey/cipherStreams on the peer it had just torn down (and,
+   * for a non-light-client peer, going on to NPE on the still-null {@code writeBuffer} a few lines
+   * later). A genuine allocation failure is not deterministically/safely injectable without either
+   * exhausting the shared test-fork heap (risking every other test in the fork) or adding a
+   * production-only test seam, so this suite does not attempt to reproduce the OOM branch itself;
+   * see the inline comment at the {@code return} in {@code setupConnectionForPeer} for the
+   * reasoning. This test instead pins the unaffected happy path (allocation succeeds) so a future
+   * refactor of the added early return cannot silently break normal connection setup.
+   */
+  @Test
+  public void setupConnectionForPeer_happyPath_populatesConnectionStateAndBuffers()
+      throws Exception {
+    try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        Selector selector = Selector.open()) {
+      serverSocketChannel.configureBlocking(false);
+      serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+      int port = serverSocketChannel.socket().getLocalPort();
+
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
+        SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
+
+        PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", accepted);
+        peerInHandshake.setKey(key);
+        peerInHandshake.setLightClient(false);
+        peerInHandshake.setProtocolVersion(23);
+
+        Peer peer = new Peer("127.0.0.1", port, new NodeId());
+
+        peer.setupConnectionForPeer(peerInHandshake);
+
+        assertTrue(peer.isConnected());
+        assertTrue(peer.isAuthed());
+        assertNotNull(peer.writeBuffer);
+        assertEquals(300 * 1024, peer.writeBuffer.capacity());
+        assertNotNull(peer.writeBufferCrypted);
+        assertEquals(300 * 1024, peer.writeBufferCrypted.capacity());
+        assertSame(accepted, peer.getSocketChannel());
+        assertSame(key, peer.getSelectionKey());
+        // non-lightClient path queues UPDATE_REQUEST_TIMESTAMP + ANDROID_UPDATE_REQUEST_TIMESTAMP
+        assertEquals(2, peer.writeBuffer.position());
+      }
+    }
+  }
+
+  /**
+   * Accepts the next pending connection on {@code serverSocketChannel}, non-blocking-polling until
+   * it arrives, and configures it non-blocking. Returned channel is the caller's to close (use in
+   * try-with-resources) so loopback tests don't leak file descriptors across the suite.
+   */
+  private static SocketChannel acceptBlocking(ServerSocketChannel serverSocketChannel)
+      throws java.io.IOException {
+    SocketChannel accepted;
+    do {
+      accepted = serverSocketChannel.accept();
+    } while (accepted == null);
+    accepted.configureBlocking(false);
+    return accepted;
   }
 
   private void setUpTestCipherStreams(Peer peer) {

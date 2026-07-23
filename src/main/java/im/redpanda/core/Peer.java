@@ -263,7 +263,7 @@ public class Peer implements Comparable<Peer> {
       return;
     }
 
-    if (getSelectionKey() == null || writeBuffer == null) {
+    if (getSelectionKey() == null) {
       setConnected(false);
       return;
     }
@@ -276,13 +276,28 @@ public class Peer implements Comparable<Peer> {
     lastPinged = System.currentTimeMillis();
 
     if (writeBufferLock.tryLock()) {
-      if (writeBuffer.capacity() > 0) {
-        writeBuffer.put(Command.PING);
-        Log.put("pinged...", 100);
-      } else {
-        Log.put("didnt ping, buffer has content...", 100);
+      try {
+        // Re-read (and check) writeBuffer under the lock: disconnect() nulls it under this same
+        // lock, so checking it before acquiring the lock leaves a window in which the field turns
+        // null between the check and the tryLock() succeeding, NPE-ing on writeBuffer.remaining()
+        // below (REDPANDAJ-TD008).
+        ByteBuffer buffer = writeBuffer;
+        if (buffer == null) {
+          setConnected(false);
+        } else if (buffer.remaining() > 0) {
+          // remaining(), not capacity(): capacity is the fixed 300 KiB allocation size and is
+          // never 0, so the old capacity() check never actually skipped a full buffer — a put()
+          // on a genuinely full buffer would have thrown BufferOverflowException instead (Copilot
+          // review finding on this PR). remaining() is the free-space check the "buffer has
+          // content" log message below always intended.
+          buffer.put(Command.PING);
+          Log.put("pinged...", 100);
+        } else {
+          Log.put("didnt ping, buffer has content...", 100);
+        }
+      } finally {
+        writeBufferLock.unlock();
       }
-      writeBufferLock.unlock();
     } else {
       Log.put("Could not lock for ping!", 50);
     }
@@ -505,9 +520,18 @@ public class Peer implements Comparable<Peer> {
       try {
         writeBuffer = ByteBuffer.allocate(300 * 1024);
         writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
-      } catch (Exception e) {
+      } catch (Exception | OutOfMemoryError e) {
+        // ByteBuffer.allocate throws OutOfMemoryError (an Error, not an Exception) on genuine
+        // allocation failure -- the case this handler's log message and disconnect() call are
+        // actually for. A plain `catch (Exception e)` never caught it, making this defensive
+        // path dead code for its real purpose (Copilot review finding on this PR).
         Log.putStd("Could not reserve enough memory for this connection. Disconnect peer...");
         disconnect("Could not reserve enough memory for this connection.");
+        // Early return (REDPANDAJ-TD010): without it the code below kept running on the peer
+        // disconnect() just tore down, re-populating socketChannel/selectionKey/cipherStreams
+        // (and, past the lock, writing into a writeBuffer that allocation never actually produced)
+        // on a peer that is now disconnected and whose buffers are null again.
+        return;
       }
 
       // set up the peer with all data from the peerInHandshake

@@ -296,12 +296,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
 
     float scoreToAdd = 0;
-    // REDPANDAJ-2EG: use the insertNode captured in init() — flaschenPostInsertPeer.getNode()
-    // may have been nulled by a concurrent Peer.disconnect() (clearNode()) by now.
+    // TD007: insertNode is always nodes.get(1) — calculatePathOrAbort() picks
+    // flaschenPostInsertPeer (and captures insertNode from it) as the peer for that exact graph
+    // node, and NodeStore.maintainNodes() adds graph edges using peer.getNode() as the vertex, so
+    // both refer to the same Node instance. It is therefore already covered by the nodes loop
+    // below; a historical explicit increment here (predating the path-based selection, back when
+    // flaschenPostInsertPeer could be a node outside `nodes`) double-scored it on every run. The
+    // insertNode != null check above still gates the loop: it is how done() detects that init()
+    // never got as far as building a real path (see REDPANDAJ-2EG below).
     if (success) {
-      insertNode.increaseGmTestsSuccessful();
-      insertNode.seen();
-
       for (Node node : nodes) {
         node.increaseGmTestsSuccessful();
         node.seen();
@@ -309,7 +312,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
       scoreToAdd = DELTA_SUCCESS;
     } else {
-      insertNode.increaseGmTestsFailed();
       for (Node node : nodes) {
         node.increaseGmTestsFailed();
       }
