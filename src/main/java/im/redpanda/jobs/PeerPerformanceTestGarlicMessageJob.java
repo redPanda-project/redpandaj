@@ -44,6 +44,15 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   ArrayList<Node> nodes;
   boolean success = false;
   private Peer flaschenPostInsertPeer;
+
+  /**
+   * Node of {@link #flaschenPostInsertPeer}, captured in {@code calculatePathOrAbort()} while it is
+   * validated non-null under the NodeStore write lock. {@code Peer.disconnect()} calls {@code
+   * clearNode()} at any time, so {@code done()} must use this stable reference instead of
+   * re-reading {@code flaschenPostInsertPeer.getNode()} (Sentry REDPANDAJ-2EG).
+   */
+  private Node insertNode;
+
   boolean includeReversedPath = false;
 
   public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
@@ -87,10 +96,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     // TOCTOU (REDPANDAJ-2EC): calculatePathOrAbort() validated flaschenPostInsertPeer.getNode()
     // != null, but it did so under the NodeStore write lock which has since been released above.
     // The peer can disconnect in the meantime (Peer.disconnect() -> clearNode()), leaving
-    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully instead of
-    // dereferencing null.
-    Node insertNode = flaschenPostInsertPeer.getNode();
-    if (insertNode == null) {
+    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully (writing
+    // to a disconnected peer's buffer is pointless); done() itself is safe either way since it
+    // only uses the captured insertNode field (REDPANDAJ-2EG).
+    if (flaschenPostInsertPeer.getNode() == null) {
       done();
       return;
     }
@@ -201,6 +210,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
       super.done();
       return true;
     }
+
+    // REDPANDAJ-2EG: capture the node reference while it is still validated under the NodeStore
+    // write lock. done() may run much later (GMAck arrival or timeout), by which time the peer
+    // may have disconnected and cleared its node — the field stays valid regardless.
+    insertNode = flaschenPostInsertPeer.getNode();
     return false;
   }
 
@@ -243,10 +257,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   @Override
   public void work() {
     if (getEstimatedRuntime() > JOB_TIMEOUT) {
-
-      if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
-        done();
-      }
+      // REDPANDAJ-2EG: no getNode() guard here — the peer disconnecting must not keep the job
+      // alive forever (it would leak in the running-jobs map). work() only runs after init()
+      // completed, so insertNode is set and done() is safe to call.
+      done();
     }
   }
 
@@ -259,9 +273,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
 
     float scoreToAdd = 0;
+    // REDPANDAJ-2EG: use the insertNode captured in init() — flaschenPostInsertPeer.getNode()
+    // may have been nulled by a concurrent Peer.disconnect() (clearNode()) by now.
     if (success) {
-      flaschenPostInsertPeer.getNode().increaseGmTestsSuccessful();
-      flaschenPostInsertPeer.getNode().seen();
+      insertNode.increaseGmTestsSuccessful();
+      insertNode.seen();
 
       for (Node node : nodes) {
         node.increaseGmTestsSuccessful();
@@ -270,7 +286,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
       scoreToAdd = DELTA_SUCCESS;
     } else {
-      flaschenPostInsertPeer.getNode().increaseGmTestsFailed();
+      insertNode.increaseGmTestsFailed();
       for (Node node : nodes) {
         node.increaseGmTestsFailed();
       }
@@ -311,7 +327,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             + " hops: "
             + (nodes.size() - 1)
             + " inserted to peer: "
-            + flaschenPostInsertPeer.getNode()
+            + insertNode
             + ANSI_RESET
             + (includeReversedPath ? " REVERSED" : ""));
     // }
