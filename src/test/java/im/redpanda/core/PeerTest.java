@@ -237,12 +237,8 @@ public class PeerTest {
       serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
       int port = serverSocketChannel.socket().getLocalPort();
 
-      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port))) {
-        SocketChannel accepted;
-        do {
-          accepted = serverSocketChannel.accept();
-        } while (accepted == null);
-        accepted.configureBlocking(false);
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
         SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
 
         Peer peer = new Peer("127.0.0.1", port, new NodeId());
@@ -271,12 +267,8 @@ public class PeerTest {
       serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
       int port = serverSocketChannel.socket().getLocalPort();
 
-      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port))) {
-        SocketChannel accepted;
-        do {
-          accepted = serverSocketChannel.accept();
-        } while (accepted == null);
-        accepted.configureBlocking(false);
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
         SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
 
         Peer peer = new Peer("127.0.0.1", port, new NodeId());
@@ -314,12 +306,8 @@ public class PeerTest {
       serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
       int port = serverSocketChannel.socket().getLocalPort();
 
-      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port))) {
-        SocketChannel accepted;
-        do {
-          accepted = serverSocketChannel.accept();
-        } while (accepted == null);
-        accepted.configureBlocking(false);
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port));
+          SocketChannel accepted = acceptBlocking(serverSocketChannel)) {
         SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
 
         PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", accepted);
@@ -343,6 +331,21 @@ public class PeerTest {
         assertEquals(2, peer.writeBuffer.position());
       }
     }
+  }
+
+  /**
+   * Accepts the next pending connection on {@code serverSocketChannel}, non-blocking-polling until
+   * it arrives, and configures it non-blocking. Returned channel is the caller's to close (use in
+   * try-with-resources) so loopback tests don't leak file descriptors across the suite.
+   */
+  private static SocketChannel acceptBlocking(ServerSocketChannel serverSocketChannel)
+      throws java.io.IOException {
+    SocketChannel accepted;
+    do {
+      accepted = serverSocketChannel.accept();
+    } while (accepted == null);
+    accepted.configureBlocking(false);
+    return accepted;
   }
 
   private void setUpTestCipherStreams(Peer peer) {
