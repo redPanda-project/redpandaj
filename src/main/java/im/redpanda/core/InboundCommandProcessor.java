@@ -242,16 +242,30 @@ public class InboundCommandProcessor {
   }
 
   public void loopCommands(Peer peer, ByteBuffer readBuffer) {
+    loopCommands(peer, readBuffer, false);
+  }
+
+  /**
+   * @param callerOwnsBuffer {@code true} when the caller has exclusively claimed the buffer
+   *     beforehand (T50 / REDPANDAJ-2EF ownership handoff in {@code
+   *     ConnectionReaderThread.readConnection}: {@code peer.readBuffer} is {@code null} while this
+   *     runs, so a handler-triggered {@link Peer#disconnect(String)} cannot return the buffer to
+   *     the {@link ByteBufferPool} mid-loop). The buffer is then always compacted, keeping it in
+   *     write mode for the caller's restore/return step — even on a handler exception or
+   *     disconnect. With {@code false} (legacy wiring where the buffer is still referenced by
+   *     {@code peer.readBuffer}) compact only happens while the field still points at this buffer:
+   *     a handler-triggered disconnect already reset and returned the field's buffer
+   *     (REDPANDAJ-2DR), so compacting the stale reference afterwards would corrupt whatever the
+   *     pool's next borrower sees.
+   */
+  public void loopCommands(Peer peer, ByteBuffer readBuffer, boolean callerOwnsBuffer) {
     readBuffer.flip();
 
     int parsedBytesLocally = -1;
 
     // compact() must run even if a handler throws, otherwise the buffer state is left
     // inconsistent (flipped, position/limit not restored) and the connection keeps retrying
-    // the same malformed packet. But if a handler disconnected the peer (or grew the buffer),
-    // Peer.disconnect()/decryptInputData() already returned this exact buffer instance to
-    // ByteBufferPool (and possibly handed it to a different peer/thread) — compacting it here
-    // would then corrupt that other owner's buffer, so only compact if we still own it.
+    // the same malformed packet. See the javadoc above for when compacting is safe.
     try {
       while (readBuffer.hasRemaining() && parsedBytesLocally != 0 && peer.isConnected()) {
         int newPosition = readBuffer.position();
@@ -266,7 +280,7 @@ public class InboundCommandProcessor {
         readBuffer.position(newPosition);
       }
     } finally {
-      if (peer.readBuffer == readBuffer) {
+      if (callerOwnsBuffer || peer.readBuffer == readBuffer) {
         readBuffer.compact();
       }
     }

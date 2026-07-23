@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -282,7 +283,9 @@ public class ConnectionReaderThread implements Runnable {
     return true;
   }
 
-  private int readConnection(Peer peer) throws PeerProtocolException {
+  // package-private (instead of private) so the T50/REDPANDAJ-2EF regression tests can drive the
+  // claim/restore ownership handoff through the real code path.
+  int readConnection(Peer peer) throws PeerProtocolException {
 
     SelectionKey key = peer.selectionKey;
 
@@ -291,15 +294,25 @@ public class ConnectionReaderThread implements Runnable {
     // would parse data from a different peer.");
     // }
 
+    // Capture the channel we read from: a concurrent re-handshake of an already known peer
+    // (Peer.setupConnectionForPeer, IncomingHandler thread) replaces socketChannel, selectionKey
+    // and the cipher streams while this method runs. The captured instance lets us detect below
+    // that the bytes in myReaderBuffer belong to the OLD connection (REDPANDAJ-2EF/2EE).
+    SocketChannel channel = peer.getSocketChannel();
+
     int read = -2;
     String debugStringRead = myReaderBuffer.toString();
     try {
-      read = peer.getSocketChannel().read(myReaderBuffer);
+      read = channel.read(myReaderBuffer);
       Log.put("!!read bytes: " + read, 200);
     } catch (IOException e) {
       // e.printStackTrace();
       key.cancel();
-      peer.disconnect("could not read peer...");
+      // After a concurrent re-handshake the IOException stems from the old, already closed
+      // channel — tearing the peer down then would kill the freshly established connection.
+      if (peer.getSocketChannel() == channel) {
+        peer.disconnect("could not read peer...");
+      }
       return 0;
     } catch (Throwable e) {
       Log.sentry(e);
@@ -307,7 +320,9 @@ public class ConnectionReaderThread implements Runnable {
           "Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
       e.printStackTrace();
       key.cancel();
-      peer.disconnect("could not read...");
+      if (peer.getSocketChannel() == channel) {
+        peer.disconnect("could not read...");
+      }
       return 0;
     }
 
@@ -342,50 +357,79 @@ public class ConnectionReaderThread implements Runnable {
       return 0;
     } else if (read == -1) {
       Log.put("closing connection " + peer.ip + ": not readable! ", 100);
-      peer.disconnect(" read == -1 ");
+      if (peer.getSocketChannel() == channel) {
+        peer.disconnect(" read == -1 ");
+      }
       key.cancel();
     } else {
 
       Log.put("received bytes!", 200);
     }
 
-    if (peer.readBuffer == null) {
-      peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
-    }
-
-    /** Decrypt all bytes from the readBufferCrypted to the readBuffer */
-    peer.decryptInputData(myReaderBuffer);
-
-    // decryptInputData() may have grown the plaintext buffer: it returns the old, now-stale
-    // buffer instance to the ByteBufferPool and stores a larger one in peer.readBuffer. We must
-    // therefore read peer.readBuffer AFTER decrypting — using a reference captured beforehand
-    // would hand a pooled/reused buffer to loopCommands, whose flip()/compact() then corrupts
-    // pool state (observed as an invalid ByteBuffer[pos=0 lim=0] on the next borrowObject).
-    ByteBuffer readBuffer = peer.readBuffer;
-
-    inboundProcessor.loopCommands(peer, readBuffer);
-
-    // System.out.println("buffer after parse: " + readBuffer);
-
-    /**
-     * The readBuffer might be null if the peer is disconnected while parsing a command, the
-     * disconnect method handles the return of the readBuffer...
-     */
-    // Returning peer.readBuffer to the pool must be serialized with the other threads that touch
-    // it — Peer.decryptInputData() and Peer.disconnect() both do so under writeBufferLock. Doing
-    // it lock-free here raced a concurrent disconnect returning the same buffer, producing a
-    // double-return ("Object has already been returned to this pool", REDPANDAJ-2ED) or a buffer
-    // handed to a new owner while still referenced here (borrowObject then saw pos!=0,
-    // REDPANDAJ-2E8). Take the same lock and re-read the field inside it.
+    // Borrow, decrypt and CLAIM the plaintext buffer in one writeBufferLock section
+    // (REDPANDAJ-2EF): the former lock-free gap between decryptInputData() and the return block
+    // let a concurrent Peer.setupConnectionForPeer() -> disconnect() (IncomingHandler thread,
+    // re-handshake of an existing peer) return peer.readBuffer to the ByteBufferPool while
+    // loopCommands below was still flipping/compacting it — the pool then saw the buffer with
+    // pos!=0 ("borrowObject found an invalid ByteBuffer") or, worse, handed it to another
+    // connection while still in use here. Claiming the buffer (field -> local, field = null)
+    // makes this thread the exclusive owner for the whole parse: disconnect() only returns what
+    // is stored in the field, so it can no longer touch the buffer we are working on.
+    ByteBuffer claimedReadBuffer;
     peer.getWriteBufferLock().lock();
     try {
-      if (peer.readBuffer != null && peer.readBuffer.position() == 0) {
-        ByteBuffer toReturn = peer.readBuffer;
-        peer.readBuffer = null;
-        ByteBufferPool.returnObject(toReturn);
+      // If the connection we read from is gone or was replaced by a re-handshake, the bytes in
+      // myReaderBuffer belong to the OLD connection: decrypting them with the new cipher streams
+      // would desync the GCM frame nonce counter (REDPANDAJ-2EE) and their plaintext must not
+      // leak into the new connection. Drop them instead.
+      if (!peer.isConnected() || peer.getSocketChannel() != channel) {
+        myReaderBuffer.clear();
+        return read;
       }
+
+      if (peer.readBuffer == null) {
+        peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
+      }
+
+      // Decrypt all bytes from myReaderBuffer (ciphertext) to peer.readBuffer (plaintext).
+      // decryptInputData() takes the same lock (reentrant) and may grow the buffer: it returns
+      // the old, too-small instance to the ByteBufferPool and stores a larger one in
+      // peer.readBuffer, so the field must only be read AFTER decrypting (REDPANDAJ-2DT/2DV).
+      peer.decryptInputData(myReaderBuffer);
+
+      claimedReadBuffer = peer.readBuffer;
+      peer.readBuffer = null;
     } finally {
       peer.getWriteBufferLock().unlock();
+    }
+
+    try {
+      // Parse commands WITHOUT holding writeBufferLock: loopCommands can run long and its
+      // handlers take the lock themselves (writeBuffer replies) or call disconnect(); holding
+      // the lock across it would risk deadlocks and starve the outbound path. The claimed
+      // buffer is exclusively ours, so no lock is needed for it.
+      inboundProcessor.loopCommands(peer, claimedReadBuffer, true);
+    } finally {
+      // Return or restore the claimed buffer under the lock (pairs with the claim above and
+      // with the other owners of the field: Peer.decryptInputData(), Peer.disconnect() and
+      // ConnectionHandler.copyRemainingReadBytesToPeerBuffer() all serialize on it —
+      // REDPANDAJ-2E8/2ED history). Restore only if the very same connection is still alive
+      // and nobody stored a new buffer in the meantime; leftover bytes of a replaced or dead
+      // connection are garbage and must not leak into a new connection (REDPANDAJ-2EF/2EE).
+      peer.getWriteBufferLock().lock();
+      try {
+        boolean drained = claimedReadBuffer.position() == 0;
+        boolean sameConnectionAlive = peer.isConnected() && peer.getSocketChannel() == channel;
+        if (!drained && sameConnectionAlive && peer.readBuffer == null) {
+          peer.readBuffer = claimedReadBuffer;
+        } else {
+          claimedReadBuffer.position(0);
+          claimedReadBuffer.limit(claimedReadBuffer.capacity());
+          ByteBufferPool.returnObject(claimedReadBuffer);
+        }
+      } finally {
+        peer.getWriteBufferLock().unlock();
+      }
     }
 
     if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {

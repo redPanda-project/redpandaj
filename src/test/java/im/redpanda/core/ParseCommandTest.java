@@ -121,6 +121,43 @@ public class ParseCommandTest {
   }
 
   /**
+   * T50 / REDPANDAJ-2EF ownership handoff: when the caller has exclusively claimed the buffer
+   * beforehand ({@code peer.readBuffer} is {@code null}, so a handler-triggered {@link
+   * Peer#disconnect(String)} cannot return it to the pool mid-loop), {@code loopCommands} must
+   * compact the buffer even after a disconnecting handler — the caller still owns it and needs it
+   * back in write mode for its own restore/return step. Counterpart to {@link
+   * #loopCommands_doesNotTouchBufferAfterHandlerDisconnectsPeer()} which pins the legacy
+   * (non-owned) wiring.
+   */
+  @Test
+  public void loopCommands_compactsClaimedBufferEvenAfterHandlerDisconnectsPeer() {
+    ServerContext serverContext = new ServerContext();
+    InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
+
+    // not pool-managed on purpose: the buffer is "claimed" by the caller in this mode
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    buffer.put((byte) 0); // unknown command -> handler disconnects the peer
+    buffer.put(Command.PING); // one extra byte that must survive the compact
+
+    Peer peer = getPeerForDebug();
+    serverContext.getPeerList().add(peer);
+    peer.setConnected(true);
+    peer.readBuffer = null; // claimed: the field is empty while the caller parses
+
+    processor.loopCommands(peer, buffer, true);
+
+    assertThat(peer.isConnected()).isFalse();
+    assertThat(peer.readBuffer)
+        .as("disconnect() must not have grabbed the claimed buffer")
+        .isNull();
+    // compact() ran: the unparsed trailing byte was moved to the front, buffer is in write mode
+    assertThat(buffer.position()).isEqualTo(1);
+    assertThat(buffer.limit()).isEqualTo(buffer.capacity());
+    buffer.flip();
+    assertThat(buffer.get()).isEqualTo(Command.PING);
+  }
+
+  /**
    * REDPANDAJ-2E0: an unknown command byte (observed as command {@code 0} right after another
    * command, i.e. a stream desync) used to throw a {@code RuntimeException} that was only logged
    * while the peer stayed connected and kept re-hitting the same desynced byte on every read.

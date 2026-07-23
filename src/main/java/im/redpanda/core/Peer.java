@@ -32,10 +32,14 @@ public class Peer implements Comparable<Peer> {
   int cnt = 0;
   public long connectedSince = 0;
   private NodeId nodeId;
-  private SocketChannel socketChannel;
+  // volatile: readConnection()'s stale-connection guards compare these lock-free against a
+  // captured reference while setupConnectionForPeer() swaps them under writeBufferLock — without
+  // volatile the JMM permits a stale read, making a guard misfire and tear down the fresh
+  // replacement connection (REDPANDAJ-2EF review finding).
+  private volatile SocketChannel socketChannel;
   public ByteBuffer readBuffer;
   public ByteBuffer writeBuffer;
-  SelectionKey selectionKey;
+  volatile SelectionKey selectionKey;
   private boolean connected = false;
   public boolean isConnecting;
   public long lastPinged = 0;
@@ -478,34 +482,44 @@ public class Peer implements Comparable<Peer> {
     // disconnect old connection if present
     disconnect("new connection for this peer");
 
-    setConnected(true);
-    isConnecting = false;
-    authed = true;
-    retries = 0;
-    lightClient = peerInHandshake.lightClient;
-    protocolVersion = peerInHandshake.protocolVersion;
-    connectedSince = System.currentTimeMillis();
-
-    /** setup the buffers */
+    // The whole connection swap — state flags, buffers, socketChannel, selectionKey AND the
+    // cipher streams — happens in one writeBufferLock section: a concurrently running
+    // ConnectionReaderThread (readConnection/decryptInputData work under the same lock since
+    // REDPANDAJ-2EF) must never observe a half-replaced connection, e.g. the new GCM cipher
+    // streams combined with the old socketChannel, which desyncs the frame nonce counter
+    // (REDPANDAJ-2EE) or leaks bytes between the old and the new connection. The only caller
+    // (ConnectionHandler.setupConnection) already holds this lock; taking the reentrant lock
+    // here as well keeps the invariant local to this class.
     ReentrantLock writeBufferLock = getWriteBufferLock();
     writeBufferLock.lock();
     try {
-      writeBuffer = ByteBuffer.allocate(300 * 1024);
-      writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
-    } catch (Exception e) {
-      Log.putStd("Could not reserve enough memory for this connection. Disconnect peer...");
-      disconnect("Could not reserve enough memory for this connection.");
+      setConnected(true);
+      isConnecting = false;
+      authed = true;
+      retries = 0;
+      lightClient = peerInHandshake.lightClient;
+      protocolVersion = peerInHandshake.protocolVersion;
+      connectedSince = System.currentTimeMillis();
+
+      /** setup the buffers */
+      try {
+        writeBuffer = ByteBuffer.allocate(300 * 1024);
+        writeBufferCrypted = ByteBuffer.allocate(300 * 1024);
+      } catch (Exception e) {
+        Log.putStd("Could not reserve enough memory for this connection. Disconnect peer...");
+        disconnect("Could not reserve enough memory for this connection.");
+      }
+
+      // set up the peer with all data from the peerInHandshake
+      setLastPongReceived(System.currentTimeMillis());
+
+      setSocketChannel(peerInHandshake.getSocketChannel());
+      setSelectionKey(peerInHandshake.getKey());
+
+      setPeerChiperStreams(peerInHandshake.getPeerChiperStreams());
     } finally {
       writeBufferLock.unlock();
     }
-
-    // set up the peer with all data from the peerInHandshake
-    setLastPongReceived(System.currentTimeMillis());
-
-    setSocketChannel(peerInHandshake.getSocketChannel());
-    setSelectionKey(peerInHandshake.getKey());
-
-    setPeerChiperStreams(peerInHandshake.getPeerChiperStreams());
 
     if (!peerInHandshake.lightClient) {
       writeBufferLock.lock();
