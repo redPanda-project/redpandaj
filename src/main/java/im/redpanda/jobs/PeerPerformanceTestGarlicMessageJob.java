@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
@@ -44,6 +45,24 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   ArrayList<Node> nodes;
   boolean success = false;
   private Peer flaschenPostInsertPeer;
+
+  /**
+   * Node of {@link #flaschenPostInsertPeer}, captured in {@code calculatePathOrAbort()} while it is
+   * validated non-null under the NodeStore write lock. {@code Peer.disconnect()} calls {@code
+   * clearNode()} at any time, so {@code done()} must use this stable reference instead of
+   * re-reading {@code flaschenPostInsertPeer.getNode()} (Sentry REDPANDAJ-2EG). Volatile: written
+   * on the job-scheduler thread in init(), read in done() possibly from the thread parsing the
+   * GMAck.
+   */
+  private volatile Node insertNode;
+
+  /**
+   * done() can be entered concurrently (GMAck arrival via GMParser vs. timeout via the job
+   * scheduler). {@code Job.done()} is idempotent for the cleanup, but the scoring in our override
+   * must also run at most once (REDPANDAJ-2EG review follow-up).
+   */
+  private final AtomicBoolean scored = new AtomicBoolean(false);
+
   boolean includeReversedPath = false;
 
   public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
@@ -87,10 +106,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     // TOCTOU (REDPANDAJ-2EC): calculatePathOrAbort() validated flaschenPostInsertPeer.getNode()
     // != null, but it did so under the NodeStore write lock which has since been released above.
     // The peer can disconnect in the meantime (Peer.disconnect() -> clearNode()), leaving
-    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully instead of
-    // dereferencing null.
-    Node insertNode = flaschenPostInsertPeer.getNode();
-    if (insertNode == null) {
+    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully (writing
+    // to a disconnected peer's buffer is pointless); done() itself is safe either way since it
+    // only uses the captured insertNode field (REDPANDAJ-2EG).
+    if (flaschenPostInsertPeer.getNode() == null) {
       done();
       return;
     }
@@ -197,7 +216,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     flaschenPostInsertPeer =
         serverContext.getPeerList().get(nodes.get(1).getNodeId().getKademliaId());
 
-    if (flaschenPostInsertPeer == null || flaschenPostInsertPeer.getNode() == null) {
+    // REDPANDAJ-2EG: read getNode() exactly once — the peer can disconnect (and clear its node)
+    // at any time, so a re-read after the null-check could still yield null. done() may run much
+    // later (GMAck arrival or timeout); the captured field stays valid regardless.
+    insertNode = flaschenPostInsertPeer == null ? null : flaschenPostInsertPeer.getNode();
+    if (flaschenPostInsertPeer == null || insertNode == null) {
       super.done();
       return true;
     }
@@ -243,10 +266,10 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   @Override
   public void work() {
     if (getEstimatedRuntime() > JOB_TIMEOUT) {
-
-      if (flaschenPostInsertPeer != null && flaschenPostInsertPeer.getNode() != null) {
-        done();
-      }
+      // REDPANDAJ-2EG: no getNode() guard here — the peer disconnecting must not keep the job
+      // alive forever (it would leak in the running-jobs map). work() only runs after init()
+      // completed, so insertNode is set and done() is safe to call.
+      done();
     }
   }
 
@@ -254,14 +277,30 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
   public void done() {
     super.done();
 
+    // Only the first caller may score: done() can race with itself (GMAck thread vs. timeout on
+    // the job-scheduler thread), which used to double-score nodes and edges (REDPANDAJ-2EG
+    // review follow-up; super.done() only dedups the cleanup, not this override).
+    if (!scored.compareAndSet(false, true)) {
+      return;
+    }
+
     if (nodes.size() < 2) {
       throw new RuntimeException("job started with too less nodes, this should not happen");
     }
 
+    // REDPANDAJ-2EG: done() can be reached before init() captured insertNode, e.g. when the
+    // Job.run() catch-all calls done() after an exception inside calculatePathOrAbort(). No
+    // garlic message was sent in that case, so there is nothing to score.
+    if (insertNode == null) {
+      return;
+    }
+
     float scoreToAdd = 0;
+    // REDPANDAJ-2EG: use the insertNode captured in init() — flaschenPostInsertPeer.getNode()
+    // may have been nulled by a concurrent Peer.disconnect() (clearNode()) by now.
     if (success) {
-      flaschenPostInsertPeer.getNode().increaseGmTestsSuccessful();
-      flaschenPostInsertPeer.getNode().seen();
+      insertNode.increaseGmTestsSuccessful();
+      insertNode.seen();
 
       for (Node node : nodes) {
         node.increaseGmTestsSuccessful();
@@ -270,7 +309,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
       scoreToAdd = DELTA_SUCCESS;
     } else {
-      flaschenPostInsertPeer.getNode().increaseGmTestsFailed();
+      insertNode.increaseGmTestsFailed();
       for (Node node : nodes) {
         node.increaseGmTestsFailed();
       }
@@ -311,7 +350,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
             + " hops: "
             + (nodes.size() - 1)
             + " inserted to peer: "
-            + flaschenPostInsertPeer.getNode()
+            + insertNode
             + ANSI_RESET
             + (includeReversedPath ? " REVERSED" : ""));
     // }
