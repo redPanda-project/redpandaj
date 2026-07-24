@@ -54,8 +54,11 @@ public class ConnectionReaderThread implements Runnable {
   public static final AtomicLong REJECTED_LEGACY_V22_ATTEMPTS = new AtomicLong();
 
   // package-private (instead of private) so the T53/TD009 regression tests can prepare/observe
-  // this thread-local buffer's state directly, without having to engineer a live decrypt failure
-  // through a real socket for every scenario (mirrors the readConnection() precedent below).
+  // this per-reader-thread scratch buffer's state directly, without having to engineer a live
+  // decrypt failure through a real socket for every scenario (mirrors the readConnection()
+  // precedent below). Confined to a single thread because each ConnectionReaderThread instance
+  // is started on and only ever run by its own dedicated virtual thread (see the constructor) —
+  // not a java.lang.ThreadLocal.
   final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
   private final ServerContext serverContext;
   private final InboundCommandProcessor inboundProcessor;
@@ -292,9 +295,11 @@ public class ConnectionReaderThread implements Runnable {
 
     SelectionKey key = peer.selectionKey;
 
-    // Entry invariant (myReaderBuffer must be position 0, ready to fill) is enforced at the
-    // *end* of every call via assertReaderBufferReadyForNextRead() below, so it always holds
-    // here too (TD009 / T53).
+    // Entry invariant (myReaderBuffer must be position 0, ready to fill): every return path below
+    // leaves it at position 0 — either untouched from before this call (no bytes were appended to
+    // it on this path) or explicitly cleared (the stale-connection drop), or checked via
+    // assertReaderBufferReadyForNextRead() at the end of the normal read/decrypt/parse path — so
+    // it always holds here too (TD009 / T53). Not enforced by that one method call alone.
 
     // Capture the channel we read from: a concurrent re-handshake of an already known peer
     // (Peer.setupConnectionForPeer, IncomingHandler thread) replaces socketChannel, selectionKey
@@ -405,8 +410,8 @@ public class ConnectionReaderThread implements Runnable {
         // still leaves it dirty: the framed cipher drains myReaderBuffer completely into its own
         // internal frame-reassembly buffer (appendToInbound) *before* it can ever throw, so what
         // is left behind is position == limit (remaining() == 0, but position != 0), not a clean
-        // "ready for the next read" state. myReaderBuffer is a thread-local field this
-        // ConnectionReaderThread reuses across every future Peer it services (see run()'s poll
+        // "ready for the next read" state. myReaderBuffer is a per-reader-thread scratch field
+        // this ConnectionReaderThread reuses across every future Peer it services (see run()'s poll
         // loop), so left uncleared it would starve every subsequent read on this thread
         // (remaining() == 0 forever, channel.read() always returns 0) and, combined with the
         // tightened invariant guard below, could disconnect a later, unrelated peer for THIS
@@ -458,14 +463,14 @@ public class ConnectionReaderThread implements Runnable {
 
   /**
    * Invariant guard (TD009, T50 review finding, tightened in T53): {@code myReaderBuffer} must be
-   * fully drained (position 0) before this thread-local buffer is reused to read the next {@code
-   * Peer} this thread services (see the shared poll loop in {@link #run()}). Previously this only
-   * threw when {@code limit != capacity} too, tolerating a dirty buffer whenever a read happened to
-   * fill it to exactly capacity — any leftover ciphertext bytes there would be prefixed onto the
-   * next peer's bytes and decrypted under that peer's session keys: a cross-peer ciphertext-mixing
-   * window (theoretical — GCM authentication would almost certainly fail loudly on the mismatched
-   * key rather than silently yield valid-looking plaintext — but a real gap in the invariant
-   * nonetheless).
+   * fully drained (position 0) before this per-reader-thread scratch buffer is reused to read the
+   * next {@code Peer} this thread services (see the shared poll loop in {@link #run()}). Previously
+   * this only threw when {@code limit != capacity} too, tolerating a dirty buffer whenever a read
+   * happened to fill it to exactly capacity — any leftover ciphertext bytes there would be prefixed
+   * onto the next peer's bytes and decrypted under that peer's session keys: a cross-peer
+   * ciphertext-mixing window (theoretical — GCM authentication would almost certainly fail loudly
+   * on the mismatched key rather than silently yield valid-looking plaintext — but a real gap in
+   * the invariant nonetheless).
    *
    * <p>Analysis as of T53 (2026-07, after redpandaj#271/#272): every exception-free path through
    * {@link Peer#decryptInputData} ends in {@code ByteBuffer.compact()}, which always resets

@@ -16,8 +16,8 @@ import org.junit.Test;
 
 /**
  * Regression tests for TD009 (T50 review finding, fixed in T53): {@code myReaderBuffer} in {@link
- * ConnectionReaderThread} is a thread-local scratch buffer reused across every {@link Peer} this
- * reader thread services over its lifetime (see the shared poll loop in {@link
+ * ConnectionReaderThread} is a per-reader-thread scratch buffer reused across every {@link Peer}
+ * this reader thread services over its lifetime (see the shared poll loop in {@link
  * ConnectionReaderThread#run()}). If it is ever left with leftover ciphertext bytes after a read
  * (position != 0), those bytes would be prefixed onto whatever peer this thread reads next and
  * decrypted under THAT peer's session keys — a cross-peer ciphertext-mixing window.
