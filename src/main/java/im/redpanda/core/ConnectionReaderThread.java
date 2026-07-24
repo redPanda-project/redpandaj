@@ -53,7 +53,13 @@ public class ConnectionReaderThread implements Runnable {
    */
   public static final AtomicLong REJECTED_LEGACY_V22_ATTEMPTS = new AtomicLong();
 
-  private final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
+  // package-private (instead of private) so the T53/TD009 regression tests can prepare/observe
+  // this per-reader-thread scratch buffer's state directly, without having to engineer a live
+  // decrypt failure through a real socket for every scenario (mirrors the readConnection()
+  // precedent below). Confined to a single thread because each ConnectionReaderThread instance
+  // is started on and only ever run by its own dedicated virtual thread (see the constructor) —
+  // not a java.lang.ThreadLocal.
+  final ByteBuffer myReaderBuffer = ByteBuffer.allocate(1024 * 50);
   private final ServerContext serverContext;
   private final InboundCommandProcessor inboundProcessor;
 
@@ -289,10 +295,11 @@ public class ConnectionReaderThread implements Runnable {
 
     SelectionKey key = peer.selectionKey;
 
-    // if (myReaderBuffer.position() != 0) {
-    // throw new RuntimeException("buffer has to be at position 0, otherwise we
-    // would parse data from a different peer.");
-    // }
+    // Entry invariant (myReaderBuffer must be position 0, ready to fill): every return path below
+    // leaves it at position 0 — either untouched from before this call (no bytes were appended to
+    // it on this path) or explicitly cleared (the stale-connection drop), or checked via
+    // assertReaderBufferReadyForNextRead() at the end of the normal read/decrypt/parse path — so
+    // it always holds here too (TD009 / T53). Not enforced by that one method call alone.
 
     // Capture the channel we read from: a concurrent re-handshake of an already known peer
     // (Peer.setupConnectionForPeer, IncomingHandler thread) replaces socketChannel, selectionKey
@@ -395,7 +402,24 @@ public class ConnectionReaderThread implements Runnable {
       // decryptInputData() takes the same lock (reentrant) and may grow the buffer: it returns
       // the old, too-small instance to the ByteBufferPool and stores a larger one in
       // peer.readBuffer, so the field must only be read AFTER decrypting (REDPANDAJ-2DT/2DV).
-      peer.decryptInputData(myReaderBuffer);
+      try {
+        peer.decryptInputData(myReaderBuffer);
+      } catch (PeerProtocolException e) {
+        // decryptInputData() only compact()s myReaderBuffer (position -> 0) on success. A thrown
+        // PeerProtocolException (bad GCM frame length/nonce/tag, see GcmFramedStreams#decrypt)
+        // still leaves it dirty: the framed cipher drains myReaderBuffer completely into its own
+        // internal frame-reassembly buffer (appendToInbound) *before* it can ever throw, so what
+        // is left behind is position == limit (remaining() == 0, but position != 0), not a clean
+        // "ready for the next read" state. myReaderBuffer is a per-reader-thread scratch field
+        // this ConnectionReaderThread reuses across every future Peer it services (see run()'s poll
+        // loop), so left uncleared it would starve every subsequent read on this thread
+        // (remaining() == 0 forever, channel.read() always returns 0) and, combined with the
+        // tightened invariant guard below, could disconnect a later, unrelated peer for THIS
+        // peer's corruption. Clear it here, at the actual source of the dirty state, instead of
+        // relying on the invariant guard further down to notice (TD009 / T53 review follow-up).
+        myReaderBuffer.clear();
+        throw e;
+      }
 
       claimedReadBuffer = peer.readBuffer;
       peer.readBuffer = null;
@@ -432,12 +456,49 @@ public class ConnectionReaderThread implements Runnable {
       }
     }
 
-    if (myReaderBuffer.position() != 0 && myReaderBuffer.limit() != myReaderBuffer.capacity()) {
-      throw new RuntimeException(
-          "myReaderBuffer was not ready for the next read: " + myReaderBuffer);
-    }
+    assertReaderBufferReadyForNextRead(peer);
 
     return read;
+  }
+
+  /**
+   * Invariant guard (TD009, T50 review finding, tightened in T53): {@code myReaderBuffer} must be
+   * fully drained (position 0) before this per-reader-thread scratch buffer is reused to read the
+   * next {@code Peer} this thread services (see the shared poll loop in {@link #run()}). Previously
+   * this only threw when {@code limit != capacity} too, tolerating a dirty buffer whenever a read
+   * happened to fill it to exactly capacity — any leftover ciphertext bytes there would be prefixed
+   * onto the next peer's bytes and decrypted under that peer's session keys: a cross-peer
+   * ciphertext-mixing window (theoretical — GCM authentication would almost certainly fail loudly
+   * on the mismatched key rather than silently yield valid-looking plaintext — but a real gap in
+   * the invariant nonetheless).
+   *
+   * <p>Analysis as of T53 (2026-07, after redpandaj#271/#272): every exception-free path through
+   * {@link Peer#decryptInputData} ends in {@code ByteBuffer.compact()}, which always resets
+   * position to 0 ({@link GcmFramedStreams#decrypt} drains {@code myReaderBuffer} into its own
+   * {@code inbound} reassembly buffer unconditionally, before it can ever throw — see {@code
+   * appendToInbound}). The one path that used to leave it dirty (a thrown {@link
+   * PeerProtocolException} from a bad frame/tag) is now cleared at the throw site in {@link
+   * #readConnection}. No live path is known to reach this branch any more; it is kept as a
+   * defensive invariant guard against future decrypt paths, not because one currently exists.
+   *
+   * <p>Unlike a bare throw, this clears the buffer and disconnects {@code peer} itself: {@code
+   * run()}'s generic {@code catch (Throwable e)} only logs to Sentry, it does not touch {@code
+   * myReaderBuffer} or the peer — relying on the caller to "handle" the exception would leave the
+   * dirty bytes in place for whichever peer this thread services next, exactly the leak this guard
+   * exists to prevent. Package-private so {@code ConnectionReaderThreadBufferIsolationTest} can
+   * drive it directly with a manually-prepared buffer, without depending on a live decrypt failure
+   * to reach it.
+   */
+  void assertReaderBufferReadyForNextRead(Peer peer) throws PeerProtocolException {
+    if (myReaderBuffer.position() == 0) {
+      return;
+    }
+    String staleState = myReaderBuffer.toString();
+    myReaderBuffer.clear();
+    peer.disconnect("myReaderBuffer left dirty after read (TD009 invariant guard)");
+    throw new PeerProtocolException(
+        "myReaderBuffer was not ready for the next read, cleared buffer and disconnected peer: "
+            + staleState);
   }
 
   public static void sendHandshake(ServerContext serverContext, PeerInHandshake peerInHandshake) {
