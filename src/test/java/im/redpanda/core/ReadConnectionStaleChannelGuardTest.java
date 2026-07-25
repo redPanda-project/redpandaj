@@ -115,6 +115,34 @@ public class ReadConnectionStaleChannelGuardTest {
   }
 
   /**
+   * TD018 regression: when {@code channel.read()} fails with a non-{@link IOException} {@link
+   * Throwable} (e.g. a {@link RuntimeException}), {@code readConnection()} routes into its {@code
+   * catch (Throwable)} branch, which is where the {@code debugStringRead} buffer diagnostic is now
+   * built lazily (moved off the per-read hot path). This exercises that branch — building the debug
+   * string, cancelling the key, and disconnecting the single (un-swapped) connection — so the lazy
+   * construction cannot silently rot. Without a swap the guard must not suppress the disconnect.
+   */
+  @Test
+  public void nonIoThrowableFailureBuildsDebugStringAndDisconnectsSingleConnection()
+      throws Exception {
+    Peer peer = newConnectedPeer();
+    CancelTrackingSelectionKey key = new CancelTrackingSelectionKey();
+    peer.setSelectionKey(key);
+
+    SwapThenFailSocketChannel channel = new SwapThenFailSocketChannel(peer, null, true);
+    peer.setSocketChannel(channel);
+
+    int read = newReaderThread().readConnection(peer);
+
+    assertThat(read).isEqualTo(0);
+    assertThat(key.cancelled).isTrue();
+    assertThat(peer.isConnected())
+        .as(
+            "a non-IOException read failure on the single connection must still disconnect the peer")
+        .isFalse();
+  }
+
+  /**
    * On {@link #read(ByteBuffer)}, optionally swaps {@code peer.socketChannel} to a different
    * instance (simulating a concurrent re-handshake completing while this read is in flight), then
    * always fails with an {@link IOException}. Every other {@link SocketChannel} method is unused by
@@ -124,17 +152,27 @@ public class ReadConnectionStaleChannelGuardTest {
   private static final class SwapThenFailSocketChannel extends SocketChannel {
     private final Peer peer;
     private final SocketChannel swapTo;
+    private final boolean throwRuntime;
 
     SwapThenFailSocketChannel(Peer peer, SocketChannel swapTo) {
+      this(peer, swapTo, false);
+    }
+
+    SwapThenFailSocketChannel(Peer peer, SocketChannel swapTo, boolean throwRuntime) {
       super(SelectorProvider.provider());
       this.peer = peer;
       this.swapTo = swapTo;
+      this.throwRuntime = throwRuntime;
     }
 
     @Override
     public int read(ByteBuffer dst) throws IOException {
       if (swapTo != null) {
         peer.setSocketChannel(swapTo);
+      }
+      if (throwRuntime) {
+        // Non-IOException failure routes into readConnection()'s catch(Throwable) branch (TD018).
+        throw new RuntimeException("simulated non-IO read failure (TD018)");
       }
       throw new IOException("simulated read failure on a stale connection (TD012)");
     }
