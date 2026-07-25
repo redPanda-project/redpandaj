@@ -308,7 +308,6 @@ public class ConnectionReaderThread implements Runnable {
     SocketChannel channel = peer.getSocketChannel();
 
     int read = -2;
-    String debugStringRead = myReaderBuffer.toString();
     try {
       read = channel.read(myReaderBuffer);
       Log.put("!!read bytes: " + read, 200);
@@ -322,6 +321,12 @@ public class ConnectionReaderThread implements Runnable {
       }
       return 0;
     } catch (Throwable e) {
+      // TD018: build the buffer debug string lazily here, only on the exceptional path. It used to
+      // be constructed (ByteBuffer.toString() + string concat) on EVERY readConnection() call — a
+      // per-peer-read hot path — although it is consumed solely in this catch block. The buffer
+      // object is the same instance as before the read attempt; channel.read() throwing means it
+      // did not transfer bytes, so this still reflects the pre-read state (pos/lim/cap).
+      String debugStringRead = myReaderBuffer.toString();
       Log.sentry(e);
       Log.sentry(
           "Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);

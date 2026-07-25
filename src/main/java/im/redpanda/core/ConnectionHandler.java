@@ -729,11 +729,22 @@ public class ConnectionHandler extends Thread {
        */
       Peer oldPeer = peerList.add(peerOrigin);
       if (oldPeer != null && oldPeer.isConnected()) {
-        if (!peerOrigin.getNodeId().equals(oldPeer.getNodeId())) {
-          System.out.println("already connected to same node with same id");
-        } else {
-          System.out.println("already connected to same node with same ip+port");
-        }
+        // TD019: diagnostics only. The actual connection/registry decision has already been made
+        // above — by peerList.add() (returns the pre-existing peer on an identity match, otherwise
+        // registers this one) and by the atomic channel/stream swap in
+        // Peer.setupConnectionForPeer(); nothing here changes that outcome. The former "same node
+        // with same id" branch was removed as dead code (T54 analysis): peerList.add() only ever
+        // returns a non-null oldPeer whose NodeId equals peerOrigin's — either via the KademliaId
+        // hashmap hit, or via the ip+port branch that returns oldPeer only in its equal-NodeId
+        // else — so a "different id" case can never reach this point. Switched from
+        // System.out.println to the logger so real duplicate-connection incidents are traceable.
+        // The message names the guaranteed invariant (same node identity / KademliaId), not
+        // "same ip+port": peerList.add() also returns the pre-existing peer on a KademliaId
+        // hashmap hit whose ip+port may differ, so an ip+port claim would mislead operators
+        // (Copilot review, PR #275).
+        logger.info(
+            "already connected to a node with the same identity (KadId: {})",
+            peerInHandshake.getIdentity());
       }
 
       /** Lets search for the Node object for that peer and load it. */
