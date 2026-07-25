@@ -716,13 +716,6 @@ public class ConnectionHandler extends Thread {
       // update the selection key to the actual peer
       peerInHandshake.getKey().attach(peerOrigin);
 
-      // Log a clear success message for e2e and operators
-      logger.info(
-          "Connected successfully to {}:{} (KadId: {})",
-          peerOrigin.getIp(),
-          peerOrigin.getPort(),
-          peerInHandshake.getIdentity());
-
       /**
        * If this is a new connection not initialzed by us this peer might not be in our PeerList,
        * lets add it by KademliaId
@@ -752,6 +745,16 @@ public class ConnectionHandler extends Thread {
         peerOrigin.disconnect("duplicate parallel inbound connection; identity already registered");
         return;
       }
+
+      // Log a clear success message for e2e and operators. Placed after the TD020 duplicate check
+      // so it only fires for a connection we actually keep — not for a losing parallel duplicate
+      // that was just disconnected above (Copilot review, PR #276).
+      logger.info(
+          "Connected successfully to {}:{} (KadId: {})",
+          peerOrigin.getIp(),
+          peerOrigin.getPort(),
+          peerInHandshake.getIdentity());
+
       if (oldPeer != null && oldPeer.isConnected()) {
         // TD019: diagnostics only. Reaching here means oldPeer == peerOrigin (see the TD020 branch
         // above, which handles a distinct pre-existing winner): peerList.add() returned the very
