@@ -728,20 +728,44 @@ public class ConnectionHandler extends Thread {
        * lets add it by KademliaId
        */
       Peer oldPeer = peerList.add(peerOrigin);
+      if (oldPeer != null && oldPeer != peerOrigin) {
+        // TD020: two inbound connections from the same node raced. Both handshakes saw
+        // peerList.get(identity) == null in ConnectionReaderThread.parseHandshake and each built
+        // its own, fully connected Peer object; only the first to reach peerList.add() got
+        // registered. peerOrigin is the loser here — oldPeer (the winner) already holds this
+        // identity, so peerList.add() returned it without registering peerOrigin. peerOrigin is
+        // connected and being read by the selector (setupConnectionForPeer already adopted its
+        // socket/streams and its key is attached above) but is unreachable for outbound, because
+        // peerList.get(identity) returns oldPeer — i.e. a silent, un-healing orphan that keeps a
+        // socket and reader busy forever. Disconnect it so no unregistered, still-reading peer
+        // object survives; the winner keeps its own connection.
+        //
+        // The sequential half-open reconnect (T54) does NOT reach this branch: there parseHandshake
+        // found the already-registered peer and set it as peerOrigin, so peerList.add() returns
+        // that very object (oldPeer == peerOrigin) and the connection swap has already happened
+        // inside Peer.setupConnectionForPeer (PR #271) — that case is handled by the else-if
+        // diagnostic branch below, not here.
+        logger.info(
+            "duplicate parallel connection from the same identity (KadId: {}); disconnecting the "
+                + "unregistered duplicate",
+            peerInHandshake.getIdentity());
+        peerOrigin.disconnect("duplicate parallel inbound connection; identity already registered");
+        return;
+      }
       if (oldPeer != null && oldPeer.isConnected()) {
-        // TD019: diagnostics only. The actual connection/registry decision has already been made
-        // above — by peerList.add() (returns the pre-existing peer on an identity match, otherwise
-        // registers this one) and by the atomic channel/stream swap in
-        // Peer.setupConnectionForPeer(); nothing here changes that outcome. The former "same node
-        // with same id" branch was removed as dead code (T54 analysis): peerList.add() only ever
-        // returns a non-null oldPeer whose NodeId equals peerOrigin's — either via the KademliaId
-        // hashmap hit, or via the ip+port branch that returns oldPeer only in its equal-NodeId
-        // else — so a "different id" case can never reach this point. Switched from
-        // System.out.println to the logger so real duplicate-connection incidents are traceable.
-        // The message names the guaranteed invariant (same node identity / KademliaId), not
-        // "same ip+port": peerList.add() also returns the pre-existing peer on a KademliaId
-        // hashmap hit whose ip+port may differ, so an ip+port claim would mislead operators
-        // (Copilot review, PR #275).
+        // TD019: diagnostics only. Reaching here means oldPeer == peerOrigin (see the TD020 branch
+        // above, which handles a distinct pre-existing winner): peerList.add() returned the very
+        // peer we just re-registered, i.e. a reconnect/half-open swap whose atomic channel/stream
+        // replacement already happened in Peer.setupConnectionForPeer(); nothing here changes that
+        // outcome. The former "same node with same id" branch was removed as dead code (T54
+        // analysis): peerList.add() only ever returns a non-null oldPeer whose NodeId equals
+        // peerOrigin's — either via the KademliaId hashmap hit, or via the ip+port branch that
+        // returns oldPeer only in its equal-NodeId else — so a "different id" case can never reach
+        // this point. Switched from System.out.println to the logger so real duplicate-connection
+        // incidents are traceable. The message names the guaranteed invariant (same node identity /
+        // KademliaId), not "same ip+port": peerList.add() also returns the pre-existing peer on a
+        // KademliaId hashmap hit whose ip+port may differ, so an ip+port claim would mislead
+        // operators (Copilot review, PR #275).
         logger.info(
             "already connected to a node with the same identity (KadId: {})",
             peerInHandshake.getIdentity());
