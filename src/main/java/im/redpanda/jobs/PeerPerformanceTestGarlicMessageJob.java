@@ -304,6 +304,21 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     // flaschenPostInsertPeer could be a node outside `nodes`) double-scored it on every run. The
     // insertNode != null check above still gates the loop: it is how done() detects that init()
     // never got as far as building a real path (see REDPANDAJ-2EG below).
+    //
+    // TD017: the own node (serverContext.getNode()) is deliberately left in `nodes` twice — once
+    // as nodes.get(0) (path start in calculatePathOrAbort()) and once as the appended last element
+    // (the GMAck target = ourselves). Both positions are structurally required to build the nested
+    // garlic layers and the edge-scoring path below, so they are NOT deduplicated. The scoring loop
+    // therefore increments the own node's GM-test counters twice per run — but this is inert, not a
+    // bug: nothing acts on the own node's inflated stats. The only score-based decision that could
+    // touch it, NodeStore.removeBadScoredNode(), explicitly skips the own node
+    // (`node.equals(serverContext.getNode())`); NodeStore.addRandomNodeToGraph() sorts onHeap by
+    // score only to ADD new vertices, and the own node is already a graph vertex; and
+    // Peer.getPriority() reads Node.getGmTests* only for connected remote peers, which the own node
+    // never is. Unlike the TD007 insert-peer double-count (which was a real bug fixed in
+    // redpandaj#272), the own-node double-count changes no observable behavior, so it is documented
+    // here rather than removed (KISS — deduping would mean special-casing the own node inside the
+    // structurally-shared `nodes` list).
     if (success) {
       for (Node node : nodes) {
         node.increaseGmTestsSuccessful();
