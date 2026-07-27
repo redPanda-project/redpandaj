@@ -32,8 +32,12 @@ public class KademliaSearchJob extends Job {
       new HashMap<KademliaId, Long>();
 
   private static final ReentrantLock kademliaIdSearchBlacklistLock = new ReentrantLock();
-  private static final long BLACKLIST_KEY_FOR = 1000L * 30L;
-  // todo: we need a housekeeper for this hashmap!
+
+  /**
+   * How long a KademliaId stays blacklisted. Expired entries are evicted by {@link
+   * KademliaSearchJobHousekeeper}, which is started in {@code App}.
+   */
+  static final long BLACKLIST_KEY_FOR = 1000L * 30L;
 
   public static final int SEND_TO_NODES = 2;
   private static final int NONE = 0;
