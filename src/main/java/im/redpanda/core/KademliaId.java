@@ -119,6 +119,12 @@ public class KademliaId implements Serializable {
     if (o instanceof KademliaId nid) {
       return Arrays.equals(this.keyBytes, nid.keyBytes);
     }
+    // Pre-existing, deliberate strictness: a cross-type comparison is always a programming error
+    // here, and failing loudly beats silently returning false. It does technically deviate from the
+    // Object.equals contract, but nothing can reach it today — NodeId.equals and Node.equals both
+    // type-guard before delegating, and every container keyed by a KademliaId is homogeneously
+    // typed (audited for the H1 fix). Turning it into `return false` would be an orthogonal
+    // behaviour change that could mask real type confusion, so it is left as is.
     throw new RuntimeException("do not compare KademliaId to other objects!");
   }
 
