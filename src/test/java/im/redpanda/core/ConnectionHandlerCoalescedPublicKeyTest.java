@@ -99,7 +99,11 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
           ByteBuffer inbound = ByteBuffer.allocate(256);
           int expected = 1 + NodeId.PUBLIC_KEYLEN + 1 + 32;
           long deadline = System.currentTimeMillis() + 5_000;
-          // non-blocking + deadline: a regression must fail the assertions below, never hang CI
+          // SocketChannel.open() hands back a BLOCKING channel, in which read() parks until bytes
+          // arrive - a regression that writes fewer bytes than expected would hang the build
+          // instead of failing it. Switch to non-blocking so the deadline below actually bounds
+          // this loop (Copilot review, PR #288).
+          client.configureBlocking(false);
           while (inbound.position() < expected && System.currentTimeMillis() < deadline) {
             if (client.read(inbound) == 0) {
               Thread.sleep(10);
