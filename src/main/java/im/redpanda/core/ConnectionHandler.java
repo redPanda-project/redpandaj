@@ -38,6 +38,12 @@ public class ConnectionHandler extends Thread {
   public static Selector selector;
   public static final ReentrantLock selectorLock = new ReentrantLock();
 
+  /**
+   * Upper bound for {@link #parsePlaintextHandshakeCommands}: the plaintext phase only ever carries
+   * REQUEST_PUBLIC_KEY, SEND_PUBLIC_KEY and ACTIVATE_ENCRYPTION.
+   */
+  static final int MAX_PLAINTEXT_HANDSHAKE_COMMANDS_PER_READ = 3;
+
   public static ArrayList<PeerInHandshake> peerInHandshakes = new ArrayList<>();
   @Getter private ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
   public static BlockingQueue<Peer> peersToReadAndParse = new LinkedBlockingQueue<>(600);
@@ -665,7 +671,12 @@ public class ConnectionHandler extends Thread {
   private boolean parsePlaintextHandshakeCommands(
       PeerInHandshake peerInHandshake, ByteBuffer buffer) throws IOException {
 
-    while (buffer.hasRemaining()) {
+    // The plaintext phase knows exactly three commands, so a well-behaved peer never sends more
+    // than that in one read. The cap keeps a hostile peer from turning a single 117-byte read of
+    // REQUEST_PUBLIC_KEY bytes into 117 public-key writes (65 bytes each) back at it.
+    int commandsLeft = MAX_PLAINTEXT_HANDSHAKE_COMMANDS_PER_READ;
+
+    while (buffer.hasRemaining() && commandsLeft-- > 0) {
       byte command = buffer.get();
 
       if (command == Command.REQUEST_PUBLIC_KEY) {
