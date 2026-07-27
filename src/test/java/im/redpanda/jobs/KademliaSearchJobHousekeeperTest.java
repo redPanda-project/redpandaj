@@ -1,0 +1,92 @@
+package im.redpanda.jobs;
+
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.lang.ArchRule;
+import im.redpanda.core.KademliaId;
+import java.util.HashMap;
+import java.util.Map;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+public class KademliaSearchJobHousekeeperTest {
+
+  private final Map<KademliaId, Long> blacklistBackup = new HashMap<>();
+
+  @Before
+  public void backupBlacklist() {
+    KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
+    try {
+      blacklistBackup.putAll(KademliaSearchJob.getKademliaIdSearchBlacklist());
+      KademliaSearchJob.getKademliaIdSearchBlacklist().clear();
+    } finally {
+      KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();
+    }
+  }
+
+  @After
+  public void restoreBlacklist() {
+    KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
+    try {
+      KademliaSearchJob.getKademliaIdSearchBlacklist().clear();
+      KademliaSearchJob.getKademliaIdSearchBlacklist().putAll(blacklistBackup);
+    } finally {
+      KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();
+    }
+  }
+
+  @Test
+  public void work_evictsExpiredEntriesAndKeepsLiveOnes() {
+    KademliaId expired = new KademliaId();
+    KademliaId live = new KademliaId();
+
+    long now = System.currentTimeMillis();
+    KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
+    try {
+      KademliaSearchJob.getKademliaIdSearchBlacklist().put(expired, now - 1000L);
+      KademliaSearchJob.getKademliaIdSearchBlacklist().put(live, now + 60_000L);
+    } finally {
+      KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();
+    }
+
+    new KademliaSearchJobHousekeeper(null).work();
+
+    assertThat(KademliaSearchJob.getKademliaIdSearchBlacklist()).doesNotContainKey(expired);
+    assertThat(KademliaSearchJob.getKademliaIdSearchBlacklist()).containsKey(live);
+  }
+
+  /**
+   * The blacklist is fed from inbound, peer-controlled search requests, so the eviction interval is
+   * the only bound on its size. It must stay in the same order of magnitude as the entry lifetime.
+   */
+  @Test
+  public void runIntervalIsBoundedByTheBlacklistLifetime() {
+    assertThat(KademliaSearchJobHousekeeper.RUN_INTERVAL)
+        .isLessThanOrEqualTo(4L * KademliaSearchJob.BLACKLIST_KEY_FOR);
+  }
+
+  /**
+   * Regression for the bug hunt finding "housekeeper is never started": the class existed and was
+   * correct, but nothing instantiated it, so the blacklist grew for the whole process lifetime.
+   */
+  @Test
+  public void housekeeperIsWiredUpInApp() {
+    JavaClasses importedClasses = new ClassFileImporter().importPackages("im.redpanda");
+
+    ArchRule rule =
+        classes()
+            .that()
+            .haveFullyQualifiedName("im.redpanda.App")
+            .should()
+            .dependOnClassesThat()
+            .haveFullyQualifiedName("im.redpanda.jobs.KademliaSearchJobHousekeeper")
+            .because(
+                "the KademliaSearchJob blacklist is only bounded if the housekeeper is started");
+
+    rule.check(importedClasses);
+  }
+}

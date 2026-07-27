@@ -11,6 +11,7 @@ import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.GMManagerCleanJobs;
 import im.redpanda.jobs.KadRefreshJob;
+import im.redpanda.jobs.KademliaSearchJobHousekeeper;
 import im.redpanda.jobs.NodeConnectionPointsSeenJob;
 import im.redpanda.jobs.NodeInfoSetRefreshJob;
 import im.redpanda.jobs.OhAnnounceJob;
@@ -162,6 +163,9 @@ public class App {
     new SaveJobs(serverContext).start();
     new GMManagerCleanJobs(serverContext).start();
     new KadRefreshJob(serverContext).start();
+    // evicts expired entries from KademliaSearchJob's static search blacklist, which is fed
+    // from inbound (peer-controlled) search requests and would otherwise grow unboundedly
+    new KademliaSearchJobHousekeeper(serverContext).start();
     new NodeInfoSetRefreshJob(serverContext).start();
     new NodeConnectionPointsSeenJob(serverContext).start();
     new UpTimeReporterJob(serverContext).start();
