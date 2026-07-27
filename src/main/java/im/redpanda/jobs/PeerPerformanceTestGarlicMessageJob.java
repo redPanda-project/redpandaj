@@ -9,12 +9,14 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.GMAck;
 import im.redpanda.flaschenpost.GarlicMessage;
 import im.redpanda.store.NodeEdge;
+import im.redpanda.store.NodeStore;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
@@ -93,13 +95,17 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
 
   @Override
   public void init() {
-    serverContext.getNodeStore().getReadWriteLock().writeLock().lock();
+    // Same lock object for lock and unlock: serverContext's NodeStore can be replaced by
+    // NodeStore.saveToDisk()'s recovery path, and re-reading getNodeStore() for the unlock would
+    // then release a lock this thread never took (IllegalMonitorStateException).
+    Lock initGraphLock = serverContext.getNodeStore().getReadWriteLock().writeLock();
+    initGraphLock.lock();
     try {
       if (calculatePathOrAbort()) {
         return;
       }
     } finally {
-      serverContext.getNodeStore().getReadWriteLock().writeLock().unlock();
+      initGraphLock.unlock();
     }
     byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
 
@@ -333,9 +339,6 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
       scoreToAdd = DELTA_FAIL;
     }
 
-    DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph =
-        serverContext.getNodeStore().getNodeGraph();
-
     // The scoring loop below WRITES the shared JGraphT graph (setEdgeWeight) while reading its
     // structure (getEdge/containsEdge/getEdgeWeight). NodeStore.maintainNodes() mutates the same
     // graph (removeVertex/addEdge/setEdgeWeight) under the NodeStore write lock, so this loop must
@@ -345,9 +348,16 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     // against the maintainer thread. init() takes the same write lock (see above).
     // No blocking I/O runs under the lock: the path string is only assembled here and printed
     // after the lock is released.
+    // The NodeStore reference is resolved ONCE and both the lock and the graph are taken from it:
+    // NodeStore.saveToDisk() replaces serverContext's NodeStore on its recovery path, so re-reading
+    // getNodeStore() per access could unlock a different lock than was locked
+    // (IllegalMonitorStateException) or guard a different graph than the one being mutated.
+    NodeStore nodeStore = serverContext.getNodeStore();
+    Lock graphLock = nodeStore.getReadWriteLock().writeLock();
     String pathString = "";
-    serverContext.getNodeStore().getReadWriteLock().writeLock().lock();
+    graphLock.lock();
     try {
+      DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = nodeStore.getNodeGraph();
       Node nodeBefore = null;
       for (Node node : nodes) {
         if (nodeBefore != null) {
@@ -370,7 +380,7 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         nodeBefore = node;
       }
     } finally {
-      serverContext.getNodeStore().getReadWriteLock().writeLock().unlock();
+      graphLock.unlock();
     }
 
     // if (!success) {

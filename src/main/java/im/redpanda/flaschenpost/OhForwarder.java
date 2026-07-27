@@ -10,6 +10,7 @@ import im.redpanda.jobs.OhResolveJob;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
+import im.redpanda.store.NodeStore;
 import java.util.ArrayList;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -350,12 +351,17 @@ public final class OhForwarder {
       // The peer-list read lock above is already released, so no lock is nested here; the
       // established order elsewhere (NodeStore -> PeerList, see NodeStore.addServerEdges) is
       // therefore not violated.
-      Lock nodeStoreLock = serverContext.getNodeStore().getReadWriteLock().readLock();
+      // The NodeStore reference is resolved ONCE and lock, target lookup and graph all come from
+      // it: NodeStore.saveToDisk() replaces serverContext's NodeStore on its recovery path, so
+      // re-reading getNodeStore() per access could guard one store while traversing another's
+      // graph, defeating the mutual exclusion this lock exists for.
+      NodeStore nodeStore = serverContext.getNodeStore();
+      Lock nodeStoreLock = nodeStore.getReadWriteLock().readLock();
       GMParser.RouteSelection selection;
       nodeStoreLock.lock();
       try {
-        Node targetNode = serverContext.getNodeStore().get(targetNodeId);
-        org.jgrapht.Graph<Node, NodeEdge> graph = serverContext.getNodeStore().getNodeGraph();
+        Node targetNode = nodeStore.get(targetNodeId);
+        org.jgrapht.Graph<Node, NodeEdge> graph = nodeStore.getNodeGraph();
         selection =
             GMParser.selectBestRoutePeer(
                 graph, self, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
