@@ -137,4 +137,42 @@ public class LocalSettingsPersistenceTest {
     assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
     assertThat(tmpSettingsFile()).doesNotExist();
   }
+
+  /**
+   * The serialized node graph is the very object NodeStore mutates under its write lock (see the
+   * REDPANDAJ-2DW comment in NodeStore#maintainNodes). Serializing it without the matching read
+   * lock risks a ConcurrentModificationException; since #282 that no longer truncates the file, but
+   * the save fails and the graph never reaches the disk.
+   *
+   * <p>Asserted via the lock itself instead of a racing stress test: a save that takes the read
+   * lock cannot make progress while the write lock is held. That is deterministic and one-sided —
+   * see {@link ConcurrencyTestSupport}.
+   */
+  @Test(timeout = 60_000)
+  public void saveBlocksWhileTheNodeGraphWriteLockIsHeld() throws Exception {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    LocalSettings localSettings = serverContext.getLocalSettings();
+    localSettings.setUpdateTimestamp(4711L);
+
+    // buildDefaultServerContext builds the NodeStore, which is where the graph and its lock are
+    // handed over - so this also covers the wiring, not just LocalSettings itself.
+    ConcurrencyTestSupport.assertBlockedWhileHeld(
+        serverContext.getNodeStore().getReadWriteLock().writeLock(),
+        () -> localSettings.save(port));
+
+    assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
+    assertThat(tmpSettingsFile()).doesNotExist();
+  }
+
+  /** A LocalSettings that no NodeStore has adopted (e.g. Updater) still has to save. */
+  @Test(timeout = 60_000)
+  public void saveWorksWithoutANodeGraphLock() {
+    LocalSettings localSettings = new LocalSettings();
+    localSettings.setUpdateTimestamp(1234L);
+
+    localSettings.save(port);
+
+    assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(1234L);
+    assertThat(tmpSettingsFile()).doesNotExist();
+  }
 }

@@ -18,6 +18,6 @@ public class SaveJobs extends Job {
   public void work() {
     serverContext.getLocalSettings().save(serverContext.getPort());
     serverContext.getNodeStore().saveToDisk();
-    Saver.savePeers(serverContext.getPeerList().getPeerArrayList());
+    Saver.savePeers(serverContext.getPeerList());
   }
 }

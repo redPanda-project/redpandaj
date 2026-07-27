@@ -1,6 +1,7 @@
 package im.redpanda.store;
 
 import im.redpanda.core.KademliaId;
+import im.redpanda.core.LocalSettings;
 import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
@@ -71,7 +72,7 @@ public class NodeStore {
     if (serverContext.getLocalSettings() == null) {
       System.out.println("warning, could not restore nodeGraph from local settings....");
     } else {
-      nodeStore.nodeGraph = serverContext.getLocalSettings().getNodeGraph();
+      nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
     nodeStore.dbonHeap =
@@ -137,7 +138,7 @@ public class NodeStore {
     if (serverContext.getLocalSettings() == null) {
       Log.put("warning, could not restore nodeGraph from local settings....", 5);
     } else {
-      nodeStore.nodeGraph = serverContext.getLocalSettings().getNodeGraph();
+      nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
     nodeStore.dbonHeap = DBMaker.heapDB().make();
@@ -154,6 +155,17 @@ public class NodeStore {
                 .create();
 
     return nodeStore;
+  }
+
+  /**
+   * Takes over the persisted graph of {@code localSettings} as the live graph and hands the
+   * settings the read lock that guards it. From here on both sides agree on how the graph is
+   * protected: this store mutates it under {@link #readWriteLock}'s write lock (REDPANDAJ-2DW) and
+   * {@code LocalSettings.save()} serializes it under the read lock.
+   */
+  private void adoptGraphOf(LocalSettings localSettings) {
+    nodeGraph = localSettings.getNodeGraph();
+    localSettings.setNodeGraphLock(readWriteLock.readLock());
   }
 
   public void put(KademliaId kademliaId, Node node) {

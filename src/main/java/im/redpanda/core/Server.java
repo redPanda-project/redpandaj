@@ -76,7 +76,7 @@ public class Server {
       Thread.currentThread().interrupt();
     }
 
-    Saver.savePeers(serverContext.getPeerList().getPeerArrayList());
+    Saver.savePeers(serverContext.getPeerList());
     serverContext.getNodeStore().close();
     serverContext.getLocalSettings().save(serverContext.getPort());
   }

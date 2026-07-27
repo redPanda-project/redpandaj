@@ -1,10 +1,13 @@
 package im.redpanda.core;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -14,6 +17,38 @@ public class Saver {
 
   public static final String SAVE_DIR = "data";
 
+  /**
+   * Snapshots the peer list under its read lock and persists the snapshot.
+   *
+   * <p>The callers used to hand {@link PeerList#getPeerArrayList()} — the live list — straight to
+   * {@link #savePeers(List)}, which iterates it. Network threads add and remove peers concurrently,
+   * so the iteration could throw a {@code ConcurrentModificationException} and the save was lost
+   * (the same class of bug as redpandaj#260 and REDPANDAJ-2DZ; every other iteration site takes the
+   * lock). Only the snapshot is taken under the lock, the serialization and the file I/O run
+   * without it.
+   */
+  public static void savePeers(PeerList peerList) {
+    ArrayList<Peer> snapshot;
+    Lock readLock = peerList.getReadWriteLock().readLock();
+    readLock.lock();
+    try {
+      snapshot = new ArrayList<>(peerList.getPeerArrayList());
+    } finally {
+      readLock.unlock();
+    }
+    savePeers(snapshot);
+  }
+
+  /**
+   * Persists the given peers. Callers holding a {@link PeerList} must use {@link
+   * #savePeers(PeerList)} instead — this overload assumes the list is not mutated concurrently.
+   *
+   * <p>Written via a temporary file plus fsync and an atomic rename, for the same reason as {@code
+   * LocalSettings.save()}: writing in place truncates {@code peers.dat} first, so a failure half
+   * way through leaves a corrupt file behind. That is less severe here (an unreadable {@code
+   * peers.dat} only costs the known peers, {@link #loadPeers()} falls back to an empty map) but the
+   * pattern is three lines, so there is no reason to keep the truncating write.
+   */
   public static void savePeers(List<Peer> peers) {
     ArrayList<PeerSaveable> arrayList = new ArrayList<>();
 
@@ -29,19 +64,28 @@ public class Saver {
     mkdirs.mkdir();
 
     File file = new File(SAVE_DIR + "/peers.dat");
+    File tmpFile = new File(SAVE_DIR + "/peers.dat.tmp");
 
     try {
-      if (file.createNewFile()) {
-        log.info("Created new peers.dat file");
+      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile);
+          ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+        objectOutputStream.writeObject(arrayList);
+        objectOutputStream.flush();
+        fileOutputStream.getFD().sync();
       }
-      try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
-        try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
-          objectOutputStream.writeObject(arrayList);
-        }
-      }
+
+      Files.move(
+          tmpFile.toPath(),
+          file.toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE);
 
     } catch (IOException ex) {
       log.error("Could not save peers", ex);
+    } finally {
+      if (tmpFile.exists() && !tmpFile.delete()) {
+        log.info("could not delete temporary peers file {}", tmpFile);
+      }
     }
   }
 
