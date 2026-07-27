@@ -84,7 +84,24 @@ public class KademliaId implements Serializable {
   }
 
   /**
-   * Compares a KademliaId to this KademliaId
+   * Compares a KademliaId to this KademliaId.
+   *
+   * <p>This compares the full 160-bit id, byte for byte. It used to compare {@link #hashCode()}
+   * instead — i.e. a 32-bit {@link Arrays#hashCode(byte[])} digest of the 20 id bytes — so any two
+   * ids colliding on that digest were considered equal. That is a ~2^32 search, which is seconds of
+   * offline grinding, and it defeated every identity check built on this method: the handshake
+   * public-key/id binding ({@code ConnectionHandler}, {@code ConnectionReaderThread}), {@code
+   * NodeId.setKeys}'s keypair check, the {@code ChannelDht} anti-smuggling filter on DHT answers,
+   * and {@code isForUs}/next-hop checks in the flaschenpost layer. It also silently conflated two
+   * unrelated peers or DHT records into one slot in every map keyed by a KademliaId ({@code
+   * PeerList.peerHashMap}, {@code KadStoreManager.entries}, {@code
+   * KademliaSearchJob.kademliaIdSearchBlacklist}, the MapDB node stores, and — via {@link
+   * NodeId#equals} / {@code Node.equals} — the JGraphT routing graph).
+   *
+   * <p>{@link #hashCode()} is deliberately left unchanged: equal ids still produce equal hashes, so
+   * the equals/hashCode contract holds, and no hash-based container (including the persisted MapDB
+   * {@code nodeids*.mapdb} and the serialized node graph) changes its bucket layout — colliding
+   * entries simply stop being merged.
    *
    * @param o The KademliaId to compare to this KademliaId
    * @return boolean Whether the 2 KademliaIds are equal
@@ -100,11 +117,16 @@ public class KademliaId implements Serializable {
     }
 
     if (o instanceof KademliaId nid) {
-      return this.hashCode() == nid.hashCode();
+      return Arrays.equals(this.keyBytes, nid.keyBytes);
     }
     throw new RuntimeException("do not compare KademliaId to other objects!");
   }
 
+  /**
+   * Note: this is a 32-bit digest of the id and must therefore never be used as an equality or
+   * identity test on its own — see {@link #equals(Object)}. It is kept as-is so equal ids keep
+   * equal hashes and existing hash-based containers need no rehash/migration.
+   */
   @Override
   public int hashCode() {
     int hash = 7;
