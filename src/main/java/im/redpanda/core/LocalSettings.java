@@ -9,6 +9,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import lombok.extern.slf4j.Slf4j;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
@@ -59,25 +61,48 @@ public class LocalSettings implements Serializable {
     this.updateAndroidSignature = updateAndroidSignature;
   }
 
-  public void save(int port) {
+  /**
+   * Writes the settings to disk atomically: the object graph is serialized into a temporary file
+   * which only replaces the live file once it is complete. Serializing straight into the live file
+   * truncates it first, so any failure half way through (a {@link
+   * java.util.ConcurrentModificationException} from a collection mutated by another thread —
+   * REDPANDAJ-2E6 —, a full disk, ...) left behind a truncated file that {@link #load(int)} cannot
+   * read, and the node silently generated a new identity on the next start.
+   *
+   * <p>Synchronized because both the {@code SaveJobs} job and the update handling in {@code
+   * InboundCommandProcessor} call this, and two saves running at once would write the same file.
+   */
+  public synchronized void save(int port) {
+    File mkdirs = new File(Settings.SAVE_DIR);
+    mkdirs.mkdir();
+
+    File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
+    File tmpFile = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
+
     try {
-
-      File mkdirs = new File(Settings.SAVE_DIR);
-      mkdirs.mkdir();
-
-      File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
-
-      if (!file.createNewFile() && !file.exists()) {
-        throw new IOException("Could not create file " + file);
+      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile);
+          ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+        objectOutputStream.writeObject(this);
+        objectOutputStream.flush();
+        // force the bytes to disk before the rename, otherwise a crash right after the rename
+        // could leave an empty file where a complete old one used to be. Both streams are still
+        // open here, try-with-resources closes them at the end of the block.
+        fileOutputStream.getFD().sync();
       }
-      try (FileOutputStream fileOutputStream = new FileOutputStream(file)) {
-        try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
-          objectOutputStream.writeObject(this);
-        }
-      }
+
+      Files.move(
+          tmpFile.toPath(),
+          file.toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE);
 
     } catch (IOException ex) {
       log.info("error saving local settings", ex);
+    } finally {
+      // on success the temporary file has been renamed away, on failure it is incomplete
+      if (tmpFile.exists() && !tmpFile.delete()) {
+        log.info("could not delete temporary settings file {}", tmpFile);
+      }
     }
   }
 
