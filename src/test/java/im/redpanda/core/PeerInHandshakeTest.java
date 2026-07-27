@@ -192,4 +192,37 @@ public class PeerInHandshakeTest {
       channel.close();
     }
   }
+
+  /**
+   * Regression for T68 (a): {@code addConnection} used to return void, so {@code
+   * OutboundHandler.connectTo} reported success even when the registration had failed and the peer
+   * had already been disconnected again — {@code run()}'s {@code newConnections += 5} backoff
+   * pacing therefore never fired for those attempts.
+   */
+  @Test
+  public void addConnection_returnsFalseWhenRegistrationFails() throws Exception {
+    SocketChannel channel = SocketChannel.open();
+    channel.close(); // configureBlocking() on a closed channel throws ClosedChannelException
+
+    Peer peer = new Peer("127.0.0.1", 1234);
+    PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", peer, channel);
+
+    assertFalse(peerInHandshake.addConnection(false));
+  }
+
+  @Test
+  public void addConnection_returnsTrueWhenRegistrationSucceeds() throws Exception {
+    SocketChannel channel = SocketChannel.open();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", peer, channel);
+
+    try {
+      assertTrue(peerInHandshake.addConnection(false));
+    } finally {
+      if (peerInHandshake.getKey() != null) {
+        peerInHandshake.getKey().cancel();
+      }
+      channel.close();
+    }
+  }
 }

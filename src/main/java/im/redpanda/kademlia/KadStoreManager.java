@@ -32,7 +32,9 @@ public class KadStoreManager {
    */
   private static final int MIN_SIZE = 1024 * 1024 * 10;
 
-  private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; // 7 days
+  /** How long a stored entry is kept before the eviction sweep may drop it: 14 days. */
+  private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L;
+
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private static final Map<KademliaId, KadContent> entries = new HashMap<>();
