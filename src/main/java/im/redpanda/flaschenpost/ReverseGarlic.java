@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Objects;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
 
@@ -27,7 +28,41 @@ public final class ReverseGarlic {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
+  /**
+   * Global rate limiter for hop-carrying reverse-garlic emission (L1, bug hunt 2026-07-26).
+   *
+   * <p>The return-path hop descriptors are chosen entirely by the sender and never validated
+   * against the relays' real keys, so a deposit with a crafted return path makes this node emit an
+   * onion packet at an address of the attacker's choosing — bounded reflection. Amplification is
+   * already low (at most {@link ReturnPath#MAX_HOPS} hops, one ack-sized packet per deposit,
+   * fire-and-forget), but nothing capped the *rate* of attacker-driven emission. A single global
+   * bucket bounds it, following the same pattern as the record-store and record-lookup limiters in
+   * {@link GarlicRouter}: an unattributable garlic-wrapped path gets a global cap, not a per-source
+   * one.
+   *
+   * <p>Only the hop-carrying path is limited. With {@code hop_count = 0} this node is the final
+   * station itself — a local mailbox deposit or a normal MS02b forward toward the ack OH host, no
+   * sender-chosen destination and therefore no reflection — so the common direct-deposit R-ACK is
+   * never dropped by this.
+   */
+  private static volatile RecordStoreRateLimiter reflectionRateLimiter =
+      new RecordStoreRateLimiter(
+          RecordStoreRateLimiter.DEFAULT_CAPACITY,
+          RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
+          System.currentTimeMillis());
+
   private ReverseGarlic() {}
+
+  /**
+   * Test-only hook: swaps the reflection rate limiter for a small, deterministic bucket so tests
+   * can exercise exhaustion without wall-clock timing. Returns the previous instance so the caller
+   * can restore it.
+   */
+  static RecordStoreRateLimiter swapReflectionRateLimiterForTest(RecordStoreRateLimiter limiter) {
+    RecordStoreRateLimiter previous = reflectionRateLimiter;
+    reflectionRateLimiter = Objects.requireNonNull(limiter);
+    return previous;
+  }
 
   /**
    * Sends {@code payload} back along {@code returnPath}. The payload is deposited into the ack OH
@@ -39,6 +74,10 @@ public final class ReverseGarlic {
     List<ReturnPath.Hop> hops = returnPath.hops();
     if (hops.isEmpty()) {
       deliverLocally(serverContext, returnPath, payload);
+      return;
+    }
+    if (!reflectionRateLimiter.tryAcquire(System.currentTimeMillis())) {
+      log.debug("reverse-garlic emission rate limit reached, dropping payload");
       return;
     }
     byte[] packet;

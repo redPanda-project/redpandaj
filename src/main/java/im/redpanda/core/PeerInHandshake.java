@@ -1,9 +1,11 @@
 package im.redpanda.core;
 
+import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.CryptoUtils;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.security.InvalidKeyException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
@@ -230,8 +232,14 @@ public class PeerInHandshake {
   /**
    * Derives the session keys for this connection: X25519(ephemeralA, ephemeralB) + HKDF-SHA256 with
    * the sorted verify keys as salt (v23).
+   *
+   * @throws PeerProtocolException if the peer's ephemeral key is a degenerate X25519 point (RFC
+   *     7748 contributory-behaviour check, see {@link CryptoUtils#x25519}). A conforming client
+   *     derives its ephemeral public key from a random scalar and can never produce one, so this
+   *     only ever fires for a broken or hostile peer: drop the handshake quietly, like every other
+   *     protocol violation on this path.
    */
-  public void calculateSharedSecret(ServerContext serverContext) {
+  public void calculateSharedSecret(ServerContext serverContext) throws PeerProtocolException {
     if (nodeId == null || !nodeId.hasKey()) {
       throw new RuntimeException("calculateSharedSecret: missing the peers public NodeId keys");
     }
@@ -239,9 +247,15 @@ public class PeerInHandshake {
       throw new RuntimeException("calculateSharedSecret: ephemeral keys not exchanged yet");
     }
 
-    byte[] shared =
-        CryptoUtils.x25519(
-            ephemeralKeyFromUs, new X25519PublicKeyParameters(ephemeralPublicFromThem, 0));
+    byte[] shared;
+    try {
+      shared =
+          CryptoUtils.x25519(
+              ephemeralKeyFromUs, new X25519PublicKeyParameters(ephemeralPublicFromThem, 0));
+    } catch (InvalidKeyException e) {
+      throw new PeerProtocolException(
+          "degenerate ephemeral X25519 key from peer: " + e.getMessage());
+    }
 
     byte[] ourVerifyKey = serverContext.getNodeId().getVerifyKeyBytes();
     byte[] theirVerifyKey = nodeId.getVerifyKeyBytes();
