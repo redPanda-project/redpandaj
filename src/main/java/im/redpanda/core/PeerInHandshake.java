@@ -93,6 +93,7 @@ public class PeerInHandshake {
   }
 
   public void addConnection(boolean alreadyConnected) {
+    boolean registered = false;
     try {
       socketChannel.configureBlocking(false);
 
@@ -114,10 +115,29 @@ public class PeerInHandshake {
       this.key = key;
 
       ConnectionHandler.selector.wakeup();
+      registered = true;
     } catch (IOException ex) {
       ex.printStackTrace();
-      peer.disconnect("could not init connection....");
-      return;
+    } finally {
+      if (!registered) {
+        // The channel we just failed to register is OUR field — peer.disconnect() closes
+        // peer.socketChannel, which is still null at this point (it is only handed over to the
+        // Peer once the handshake completes), so it would leave this channel open forever.
+        // The finally also covers unchecked failures (e.g. ClosedSelectorException during
+        // shutdown), which propagate to the caller after the channel has been released.
+        closeSocketChannelQuietly();
+        if (peer != null) {
+          peer.disconnect("could not init connection....");
+        }
+      }
+    }
+  }
+
+  private void closeSocketChannelQuietly() {
+    try {
+      socketChannel.close();
+    } catch (IOException closeEx) {
+      closeEx.printStackTrace();
     }
   }
 

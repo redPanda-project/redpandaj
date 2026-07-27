@@ -1,8 +1,12 @@
 package im.redpanda.core;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.security.Security;
 import org.junit.Test;
 
@@ -156,5 +160,36 @@ public class PeerInHandshakeTest {
     PeerInHandshake phWithoutPublicKey2 = new PeerInHandshake("ip", peerWithoutPublicKey2, null);
 
     assertFalse(phWithoutPublicKey2.hasPublicKey());
+  }
+
+  /**
+   * Regression for M4 (bug hunt 2026-07-26): when the registration of a freshly opened outgoing
+   * channel fails, {@code addConnection} used to call {@code peer.disconnect(...)}, which closes
+   * {@code peer.socketChannel} — still null at that point, since the channel is only handed over to
+   * the Peer once the handshake completed. The channel that actually failed to register stayed open
+   * forever.
+   */
+  @Test
+  public void addConnection_closesItsOwnChannelWhenRegistrationFails() throws Exception {
+    Selector originalSelector = ConnectionHandler.selector;
+    Selector closedSelector = Selector.open();
+    closedSelector.close();
+
+    SocketChannel channel = SocketChannel.open();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", peer, channel);
+
+    ConnectionHandler.selector = closedSelector;
+    try {
+      // registering with a closed selector fails; the exception itself may propagate, but the
+      // channel must not survive it
+      Throwable thrown = catchThrowable(() -> peerInHandshake.addConnection(false));
+
+      assertThat(thrown).isNotNull();
+      assertThat(channel.isOpen()).isFalse();
+    } finally {
+      ConnectionHandler.selector = originalSelector;
+      channel.close();
+    }
   }
 }
