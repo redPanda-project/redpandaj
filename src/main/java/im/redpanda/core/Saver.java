@@ -18,6 +18,14 @@ public class Saver {
   public static final String SAVE_DIR = "data";
 
   /**
+   * Guards the write to {@code peers.dat}. The recurring {@code SaveJobs} and {@code
+   * Server.shutdown} can both be in {@link #savePeers(List)} at the same time, and they would race
+   * on the shared temporary file and its rename. Mirrors the {@code synchronized} on {@code
+   * LocalSettings.save(int)}.
+   */
+  private static final Object SAVE_LOCK = new Object();
+
+  /**
    * Snapshots the peer list under its read lock and persists the snapshot.
    *
    * <p>The callers used to hand {@link PeerList#getPeerArrayList()} — the live list — straight to
@@ -47,7 +55,8 @@ public class Saver {
    * LocalSettings.save()}: writing in place truncates {@code peers.dat} first, so a failure half
    * way through leaves a corrupt file behind. That is less severe here (an unreadable {@code
    * peers.dat} only costs the known peers, {@link #loadPeers()} falls back to an empty map) but the
-   * pattern is three lines, so there is no reason to keep the truncating write.
+   * pattern is three lines, so there is no reason to keep the truncating write. The write is
+   * serialized on {@link #SAVE_LOCK} so that two savers cannot race on the shared temporary file.
    */
   public static void savePeers(List<Peer> peers) {
     ArrayList<PeerSaveable> arrayList = new ArrayList<>();
@@ -66,25 +75,27 @@ public class Saver {
     File file = new File(SAVE_DIR + "/peers.dat");
     File tmpFile = new File(SAVE_DIR + "/peers.dat.tmp");
 
-    try {
-      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile);
-          ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
-        objectOutputStream.writeObject(arrayList);
-        objectOutputStream.flush();
-        fileOutputStream.getFD().sync();
-      }
+    synchronized (SAVE_LOCK) {
+      try {
+        try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile);
+            ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+          objectOutputStream.writeObject(arrayList);
+          objectOutputStream.flush();
+          fileOutputStream.getFD().sync();
+        }
 
-      Files.move(
-          tmpFile.toPath(),
-          file.toPath(),
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE);
+        Files.move(
+            tmpFile.toPath(),
+            file.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE);
 
-    } catch (IOException ex) {
-      log.error("Could not save peers", ex);
-    } finally {
-      if (tmpFile.exists() && !tmpFile.delete()) {
-        log.info("could not delete temporary peers file {}", tmpFile);
+      } catch (IOException ex) {
+        log.error("Could not save peers", ex);
+      } finally {
+        if (tmpFile.exists() && !tmpFile.delete()) {
+          log.info("could not delete temporary peers file {}", tmpFile);
+        }
       }
     }
   }

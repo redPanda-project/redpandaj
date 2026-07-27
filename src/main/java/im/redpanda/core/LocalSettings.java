@@ -115,15 +115,9 @@ public class LocalSettings implements Serializable {
     File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
     File tmpFile = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
 
-    byte[] serialized;
     try {
-      serialized = serializeUnderGraphLock();
-    } catch (IOException ex) {
-      log.info("error serializing local settings", ex);
-      return;
-    }
+      byte[] serialized = serializeUnderGraphLock();
 
-    try {
       try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile)) {
         fileOutputStream.write(serialized);
         fileOutputStream.flush();
