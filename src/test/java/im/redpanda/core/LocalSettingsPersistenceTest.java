@@ -4,8 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.security.Security;
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -22,20 +27,27 @@ public class LocalSettingsPersistenceTest {
   public void setUp() {
     // Use a unique, unlikely port to avoid clobbering other tests/files
     port = 49123;
-    // Cleanup pre-existing file if any
-    File f = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
-    if (f.exists()) {
-      // best effort
-      f.delete();
-    }
+    // Cleanup pre-existing files if any
+    deleteSettingsFiles();
   }
 
   @After
   public void tearDown() {
-    File f = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
-    if (f.exists()) {
-      f.delete();
-    }
+    deleteSettingsFiles();
+  }
+
+  private void deleteSettingsFiles() {
+    // best effort
+    settingsFile().delete();
+    tmpSettingsFile().delete();
+  }
+
+  private File settingsFile() {
+    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
+  }
+
+  private File tmpSettingsFile() {
+    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
   }
 
   @Test
@@ -59,5 +71,70 @@ public class LocalSettingsPersistenceTest {
     assertNotNull(loaded.getMyIdentity());
     assertNotNull(loaded.getNodeGraph());
     assertNotNull(loaded.getSystemUpTimeData());
+    assertThat(tmpSettingsFile()).doesNotExist();
+  }
+
+  /**
+   * Regression test for REDPANDAJ-2E6: a save that blows up half way through serialization (there:
+   * a ConcurrentModificationException on a collection another thread was mutating) must not destroy
+   * the settings file that is already on disk — it holds the node identity.
+   */
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  @Test
+  public void failedSaveKeepsPreviousFile() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.setUpdateTimestamp(4711L);
+    ls.save(port);
+
+    byte[] savedFile = Files.readAllBytes(settingsFile().toPath());
+
+    // a vertex that is not serializable makes writeObject fail in the middle of the object graph,
+    // just like the ConcurrentModificationException did
+    ((DefaultDirectedWeightedGraph) ls.getNodeGraph()).addVertex(new Object());
+    ls.setUpdateTimestamp(999L);
+
+    ls.save(port);
+
+    assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
+    // asserted as a boolean, an array comparison would dump both files into the failure message
+    assertThat(Arrays.equals(savedFile, Files.readAllBytes(settingsFile().toPath())))
+        .as("the settings file on disk must be byte identical to the last successful save")
+        .isTrue();
+    assertThat(tmpSettingsFile()).doesNotExist();
+  }
+
+  /**
+   * SaveJobs and the update handling in InboundCommandProcessor both call save(), and both saves
+   * write the same file (and the same temporary file). save() therefore has to hold the monitor of
+   * the settings instance for the whole write.
+   */
+  @Test(timeout = 60_000)
+  public void savesExcludeEachOther() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.setUpdateTimestamp(4711L);
+
+    CountDownLatch saveStarted = new CountDownLatch(1);
+    CountDownLatch saveFinished = new CountDownLatch(1);
+    Thread saver =
+        new Thread(
+            () -> {
+              saveStarted.countDown();
+              ls.save(port);
+              saveFinished.countDown();
+            });
+
+    synchronized (ls) {
+      saver.start();
+      assertThat(saveStarted.await(30, TimeUnit.SECONDS)).isTrue();
+      // a save that does not take the monitor would be through in well under a second
+      assertThat(saveFinished.await(1, TimeUnit.SECONDS))
+          .as("save() must not write while another thread holds the settings monitor")
+          .isFalse();
+    }
+
+    assertThat(saveFinished.await(30, TimeUnit.SECONDS)).isTrue();
+    saver.join();
+    assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
+    assertThat(tmpSettingsFile()).doesNotExist();
   }
 }
