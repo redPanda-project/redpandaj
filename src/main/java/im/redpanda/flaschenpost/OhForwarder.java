@@ -10,6 +10,7 @@ import im.redpanda.jobs.OhResolveJob;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
+import im.redpanda.store.NodeStore;
 import java.util.ArrayList;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -342,11 +343,31 @@ public final class OhForwarder {
     // greedy Kademlia step below until it is available.
     Node self = serverContext.getNode();
     if (self != null) {
-      Node targetNode = serverContext.getNodeStore().get(targetNodeId);
-      org.jgrapht.Graph<Node, NodeEdge> graph = serverContext.getNodeStore().getNodeGraph();
-      GMParser.RouteSelection selection =
-          GMParser.selectBestRoutePeer(
-              graph, self, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
+      // maintainNodes() restructures the graph under the NodeStore write lock (Sentry
+      // REDPANDAJ-2DW/2E5 fix). selectBestRoutePeer() walks it with containsVertex/getEdge/
+      // getEdgeWeight plus a full Dijkstra traversal, so it needs the read lock here — exactly
+      // like the other caller in GMParser.route(). Without it a concurrent removeVertex/addEdge
+      // yields a CME (dropped OH/garlic message) or an inconsistent path.
+      // The peer-list read lock above is already released, so no lock is nested here; the
+      // established order elsewhere (NodeStore -> PeerList, see NodeStore.addServerEdges) is
+      // therefore not violated.
+      // The NodeStore reference is resolved ONCE and lock, target lookup and graph all come from
+      // it: NodeStore.saveToDisk() replaces serverContext's NodeStore on its recovery path, so
+      // re-reading getNodeStore() per access could guard one store while traversing another's
+      // graph, defeating the mutual exclusion this lock exists for.
+      NodeStore nodeStore = serverContext.getNodeStore();
+      Lock nodeStoreLock = nodeStore.getReadWriteLock().readLock();
+      GMParser.RouteSelection selection;
+      nodeStoreLock.lock();
+      try {
+        Node targetNode = nodeStore.get(targetNodeId);
+        org.jgrapht.Graph<Node, NodeEdge> graph = nodeStore.getNodeGraph();
+        selection =
+            GMParser.selectBestRoutePeer(
+                graph, self, candidates, targetNode, GMParser.MAX_ROUTE_WEIGHT);
+      } finally {
+        nodeStoreLock.unlock();
+      }
 
       if (selection.peer() != null) {
         return selection.peer();
