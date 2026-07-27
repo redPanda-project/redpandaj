@@ -9,6 +9,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -127,17 +129,29 @@ public class ConnectionHandlerSocketLeakTest {
     peer.setConnected(true);
     key.attach(peer);
 
-    // fill the bounded queue up to its capacity
-    while (ConnectionHandler.peersToReadAndParse.offer(new Peer("127.0.0.2", 1))) {
-      // intentionally empty
+    // Filling the real queue up to its capacity made this test flaky: peersToReadAndParse is
+    // static and any ConnectionReaderThread left behind by an earlier test class keeps polling it,
+    // so the queue could have room again by the time handleKeyReadable ran and the peer was never
+    // disconnected. A queue that always rejects is the same condition for handleKeyReadable
+    // (offer() == false / add() throwing IllegalStateException) but nothing can undo it.
+    BlockingQueue<Peer> originalQueue = ConnectionHandler.peersToReadAndParse;
+    ConnectionHandler.peersToReadAndParse =
+        new LinkedBlockingQueue<>() {
+          @Override
+          public boolean offer(Peer peerToQueue) {
+            return false;
+          }
+        };
+
+    try {
+      Method handleKeyReadable =
+          ConnectionHandler.class.getDeclaredMethod("handleKeyReadable", SelectionKey.class);
+      handleKeyReadable.setAccessible(true);
+
+      handleKeyReadable.invoke(handler, key);
+    } finally {
+      ConnectionHandler.peersToReadAndParse = originalQueue;
     }
-    assertThat(ConnectionHandler.peersToReadAndParse.remainingCapacity()).isZero();
-
-    Method handleKeyReadable =
-        ConnectionHandler.class.getDeclaredMethod("handleKeyReadable", SelectionKey.class);
-    handleKeyReadable.setAccessible(true);
-
-    handleKeyReadable.invoke(handler, key);
 
     assertThat(ConnectionHandler.workingRead).doesNotContain(peer);
     assertThat(peer.isConnected()).isFalse();
