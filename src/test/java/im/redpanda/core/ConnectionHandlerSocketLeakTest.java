@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import org.junit.After;
@@ -60,12 +61,11 @@ public class ConnectionHandlerSocketLeakTest {
   }
 
   /**
-   * H3: an accepted channel whose setup fails must be closed and must not leave a PeerInHandshake
-   * behind. An unconnected channel reproduces the "peer already reset the connection" case, where
-   * {@code socket().getInetAddress()} is null.
+   * H3: an accepted channel of a peer that already reset the connection must be closed. An
+   * unconnected channel reproduces that case — {@code socket().getInetAddress()} is null.
    */
   @Test
-  public void setupAcceptedChannel_closesChannelWhenSetupFails() throws Exception {
+  public void setupAcceptedChannel_closesChannelWhenPeerIsAlreadyGone() throws Exception {
     SocketChannel channel = SocketChannel.open();
     try {
       int handshakesBefore = ConnectionHandler.peerInHandshakes.size();
@@ -76,6 +76,37 @@ public class ConnectionHandlerSocketLeakTest {
       assertThat(ConnectionHandler.peerInHandshakes).hasSize(handshakesBefore);
     } finally {
       channel.close();
+    }
+  }
+
+  /**
+   * H3: the same has to hold when the setup throws — here the selector registration fails. The old
+   * code only logged and left the accepted channel open.
+   */
+  @Test
+  public void setupAcceptedChannel_closesChannelWhenSetupThrows() throws Exception {
+    Selector originalSelector = ConnectionHandler.selector;
+    Selector closedSelector = Selector.open();
+    closedSelector.close();
+
+    try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        SocketChannel client = SocketChannel.open()) {
+      serverChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+      client.connect(serverChannel.getLocalAddress());
+
+      SocketChannel accepted = serverChannel.accept();
+      try {
+        int handshakesBefore = ConnectionHandler.peerInHandshakes.size();
+        ConnectionHandler.selector = closedSelector;
+
+        handler.setupAcceptedChannel(accepted);
+
+        assertThat(accepted.isOpen()).isFalse();
+        assertThat(ConnectionHandler.peerInHandshakes).hasSize(handshakesBefore);
+      } finally {
+        ConnectionHandler.selector = originalSelector;
+        accepted.close();
+      }
     }
   }
 

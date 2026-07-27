@@ -8,6 +8,7 @@ package im.redpanda.core;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
@@ -408,8 +409,15 @@ public class ConnectionHandler extends Thread {
     try {
       socketChannel.configureBlocking(false);
 
-      // getInetAddress() is null if the peer already reset the connection
-      String ip = socketChannel.socket().getInetAddress().getHostAddress();
+      // null if the peer already reset the connection — routine for scanners, so handle it as a
+      // normal outcome instead of an exception; the finally below still closes the channel
+      InetAddress remoteAddress = socketChannel.socket().getInetAddress();
+      if (remoteAddress == null) {
+        Log.put("incoming connection was already gone before setup", 12);
+        return;
+      }
+
+      String ip = remoteAddress.getHostAddress();
       Log.put("incoming connection from ip: " + ip, 12);
 
       selector.wakeup();
