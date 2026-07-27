@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
+import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import java.security.SecureRandom;
 import java.util.List;
@@ -109,6 +110,28 @@ public class ChannelDhtTest {
     assertThat(content.verify()).isTrue();
     assertThat(content.getId()).isEqualTo(ChannelDht.rendezvousKademliaId(secret, now));
     assertThat(content.getPubkey()).isEqualTo(ChannelDht.deriveRecordNodeId(secret).exportPublic());
+  }
+
+  @Test
+  public void buildRecordContent_matchesTheClientCrossCheckVector() {
+    // Pins the bucket size and the exact signature the dart light client asserts against
+    // (channel_rendezvous_test.dart). Both sides sign the same bytes, so a one-sided change to
+    // RECORD_SIZE_BYTES — the kind that silently makes every published record undeliverable —
+    // fails here instead of in the field.
+    byte[] secret = new byte[32];
+    for (int i = 0; i < secret.length; i++) {
+      secret[i] = (byte) i;
+    }
+    byte[] content = new byte[ChannelDht.RECORD_SIZE_BYTES];
+    java.util.Arrays.fill(content, (byte) 0xAB);
+
+    KadContent record = ChannelDht.buildRecordContent(secret, content, 1000000000000L);
+
+    assertThat(ChannelDht.RECORD_SIZE_BYTES).isEqualTo(1024);
+    assertThat(Utils.bytesToHexString(record.getSignature()))
+        .isEqualTo(
+            "e649ea68beaedc8e66a11765ec5d4b3fbac2bf58e54815105741fd6007276893"
+                + "4838668388001641eac6c21223ec4e195fc590b1c91571ae9c0699932b411600");
   }
 
   // --- Validation ---
