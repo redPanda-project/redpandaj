@@ -44,6 +44,9 @@ public class ConnectionHandler extends Thread {
    */
   static final int MAX_PLAINTEXT_HANDSHAKE_COMMANDS_PER_READ = 3;
 
+  /** Longest plaintext handshake command: SEND_PUBLIC_KEY plus its 64-byte key export. */
+  static final int MAX_PLAINTEXT_HANDSHAKE_COMMAND_LEN = 1 + NodeId.PUBLIC_KEYLEN;
+
   public static ArrayList<PeerInHandshake> peerInHandshakes = new ArrayList<>();
   @Getter private ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
   public static BlockingQueue<Peer> peersToReadAndParse = new LinkedBlockingQueue<>(600);
@@ -528,25 +531,35 @@ public class ConnectionHandler extends Thread {
         if (!peerInHandshake.isEncryptionActive()) {
 
           Log.put("read: " + read + " " + key.interestOps(), 150);
+
+          /**
+           * The buffer the plaintext handshake commands are decoded from. Usually the read buffer
+           * itself; a previous read that ended mid-command hands its tail over here
+           * (REDPANDAJ-2FA), and then it is the concatenation of both.
+           */
+          ByteBuffer plaintext = allocate;
+
+          boolean handshakeParsed = true;
           if (peerInHandshake.getStatus() == 0) {
             /** The status indicates that no handshake was parsed before for this PeerInHandshake */
-            if (ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate)) {
+            handshakeParsed =
+                ConnectionReaderThread.parseHandshake(serverContext, peerInHandshake, allocate);
+            if (handshakeParsed) {
               // parseHandshake() consumed the 30-byte handshake and compacted the buffer, so
               // whatever the peer coalesced behind it is now at the front, ready to be flipped
-              // for reading. Dropping it here is the same defect as REDPANDAJ-2FA below.
+              // for reading. Dropping it here is the same defect as REDPANDAJ-2FA.
               allocate.flip();
-              if (!parsePlaintextHandshakeCommands(peerInHandshake, allocate)) {
-                return;
-              }
             }
-          } else {
+          }
 
-            /**
-             * The status indicates that the first handshake was already parsed before for this
-             * PeerInHandshake. Here we are providing more data for the other Peer like the public
-             * key.
-             */
-            if (!parsePlaintextHandshakeCommands(peerInHandshake, allocate)) {
+          /**
+           * For a status other than 0 the first handshake was already parsed before for this
+           * PeerInHandshake. Here we are providing more data for the other Peer like the public
+           * key.
+           */
+          if (handshakeParsed) {
+            plaintext = peerInHandshake.prependPlaintextHandshakeCarry(allocate);
+            if (!parsePlaintextHandshakeCommands(peerInHandshake, plaintext)) {
               return;
             }
           }
@@ -605,15 +618,15 @@ public class ConnectionHandler extends Thread {
 
             /**
              * REDPANDAJ-2DS: if the peer's ACTIVATE_ENCRYPTION and its first GCM frame (counter 0)
-             * were coalesced by the kernel into this single read(), 'allocate' still holds the
-             * ciphertext of that first frame after the plaintext branch above consumed only the
+             * were coalesced by the kernel into this single read(), 'plaintext' still holds the
+             * ciphertext of that first frame after the plaintext branch above stopped at the
              * ACTIVATE_ENCRYPTION command. Encryption is active now (activateEncryption() just
              * ran), so feed the leftover bytes into decrypt() right away instead of silently
              * dropping them - dropping them would desync the receive counter and the next frame
              * would fail with "unexpected GCM frame nonce".
              */
-            if (allocate.hasRemaining()) {
-              handleFirstEncryptedCommand(peerInHandshake, allocate);
+            if (plaintext.hasRemaining()) {
+              handleFirstEncryptedCommand(peerInHandshake, plaintext);
             }
           }
 
@@ -688,14 +701,7 @@ public class ConnectionHandler extends Thread {
          * corresponds to the KademliaId (v23: 64-byte Ed25519/X25519 export).
          */
         if (buffer.remaining() < NodeId.PUBLIC_KEYLEN) {
-          // Split across two reads. There is no cross-read buffer for the plaintext handshake
-          // phase, so this command can never be completed — and leaving it unparsed is exactly
-          // the wedge described above. Drop the connection instead; the peer redials and the
-          // retry gets a clean stream. (Before this method existed the same input threw
-          // BufferUnderflowException into the generic catch, which reported a Sentry error.)
-          System.out.println("not enough bytes for public key... " + buffer.remaining());
-          peerInHandshake.getSocketChannel().close();
-          return false;
+          return carryOverIncompleteCommand(peerInHandshake, buffer);
         }
         byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
         buffer.get(bytesPublicKey);
@@ -728,9 +734,7 @@ public class ConnectionHandler extends Thread {
          * X25519 public key of the peer (v23).
          */
         if (buffer.remaining() < 32) {
-          System.out.println("not enough bytes for encryption... " + buffer.remaining());
-          peerInHandshake.getSocketChannel().close();
-          return false;
+          return carryOverIncompleteCommand(peerInHandshake, buffer);
         }
         byte[] ephemeralFromThem = new byte[32];
         buffer.get(ephemeralFromThem);
@@ -747,6 +751,38 @@ public class ConnectionHandler extends Thread {
         break;
       }
     }
+    return true;
+  }
+
+  /**
+   * Stashes a plaintext handshake command whose payload has not fully arrived yet, so the next read
+   * can decode it (REDPANDAJ-2FA). {@code buffer} is positioned right after the command byte, which
+   * is rewound back into the stash.
+   *
+   * <p>Before this, an incomplete SEND_PUBLIC_KEY threw {@code BufferUnderflowException} into the
+   * generic catch and an incomplete ACTIVATE_ENCRYPTION closed the connection ("not enough bytes
+   * for encryption..."). Both cost the peer a full redial, and the light client that hit the latter
+   * during an S4 reconnect did not come back at all.
+   *
+   * @return always {@code true} for the "wait for more bytes" case; {@code false} only when the
+   *     stash would exceed the longest plaintext command, which no conforming peer can produce.
+   */
+  private boolean carryOverIncompleteCommand(PeerInHandshake peerInHandshake, ByteBuffer buffer)
+      throws IOException {
+    buffer.position(buffer.position() - 1); // put the command byte back
+    byte[] carry = new byte[buffer.remaining()];
+    buffer.get(carry);
+    if (carry.length > MAX_PLAINTEXT_HANDSHAKE_COMMAND_LEN) {
+      // Cannot happen for a conforming peer: we only get here when the command is INcomplete, so
+      // the tail is shorter than the command. Belt and braces against an unbounded stash.
+      System.out.println("oversized plaintext handshake remainder... " + carry.length);
+      peerInHandshake.getSocketChannel().close();
+      return false;
+    }
+    peerInHandshake.setPlaintextHandshakeCarry(carry);
+    Log.put(
+        "plaintext handshake command split across reads, carrying " + carry.length + " byte(s)",
+        20);
     return true;
   }
 

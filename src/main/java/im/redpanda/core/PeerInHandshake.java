@@ -3,6 +3,7 @@ package im.redpanda.core;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.CryptoUtils;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.security.InvalidKeyException;
@@ -51,6 +52,16 @@ public class PeerInHandshake {
   private byte[] receiveKey;
 
   private PeerChiperStreams peerChiperStreams;
+
+  /**
+   * Bytes of a plaintext handshake command that did not fit into the read that started it
+   * (REDPANDAJ-2FA). The plaintext phase is framed by fixed command lengths, not by a length
+   * prefix, so a command split across two reads used to be undecodable: SEND_PUBLIC_KEY threw
+   * BufferUnderflowException and ACTIVATE_ENCRYPTION closed the connection ("not enough bytes for
+   * encryption..."), which cost the peer a full redial. They are carried over to the next read
+   * instead. Never larger than the longest command (1 + 64 bytes).
+   */
+  private byte[] plaintextHandshakeCarry;
 
   private final long createdAt;
 
@@ -150,6 +161,33 @@ public class PeerInHandshake {
     } catch (IOException closeEx) {
       closeEx.printStackTrace();
     }
+  }
+
+  /**
+   * Prepends the bytes stashed by the previous read (REDPANDAJ-2FA) to {@code justRead} and clears
+   * the stash. Returns {@code justRead} unchanged when there is nothing to carry over, which is the
+   * normal case.
+   */
+  ByteBuffer prependPlaintextHandshakeCarry(ByteBuffer justRead) {
+    if (plaintextHandshakeCarry == null) {
+      return justRead;
+    }
+    ByteBuffer merged =
+        ByteBuffer.allocate(plaintextHandshakeCarry.length + justRead.remaining())
+            .put(plaintextHandshakeCarry)
+            .put(justRead);
+    plaintextHandshakeCarry = null;
+    merged.flip();
+    return merged;
+  }
+
+  /** Stashes the not-yet-decodable tail of a plaintext handshake read for the next read. */
+  void setPlaintextHandshakeCarry(byte[] carry) {
+    plaintextHandshakeCarry = carry;
+  }
+
+  int plaintextHandshakeCarryLength() {
+    return plaintextHandshakeCarry == null ? 0 : plaintextHandshakeCarry.length;
   }
 
   public int getPort() {

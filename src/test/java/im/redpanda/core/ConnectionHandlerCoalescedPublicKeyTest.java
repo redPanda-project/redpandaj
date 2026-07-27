@@ -30,6 +30,90 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
+  /**
+   * The other half of REDPANDAJ-2FA: a command whose payload has not fully arrived yet must be
+   * carried over to the next read. SEND_PUBLIC_KEY used to throw BufferUnderflowException here and
+   * ACTIVATE_ENCRYPTION closed the connection outright.
+   */
+  @Test
+  public void sendPublicKeySplitAcrossTwoReadsIsCarriedOver() throws Exception {
+    ByteBufferPool.init();
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
+
+    try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        Selector selector = Selector.open()) {
+      serverSocketChannel.configureBlocking(false);
+      serverSocketChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+      int port = serverSocketChannel.socket().getLocalPort();
+
+      try (SocketChannel client = SocketChannel.open(new InetSocketAddress("127.0.0.1", port))) {
+        SocketChannel accepted;
+        do {
+          accepted = serverSocketChannel.accept();
+        } while (accepted == null);
+        accepted.configureBlocking(false);
+
+        NodeId peerIdentity = NodeId.generateWithSimpleKey();
+        PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", accepted);
+        peerInHandshake.setPeer(new Peer("127.0.0.1", 0));
+        peerInHandshake.setProtocolVersion(23);
+        peerInHandshake.setLightClient(true);
+        peerInHandshake.setIdentity(peerIdentity.getKademliaId());
+        peerInHandshake.setStatus(1);
+
+        SelectionKey key = accepted.register(selector, SelectionKey.OP_READ);
+        key.attach(peerInHandshake);
+        peerInHandshake.setKey(key);
+        connectionHandler.addPeerInHandshake(peerInHandshake);
+
+        Method handlePeerInHandshake =
+            ConnectionHandler.class.getDeclaredMethod("handlePeerInHandshake", SelectionKey.class);
+        handlePeerInHandshake.setAccessible(true);
+
+        try {
+          byte[] peerPublicExport = peerIdentity.exportPublic();
+          int firstChunk = 30; // command byte + 29 of the 64 key bytes
+
+          ByteBuffer head = ByteBuffer.allocate(1 + firstChunk);
+          head.put(Command.SEND_PUBLIC_KEY);
+          head.put(peerPublicExport, 0, firstChunk);
+          head.flip();
+          client.write(head);
+
+          assertTrue("expected a first readable event", selector.select(10_000) > 0);
+          selector.selectedKeys().clear();
+          handlePeerInHandshake.invoke(connectionHandler, key);
+
+          assertEquals(
+              "the incomplete command must be stashed, not consumed or dropped",
+              1 + firstChunk,
+              peerInHandshake.plaintextHandshakeCarryLength());
+          assertEquals("still waiting for the key", 1, peerInHandshake.getStatus());
+          assertTrue("the connection must stay open", accepted.isOpen());
+
+          ByteBuffer tail = ByteBuffer.allocate(peerPublicExport.length - firstChunk);
+          tail.put(peerPublicExport, firstChunk, peerPublicExport.length - firstChunk);
+          tail.flip();
+          client.write(tail);
+
+          assertTrue("expected a second readable event", selector.select(10_000) > 0);
+          selector.selectedKeys().clear();
+          handlePeerInHandshake.invoke(connectionHandler, key);
+
+          assertEquals(
+              "the split SEND_PUBLIC_KEY must be decoded once the tail arrived",
+              -1,
+              peerInHandshake.getStatus());
+          assertEquals(0, peerInHandshake.plaintextHandshakeCarryLength());
+          assertNotNull(peerInHandshake.getNodeId());
+        } finally {
+          connectionHandler.removePeerInHandshake(peerInHandshake);
+        }
+      }
+    }
+  }
+
   @Test
   public void coalescedRequestAndSendPublicKeyArePromotedInOneEvent() throws Exception {
     ByteBufferPool.init();
