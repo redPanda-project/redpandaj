@@ -66,9 +66,10 @@ public class OutboundHandler extends Thread {
         peerInHandshake.setNodeId(peer.getNodeId());
       }
 
-      peerInHandshake.addConnection(alreadyConnected);
-
-      return true;
+      // addConnection() closes the channel and disconnects the peer when the selector
+      // registration fails; reporting success in that case would suppress run()'s
+      // `newConnections += 5` backoff, so the attempt is paced like any other failure.
+      return peerInHandshake.addConnection(alreadyConnected);
     } catch (UnknownHostException ex) {
       System.out.println("outgoing con failed, unknown host...");
     } catch (Exception ex) {

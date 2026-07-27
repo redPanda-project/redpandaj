@@ -61,9 +61,9 @@ public class KademliaSearchJob extends Job {
 
     /**
      * Lets check if this KademliaId was already searched in the last seconds such that no search
-     * loops occur. Each Key is blacklisted for 5 seconds after a search and only direct searches
-     * will be returned for that key. TODO: Maybe we should create a list of "requesters" for each
-     * search such that we can send an answers to all "requesters".
+     * loops occur. Each key is blacklisted for {@link #BLACKLIST_KEY_FOR} (30 seconds) after a
+     * search and only direct searches will be returned for that key. TODO: Maybe we should create a
+     * list of "requesters" for each search such that we can send an answers to all "requesters".
      */
     long currentTimeMillis = System.currentTimeMillis();
 

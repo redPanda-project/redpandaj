@@ -92,7 +92,15 @@ public class PeerInHandshake {
     return status;
   }
 
-  public void addConnection(boolean alreadyConnected) {
+  /**
+   * Registers this handshake's channel with the selector.
+   *
+   * @return {@code true} if the channel was registered and the handshake is now owned by the
+   *     selector loop; {@code false} if registration failed — in that case the channel has been
+   *     closed and the peer disconnected, so the caller must not treat the connection as
+   *     established (see {@code OutboundHandler.connectTo}, whose backoff pacing depends on it).
+   */
+  public boolean addConnection(boolean alreadyConnected) {
     boolean registered = false;
     try {
       socketChannel.configureBlocking(false);
@@ -131,6 +139,7 @@ public class PeerInHandshake {
         }
       }
     }
+    return registered;
   }
 
   private void closeSocketChannelQuietly() {
