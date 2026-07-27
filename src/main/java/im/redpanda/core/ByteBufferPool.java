@@ -6,6 +6,7 @@ import io.sentry.Sentry;
 import io.sentry.SentryLevel;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +21,48 @@ public class ByteBufferPool {
   private static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(ByteBufferPool.class);
   private static GenericKeyedObjectPool<Integer, ByteBuffer> pool;
-  private static final Map<ByteBuffer, String> byteBufferToStacktrace = new IdentityHashMap<>();
+
+  /**
+   * System property enabling the return-stack tracing below (L3, bug hunt 2026-07-26).
+   *
+   * <p>The map is a pure debug aid: its only consumer is the Sentry message in {@link
+   * #borrowObject(Integer)}, which names the caller that last returned a buffer that came back out
+   * of the pool in an invalid state. Capturing and formatting a full stack trace on <em>every</em>
+   * successful {@code returnObject()} is a hot-path cost for a diagnostic that is almost never
+   * read, so it is opt-in and off by default. The invalid-return path itself keeps reporting
+   * unconditionally — that branch already captures its own stack trace and does not depend on this
+   * map.
+   */
+  static final String TRACE_RETURNS_PROPERTY = "redpanda.bytebufferpool.traceReturns";
+
+  private static volatile boolean traceReturns = Boolean.getBoolean(TRACE_RETURNS_PROPERTY);
+
+  /**
+   * Identity map (buffer equality is content-based and the content mutates, so {@link
+   * IdentityHashMap} is required) from a pooled buffer to the stack trace of its last return.
+   *
+   * <p>Entries are dropped again when the pool destroys the buffer — commons-pool's evictor
+   * destroys idle buffers after 30 s, and the entries used to stay strongly reachable for the whole
+   * process lifetime, so the map (and every multi-kilobyte trace string in it) grew without bound
+   * under bursty load. Accessed from every reader/writer thread, hence synchronized.
+   */
+  private static final Map<ByteBuffer, String> byteBufferToStacktrace =
+      Collections.synchronizedMap(new IdentityHashMap<>());
 
   private ByteBufferPool() {
     // Hide implicit public constructor
+  }
+
+  /** Test hook: toggles the return-stack tracing and returns the previous setting. */
+  static boolean setTraceReturnsForTest(boolean enabled) {
+    boolean previous = traceReturns;
+    traceReturns = enabled;
+    return previous;
+  }
+
+  /** Test hook: whether a return stack trace is currently held for this exact buffer instance. */
+  static boolean isTraced(ByteBuffer byteBuffer) {
+    return byteBufferToStacktrace.containsKey(byteBuffer);
   }
 
   public static void init() {
@@ -88,6 +127,15 @@ public class ByteBufferPool {
           }
 
           @Override
+          public void destroyObject(Integer key, PooledObject<ByteBuffer> p) throws Exception {
+            // The recorded stack trace must not outlive the buffer it describes: the evictor
+            // destroys idle buffers after 30 s, and without this the entry (and its multi-kilobyte
+            // trace string) stayed strongly reachable forever.
+            byteBufferToStacktrace.remove(p.getObject());
+            super.destroyObject(key, p);
+          }
+
+          @Override
           public PooledObject<ByteBuffer> wrap(ByteBuffer byteBuffer) {
             return new DefaultPooledObject<>(byteBuffer);
           }
@@ -119,7 +167,10 @@ public class ByteBufferPool {
     }
 
     while (byteBuffer.position() != 0 || byteBuffer.limit() != byteBuffer.capacity()) {
-      String stack = byteBufferToStacktrace.get(byteBuffer);
+      String stack =
+          traceReturns
+              ? byteBufferToStacktrace.get(byteBuffer)
+              : "not recorded (-D" + TRACE_RETURNS_PROPERTY + "=true to enable)";
       Log.sentry("borrowObject found an invalid ByteBuffer: " + byteBuffer + " stack: " + stack);
       try {
         pool.invalidateObject(key, byteBuffer);
@@ -164,11 +215,13 @@ public class ByteBufferPool {
         Log.sentry("had to invalidate ByteBuffer: \n" + out);
       }
     } else {
-      StringBuilder out = new StringBuilder();
-      for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-        out.append(e.toString()).append("\n");
+      if (traceReturns) {
+        StringBuilder out = new StringBuilder();
+        for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+          out.append(e.toString()).append("\n");
+        }
+        byteBufferToStacktrace.put(byteBuffer, out.toString());
       }
-      byteBufferToStacktrace.put(byteBuffer, out.toString());
       pool.returnObject(key, byteBuffer);
     }
   }
