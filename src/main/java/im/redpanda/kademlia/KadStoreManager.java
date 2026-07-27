@@ -25,7 +25,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class KadStoreManager {
 
-  private static final int MIN_SIZE = 1024 * 1024 * 10 * 0; // size of content without key
+  /**
+   * Total stored content size (without keys) above which the periodic entry eviction sweep runs. A
+   * trailing {@code * 0} used to zero this out, so the sweep ran on every put once the store held
+   * anything at all, instead of only once it exceeds 10 MB.
+   */
+  private static final int MIN_SIZE = 1024 * 1024 * 10;
+
   private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L; // 7 days
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
