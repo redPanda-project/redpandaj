@@ -80,12 +80,13 @@ public class LocalSettings implements Serializable {
     File tmpFile = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
 
     try {
-      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile)) {
-        ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream);
+      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile);
+          ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
         objectOutputStream.writeObject(this);
         objectOutputStream.flush();
         // force the bytes to disk before the rename, otherwise a crash right after the rename
-        // could leave an empty file where a complete old one used to be
+        // could leave an empty file where a complete old one used to be. Both streams are still
+        // open here, try-with-resources closes them at the end of the block.
         fileOutputStream.getFD().sync();
       }
 
