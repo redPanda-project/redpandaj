@@ -3,12 +3,16 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.io.Serial;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -127,20 +131,86 @@ public class ConnectionHandlerSocketLeakTest {
     peer.setConnected(true);
     key.attach(peer);
 
-    // fill the bounded queue up to its capacity
-    while (ConnectionHandler.peersToReadAndParse.offer(new Peer("127.0.0.2", 1))) {
-      // intentionally empty
+    // Filling the real queue up to its capacity made this test flaky: peersToReadAndParse is
+    // static and any ConnectionReaderThread left behind by an earlier test class keeps polling it,
+    // so the queue could have room again by the time handleKeyReadable ran and the peer was never
+    // disconnected. A queue that always rejects is the same condition for handleKeyReadable
+    // (offer() == false / add() throwing IllegalStateException) but nothing can undo it.
+    BlockingQueue<Peer> originalQueue = ConnectionHandler.peersToReadAndParse;
+    ConnectionHandler.peersToReadAndParse = new AlwaysFullQueue(originalQueue);
+
+    try {
+      Method handleKeyReadable =
+          ConnectionHandler.class.getDeclaredMethod("handleKeyReadable", SelectionKey.class);
+      handleKeyReadable.setAccessible(true);
+
+      handleKeyReadable.invoke(handler, key);
+    } finally {
+      ConnectionHandler.peersToReadAndParse = originalQueue;
     }
-    assertThat(ConnectionHandler.peersToReadAndParse.remainingCapacity()).isZero();
-
-    Method handleKeyReadable =
-        ConnectionHandler.class.getDeclaredMethod("handleKeyReadable", SelectionKey.class);
-    handleKeyReadable.setAccessible(true);
-
-    handleKeyReadable.invoke(handler, key);
 
     assertThat(ConnectionHandler.workingRead).doesNotContain(peer);
     assertThat(peer.isConnected()).isFalse();
     assertThat(channel.isOpen()).isFalse();
+  }
+
+  /**
+   * A queue that rejects every offer, i.e. behaves like a permanently full read queue.
+   *
+   * <p>Only the producer side is overridden. Every consumer operation delegates to the real queue,
+   * because a {@code ConnectionReaderThread} can read {@code ConnectionHandler.peersToReadAndParse}
+   * while this stub is installed: with a self-contained stub such a thread would block in {@code
+   * take()} on a queue that nobody ever fills and would never see the restored original — the test
+   * would strand the very reader threads whose leftovers made it flaky in the first place.
+   */
+  private static final class AlwaysFullQueue extends LinkedBlockingQueue<Peer> {
+
+    @Serial private static final long serialVersionUID = 1L;
+
+    private final transient BlockingQueue<Peer> delegate;
+
+    private AlwaysFullQueue(BlockingQueue<Peer> delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public boolean offer(Peer peer) {
+      return false;
+    }
+
+    @Override
+    public boolean offer(Peer peer, long timeout, TimeUnit unit) {
+      return false;
+    }
+
+    @Override
+    public int remainingCapacity() {
+      return 0;
+    }
+
+    @Override
+    public Peer take() throws InterruptedException {
+      return delegate.take();
+    }
+
+    @Override
+    public Peer poll(long timeout, TimeUnit unit) throws InterruptedException {
+      return delegate.poll(timeout, unit);
+    }
+
+    @Override
+    public Peer poll() {
+      return delegate.poll();
+    }
+
+    @Override
+    public Peer peek() {
+      return delegate.peek();
+    }
+
+    @Override
+    public int size() {
+      return delegate.size();
+    }
   }
 }
