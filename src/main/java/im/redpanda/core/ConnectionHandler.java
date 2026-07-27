@@ -329,7 +329,20 @@ public class ConnectionHandler extends Thread {
 
     if (!workingRead.contains(peer)) {
       workingRead.add(peer);
-      peersToReadAndParse.add(peer);
+      // offer(), not add(): the queue is bounded (600) and add() throws IllegalStateException when
+      // it is full. That exception only reached handleSelectionKey's generic catch, which cancels
+      // the key but never disconnects the peer — the SocketChannel stayed open and the peer stayed
+      // in the peerList, i.e. we leaked a socket exactly when the node was already overloaded.
+      if (!peersToReadAndParse.offer(peer)) {
+        workingRead.remove(peer);
+        Log.putStd(
+            "read queue full ("
+                + peersToReadAndParse.size()
+                + "), dropping connection to "
+                + peer.ip);
+        key.cancel();
+        peer.disconnect("read queue full");
+      }
     } else {
       Log.putStd(
           "Error code 1429172674 "
@@ -364,34 +377,68 @@ public class ConnectionHandler extends Thread {
 
   private void keyAccept(SelectionKey key) throws IOException {
     // a connection was accepted by a ServerSocketChannel.
+    ServerSocketChannel s = (ServerSocketChannel) key.channel();
+    SocketChannel socketChannel = s.accept();
+
+    // accept() returns null on a spurious selector wakeup / when another thread grabbed the
+    // pending connection first. Dereferencing it (configureBlocking) used to NPE out of this
+    // method into handleSelectionKey's generic catch.
+    if (socketChannel == null) {
+      return;
+    }
+
     if (!Settings.NAT_OPEN) {
       Settings.NAT_OPEN = true;
     }
 
-    ServerSocketChannel s = (ServerSocketChannel) key.channel();
-    SocketChannel socketChannel = s.accept();
-    socketChannel.configureBlocking(false);
-    String ip = socketChannel.socket().getInetAddress().getHostAddress();
+    setupAcceptedChannel(socketChannel);
+  }
 
-    Log.put("incoming connection from ip: " + ip, 12);
-
+  /**
+   * Takes ownership of a freshly accepted channel: registers it with the selector and starts the
+   * handshake. The accepted channel is closed on every failure path — a peer that connects and
+   * resets immediately (port scanners, health checkers, hostile probes) otherwise leaked one file
+   * descriptor per occurrence, since the outer handler in {@link
+   * #handleSelectionKey(java.util.Iterator)} only closes channels for keys that already carry a
+   * {@code PeerInHandshake}/{@code Peer} attachment, which the ServerSocketChannel key never does.
+   */
+  void setupAcceptedChannel(SocketChannel socketChannel) {
+    PeerInHandshake peerInHandshake = null;
+    boolean success = false;
     try {
       socketChannel.configureBlocking(false);
+
+      // getInetAddress() is null if the peer already reset the connection
+      String ip = socketChannel.socket().getInetAddress().getHostAddress();
+      Log.put("incoming connection from ip: " + ip, 12);
 
       selector.wakeup();
       SelectionKey newKey = socketChannel.register(selector, SelectionKey.OP_READ);
 
-      PeerInHandshake peerInHandshake = new PeerInHandshake(ip, socketChannel);
+      peerInHandshake = new PeerInHandshake(ip, socketChannel);
       addPeerInHandshake(peerInHandshake);
 
+      // may throw RuntimeException on a partial handshake write
       ConnectionReaderThread.sendHandshake(serverContext, peerInHandshake);
 
       newKey.attach(peerInHandshake);
       peerInHandshake.setKey(newKey);
       selector.wakeup();
-    } catch (IOException ex) {
+      success = true;
+    } catch (Exception ex) {
       ex.printStackTrace();
       Log.putStd("could not init connection....");
+    } finally {
+      if (!success) {
+        if (peerInHandshake != null) {
+          removePeerInHandshake(peerInHandshake);
+        }
+        try {
+          socketChannel.close();
+        } catch (IOException closeEx) {
+          closeEx.printStackTrace();
+        }
+      }
     }
   }
 

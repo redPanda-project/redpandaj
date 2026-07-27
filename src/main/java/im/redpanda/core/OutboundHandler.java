@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
@@ -43,14 +44,22 @@ public class OutboundHandler extends Thread {
       // todo if retries to high disconnect?
     }
 
+    // The channel is owned by this method until the PeerInHandshake has taken it over; anything
+    // that throws in between (unresolvable/invalid address, immediate connection refusal,
+    // SecurityException, ...) used to leak the freshly opened SocketChannel, one file descriptor
+    // per attempt. run() retries dead peers continuously, so this accumulated until exhaustion.
+    SocketChannel open = null;
+    boolean handedOver = false;
     try {
-      SocketChannel open = SocketChannel.open();
+      open = SocketChannel.open();
       open.configureBlocking(false);
 
       boolean alreadyConnected = open.connect(new InetSocketAddress(peer.ip, peer.port));
 
       PeerInHandshake peerInHandshake = new PeerInHandshake(peer.ip, peer, open);
       serverContext.getConnectionHandler().addPeerInHandshake(peerInHandshake);
+      // from here on the channel is closed by PeerInHandshake / Peer.disconnect()
+      handedOver = true;
 
       /** Lets check if we have a nodeId and add it to the PeerInHandShake */
       if (peer.getNodeId() != null) {
@@ -65,6 +74,14 @@ public class OutboundHandler extends Thread {
     } catch (Exception ex) {
       ex.printStackTrace();
       Log.put("outgoing con failed... " + peer.ip, 0);
+    } finally {
+      if (!handedOver && open != null) {
+        try {
+          open.close();
+        } catch (IOException closeEx) {
+          closeEx.printStackTrace();
+        }
+      }
     }
     return false;
   }

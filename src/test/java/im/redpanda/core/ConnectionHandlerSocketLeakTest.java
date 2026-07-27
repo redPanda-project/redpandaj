@@ -1,0 +1,115 @@
+package im.redpanda.core;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+/**
+ * Regression tests for the accepted/readable socket leaks found in the 2026-07-26 bug hunt (H3 and
+ * H6): every error path around an accepted connection has to release the socket, otherwise a peer
+ * that connects and resets immediately (or a read burst that fills the bounded read queue) leaks
+ * one file descriptor per occurrence.
+ */
+public class ConnectionHandlerSocketLeakTest {
+
+  private ConnectionHandler handler;
+
+  @Before
+  public void setUp() {
+    handler = new ConnectionHandler(ServerContext.buildDefaultServerContext(), false);
+  }
+
+  @After
+  public void tearDown() {
+    ConnectionHandler.peerInHandshakes.clear();
+    ConnectionHandler.peersToReadAndParse.clear();
+    ConnectionHandler.workingRead.clear();
+  }
+
+  /**
+   * {@code ServerSocketChannel.accept()} returns null on a spurious selector wakeup. The old code
+   * called {@code configureBlocking(false)} on the result before entering its try block, so the NPE
+   * escaped keyAccept's own handler.
+   */
+  @Test
+  public void keyAccept_ignoresNullAcceptFromSpuriousWakeup() throws Exception {
+    try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
+      serverChannel.configureBlocking(false);
+      serverChannel.bind(new InetSocketAddress("127.0.0.1", 0));
+
+      SelectionKey key = serverChannel.register(ConnectionHandler.selector, SelectionKey.OP_ACCEPT);
+      try {
+        Method keyAccept =
+            ConnectionHandler.class.getDeclaredMethod("keyAccept", SelectionKey.class);
+        keyAccept.setAccessible(true);
+
+        // nothing is connecting, so accept() returns null
+        assertThatCode(() -> keyAccept.invoke(handler, key)).doesNotThrowAnyException();
+      } finally {
+        key.cancel();
+      }
+    }
+  }
+
+  /**
+   * H3: an accepted channel whose setup fails must be closed and must not leave a PeerInHandshake
+   * behind. An unconnected channel reproduces the "peer already reset the connection" case, where
+   * {@code socket().getInetAddress()} is null.
+   */
+  @Test
+  public void setupAcceptedChannel_closesChannelWhenSetupFails() throws Exception {
+    SocketChannel channel = SocketChannel.open();
+    try {
+      int handshakesBefore = ConnectionHandler.peerInHandshakes.size();
+
+      handler.setupAcceptedChannel(channel);
+
+      assertThat(channel.isOpen()).isFalse();
+      assertThat(ConnectionHandler.peerInHandshakes).hasSize(handshakesBefore);
+    } finally {
+      channel.close();
+    }
+  }
+
+  /**
+   * H6: when the bounded read queue is full, the peer has to be disconnected. The old {@code add()}
+   * threw IllegalStateException, which only reached handleSelectionKey's generic catch — that
+   * cancels the key but leaves the socket open and the peer in the peerList.
+   */
+  @Test
+  public void handleKeyReadable_disconnectsPeerWhenReadQueueIsFull() throws Exception {
+    SocketChannel channel = SocketChannel.open();
+    channel.configureBlocking(false);
+    SelectionKey key = channel.register(ConnectionHandler.selector, SelectionKey.OP_READ);
+
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setSocketChannel(channel);
+    peer.setSelectionKey(key);
+    peer.setConnected(true);
+    key.attach(peer);
+
+    // fill the bounded queue up to its capacity
+    while (ConnectionHandler.peersToReadAndParse.offer(new Peer("127.0.0.2", 1))) {
+      // intentionally empty
+    }
+    assertThat(ConnectionHandler.peersToReadAndParse.remainingCapacity()).isZero();
+
+    Method handleKeyReadable =
+        ConnectionHandler.class.getDeclaredMethod("handleKeyReadable", SelectionKey.class);
+    handleKeyReadable.setAccessible(true);
+
+    handleKeyReadable.invoke(handler, key);
+
+    assertThat(ConnectionHandler.workingRead).doesNotContain(peer);
+    assertThat(peer.isConnected()).isFalse();
+    assertThat(channel.isOpen()).isFalse();
+  }
+}
