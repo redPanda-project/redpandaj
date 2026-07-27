@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
+import im.redpanda.core.ConcurrencyTestSupport;
 import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
@@ -344,5 +345,42 @@ public class OhForwarderTest {
     assertThat(mailboxA.fetchMessages(ackPath.ackOhId(), 10, 0))
         .as("hop-limit drop must not ack — the caller does")
         .isEmpty();
+  }
+
+  /**
+   * M1 regression: {@code selectNextPeer()} releases the peer-list read lock and then runs {@code
+   * GMParser.selectBestRoutePeer} — containsVertex/getEdge/getEdgeWeight plus a full Dijkstra
+   * traversal — over the shared node graph. It used to do so without the NodeStore read lock, while
+   * {@code NodeStore.maintainNodes()} restructures that very graph under the write lock
+   * (REDPANDAJ-2DW/2E5 class). The sibling caller in {@code GMParser} takes the read lock; this one
+   * has to as well.
+   *
+   * <p>Asserted directly: with the NodeStore write lock held by another thread, the graph-routing
+   * part of {@code selectNextPeer} must not be able to run.
+   *
+   * <p>Negative control: remove the read lock again and the call completes immediately (falling
+   * through to the greedy Kademlia fallback), failing this test.
+   */
+  @Test
+  public void selectNextPeer_graphRoutingBlocksWhileNodeStoreWriteLockIsHeldElsewhere()
+      throws Exception {
+    // graph routing is only attempted once our own Node is wired up
+    nodeA.setNode(new im.redpanda.core.Node(nodeA, nodeA.getNodeId()));
+
+    // one connected full-node candidate, so we get past the (locked) peer-list scan
+    // (Peer.getNode() only returns the node once the peer is authed and connected)
+    Peer candidate = new Peer("127.0.0.1", 9302, nodeB.getNodeId());
+    candidate.setConnected(true);
+    candidate.authed = true;
+    candidate.setNode(new im.redpanda.core.Node(nodeA, nodeB.getNodeId()));
+    nodeA.getPeerList().add(candidate);
+    assertThat(candidate.hasNode()).isTrue();
+
+    // a target we are not directly connected to, so the direct-peer shortcut does not apply
+    KademliaId unreachableTarget = new KademliaId();
+
+    ConcurrencyTestSupport.assertBlockedWhileHeld(
+        nodeA.getNodeStore().getReadWriteLock().writeLock(),
+        () -> OhForwarder.selectNextPeer(nodeA, unreachableTarget));
   }
 }

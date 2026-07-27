@@ -336,27 +336,41 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph =
         serverContext.getNodeStore().getNodeGraph();
 
+    // The scoring loop below WRITES the shared JGraphT graph (setEdgeWeight) while reading its
+    // structure (getEdge/containsEdge/getEdgeWeight). NodeStore.maintainNodes() mutates the same
+    // graph (removeVertex/addEdge/setEdgeWeight) under the NodeStore write lock, so this loop must
+    // hold it too — otherwise two writers race inside the graph's non-thread-safe LinkedHashMaps
+    // (Sentry REDPANDAJ-2DW class: CME or silent structural corruption of the routing graph).
+    // The `scored` CAS above only dedups done() against itself, it gives no mutual exclusion
+    // against the maintainer thread. init() takes the same write lock (see above).
+    // No blocking I/O runs under the lock: the path string is only assembled here and printed
+    // after the lock is released.
     String pathString = "";
-    Node nodeBefore = null;
-    for (Node node : nodes) {
-      if (nodeBefore != null) {
-        NodeEdge edge = nodeGraph.getEdge(nodeBefore, node);
-        if (!nodeGraph.containsEdge(edge)) {
-          continue;
+    serverContext.getNodeStore().getReadWriteLock().writeLock().lock();
+    try {
+      Node nodeBefore = null;
+      for (Node node : nodes) {
+        if (nodeBefore != null) {
+          NodeEdge edge = nodeGraph.getEdge(nodeBefore, node);
+          if (!nodeGraph.containsEdge(edge)) {
+            continue;
+          }
+          double newWeight = nodeGraph.getEdgeWeight(edge) + scoreToAdd;
+          if (newWeight > MAX_WEIGHT) {
+            newWeight = MAX_WEIGHT;
+          } else if (newWeight < MIN_WEIGHT) {
+            newWeight = MIN_WEIGHT;
+          }
+          nodeGraph.setEdgeWeight(edge, newWeight);
+          edge.setLastCheckFailed(!success);
+          pathString += " -(" + "%.0f".formatted(newWeight) + ")-> " + node;
+        } else {
+          pathString += node;
         }
-        double newWeight = nodeGraph.getEdgeWeight(edge) + scoreToAdd;
-        if (newWeight > MAX_WEIGHT) {
-          newWeight = MAX_WEIGHT;
-        } else if (newWeight < MIN_WEIGHT) {
-          newWeight = MIN_WEIGHT;
-        }
-        nodeGraph.setEdgeWeight(edge, newWeight);
-        edge.setLastCheckFailed(!success);
-        pathString += " -(" + "%.0f".formatted(newWeight) + ")-> " + node;
-      } else {
-        pathString += node;
+        nodeBefore = node;
       }
-      nodeBefore = node;
+    } finally {
+      serverContext.getNodeStore().getReadWriteLock().writeLock().unlock();
     }
 
     // if (!success) {

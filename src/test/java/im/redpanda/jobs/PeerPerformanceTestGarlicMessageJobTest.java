@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import im.redpanda.core.ConcurrencyTestSupport;
 import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
@@ -239,6 +240,29 @@ public class PeerPerformanceTestGarlicMessageJobTest {
 
     // done() ran and scored the timed-out test as failed in exactly one scoring pass, counting
     // the insert node once (nodes.get(1), via the nodes loop; see TD007).
+    assertEquals(1, insertNode.getGmTestsFailed());
+  }
+
+  /**
+   * H7 regression: {@code done()} writes the shared JGraphT node graph ({@code setEdgeWeight},
+   * {@code edge.setLastCheckFailed}) while reading its structure, but used to hold no NodeStore
+   * lock at all — racing {@code NodeStore.maintainNodes()}, which does {@code removeVertex}/{@code
+   * addEdge} under the write lock (REDPANDAJ-2DW class: CME or silent corruption of the routing
+   * graph). Asserted directly: while another thread holds the NodeStore write lock, the scoring
+   * pass must not be able to run to completion.
+   *
+   * <p>Negative control: revert the lock in {@code done()} and this test fails immediately, because
+   * the scoring pass then finishes while the graph is locked by someone else.
+   */
+  @Test
+  public void done_scoringGraphBlocksWhileNodeStoreWriteLockIsHeldElsewhere() throws Exception {
+    PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
+    Node insertNode = (Node) getPrivateField(job, "insertNode");
+
+    ConcurrencyTestSupport.assertBlockedWhileHeld(
+        serverContext.getNodeStore().getReadWriteLock().writeLock(), job::done);
+
+    // and once the lock was released the scoring pass really did run
     assertEquals(1, insertNode.getGmTestsFailed());
   }
 

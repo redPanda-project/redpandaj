@@ -51,49 +51,63 @@ public class PeerList {
    * @return old peer, null if no old peer or old peer null.
    */
   public Peer add(Peer peer) {
-    Peer oldPeer = null;
+    // The duplicate lookups below used to run without any lock while other threads structurally
+    // modified the same plain HashMaps under the write lock (remove(), updateKademliaId(),
+    // addPeer()). An unsynchronized read during a put/resize/treeify is undefined behaviour:
+    // false-negative miss, a torn `oldPeer`, or an NPE inside HashMap.get. add() is called
+    // concurrently from the reader threads, the incoming handler and the outbound thread, so the
+    // whole check-and-add now runs under the write lock — which also makes it atomic, closing the
+    // check-then-add TOCTOU that let two threads both pass the duplicate check for the same peer.
+    // The write lock (not a read lock for the lookups) is required precisely because we must not
+    // release it between the check and addPeer(), and because ReentrantReadWriteLock cannot
+    // upgrade a read lock to a write lock. addPeer() re-acquires it reentrantly.
+    readWriteLock.writeLock().lock();
+    try {
+      Peer oldPeer = null;
 
-    // we have to check if the peer is already in the PeerList, for this we use the
-    // HashMaps since they are much faster
-    if (peer.getKademliaId() != null) {
-      oldPeer = peerHashMap.get(peer.getKademliaId());
-      if (oldPeer != null) {
-        // Peer with same KademliaId exists already
-        Log.put("Peer with same KademliaId exists already", 100);
-        return oldPeer;
-      } else {
-        /**
-         * Peer has a NodeId but was not found in list. If we would return without checking for ip
-         * and port, fast connections to same peer might make a problem.
-         */
-      }
-    }
-
-    /**
-     * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of
-     * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
-     * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to add
-     * Peers without (ip,port) here.
-     */
-    if (peer.getIp() != null) {
-      oldPeer = peerlistIpPort.get(getIpPortHash(peer));
-      if (oldPeer != null) {
-        // Peer with same Ip+Port exists already
-
-        if (peer.getNodeId() == null) {
-          // new peer to add has no node id, lets not add it
+      // we have to check if the peer is already in the PeerList, for this we use the
+      // HashMaps since they are much faster
+      if (peer.getKademliaId() != null) {
+        oldPeer = peerHashMap.get(peer.getKademliaId());
+        if (oldPeer != null) {
+          // Peer with same KademliaId exists already
+          Log.put("Peer with same KademliaId exists already", 100);
           return oldPeer;
-        }
-
-        if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
         } else {
-          return oldPeer;
+          /**
+           * Peer has a NodeId but was not found in list. If we would return without checking for ip
+           * and port, fast connections to same peer might make a problem.
+           */
         }
       }
-    }
 
-    oldPeer = addPeer(peer);
-    return oldPeer;
+      /**
+       * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of
+       * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
+       * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to
+       * add Peers without (ip,port) here.
+       */
+      if (peer.getIp() != null) {
+        oldPeer = peerlistIpPort.get(getIpPortHash(peer));
+        if (oldPeer != null) {
+          // Peer with same Ip+Port exists already
+
+          if (peer.getNodeId() == null) {
+            // new peer to add has no node id, lets not add it
+            return oldPeer;
+          }
+
+          if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
+          } else {
+            return oldPeer;
+          }
+        }
+      }
+
+      return addPeer(peer);
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
   }
 
   @Nullable
