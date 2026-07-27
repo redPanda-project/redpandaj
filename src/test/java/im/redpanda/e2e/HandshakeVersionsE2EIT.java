@@ -20,6 +20,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.security.InvalidKeyException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Arrays;
@@ -340,8 +341,13 @@ public class HandshakeVersionsE2EIT {
       byte[] nodeEphemeral = readFully(32);
 
       X25519PrivateKeyParameters ephemeral = new X25519PrivateKeyParameters(RANDOM);
-      byte[] shared =
-          CryptoUtils.x25519(ephemeral, new X25519PublicKeyParameters(nodeEphemeral, 0));
+      byte[] shared;
+      try {
+        shared = CryptoUtils.x25519(ephemeral, new X25519PublicKeyParameters(nodeEphemeral, 0));
+      } catch (InvalidKeyException e) {
+        // the node under test always sends an honestly generated ephemeral key
+        throw new IOException("node sent a degenerate ephemeral X25519 key", e);
+      }
       byte[] ourVerify = identity.getVerifyKeyBytes();
       byte[] nodeVerify = Arrays.copyOfRange(nodePublicKey, 0, 32);
       byte[] minKey = Arrays.compareUnsigned(ourVerify, nodeVerify) <= 0 ? ourVerify : nodeVerify;
@@ -392,8 +398,13 @@ public class HandshakeVersionsE2EIT {
       byte[] nodeEphemeral = readFully(32);
 
       // key schedule (we initiated the connection -> client role)
-      byte[] shared =
-          CryptoUtils.x25519(ephemeral, new X25519PublicKeyParameters(nodeEphemeral, 0));
+      byte[] shared;
+      try {
+        shared = CryptoUtils.x25519(ephemeral, new X25519PublicKeyParameters(nodeEphemeral, 0));
+      } catch (InvalidKeyException e) {
+        // the node under test always sends an honestly generated ephemeral key
+        throw new IOException("node sent a degenerate ephemeral X25519 key", e);
+      }
       byte[] ourVerify = identity.getVerifyKeyBytes();
       byte[] nodeVerify = Arrays.copyOfRange(nodePublicKey, 0, 32);
       byte[] minKey = Arrays.compareUnsigned(ourVerify, nodeVerify) <= 0 ? ourVerify : nodeVerify;

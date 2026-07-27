@@ -4,6 +4,7 @@ import im.redpanda.core.*;
 import im.redpanda.crypt.CryptoUtils;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -234,6 +235,11 @@ public class GarlicMessage extends Flaschenpost {
         }
       }
 
+    } catch (InvalidKeyException e) {
+      // degenerate ephemeral X25519 key (RFC 7748 contributory-behaviour check in
+      // CryptoUtils.x25519): remotely triggerable, so drop it as quietly as a bad GCM tag rather
+      // than reporting one Sentry event per packet
+      Log.put("garlic message with a degenerate ephemeral key, dropping packet...", 50);
     } catch (AEADBadTagException e) {
       // authentication failed: tampered ciphertext, wrong recipient binding (AAD) or wrong key —
       // drop the packet without parsing anything

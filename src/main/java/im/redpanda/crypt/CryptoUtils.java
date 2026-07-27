@@ -1,6 +1,8 @@
 package im.redpanda.crypt;
 
 import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
+import java.util.Arrays;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -33,14 +35,49 @@ public final class CryptoUtils {
 
   private CryptoUtils() {}
 
-  /** Computes the raw X25519 shared secret (32 bytes). */
+  /**
+   * Computes the raw X25519 shared secret (32 bytes), rejecting degenerate peer public keys.
+   *
+   * <p>X25519 has small-order points: for those (and for a few other degenerate inputs such as
+   * {@code u = 0}, {@code u = 1} or {@code u = p}) the agreement output is all zeroes regardless of
+   * our private key, so a peer that sends one can force a shared secret it knows in advance. RFC
+   * 7748 §6.1 calls checking for this "contributory behaviour" and requires it wherever the output
+   * feeds a KDF — which is every call site here (HKDF-SHA256 → AES-GCM key).
+   *
+   * <p>Bouncy Castle already fails the agreement for those inputs, but it signals that with an
+   * unchecked {@link IllegalStateException}. That would escape the packet-parsing paths, which
+   * catch only {@link GeneralSecurityException} — a remotely triggerable unchecked throw on a
+   * reader thread. Translating it (and re-checking the output ourselves, so the guarantee does not
+   * depend on the provider) turns it into the ordinary "drop this packet" path.
+   *
+   * @throws InvalidKeyException if the peer's public key is degenerate — the caller must drop the
+   *     packet / connection
+   */
   public static byte[] x25519(
-      X25519PrivateKeyParameters privateKey, X25519PublicKeyParameters publicKey) {
+      X25519PrivateKeyParameters privateKey, X25519PublicKeyParameters publicKey)
+      throws InvalidKeyException {
     X25519Agreement agreement = new X25519Agreement();
     agreement.init(privateKey);
     byte[] shared = new byte[agreement.getAgreementSize()];
-    agreement.calculateAgreement(publicKey, shared, 0);
+    try {
+      agreement.calculateAgreement(publicKey, shared, 0);
+    } catch (IllegalStateException e) {
+      throw new InvalidKeyException("X25519 agreement failed: degenerate peer public key", e);
+    }
+    if (isAllZero(shared)) {
+      Arrays.fill(shared, (byte) 0);
+      throw new InvalidKeyException("X25519 agreement produced an all-zero shared secret");
+    }
     return shared;
+  }
+
+  /** Branch-free all-zero check (no early exit, so it leaks nothing about the secret). */
+  private static boolean isAllZero(byte[] bytes) {
+    int accumulator = 0;
+    for (byte b : bytes) {
+      accumulator |= b;
+    }
+    return accumulator == 0;
   }
 
   /** HKDF-SHA256: derives {@code outLen} bytes from the input key material. */
