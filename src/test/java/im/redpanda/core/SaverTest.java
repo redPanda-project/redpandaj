@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -18,14 +19,13 @@ public class SaverTest {
 
   private static final String TEST_SAVE_DIR = "data";
   private static final String TEST_FILE = TEST_SAVE_DIR + "/peers.dat";
+  private static final String TEST_TMP_FILE = TEST_FILE + ".tmp";
 
   @Before
   @After
   public void cleanUp() throws IOException {
-    File file = new File(TEST_FILE);
-    if (file.exists()) {
-      Files.delete(Path.of(TEST_FILE));
-    }
+    Files.deleteIfExists(Path.of(TEST_FILE));
+    Files.deleteIfExists(Path.of(TEST_TMP_FILE));
   }
 
   @Test
@@ -96,6 +96,29 @@ public class SaverTest {
 
     assertTrue(
         loadedPeers.values().stream().noneMatch(p -> p.getIp().equals(bootstrapPeer.getIp())));
+  }
+
+  /**
+   * savePeers used to be handed PeerList#getPeerArrayList() - the live list - and iterated it
+   * without the peer list read lock, while network threads add and remove peers (redpandaj#260,
+   * REDPANDAJ-2DZ). Asserted via the lock itself rather than a racing stress test: a savePeers that
+   * takes the read lock cannot make progress while the write lock is held. Deterministic and
+   * one-sided, see {@link ConcurrencyTestSupport}.
+   */
+  @Test(timeout = 60_000)
+  public void savePeersBlocksWhileThePeerListWriteLockIsHeld() throws Exception {
+    PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peerList.add(peer);
+
+    ConcurrencyTestSupport.assertBlockedWhileHeld(
+        peerList.getReadWriteLock().writeLock(), () -> Saver.savePeers(peerList));
+
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+    assertEquals(1, loadedPeers.size());
+    assertNotNull(loadedPeers.get(peer.getKademliaId()));
+    assertFalse(new File(TEST_TMP_FILE).exists());
   }
 
   @Test
