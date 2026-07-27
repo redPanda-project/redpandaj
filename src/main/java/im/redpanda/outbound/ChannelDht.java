@@ -59,8 +59,18 @@ public final class ChannelDht {
    * to nodes: the client's {@code [nonce][AEAD ciphertext of a fixed-size plaintext]} blob, sized
    * to exactly this many bytes. All length/padding metadata lives <em>inside</em> the encrypted
    * plaintext, so no cleartext field ever reveals the real payload size.
+   *
+   * <p>Sized 1024 since the OH redundancy went to k=3: the usable plaintext is {@code
+   * RECORD_SIZE_BYTES - 12 nonce - 16 GCM tag}, and two participants with three OH descriptors each
+   * (~74 bytes per descriptor) need 530..574 bytes, which no longer fit the previous 512-byte
+   * bucket. 1024 leaves headroom for IPv6 endpoints and a third participant.
+   *
+   * <p>Changing this value is a <em>breaking</em> protocol change: {@link #isValidRecord} rejects
+   * every record of a different size, so nodes on the old bucket drop records published by upgraded
+   * clients and vice versa. Roll the network out before the clients; channels whose record is
+   * dropped in the meantime keep healing over the in-band {@code oh_update} announce.
    */
-  public static final int RECORD_SIZE_BYTES = 512;
+  public static final int RECORD_SIZE_BYTES = 1024;
 
   /**
    * Maximum age of a rendezvous record before it is considered stale. The spec sets a 48 h TTL;
