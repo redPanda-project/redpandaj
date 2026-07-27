@@ -61,6 +61,104 @@ public class InboundCommandProcessor {
    */
   static java.util.function.Consumer<Thread> installThreadHookForTests = t -> {};
 
+  /**
+   * Wraps an update-distribution task so unchecked failures are reported instead of vanishing.
+   *
+   * <p>These tasks go to {@code ExecutorService.submit()} and nobody ever looks at the returned
+   * {@code Future}, so any {@code RuntimeException} was swallowed without a log line or a Sentry
+   * event. The upload runnables dereference {@code peer.writeBuffer} / {@code
+   * peer.writeBufferCrypted} after sleeping up to 60 s, and {@link Peer#disconnect(String)} nulls
+   * exactly those fields — a peer disconnecting inside that window produced a silent NPE.
+   *
+   * <p>This wrapper only makes such a failure visible; it does not make the task bodies safe. Each
+   * body is responsible for its own cleanup, and two of them were not: {@code
+   * handleUpdateAnswerTimestamp} and {@code handleAndroidUpdateAnswerTimestamp} did {@code lock();
+   * put(); unlock();} with no {@code finally}, so the NPE left {@code writeBufferLock} held
+   * forever. That is fixed at the source — see {@link #requestUpdateContent(Peer, byte)} and {@link
+   * #appendToWriteBuffer(Peer, ByteBuffer)}, which hold the lock in a {@code try/finally} and abort
+   * cleanly when the peer is gone.
+   *
+   * <p>{@link Error}s are reported and rethrown; only unchecked exceptions are absorbed.
+   */
+  static Runnable reporting(String taskName, Runnable task) {
+    return () -> {
+      try {
+        task.run();
+      } catch (RuntimeException e) {
+        logger.warn("update task '{}' failed", taskName, e);
+        Log.sentry(e);
+      } catch (Error e) {
+        logger.error("update task '{}' failed fatally", taskName, e);
+        Log.sentry(e);
+        throw e;
+      }
+    };
+  }
+
+  /**
+   * Writes a single update-request command byte into the peer's write buffer.
+   *
+   * <p>{@link Peer#disconnect(String)} nulls {@code writeBuffer} while holding {@code
+   * writeBufferLock}, so the field is re-read and checked under that lock (the TD008 pattern from
+   * {@link Peer#sendPing()}). The previous code did {@code lock(); peer.writeBuffer.put(...);
+   * unlock();} with no {@code finally} — a disconnect in that window did not only NPE, it left
+   * {@code writeBufferLock} permanently locked.
+   *
+   * @return {@code true} if the command was queued, {@code false} if the peer is gone
+   */
+  static boolean requestUpdateContent(Peer peer, byte command) {
+    peer.writeBufferLock.lock();
+    try {
+      ByteBuffer writeBuffer = peer.writeBuffer;
+      if (writeBuffer == null) {
+        logger.info("peer disconnected before the update could be requested, aborting");
+        return false;
+      }
+      writeBuffer.put(command);
+    } finally {
+      peer.writeBufferLock.unlock();
+    }
+    peer.setWriteBufferFilled();
+    return true;
+  }
+
+  /**
+   * Appends a fully built update frame to the peer's write buffer, growing the buffer if needed.
+   *
+   * <p>Same re-read-under-the-lock contract as {@link #requestUpdateContent(Peer, byte)}: the frame
+   * is built after a {@code Thread.sleep} and a multi-megabyte disk read, so the peer may well be
+   * gone by the time we get here. Dereferencing the nulled {@code writeBuffer} raised an NPE inside
+   * a {@code Runnable} whose {@code Future} nobody observes — no log, no Sentry.
+   *
+   * @return {@code true} if the frame was queued, {@code false} if the peer is gone
+   */
+  static boolean appendToWriteBuffer(Peer peer, ByteBuffer frame) {
+    peer.writeBufferLock.lock();
+    try {
+      ByteBuffer writeBuffer = peer.writeBuffer;
+      if (writeBuffer == null) {
+        logger.info("peer disconnected before the update could be uploaded, aborting");
+        return false;
+      }
+      if (writeBuffer.remaining() < frame.remaining()) {
+        ByteBuffer allocate =
+            ByteBuffer.allocate(writeBuffer.capacity() + frame.remaining() + 1024 * 1024 * 10);
+        writeBuffer.flip();
+        allocate.put(writeBuffer);
+        peer.writeBuffer = allocate;
+        writeBuffer = allocate;
+      }
+      // put(ByteBuffer), not put(frame.array()): the bulk-array form writes the whole backing
+      // array regardless of position/limit and fails outright on a non-array-backed buffer, so it
+      // does not match the remaining() capacity check above (Copilot review).
+      writeBuffer.put(frame);
+    } finally {
+      peer.writeBufferLock.unlock();
+    }
+    peer.setWriteBufferFilled();
+    return true;
+  }
+
   /** System property overriding {@link #updateJarPath()}; used by tests to avoid CWD sharing. */
   private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
 
@@ -509,10 +607,9 @@ public class InboundCommandProcessor {
             ConnectionReaderThread.updateDownloadLock.lock();
             try {
               System.out.println("our version is outdated, we try to download it from this peer!");
-              peer.writeBufferLock.lock();
-              peer.getWriteBuffer().put(Command.UPDATE_REQUEST_CONTENT);
-              peer.writeBufferLock.unlock();
-              peer.setWriteBufferFilled();
+              if (!requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)) {
+                return;
+              }
               try {
                 Thread.sleep(60000);
               } catch (InterruptedException ignored) {
@@ -522,7 +619,7 @@ public class InboundCommandProcessor {
               ConnectionReaderThread.updateDownloadLock.unlock();
             }
           };
-      Server.threadPool.submit(runnable);
+      Server.threadPool.submit(reporting("update-request-content-download", runnable));
     }
     return 1 + 8;
   }
@@ -561,20 +658,8 @@ public class InboundCommandProcessor {
               a.put(serverContext.getLocalSettings().getUpdateSignature());
               a.put(data);
               a.flip();
-              peer.writeBufferLock.lock();
-              try {
-                if (peer.writeBuffer.remaining() < a.remaining()) {
-                  ByteBuffer allocate =
-                      ByteBuffer.allocate(
-                          peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
-                  peer.writeBuffer.flip();
-                  allocate.put(peer.writeBuffer);
-                  peer.writeBuffer = allocate;
-                }
-                peer.writeBuffer.put(a.array());
-                peer.setWriteBufferFilled();
-              } finally {
-                peer.writeBufferLock.unlock();
+              if (!appendToWriteBuffer(peer, a)) {
+                return;
               }
             } catch (FileNotFoundException e) {
               Log.sentry(e);
@@ -587,7 +672,7 @@ public class InboundCommandProcessor {
             ConnectionReaderThread.updateUploadLock.release();
           }
         };
-    ConnectionReaderThread.threadPool.submit(runnable);
+    ConnectionReaderThread.threadPool.submit(reporting("update-answer-content-upload", runnable));
     return 1;
   }
 
@@ -645,7 +730,8 @@ public class InboundCommandProcessor {
       // read from the connection buffer has already been captured above (othersTimestamp,
       // signatureBytes, data), so nothing here races the reader moving on to the next command.
       ConnectionReaderThread.threadPool.submit(
-          () -> installJarUpdate(othersTimestamp, signatureBytes, data));
+          reporting(
+              "install-jar-update", () -> installJarUpdate(othersTimestamp, signatureBytes, data)));
     }
     return consumedBytes;
   }
@@ -746,10 +832,9 @@ public class InboundCommandProcessor {
               }
               System.out.println(
                   "our android.apk version is outdated, we try to download it from this peer!");
-              peer.writeBufferLock.lock();
-              peer.writeBuffer.put(Command.ANDROID_UPDATE_REQUEST_CONTENT);
-              peer.writeBufferLock.unlock();
-              peer.setWriteBufferFilled();
+              if (!requestUpdateContent(peer, Command.ANDROID_UPDATE_REQUEST_CONTENT)) {
+                return;
+              }
               try {
                 Thread.sleep(60000);
               } catch (InterruptedException ignored) {
@@ -760,7 +845,8 @@ public class InboundCommandProcessor {
             }
           };
       InboundCommandProcessor.this.serverContext.getNodeStore();
-      ConnectionReaderThread.threadPool.submit(runnable);
+      ConnectionReaderThread.threadPool.submit(
+          reporting("android-update-request-content-download", runnable));
     }
     return 1 + 8;
   }
@@ -810,20 +896,8 @@ public class InboundCommandProcessor {
               a.put(androidSignature);
               a.put(data);
               a.flip();
-              peer.writeBufferLock.lock();
-              try {
-                if (peer.writeBuffer.remaining() < a.remaining()) {
-                  ByteBuffer allocate =
-                      ByteBuffer.allocate(
-                          peer.writeBuffer.capacity() + a.remaining() + 1024 * 1024 * 10);
-                  peer.writeBuffer.flip();
-                  allocate.put(peer.writeBuffer);
-                  peer.writeBuffer = allocate;
-                }
-                peer.writeBuffer.put(a.array());
-                peer.setWriteBufferFilled();
-              } finally {
-                peer.writeBufferLock.unlock();
+              if (!appendToWriteBuffer(peer, a)) {
+                return;
               }
               int cnt = 0;
               while (cnt < 6) {
@@ -834,9 +908,13 @@ public class InboundCommandProcessor {
                 }
                 peer.writeBufferLock.lock();
                 try {
-                  if (!peer.isConnected()
-                      || (peer.writeBuffer.position() == 0
-                          && peer.writeBufferCrypted.position() == 0)) {
+                  // re-read under the lock: disconnect() nulls both buffers while holding it
+                  ByteBuffer writeBuffer = peer.writeBuffer;
+                  ByteBuffer writeBufferCrypted = peer.writeBufferCrypted;
+                  if (!peer.isConnected() || writeBuffer == null || writeBufferCrypted == null) {
+                    break;
+                  }
+                  if (writeBuffer.position() == 0 && writeBufferCrypted.position() == 0) {
                     break;
                   }
                 } finally {
@@ -851,7 +929,8 @@ public class InboundCommandProcessor {
             ConnectionReaderThread.updateUploadLock.release();
           }
         };
-    ConnectionReaderThread.threadPool.submit(runnable);
+    ConnectionReaderThread.threadPool.submit(
+        reporting("android-update-answer-content-upload", runnable));
     return 1;
   }
 
@@ -909,7 +988,8 @@ public class InboundCommandProcessor {
       // matching the request-side handlers. othersTimestamp/signature/data are already captured
       // above so nothing here races the reader moving on to the next command.
       ConnectionReaderThread.threadPool.submit(
-          () -> installApkUpdate(othersTimestamp, signature, data));
+          reporting(
+              "install-apk-update", () -> installApkUpdate(othersTimestamp, signature, data)));
     }
     return consumedBytes;
   }

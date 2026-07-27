@@ -7,12 +7,16 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class Node implements Serializable {
 
   static final int MAX_SCORE_VALUE = 50;
+
+  /** A connection point not seen for two weeks is dropped from the persisted node. */
+  static final long CONNECTION_POINT_MAX_AGE_MS = 1000L * 60L * 60L * 24L * 14L;
 
   private static final Logger logger = LogManager.getLogger();
 
@@ -61,6 +65,11 @@ public class Node implements Serializable {
     this.lastSeen = System.currentTimeMillis();
   }
 
+  /** The connection points currently known for this node (live list, not a copy). */
+  List<ConnectionPoint> getConnectionPoints() {
+    return connectionPoints;
+  }
+
   public ConnectionPoint latestSeenConnectionPoint() {
     if (connectionPoints.isEmpty()) {
       return null;
@@ -69,22 +78,35 @@ public class Node implements Serializable {
     return connectionPoints.getFirst();
   }
 
+  /**
+   * Records that this node was seen at {@code ip:port} and evicts every connection point that has
+   * not been seen for {@link #CONNECTION_POINT_MAX_AGE_MS}.
+   *
+   * <p>The loop used to {@code break} on the first match, so the staleness scan only ever covered
+   * the entries before the match — and never ran at all for a long-lived stable connection, whose
+   * point sits at the front of the list and is re-confirmed by {@code NodeConnectionPointsSeenJob}
+   * every two minutes. The entries are persisted, so a node seen from many addresses over time
+   * (mobile/NAT churn, replayed handshakes from many source IPs) accumulated connection points
+   * without the intended 14-day bound.
+   */
   public void seen(String ip, int port) {
     seen();
     ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
 
     ArrayList<ConnectionPoint> toRemove = new ArrayList<>();
+    long staleBefore = this.lastSeen - CONNECTION_POINT_MAX_AGE_MS;
 
     boolean found = false;
     for (ConnectionPoint point : connectionPoints) {
-      if (point.equals(connectionPoint)) {
+      if (!found && point.equals(connectionPoint)) {
         point.setLastSeen(this.lastSeen);
         point.resetRetries();
         found = true;
-        break;
+        // just refreshed, so it can never be stale — and the scan must continue over the rest
+        continue;
       }
 
-      if (point.lastSeen < this.lastSeen - 1000L * 60L * 60L * 24L * 14L) {
+      if (point.getLastSeen() < staleBefore) {
         logger.info("removed connection point since not seen since two weeks: " + point.getIp());
         toRemove.add(point);
       }
