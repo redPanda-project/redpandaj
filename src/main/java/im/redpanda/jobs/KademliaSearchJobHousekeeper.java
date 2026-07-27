@@ -9,10 +9,10 @@ public class KademliaSearchJobHousekeeper extends Job {
 
   /**
    * Run interval of this job. The blacklist entries themselves expire after {@link
-   * KademliaSearchJob#BLACKLIST_KEY_FOR} (30 s), so this interval is the only bound on how many
-   * stale entries the map can hold. Entries are created from inbound, peer-controlled search
-   * requests, so the sweep has to run often enough that a remote peer cannot grow the map
-   * unboundedly. The sweep itself is a single O(n) pass over a small map.
+   * KademliaSearchJob#BLACKLIST_KEY_FOR}, so this interval is the only bound on how many stale
+   * entries the map can hold. Entries are created from inbound, peer-controlled search requests, so
+   * the sweep has to run often enough that a remote peer cannot grow the map unboundedly. The sweep
+   * itself is a single O(n) pass over a small map.
    */
   static final long RUN_INTERVAL = 1000L * 60L;
 
@@ -32,9 +32,11 @@ public class KademliaSearchJobHousekeeper extends Job {
     try {
       long now = System.currentTimeMillis();
       int sizeBefore = KademliaSearchJob.getKademliaIdSearchBlacklist().size();
+      // <= now, matching KademliaSearchJob.init(), which treats an entry as expired once
+      // `currentTimeMillis - blacklistedTill >= 0`
       KademliaSearchJob.getKademliaIdSearchBlacklist()
           .entrySet()
-          .removeIf(entry -> entry.getValue() < now);
+          .removeIf(entry -> entry.getValue() <= now);
       removed = sizeBefore - KademliaSearchJob.getKademliaIdSearchBlacklist().size();
     } finally {
       KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();

@@ -48,15 +48,28 @@ public class KademliaSearchJobHousekeeperTest {
     KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
     try {
       KademliaSearchJob.getKademliaIdSearchBlacklist().put(expired, now - 1000L);
-      KademliaSearchJob.getKademliaIdSearchBlacklist().put(live, now + 60_000L);
+      // same lifetime the production code hands out
+      KademliaSearchJob.getKademliaIdSearchBlacklist()
+          .put(live, now + KademliaSearchJob.BLACKLIST_KEY_FOR);
     } finally {
       KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();
     }
 
     new KademliaSearchJobHousekeeper(null).work();
 
-    assertThat(KademliaSearchJob.getKademliaIdSearchBlacklist()).doesNotContainKey(expired);
-    assertThat(KademliaSearchJob.getKademliaIdSearchBlacklist()).containsKey(live);
+    Map<KademliaId, Long> blacklist = snapshotBlacklist();
+    assertThat(blacklist).doesNotContainKey(expired);
+    assertThat(blacklist).containsKey(live);
+  }
+
+  /** The blacklist is a plain HashMap guarded by its own lock — never read it unsynchronized. */
+  private static Map<KademliaId, Long> snapshotBlacklist() {
+    KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
+    try {
+      return new HashMap<>(KademliaSearchJob.getKademliaIdSearchBlacklist());
+    } finally {
+      KademliaSearchJob.getKademliaIdSearchBlacklistLock().unlock();
+    }
   }
 
   /**
