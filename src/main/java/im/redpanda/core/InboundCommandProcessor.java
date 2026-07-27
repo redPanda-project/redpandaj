@@ -68,10 +68,15 @@ public class InboundCommandProcessor {
    * {@code Future}, so any {@code RuntimeException} was swallowed without a log line or a Sentry
    * event. The upload runnables dereference {@code peer.writeBuffer} / {@code
    * peer.writeBufferCrypted} after sleeping up to 60 s, and {@link Peer#disconnect(String)} nulls
-   * exactly those fields — a peer disconnecting inside that window produced a silent NPE. Locks and
-   * semaphores are released via {@code finally} either way, so this was a diagnostic blind spot on
-   * the update-distribution path rather than a leak, but it hid the one failure mode that path is
-   * most likely to hit.
+   * exactly those fields — a peer disconnecting inside that window produced a silent NPE.
+   *
+   * <p>This wrapper only makes such a failure visible; it does not make the task bodies safe. Each
+   * body is responsible for its own cleanup, and two of them were not: {@code
+   * handleUpdateAnswerTimestamp} and {@code handleAndroidUpdateAnswerTimestamp} did {@code lock();
+   * put(); unlock();} with no {@code finally}, so the NPE left {@code writeBufferLock} held
+   * forever. That is fixed at the source — see {@link #requestUpdateContent(Peer, byte)} and {@link
+   * #appendToWriteBuffer(Peer, ByteBuffer)}, which hold the lock in a {@code try/finally} and abort
+   * cleanly when the peer is gone.
    *
    * <p>{@link Error}s are reported and rethrown; only unchecked exceptions are absorbed.
    */
@@ -143,7 +148,10 @@ public class InboundCommandProcessor {
         peer.writeBuffer = allocate;
         writeBuffer = allocate;
       }
-      writeBuffer.put(frame.array());
+      // put(ByteBuffer), not put(frame.array()): the bulk-array form writes the whole backing
+      // array regardless of position/limit and fails outright on a non-array-backed buffer, so it
+      // does not match the remaining() capacity check above (Copilot review).
+      writeBuffer.put(frame);
     } finally {
       peer.writeBufferLock.unlock();
     }
