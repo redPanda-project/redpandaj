@@ -63,8 +63,29 @@ public class PeerList {
   /** We store each Peer in a hashmap for fast get operations via KademliaId */
   private final HashMap<KademliaId, Peer> peerHashMap = new HashMap<>();
 
-  /** We store each Peer in a hashmap for fast get operations via Ip and Port */
-  private final HashMap<Integer, Peer> peerlistIpPort = new HashMap<>();
+  /**
+   * We store each Peer in a hashmap for fast get operations via Ip and Port.
+   *
+   * <p>The key is the address itself ({@code ip + ":" + port}, see {@link #ipPortKey}), not a hash
+   * of it. It used to be {@code ip.hashCode() + port}, i.e. an {@code int} that two
+   * <em>different</em> addresses can share: {@code "10.0.0.11":59558} and {@code "10.0.0.21":59527}
+   * collide, and so does every pair whose ip hashes differ by exactly the port difference. A
+   * colliding peer took over the slot of a live one, which made {@link #addLocked} answer with the
+   * wrong peer (and, for a peer without a {@link NodeId}, refuse to register the new one at all)
+   * and let {@link #removeIpPort} cascade a full removal onto an innocent peer at a completely
+   * different address (TD027).
+   *
+   * <p>Only peers that have an ip are in here — see {@link #addPeer}. Peers without connection
+   * details are explicitly allowed in the peer list, and there is no address to key them by.
+   *
+   * <p>Note what this map still cannot distinguish, because it is not a collision but genuine key
+   * equality: every inbound light client from the same ip announces port 0 (it has no listening
+   * socket, {@code ConnectionReaderThread:151}), so they all share the key {@code "127.0.0.1:0"}
+   * and the last one to be added owns it. That is a lookup ambiguity, not corruption — every
+   * mutation of this map is value-checked ({@link #removeIpPortMapping}), so a removal can only
+   * ever drop the mapping it actually owns.
+   */
+  private final HashMap<String, Peer> peerlistIpPort = new HashMap<>();
 
   /** Blacklist of ips via HashMap */
   private final HashMap<String, Peer> blacklistIp = new HashMap<>();
@@ -168,7 +189,7 @@ public class PeerList {
      * Peers without (ip,port) here.
      */
     if (peer.getIp() != null) {
-      oldPeer = peerlistIpPort.get(getIpPortHash(peer));
+      oldPeer = peerlistIpPort.get(ipPortKey(peer));
       if (oldPeer != null) {
         // Peer with same Ip+Port exists already
 
@@ -195,7 +216,12 @@ public class PeerList {
       if (peer.getKademliaId() != null) {
         oldPeer = peerHashMap.put(peer.getKademliaId(), peer);
       }
-      peerlistIpPort.put(getIpPortHash(peer), peer);
+      // Only keyable peers go into the address map. A peer without an ip has no address, and
+      // addLocked's javadoc explicitly allows such peers in the list (clearConnectionDetails
+      // produces them). Keying them anyway would put every one of them into one shared bucket.
+      if (peer.getIp() != null) {
+        peerlistIpPort.put(ipPortKey(peer), peer);
+      }
       peerArrayList.add(peer);
     } finally {
       readWriteLock.writeLock().unlock();
@@ -204,18 +230,25 @@ public class PeerList {
   }
 
   /**
-   * Hash method for the peerlistIpPort list.
+   * Key method for the {@link #peerlistIpPort} map.
    *
-   * @param peer
-   * @return hash value
+   * @param peer a peer with an ip
+   * @return the address key of that peer
    */
-  private Integer getIpPortHash(Peer peer) {
-    return getIpPortHash(peer.getIp(), peer.getPort());
+  private static String ipPortKey(Peer peer) {
+    return ipPortKey(peer.getIp(), peer.getPort());
   }
 
-  private static Integer getIpPortHash(String ip, int port) {
-    // ToDo: we need later a better method
-    return ip.hashCode() + port;
+  /**
+   * The address itself, so that two different addresses can never share a key.
+   *
+   * <p>Was {@code ip.hashCode() + port} — a hash used as if it were a key. Distinct addresses whose
+   * ip hashes differ by exactly the port difference mapped to the same slot ({@code
+   * "10.0.0.11":59558} vs {@code "10.0.0.21":59527}), and since peers announce their own ip and
+   * port in the gossiped peer list, the colliding entry was remote-controllable (TD027).
+   */
+  private static String ipPortKey(String ip, int port) {
+    return ip + ":" + port;
   }
 
   /**
@@ -233,15 +266,17 @@ public class PeerList {
    * on every retry, forever (T88; the S4 airplane-mode gate hung on it after T86/#294 started
    * evicting undialable peers and thus made this removal path reachable at all).
    *
-   * <p>The value-checked removal matters because {@link #getIpPortHash} is {@code ip.hashCode() +
-   * port}: every loopback light client shares the key {@code "127.0.0.1".hashCode()}, so an
-   * unconditional {@code remove(key)} would evict a different, live peer's mapping.
+   * <p>The value-checked removal matters because an address is not unique per peer: every inbound
+   * light client from the same ip announces port 0, so they all share the key {@code "127.0.0.1:0"}
+   * and only the last one added owns it. An unconditional {@code remove(key)} would evict a
+   * different, live peer's mapping. This is the single mutation point for removals from {@link
+   * #peerlistIpPort}, so that invariant holds for every path (TD027).
    */
-  private void removeIpPortMapping(Peer peer) {
+  private boolean removeIpPortMapping(Peer peer) {
     if (peer.getIp() == null) {
-      return;
+      return false;
     }
-    peerlistIpPort.remove(getIpPortHash(peer), peer);
+    return peerlistIpPort.remove(ipPortKey(peer), peer);
   }
 
   /**
@@ -283,9 +318,12 @@ public class PeerList {
    * @return
    */
   public boolean removeIpPort(String ip, int port) {
+    if (ip == null) {
+      return false;
+    }
     readWriteLock.writeLock().lock();
     try {
-      Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
+      Peer peer = peerlistIpPort.remove(ipPortKey(ip, port));
       if (peer == null) {
         return false;
       }
@@ -298,18 +336,22 @@ public class PeerList {
   }
 
   /**
-   * Removes the Peer from the IpPortList, peer is still in the other lists. Use this only for
+   * Removes this peer from the IpPortList, the peer is still in the other lists. Use this only for
    * ip,port changes.
    *
-   * @param ip
-   * @param port
-   * @return
+   * <p>Takes the {@link Peer} rather than an ip and a port so that the removal can be
+   * value-checked: an address does not identify a peer (see {@link #peerlistIpPort}), so removing
+   * by address alone evicted whichever peer happened to own that key — the very mistake the other
+   * two removal paths were fixed for in T88, left behind on this one (TD027). Its caller {@link
+   * #clearConnectionDetails} always has the peer.
+   *
+   * @param peer the peer whose address mapping should go
+   * @return true if this peer's own mapping was removed, false if it did not own one
    */
-  public boolean removeIpPortOnly(String ip, int port) {
+  public boolean removeIpPortOnly(Peer peer) {
     readWriteLock.writeLock().lock();
     try {
-      Peer peer = peerlistIpPort.remove(getIpPortHash(ip, port));
-      return peer != null;
+      return removeIpPortMapping(peer);
     } finally {
       readWriteLock.writeLock().unlock();
     }
@@ -437,7 +479,7 @@ public class PeerList {
 
   public void clearConnectionDetails(Peer peer) {
     Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
-    removeIpPortOnly(peer.getIp(), peer.getPort());
+    removeIpPortOnly(peer);
     peer.removeIpAndPort();
   }
 
