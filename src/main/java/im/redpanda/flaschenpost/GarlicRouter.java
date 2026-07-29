@@ -336,10 +336,11 @@ public final class GarlicRouter {
    * senders and stay at DEBUG to avoid a remote-triggerable log flood.
    */
   private static void logDroppedRecordStore(
-      ChannelDht.RecordValidation validation, KadContent record, long nowMs) {
+      ChannelDht.RecordValidation validation, KadContent droppedRecord, long nowMs) {
     switch (validation) {
       case WRONG_SIZE -> {
-        int actualSize = record.getContent() == null ? -1 : record.getContent().length;
+        int actualSize =
+            droppedRecord.getContent() == null ? -1 : droppedRecord.getContent().length;
         if (tryAcquireSizeMismatchWarn(nowMs)) {
           log.warn(
               "flaschenpost v2 record store dropped: record size {} != expected {} — client and"
