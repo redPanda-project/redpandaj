@@ -199,7 +199,9 @@ public class ParseCommandTest {
 
     int i = 0;
     for (i = 0; i < peersToTest; i++) {
-      Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i);
+      // port i + 1, not i: port 0 is not a dialable address and the peer-list gossip
+      // filter drops such entries in both directions (T86).
+      Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i + 1);
       testpeer1.setNodeId(new NodeId());
       testpeer1.setConnected(true);
       peerList.add(testpeer1);
@@ -255,7 +257,7 @@ public class ParseCommandTest {
 
     // cleanup
     for (i = 0; i < peersToTest; i++) {
-      peerList.removeIpPort("rand_rewrewR_testip" + i, i);
+      peerList.removeIpPort("rand_rewrewR_testip" + i, i + 1);
     }
 
     assertThat(startingPeerListSize).isEqualTo(peerList.size());
@@ -273,7 +275,8 @@ public class ParseCommandTest {
 
     int i = 0;
     for (i = 0; i < peersToTest; i++) {
-      Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i);
+      // port i + 1, see testREQUEST_PEERLIST
+      Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i + 1);
       testpeer1.setNodeId(new NodeId());
       testpeer1.setConnected(true);
       // System.out.println("node id: " +
