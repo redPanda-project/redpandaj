@@ -12,6 +12,7 @@ import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
 import im.redpanda.store.NodeStore;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
@@ -311,11 +312,20 @@ public final class OhForwarder {
       return direct;
     }
 
-    // tie-break equal XOR distances by KademliaId so the TreeSet never collapses distinct peers
+    // Tie-break equal XOR distances by KademliaId so the TreeSet never collapses distinct peers.
+    // The tie-break compares the FULL 160-bit id. It used to compare KademliaId.toString(), which
+    // is a debug label of the first 10 Base58 characters only — so the comparator chain did not
+    // actually guarantee the property this comment claims: two distinct peers sharing that prefix
+    // would compare 0 and the second would be dropped from the candidate set. Today the primary
+    // comparator saves it (XOR against a fixed key is injective, so distinct ids can never tie),
+    // which is why no deposit was ever misrouted by this — but the safety net was resting on the
+    // very thing it exists to back up. Same class of defect as H1 in KademliaId.equals (#281):
+    // a shortened id is a label, not an identity. Raw bytes are exact and avoid a full Base58
+    // encoding on the forwarding path.
     TreeSet<Peer> candidates =
         new TreeSet<>(
             new PeerComparator(targetNodeId)
-                .thenComparing(peer -> peer.getKademliaId().toString()));
+                .thenComparing(peer -> peer.getKademliaId().getBytes(), Arrays::compareUnsigned));
     Lock lock = peerList.getReadWriteLock().readLock();
     lock.lock();
     try {
