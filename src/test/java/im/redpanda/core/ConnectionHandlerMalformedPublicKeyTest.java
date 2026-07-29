@@ -59,6 +59,45 @@ public class ConnectionHandlerMalformedPublicKeyTest {
     }
   }
 
+  /**
+   * A malformed key that arrives split across two reads goes through the REDPANDAJ-2FA carry-over
+   * (stash + prepend) before it reaches the import — the reassembled key must hit the exact same
+   * quiet rejection as a contiguous one.
+   */
+  @Test
+  public void malformedPublicKeySplitAcrossTwoReadsIsStillRejectedQuietly() throws Exception {
+    withHandshakeAwaitingPublicKey(
+        (connectionHandler, peerInHandshake, peerIdentity, accepted) -> {
+          byte[] malformedKey = new byte[NodeId.PUBLIC_KEYLEN]; // all-zero, see test above
+          int firstChunk = 40;
+
+          ByteBuffer head = ByteBuffer.allocate(1 + firstChunk);
+          head.put(Command.SEND_PUBLIC_KEY);
+          head.put(malformedKey, 0, firstChunk);
+          head.flip();
+
+          assertTrue(
+              "incomplete command must wait for more bytes",
+              invokeParse(connectionHandler, peerInHandshake, head));
+          assertEquals(
+              "the incomplete command must be stashed",
+              1 + firstChunk,
+              peerInHandshake.plaintextHandshakeCarryLength());
+          assertTrue("the connection must stay open while waiting", accepted.isOpen());
+
+          ByteBuffer tail = ByteBuffer.allocate(NodeId.PUBLIC_KEYLEN - firstChunk);
+          tail.put(malformedKey, firstChunk, NodeId.PUBLIC_KEYLEN - firstChunk);
+          tail.flip();
+          ByteBuffer reassembled = peerInHandshake.prependPlaintextHandshakeCarry(tail);
+
+          boolean keepProcessing = invokeParse(connectionHandler, peerInHandshake, reassembled);
+
+          assertFalse("the read event must not be processed further", keepProcessing);
+          assertEquals("disconnect status must be set", 2, peerInHandshake.getStatus());
+          assertFalse("the socket must be closed", accepted.isOpen());
+        });
+  }
+
   /** Interop guard: a conforming peer's public key still completes this handshake step. */
   @Test
   public void validPublicKeyStillCompletesTheHandshakeStep() throws Exception {
