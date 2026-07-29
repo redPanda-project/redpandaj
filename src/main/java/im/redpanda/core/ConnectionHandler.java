@@ -291,7 +291,11 @@ public class ConnectionHandler extends Thread {
     return false;
   }
 
-  private boolean handleKeyWriteable(SelectionKey key) {
+  /**
+   * Package-private rather than private so the buffer-gone path below can be driven directly from a
+   * test instead of through a real selector.
+   */
+  boolean handleKeyWriteable(SelectionKey key) {
     Peer peer = (Peer) key.attachment();
     peer.writeBufferLock.lock();
     try {
@@ -305,9 +309,25 @@ public class ConnectionHandler extends Thread {
        */
       peer.encrypteOutputdata();
 
-      peer.writeBufferCrypted.flip();
-      remainingBytes = peer.writeBufferCrypted.hasRemaining();
-      peer.writeBufferCrypted.compact();
+      // Re-read under the lock and null-check — the pattern every other writeBufferLock section
+      // uses (Peer.encrypteOutputdata(), Peer.sendPing(), InboundCommandProcessor:949); this was
+      // the only one dereferencing the field blind, on the thread where it hurts most.
+      //
+      // The buffers can already be gone when a key becomes writable: Peer.sendPing() sets
+      // connected=false when it finds a null writeBuffer but leaves the key registered and valid,
+      // and PeerJobs' reaper then frees the pair of such a peer without cancelling the key. The
+      // deref below threw on the selector thread for exactly that (REDPANDAJ-2EJ / TD029). A peer
+      // without buffers cannot send anything ever again, so tear it down instead of leaving a
+      // zombie key that re-fires OP_WRITE on every select().
+      ByteBuffer writeBufferCrypted = peer.writeBufferCrypted;
+      if (writeBufferCrypted == null) {
+        peer.disconnect("write buffer is gone");
+        return true;
+      }
+
+      writeBufferCrypted.flip();
+      remainingBytes = writeBufferCrypted.hasRemaining();
+      writeBufferCrypted.compact();
 
       // switch buffer for reading
       if (!remainingBytes) {

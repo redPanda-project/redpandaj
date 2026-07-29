@@ -112,8 +112,7 @@ public class PeerJobs extends Thread {
 
           // todo: interrupt outbound thread?
         } else if (peer.getLastAnswered() > Settings.pingTimeout * 2) {
-          peer.writeBuffer = null;
-          peer.writeBufferCrypted = null;
+          releaseWriteBuffers(peer);
         }
 
       } else if (peer.isConnected()) {
@@ -128,6 +127,40 @@ public class PeerJobs extends Thread {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Frees the 2 × 300 KiB write buffers of a peer that has been silent for twice the ping timeout.
+   *
+   * <p>TD029 (REDPANDAJ-2EJ): both fields belong to {@link Peer#writeBufferLock} — {@link
+   * Peer#disconnect(String)}, {@link Peer#setupConnectionForPeer(PeerInHandshake)} and {@code
+   * ConnectionHandler.handleKeyWriteable()} all touch them under it. Nulling them here without the
+   * lock let the selector thread watch the pair disappear in the middle of its own locked section
+   * and NPE on {@code writeBufferCrypted.flip()}.
+   *
+   * <p>Lock order (documented on {@link PeerList}): {@code writeBufferLock} is the outermost of the
+   * three, and {@link #runOnce()} released the peer list read lock right after taking its snapshot,
+   * so nothing can be inverted here — the same loop already calls {@link Peer#disconnect(String)},
+   * which takes exactly this lock.
+   *
+   * <p>The condition is re-tested under the lock because {@code setupConnectionForPeer()} holds
+   * {@code writeBufferLock} across the whole connection swap: between the decision in the loop and
+   * the acquisition here the peer can have reconnected and allocated fresh buffers, and nulling
+   * those would tear down a live connection. {@code connected} and {@code lastPongReceived} are
+   * plain fields, so the acquisition is also what gives this thread an up-to-date view of them.
+   */
+  private static void releaseWriteBuffers(Peer peer) {
+    peer.writeBufferLock.lock();
+    try {
+      if (!peer.isConnected()
+          && !peer.isConnecting
+          && peer.getLastAnswered() > Settings.pingTimeout * 2) {
+        peer.writeBuffer = null;
+        peer.writeBufferCrypted = null;
+      }
+    } finally {
+      peer.writeBufferLock.unlock();
     }
   }
 
