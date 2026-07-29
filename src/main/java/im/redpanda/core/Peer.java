@@ -448,6 +448,19 @@ public class Peer implements Comparable<Peer> {
     return port;
   }
 
+  /**
+   * Whether this peer has connection details we could dial.
+   *
+   * <p>False for every peer we only ever learned from an inbound connection: the handshake carries
+   * the sender's listening port, and a light client has no listening socket, so it announces port 0
+   * ({@code PeerInHandshake.port} also defaults to 0). The resulting {@link Peer} keeps the remote
+   * end of that socket, which is useless the moment the connection is gone. Also false after {@link
+   * #removeIpAndPort()}.
+   */
+  public boolean isDialable() {
+    return ip != null && port > 0 && port <= 65535;
+  }
+
   public boolean isAuthed() {
     return authed;
   }

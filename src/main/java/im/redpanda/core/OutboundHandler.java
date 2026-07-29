@@ -198,7 +198,9 @@ public class OutboundHandler extends Thread {
             break;
           }
 
-          if (peer.port == 0) {
+          if (!peer.isDialable()) {
+            // Nothing to connect to. Note this skip happens before the retry-based removal below,
+            // so such a peer could never be evicted here - PeerJobs does it instead (T86).
             continue;
           }
 

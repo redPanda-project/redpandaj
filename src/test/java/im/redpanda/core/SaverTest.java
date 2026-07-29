@@ -65,6 +65,29 @@ public class SaverTest {
   }
 
   @Test
+  public void testSavePeersSkipsUndialablePeers() {
+    // T86: an inbound-only peer (a light client announces port 0 in the handshake) cannot be
+    // dialled by anyone. Persisting it is what let hundreds of such entries survive restarts and
+    // be re-gossiped afterwards - the affected node's peers.dat held 82 loopback entries alone.
+    ArrayList<Peer> peers = new ArrayList<>();
+
+    Peer inboundOnly = new Peer("84.147.60.253", 0);
+    inboundOnly.setNodeId(new NodeId());
+    peers.add(inboundOnly);
+
+    Peer dialable = new Peer("46.224.156.238", 59558);
+    dialable.setNodeId(new NodeId());
+    peers.add(dialable);
+
+    Saver.savePeers(peers);
+
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+
+    assertEquals(1, loadedPeers.size());
+    assertNotNull(loadedPeers.get(dialable.getKademliaId()));
+  }
+
+  @Test
   public void testSavePeersSkipsPeerWithoutVerifyKey() {
     // Simulates the first-boot race: a bootstrap peer's KademliaId is known (e.g. from the DHT)
     // but its handshake has not completed yet, so its NodeId has no verify key. Saving must not
