@@ -147,8 +147,18 @@ public class PeerJobs extends Thread {
    * <p>The condition is re-tested under the lock because {@code setupConnectionForPeer()} holds
    * {@code writeBufferLock} across the whole connection swap: between the decision in the loop and
    * the acquisition here the peer can have reconnected and allocated fresh buffers, and nulling
-   * those would tear down a live connection. {@code connected} and {@code lastPongReceived} are
-   * plain fields, so the acquisition is also what gives this thread an up-to-date view of them.
+   * those would tear down a live connection. That swap sets {@code connected} and {@code
+   * lastPongReceived} under this same lock, so acquiring it is also what makes the re-test see the
+   * reconnect at all — the fields are plain, and the pre-lock checks in the loop can read an
+   * arbitrarily stale value. Note this only holds for the reconnect swap: other writers of those
+   * fields ({@code sendPing()}, {@code handlePong()}, {@code OutboundHandler}) take no lock, which
+   * does not matter here but should not be read as a general visibility guarantee.
+   *
+   * <p>The acquisition is an unbounded {@code lock()}, so this can park the chron thread for as
+   * long as a writeBufferLock section runs — worst case the {@code PEERLIST_LOCK_TIMEOUT_MS} of
+   * {@code ConnectionHandler.setupConnection()}. That is the same exposure the {@code
+   * peer.disconnect("timeout")} branch a few lines up already has, and the chron thread is the one
+   * thread in the system that can afford to wait.
    */
   private static void releaseWriteBuffers(Peer peer) {
     peer.writeBufferLock.lock();
