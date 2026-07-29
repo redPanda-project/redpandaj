@@ -211,15 +211,21 @@ public class ListenConsole extends Thread {
       } else if (readLine.equals("c")) {
         System.out.println("closing all connections...");
 
-        // try/finally: without it a throw inside disconnect() left the peer list write lock held
-        // forever, which wedges every thread that touches the list — the T87 failure mode.
-        peerList.getReadWriteLock().writeLock().lock();
+        // T87: snapshot under the lock, disconnect without it. Peer.disconnect() takes that peer's
+        // writeBufferLock (Peer:215) and closes the socket, so doing it under the peer list lock
+        // is the exact order PeerList's javadoc forbids and the same ABBA pair against
+        // ConnectionHandler.setupConnection(). Unreachable today only because systemd gives this
+        // thread /dev/null on stdin — which is a reason to fix it, not to keep it. The try/finally
+        // matters independently: a throw out of disconnect() used to leak the write lock forever.
+        ArrayList<Peer> peersToDisconnect;
+        peerList.getReadWriteLock().readLock().lock();
         try {
-          for (Peer peer : peerList.getPeerArrayList()) {
-            peer.disconnect("disconnect by user");
-          }
+          peersToDisconnect = new ArrayList<>(peerList.getPeerArrayList());
         } finally {
-          peerList.getReadWriteLock().writeLock().unlock();
+          peerList.getReadWriteLock().readLock().unlock();
+        }
+        for (Peer peer : peersToDisconnect) {
+          peer.disconnect("disconnect by user");
         }
 
       } else if (readLine.equals("alloc")) {

@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import org.junit.Before;
 import org.junit.Test;
@@ -66,11 +67,20 @@ public class PeerListLockOrderTest {
     // must queue on it, which is the state the seed node was in.
     requester.getWriteBufferLock().lock();
     CountDownLatch handlerDone = new CountDownLatch(1);
+    AtomicReference<Throwable> handlerFailure = new AtomicReference<>();
     Thread reader =
         new Thread(
             () -> {
-              proc.parseCommand(Command.REQUEST_PEERLIST, ByteBuffer.allocate(0), requester);
-              handlerDone.countDown();
+              // countDown() in a finally, and the throwable kept: without this a failure inside
+              // parseCommand() would surface as a 30 s latch timeout instead of the real cause —
+              // exactly the diagnosis this test exists to provide.
+              try {
+                proc.parseCommand(Command.REQUEST_PEERLIST, ByteBuffer.allocate(0), requester);
+              } catch (Throwable t) {
+                handlerFailure.set(t);
+              } finally {
+                handlerDone.countDown();
+              }
             },
             "reader-under-test");
     reader.setDaemon(true);
@@ -86,7 +96,7 @@ public class PeerListLockOrderTest {
       // makes this deterministic rather than a sleep-and-hope race.
       assertTrue(
           "REQUEST_PEERLIST handler never reached the write buffer",
-          awaitQueuedOn(requester.getWriteBufferLock()));
+          awaitQueuedOn(requester.getWriteBufferLock(), handlerDone));
 
       // The selector thread's next step: peerList.add(). This is what wedged the node.
       selectorGotTheLock =
@@ -99,6 +109,9 @@ public class PeerListLockOrderTest {
     }
 
     assertTrue("REQUEST_PEERLIST completed", handlerDone.await(30, TimeUnit.SECONDS));
+    if (handlerFailure.get() != null) {
+      throw new AssertionError("REQUEST_PEERLIST handler threw", handlerFailure.get());
+    }
     assertTrue(
         "handleRequestPeerList() must not hold the peer list lock while it waits for a peer's"
             + " writeBufferLock — ConnectionHandler.setupConnection() takes those two the other way"
@@ -106,13 +119,21 @@ public class PeerListLockOrderTest {
         selectorGotTheLock);
   }
 
-  /** Waits until some thread is queued on {@code lock}, i.e. blocked trying to acquire it. */
-  private static boolean awaitQueuedOn(java.util.concurrent.locks.ReentrantLock lock)
+  /**
+   * Waits until some thread is queued on {@code lock}, i.e. blocked trying to acquire it. Gives up
+   * early if the handler finished (or died) without ever getting there, so a broken handler fails
+   * fast instead of burning the full timeout.
+   */
+  private static boolean awaitQueuedOn(
+      java.util.concurrent.locks.ReentrantLock lock, CountDownLatch handlerDone)
       throws InterruptedException {
     long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
     while (System.currentTimeMillis() < deadline) {
       if (lock.hasQueuedThreads()) {
         return true;
+      }
+      if (handlerDone.getCount() == 0) {
+        return false;
       }
       Thread.sleep(5);
     }
