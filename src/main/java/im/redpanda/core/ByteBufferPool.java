@@ -82,27 +82,34 @@ public class ByteBufferPool {
             } else {
               pool.setMaxTotalPerKey(400);
             }
-            log.info(
-                "Generating new ByteBuffer for pool. Free memory (MB): {} Idle: {} Active: {} Waiters: {}",
-                (Runtime.getRuntime().freeMemory() / 1024. / 1024.),
-                pool.getNumIdle(),
-                pool.getNumActive(),
-                pool.getNumWaiters());
+            // TD021: this runs on every buffer allocation, so it must stay below the
+            // effective log level (slf4j binds to logback here, whose default root level
+            // is DEBUG because no logback.xml is shipped). The guard also keeps the
+            // listAllObjects() walk and the StringBuilder off the hot path entirely
+            // unless trace is explicitly enabled.
+            if (log.isTraceEnabled()) {
+              log.trace(
+                  "Generating new ByteBuffer for pool. Free memory (MB): {} Idle: {} Active: {} Waiters: {}",
+                  (Runtime.getRuntime().freeMemory() / 1024. / 1024.),
+                  pool.getNumIdle(),
+                  pool.getNumActive(),
+                  pool.getNumWaiters());
 
-            Map<String, List<DefaultPooledObjectInfo>> stringListMap = pool.listAllObjects();
+              Map<String, List<DefaultPooledObjectInfo>> stringListMap = pool.listAllObjects();
 
-            StringBuilder out = new StringBuilder();
+              StringBuilder out = new StringBuilder();
 
-            for (Map.Entry<String, List<DefaultPooledObjectInfo>> entry :
-                stringListMap.entrySet()) {
-              out.append("key: ")
-                  .append(entry.getKey())
-                  .append(" size: ")
-                  .append(entry.getValue().size())
-                  .append("\n");
+              for (Map.Entry<String, List<DefaultPooledObjectInfo>> entry :
+                  stringListMap.entrySet()) {
+                out.append("key: ")
+                    .append(entry.getKey())
+                    .append(" size: ")
+                    .append(entry.getValue().size())
+                    .append("\n");
+              }
+
+              log.trace("\n\nList of Pool: \n{}\n\n", out);
             }
-
-            log.info("\n\nList of Pool: \n{}\n\n", out);
 
             return allocate;
           }
