@@ -714,7 +714,23 @@ public class ConnectionHandler extends Thread {
         byte[] bytesPublicKey = new byte[NodeId.PUBLIC_KEYLEN];
         buffer.get(bytesPublicKey);
 
-        NodeId nodeId = NodeId.importPublic(bytesPublicKey);
+        NodeId nodeId;
+        try {
+          nodeId = NodeId.importPublic(bytesPublicKey);
+        } catch (IllegalArgumentException e) {
+          /**
+           * REDPANDAJ-2EH: these 64 bytes are unauthenticated remote input, and BouncyCastle
+           * rejects a malformed Ed25519 encoding (non-canonical or small-order point) with an
+           * IllegalArgumentException. That is hostile-network noise, not an application bug —
+           * reject it exactly like the KademliaId mismatch right below instead of letting the
+           * exception escape into the generic handler (error-level Sentry event, socket left
+           * half-open until the handshake reaper).
+           */
+          Log.put("Malformed public key from peer, closing connection...", 20);
+          peerInHandshake.setStatus(2);
+          peerInHandshake.getSocketChannel().close();
+          return false;
+        }
 
         Log.put("new nodeid from peer: " + nodeId.getKademliaId(), 20);
 
