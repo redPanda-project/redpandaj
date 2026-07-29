@@ -219,6 +219,32 @@ public class PeerList {
   }
 
   /**
+   * Drops this peer's {@link #peerlistIpPort} entry, but only while that entry still points at this
+   * very peer.
+   *
+   * <p>{@link #addPeer} inserts <em>every</em> peer into that map, so every removal has to take it
+   * out again. The two removal paths used to skip it for {@code port == 0}, which desynchronised
+   * the maps for exactly the peers an inbound light client produces: the handshake carries the
+   * sender's listening port and a light client has none, so it announces 0 ({@code
+   * ConnectionReaderThread:151}). The entry then survived in {@code peerlistIpPort} while the
+   * {@link KademliaId} key was gone, and {@link #addLocked}'s ip+port branch handed that ghost back
+   * as {@code oldPeer} on the next connection of the same identity — so the reconnecting peer was
+   * never registered and {@code ConnectionHandler.setupConnection} dropped it as a TD020 duplicate,
+   * on every retry, forever (T88; the S4 airplane-mode gate hung on it after T86/#294 started
+   * evicting undialable peers and thus made this removal path reachable at all).
+   *
+   * <p>The value-checked removal matters because {@link #getIpPortHash} is {@code ip.hashCode() +
+   * port}: every loopback light client shares the key {@code "127.0.0.1".hashCode()}, so an
+   * unconditional {@code remove(key)} would evict a different, live peer's mapping.
+   */
+  private void removeIpPortMapping(Peer peer) {
+    if (peer.getIp() == null) {
+      return;
+    }
+    peerlistIpPort.remove(getIpPortHash(peer), peer);
+  }
+
+  /**
    * Removes a {@link Peer} from the PeerList. Removes the Peer from both Hashmaps and the ArrayList
    *
    * @param peer
@@ -242,9 +268,7 @@ public class PeerList {
       if (!removed) {
         return false;
       }
-      if (peer.getIp() != null && peer.getPort() != 0) {
-        peerlistIpPort.remove(getIpPortHash(peer));
-      }
+      removeIpPortMapping(peer);
       return true;
     } finally {
       readWriteLock.writeLock().unlock();
@@ -306,9 +330,7 @@ public class PeerList {
         return false;
       }
       removedOnePeer = peerArrayList.remove(remove);
-      if (remove.getIp() != null && remove.getPort() != 0) {
-        peerlistIpPort.remove(getIpPortHash(remove));
-      }
+      removeIpPortMapping(remove);
     } finally {
       readWriteLock.writeLock().unlock();
     }

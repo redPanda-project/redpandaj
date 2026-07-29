@@ -128,6 +128,59 @@ public class ConnectionHandlerDuplicateConnectionTest {
   }
 
   /**
+   * T88: a light client that was evicted from the peer list while it was away reconnects. Nothing
+   * is registered for its identity any more, so {@code parseHandshake} builds a fresh {@link Peer}
+   * — {@code setupConnection} must register it, not mistake it for the losing half of a parallel
+   * handshake.
+   *
+   * <p>It did, before the fix: {@code PeerList.remove} skipped the ip+port map for {@code port ==
+   * 0}, so the evicted peer stayed reachable through {@code add()}'s ip+port branch and came back
+   * as {@code oldPeer != peerOrigin} — the TD020 signature. Every reconnect was dropped, on every
+   * retry, which is what wedged the S4 airplane-mode scenario (154 duplicate lines, no delivery).
+   */
+  @Test
+  public void reconnectAfterEvictionIsRegisteredInsteadOfDroppedAsDuplicate() throws Exception {
+    ByteBufferPool.init();
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
+    PeerList peerList = serverContext.getPeerList();
+
+    NodeId identity = NodeId.generateWithSimpleKey();
+
+    // The connection before the outage, and its eviction while the client was unreachable (T86:
+    // PeerJobs drops peers that are neither connected nor dialable, and a light client is both).
+    Peer beforeTheOutage = new Peer("127.0.0.1", 0, identity);
+    peerList.add(beforeTheOutage);
+    peerList.remove(beforeTheOutage);
+    assertThat(peerList.get(identity.getKademliaId()))
+        .as("precondition: the identity is gone from the peer list")
+        .isNull();
+
+    // The reconnect: a fresh Peer, exactly as ConnectionReaderThread.parseHandshake builds it when
+    // peerList.get(identity) returns null.
+    Peer reconnect = new Peer("127.0.0.1", 0, new NodeId(identity.getKademliaId()));
+    try (SocketChannel channel = SocketChannel.open()) {
+      PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
+      peerInHandshake.setPeer(reconnect);
+      peerInHandshake.setLightClient(true); // skip the Node/DB lookups in setupConnection
+      peerInHandshake.setIdentity(identity.getKademliaId());
+      peerInHandshake.setNodeId(identity);
+      peerInHandshake.setKey(new NoopSelectionKey());
+      connectionHandler.addPeerInHandshake(peerInHandshake);
+
+      connectionHandler.setupConnection(reconnect, peerInHandshake);
+
+      assertThat(peerList.get(identity.getKademliaId()))
+          .as("the reconnecting light client must be registered")
+          .isSameAs(reconnect);
+      assertThat(reconnect.isConnected())
+          .as("the reconnect must not be torn down as a TD020 duplicate")
+          .isTrue();
+      assertThat(channel.isOpen()).as("the reconnect's socket must stay open").isTrue();
+    }
+  }
+
+  /**
    * Minimal {@link SelectionKey} stub: {@code setupConnection} calls the final {@code attach}, and
    * (on the TD020 disconnect path) {@code Peer.disconnect} calls {@code cancel}.
    */
