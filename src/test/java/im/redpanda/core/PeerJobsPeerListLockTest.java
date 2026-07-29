@@ -40,8 +40,10 @@ public class PeerJobsPeerListLockTest {
     CountDownLatch insideLoop = new CountDownLatch(1);
     CountDownLatch writerDone = new CountDownLatch(1);
 
-    // isConnected() is the first thing runOnce() asks each peer, so this parks the loop at a point
-    // where the read lock would still be held by the defective version.
+    // runOnce() sleeps, logs and evaluates the timeout condition before it reaches isConnected(),
+    // so this is not the first call it makes on a peer — but it is inside the per-peer body, which
+    // is all this test needs: parking here holds the loop at a point where the defective version
+    // would still be holding the read lock.
     Peer probe =
         new Peer("127.0.0.1", 45001) {
           @Override

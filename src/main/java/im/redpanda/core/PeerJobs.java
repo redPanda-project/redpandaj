@@ -58,17 +58,19 @@ public class PeerJobs extends Thread {
 
     // TD026: snapshot the list under the read lock, then iterate WITHOUT holding it. The loop
     // below sleeps 20 ms per peer, so holding the read lock across it pinned the peer list for
-    // size() * 20 ms — with the ~280 peers a seed node accumulates that is over five seconds of
-    // continuously held read lock, measured at 5644 ms mean / 5653 ms max on the testnet.
+    // size() * 20 ms — with the couple of hundred peers a seed node accumulates that is several
+    // seconds of continuously held read lock. Note the cost is linear in the list size, so this
+    // was harmless while lists were small and only became visible as they grew.
     //
     // A ReentrantReadWriteLock queues writers behind that, and since #280 made PeerList.add()
     // always take the write lock, ConnectionHandler.setupConnection() — which runs on the SELECTOR
     // thread — blocked there for seconds. That stalls the entire NIO event loop: no reads, no
     // writes, for every peer at once. Waiting readers are blocked too (a queued writer makes new
-    // readers block), which is why InboundCommandProcessor.handlePing()'s peerList.contains() on
-    // the reader threads was measured waiting 394 ms mean / 3401 ms max before it could even
+    // readers block), so InboundCommandProcessor.handlePing()'s peerList.contains() on the reader
+    // threads waited hundreds of milliseconds, with multi-second outliers, before it could even
     // queue the PONG reply. Net effect: peer ping went from the true ~20 ms network RTT to
-    // hundreds of ms with multi-second outliers.
+    // hundreds of ms. The measured figures behind this are in the PR description and in TD026
+    // rather than here, so they cannot drift out of sync with the code.
     //
     // The copy keeps the iteration CME-safe exactly as the held lock did; nothing in the loop
     // touches the peer list itself, only the Peer objects, which the peer list lock never guarded.
