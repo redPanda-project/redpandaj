@@ -190,6 +190,84 @@ public class ChannelDhtTest {
         .isFalse();
   }
 
+  // --- Validation reasons (TD022: each failure cause maps to its own distinct outcome, so the
+  // record-store drop log can tell a protocol-size skew apart from routine garbage) ---
+
+  @Test
+  public void validateRecord_reportsValidForFreshSignedFixedSizeRecord() {
+    long now = System.currentTimeMillis();
+    KadContent content =
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
+
+    assertThat(ChannelDht.validateRecord(content, now))
+        .isEqualTo(ChannelDht.RecordValidation.VALID);
+  }
+
+  @Test
+  public void validateRecord_reportsMissingContent() {
+    long now = System.currentTimeMillis();
+
+    assertThat(ChannelDht.validateRecord(null, now))
+        .isEqualTo(ChannelDht.RecordValidation.MISSING_CONTENT);
+
+    KadContent noBytes =
+        new KadContent(
+            now,
+            ChannelDht.deriveRecordNodeId(randomChannelSecret()).exportPublic(),
+            null,
+            new byte[64]);
+    assertThat(ChannelDht.validateRecord(noBytes, now))
+        .isEqualTo(ChannelDht.RecordValidation.MISSING_CONTENT);
+  }
+
+  @Test
+  public void validateRecord_reportsWrongSizeEvenWhenCorrectlySigned() {
+    // A correctly signed record of the wrong bucket size is exactly the TD022 version-skew case
+    // (e.g. a client still publishing the old 512-byte bucket): the size verdict must win over
+    // the signature so the drop log can name the deployment error.
+    byte[] secret = randomChannelSecret();
+    long now = System.currentTimeMillis();
+    NodeId recordNodeId = ChannelDht.deriveRecordNodeId(secret);
+    KadContent content = new KadContent(now, recordNodeId.exportPublic(), randomBytes(512));
+    content.signWith(recordNodeId);
+
+    assertThat(ChannelDht.validateRecord(content, now))
+        .isEqualTo(ChannelDht.RecordValidation.WRONG_SIZE);
+  }
+
+  @Test
+  public void validateRecord_reportsExpired() {
+    long now = System.currentTimeMillis();
+    long published = now - ChannelDht.MAX_RECORD_AGE_MS - 1000;
+    KadContent content =
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), published);
+
+    assertThat(ChannelDht.validateRecord(content, now))
+        .isEqualTo(ChannelDht.RecordValidation.EXPIRED);
+  }
+
+  @Test
+  public void validateRecord_reportsFutureDated() {
+    long now = System.currentTimeMillis();
+    long published = now + ChannelDht.MAX_FUTURE_SKEW_MS + 60_000;
+    KadContent content =
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), published);
+
+    assertThat(ChannelDht.validateRecord(content, now))
+        .isEqualTo(ChannelDht.RecordValidation.FUTURE_DATED);
+  }
+
+  @Test
+  public void validateRecord_reportsBadSignature() {
+    long now = System.currentTimeMillis();
+    KadContent content =
+        ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
+    content.getContent()[0] ^= 0xFF;
+
+    assertThat(ChannelDht.validateRecord(content, now))
+        .isEqualTo(ChannelDht.RecordValidation.BAD_SIGNATURE);
+  }
+
   // --- Result selection (newest-wins, foreign-record rejection) ---
 
   @Test
