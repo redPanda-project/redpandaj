@@ -199,9 +199,10 @@ public class ParseCommandTest {
 
     int i = 0;
     for (i = 0; i < peersToTest; i++) {
-      // port i + 1, not i: port 0 is not a dialable address and the peer-list gossip
-      // filter drops such entries in both directions (T86).
-      Peer testpeer1 = new Peer("rand_rewrewR_testip" + i, i + 1);
+      // T86: port i + 1, not i, because port 0 is not a dialable address; and a real IP
+      // literal instead of a made-up name, because gossip only carries literals (a name would
+      // be resolved at dial time and could point anywhere).
+      Peer testpeer1 = new Peer("203.0.113." + i, i + 1);
       testpeer1.setNodeId(new NodeId());
       testpeer1.setConnected(true);
       peerList.add(testpeer1);
@@ -238,11 +239,11 @@ public class ParseCommandTest {
         // Note: The order isn't guaranteed to be strictly predictable unless we sort,
         // but for this test setup
         // the peerList implementation might return them in order or not.
-        // However, the test logic was building peers with ip "rand_rewrewR_testip" + i
+        // However, the test logic was building peers with ip "203.0.113." + i
         // Let's verify that the ip matches the pattern or exists in our set
         // For simplicity, we just assert the structure is valid.
-        assertThat(peerProto.getIp()).contains("testip");
-        assertThat(peerProto.getPort()).isGreaterThanOrEqualTo(0);
+        assertThat(peerProto.getIp()).startsWith("203.0.113.");
+        assertThat(peerProto.getPort()).isGreaterThan(0);
         if (peerProto.hasNodeId()) {
           assertThat(peerProto.getNodeId().getPublicKeyBytes().size())
               .isEqualTo(NodeId.PUBLIC_KEYLEN);
@@ -257,7 +258,7 @@ public class ParseCommandTest {
 
     // cleanup
     for (i = 0; i < peersToTest; i++) {
-      peerList.removeIpPort("rand_rewrewR_testip" + i, i + 1);
+      peerList.removeIpPort("203.0.113." + i, i + 1);
     }
 
     assertThat(startingPeerListSize).isEqualTo(peerList.size());
@@ -276,7 +277,7 @@ public class ParseCommandTest {
     int i = 0;
     for (i = 0; i < peersToTest; i++) {
       // port i + 1, see testREQUEST_PEERLIST
-      Peer testpeer1 = new Peer("rand_dwhrgfwer_testip" + i, i + 1);
+      Peer testpeer1 = new Peer("198.51.100." + i, i + 1);
       testpeer1.setNodeId(new NodeId());
       testpeer1.setConnected(true);
       // System.out.println("node id: " +

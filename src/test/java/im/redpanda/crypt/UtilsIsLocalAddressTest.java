@@ -72,6 +72,42 @@ public class UtilsIsLocalAddressTest {
     assertFalse(Utils.isPlausibleAdvertisedAddress("127.0.0.1", 59558, null));
   }
 
+  /**
+   * A gossiped host name is never plausible: {@code isLocalAddress} classifies by string and cannot
+   * see through a name, while {@code OutboundHandler} dials via {@code InetSocketAddress}, which
+   * resolves it — so a name an attacker controls could resolve (or later be re-pointed) to loopback
+   * or a LAN address and bypass the locality rule entirely.
+   */
+  @Test
+  public void gossipedHostNamesAreNeverPlausible() {
+    assertFalse(Utils.isPlausibleAdvertisedAddress("redpanda.im", 59559, "84.147.60.253"));
+    assertFalse(Utils.isPlausibleAdvertisedAddress("evil.example.com", 59558, "84.147.60.253"));
+    // also from a loopback peer - a name is untrusted regardless of who sends it
+    assertFalse(Utils.isPlausibleAdvertisedAddress("redpanda.im", 59559, "127.0.0.1"));
+    assertFalse(Utils.isPlausibleAdvertisedAddress("localhost", 59558, "127.0.0.1"));
+    // a name that resolves to loopback today and to anything else tomorrow
+    assertFalse(Utils.isPlausibleAdvertisedAddress("localtest.me", 59558, "127.0.0.1"));
+    // literals stay plausible, including the loopback ones the e2e topology exchanges
+    assertTrue(Utils.isPlausibleAdvertisedAddress("127.0.0.1", 59560, "127.0.0.1"));
+    assertTrue(Utils.isPlausibleAdvertisedAddress("2a01:4f8::1", 59558, "84.147.60.253"));
+  }
+
+  @Test
+  public void ipLiteralsAreDistinguishedFromNames() {
+    assertTrue(Utils.isIpLiteral("127.0.0.1"));
+    assertTrue(Utils.isIpLiteral("5.75.137.166"));
+    assertTrue(Utils.isIpLiteral("::1"));
+    assertTrue(Utils.isIpLiteral("[2a01:4f8::1]"));
+    assertTrue(Utils.isIpLiteral("fe80::1%eth0"));
+    assertTrue(Utils.isIpLiteral("::ffff:127.0.0.1"));
+    assertFalse(Utils.isIpLiteral("redpanda.im"));
+    assertFalse(Utils.isIpLiteral("localhost"));
+    assertFalse(Utils.isIpLiteral("127.0.0.1.example.com"));
+    assertFalse(Utils.isIpLiteral("999.1.1.1"));
+    assertFalse(Utils.isIpLiteral(""));
+    assertFalse(Utils.isIpLiteral(null));
+  }
+
   @Test
   public void unusableAdvertisementsAreRejectedRegardlessOfOrigin() {
     // port 0 is what an inbound-only peer carries; nobody can dial it

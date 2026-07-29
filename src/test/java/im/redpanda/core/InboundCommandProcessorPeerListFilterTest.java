@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -99,6 +100,59 @@ public class InboundCommandProcessorPeerListFilterTest {
     assertTrue(contains("10.0.2.2", 59558));
     assertTrue(contains("192.168.1.5", 59558));
     assertTrue(contains("46.224.156.238", 59558));
+  }
+
+  /**
+   * A gossiped host name is resolved by {@code InetSocketAddress} at dial time, so it can point at
+   * loopback or the LAN without the string-based locality rule ever seeing it. Rejected on ingest
+   * regardless of who sends it — configured seeds are a different, trusted path (see {@link
+   * #configuredSeedsMayStillUseHostNames()}).
+   */
+  @Test
+  public void gossipedHostNames_areDropped() {
+    Peer advertiser = connectedPeer(PUBLIC_PEER_IP, 59558);
+
+    gossip(
+        advertiser,
+        entry("redpanda.im", 59559),
+        entry("evil.example.com", 59558),
+        entry("localhost", 59558),
+        entry("localtest.me", 59558), // resolves to 127.0.0.1
+        entry("46.224.156.238", 59558));
+
+    assertFalse(contains("redpanda.im", 59559));
+    assertFalse(contains("evil.example.com", 59558));
+    assertFalse(contains("localhost", 59558));
+    assertFalse(contains("localtest.me", 59558));
+    assertTrue(contains("46.224.156.238", 59558));
+  }
+
+  @Test
+  public void gossipedHostNames_areDroppedFromALoopbackPeerToo() {
+    Peer advertiser = connectedPeer(LOOPBACK_PEER_IP, 59559);
+
+    gossip(advertiser, entry("localhost", 59560), entry("127.0.0.1", 59560));
+
+    assertFalse("a name is untrusted no matter who sends it", contains("localhost", 59560));
+    assertTrue("the literal the e2e topology exchanges still works", contains("127.0.0.1", 59560));
+  }
+
+  @Test
+  public void weDoNotAdvertiseHostNames() {
+    ctx.getPeerList().add(connectedPeer("redpanda.im", 59559)); // as reseeding creates it
+    ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));
+
+    assertEquals(List.of("46.224.156.238:59558"), requestPeerListAsSeenBy(PUBLIC_PEER_IP));
+  }
+
+  /** Operator input is trusted and must keep working — the default seed list ships a name. */
+  @Test
+  public void configuredSeedsMayStillUseHostNames() {
+    assertArrayEquals(
+        new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
+    assertTrue(
+        "the default seed list must keep its host name entry",
+        List.of(Settings.parseKnownNodes(null)).contains("redpanda.im:59559"));
   }
 
   @Test

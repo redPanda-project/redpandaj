@@ -187,6 +187,21 @@ public class Utils {
       // around is pure noise — it made up the bulk of the observed peer-list growth.
       return false;
     }
+    if (!isIpLiteral(advertisedIp)) {
+      // Gossip may only carry IP literals. isLocalAddress() classifies by string and cannot see
+      // through a name, and OutboundHandler dials with `new InetSocketAddress(peer.ip, peer.port)`,
+      // which resolves — so a gossiped name that resolves, or is later re-pointed, to 127.0.0.1 or
+      // a LAN address would walk straight past the locality rule below. That is exactly the
+      // injection this predicate exists to stop, and re-checking after an off-thread resolve would
+      // still race the next DNS answer.
+      //
+      // Names remain fine as *operator* input: Settings.knownNodes ships redpanda.im:59559 and
+      // REDPANDA_KNOWN_NODES may carry names. Those reach the peer list through
+      // OutboundHandler.addKnownNodes() and never pass through here — configured seeds are trusted,
+      // an unauthenticated peer is not. A peer that wants to be reachable can advertise its
+      // address.
+      return false;
+    }
     String normalized = normalizeHost(advertisedIp);
     if (normalized.equals("0.0.0.0") || normalized.equals("::")) {
       return false; // unspecified address, never a destination
@@ -197,6 +212,34 @@ public class Utils {
     // Local-only address: believable exactly from a peer that is itself local to us. An unknown
     // peer address (connection details already cleared) counts as not local.
     return peerIp != null && !peerIp.isBlank() && isLocalAddress(peerIp);
+  }
+
+  /**
+   * Whether the given host is an IP literal, i.e. something {@link #isLocalAddress(String)} can
+   * classify without asking a resolver and that {@code InetSocketAddress} will not send to DNS.
+   *
+   * <p>The IPv6 side is deliberately shape-based rather than a full grammar check: a DNS label can
+   * only hold letters, digits and hyphens, so a string made of hex digits, colons and the dots of
+   * an embedded IPv4 tail is never a resolvable name. A malformed one simply fails to connect,
+   * which is a harmless outcome — the property this method has to guarantee is "no name lookup",
+   * not "valid address".
+   */
+  public static boolean isIpLiteral(String host) {
+    String normalized = normalizeHost(host);
+    if (normalized.isEmpty()) {
+      return false;
+    }
+    if (normalized.indexOf(':') >= 0) {
+      for (int i = 0; i < normalized.length(); i++) {
+        char c = normalized.charAt(i);
+        boolean allowed = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || c == ':' || c == '.';
+        if (!allowed) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return parseIpv4(normalized) != null;
   }
 
   /**
