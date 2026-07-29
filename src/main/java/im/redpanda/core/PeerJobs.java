@@ -112,8 +112,7 @@ public class PeerJobs extends Thread {
 
           // todo: interrupt outbound thread?
         } else if (peer.getLastAnswered() > Settings.pingTimeout * 2) {
-          peer.writeBuffer = null;
-          peer.writeBufferCrypted = null;
+          releaseWriteBuffers(peer);
         }
 
       } else if (peer.isConnected()) {
@@ -128,6 +127,50 @@ public class PeerJobs extends Thread {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Frees the 2 × 300 KiB write buffers of a peer that has been silent for twice the ping timeout.
+   *
+   * <p>TD029 (REDPANDAJ-2EJ): both fields belong to {@link Peer#writeBufferLock} — {@link
+   * Peer#disconnect(String)}, {@link Peer#setupConnectionForPeer(PeerInHandshake)} and {@code
+   * ConnectionHandler.handleKeyWriteable()} all touch them under it. Nulling them here without the
+   * lock let the selector thread watch the pair disappear in the middle of its own locked section
+   * and NPE on {@code writeBufferCrypted.flip()}.
+   *
+   * <p>Lock order (documented on {@link PeerList}): {@code writeBufferLock} is the outermost of the
+   * three, and {@link #runOnce()} released the peer list read lock right after taking its snapshot,
+   * so nothing can be inverted here — the same loop already calls {@link Peer#disconnect(String)},
+   * which takes exactly this lock.
+   *
+   * <p>The condition is re-tested under the lock because {@code setupConnectionForPeer()} holds
+   * {@code writeBufferLock} across the whole connection swap: between the decision in the loop and
+   * the acquisition here the peer can have reconnected and allocated fresh buffers, and nulling
+   * those would tear down a live connection. That swap sets {@code connected} and {@code
+   * lastPongReceived} under this same lock, so acquiring it is also what makes the re-test see the
+   * reconnect at all — the fields are plain, and the pre-lock checks in the loop can read an
+   * arbitrarily stale value. Note this only holds for the reconnect swap: other writers of those
+   * fields ({@code sendPing()}, {@code handlePong()}, {@code OutboundHandler}) take no lock, which
+   * does not matter here but should not be read as a general visibility guarantee.
+   *
+   * <p>The acquisition is an unbounded {@code lock()}, so this can park the chron thread for as
+   * long as a writeBufferLock section runs — worst case the {@code PEERLIST_LOCK_TIMEOUT_MS} of
+   * {@code ConnectionHandler.setupConnection()}. That is the same exposure the {@code
+   * peer.disconnect("timeout")} branch a few lines up already has, and the chron thread is the one
+   * thread in the system that can afford to wait.
+   */
+  private static void releaseWriteBuffers(Peer peer) {
+    peer.writeBufferLock.lock();
+    try {
+      if (!peer.isConnected()
+          && !peer.isConnecting
+          && peer.getLastAnswered() > Settings.pingTimeout * 2) {
+        peer.writeBuffer = null;
+        peer.writeBufferCrypted = null;
+      }
+    } finally {
+      peer.writeBufferLock.unlock();
     }
   }
 
