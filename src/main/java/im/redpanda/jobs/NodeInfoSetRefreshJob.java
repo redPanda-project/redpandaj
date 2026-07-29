@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 public class NodeInfoSetRefreshJob extends Job {
@@ -53,7 +54,13 @@ public class NodeInfoSetRefreshJob extends Job {
   private List<GMEntryPointModel> getGoodEntryPoints() {
     ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
     ArrayList<GMEntryPointModel> gmEntryPointModels = new ArrayList<>();
-    serverContext.getNodeStore().getReadWriteLock().readLock().lock();
+    // Same lock object for lock and unlock: NodeStore.saveToDisk()'s recovery path replaces
+    // serverContext's NodeStore, and re-reading getNodeStore() for the unlock would then release a
+    // lock this thread never took (IllegalMonitorStateException) — leaving the original read lock
+    // held forever. Same guard as in PeerPerformanceTestGarlicMessageJob.init() and
+    // OhForwarder.selectNextPeer().
+    Lock graphLock = serverContext.getNodeStore().getReadWriteLock().readLock();
+    graphLock.lock();
     try {
       nodeEdges.addAll(nodeGraph.incomingEdgesOf(serverContext.getNode()));
       Collections.sort(nodeEdges, Comparator.comparingDouble(nodeGraph::getEdgeWeight));
@@ -80,7 +87,7 @@ public class NodeInfoSetRefreshJob extends Job {
         cnt++;
       }
     } finally {
-      serverContext.getNodeStore().getReadWriteLock().readLock().unlock();
+      graphLock.unlock();
     }
 
     return gmEntryPointModels;

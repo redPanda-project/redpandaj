@@ -211,11 +211,16 @@ public class ListenConsole extends Thread {
       } else if (readLine.equals("c")) {
         System.out.println("closing all connections...");
 
+        // try/finally: without it a throw inside disconnect() left the peer list write lock held
+        // forever, which wedges every thread that touches the list — the T87 failure mode.
         peerList.getReadWriteLock().writeLock().lock();
-        for (Peer peer : peerList.getPeerArrayList()) {
-          peer.disconnect("disconnect by user");
+        try {
+          for (Peer peer : peerList.getPeerArrayList()) {
+            peer.disconnect("disconnect by user");
+          }
+        } finally {
+          peerList.getReadWriteLock().writeLock().unlock();
         }
-        peerList.getReadWriteLock().writeLock().unlock();
 
       } else if (readLine.equals("alloc")) {
         System.out.println("allocating buffers by pool");

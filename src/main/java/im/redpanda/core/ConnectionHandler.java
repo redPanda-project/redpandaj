@@ -47,6 +47,14 @@ public class ConnectionHandler extends Thread {
   /** Longest plaintext handshake command: SEND_PUBLIC_KEY plus its 64-byte key export. */
   static final int MAX_PLAINTEXT_HANDSHAKE_COMMAND_LEN = 1 + NodeId.PUBLIC_KEYLEN;
 
+  /**
+   * How long {@link #setupConnection} waits for the peer list write lock before it gives up on this
+   * one connection (T87). Far longer than any legitimate hold — the list is only ever iterated or
+   * snapshotted under it — so a timeout means something is stuck, and the selector thread must not
+   * be the one that waits it out.
+   */
+  static final long PEERLIST_LOCK_TIMEOUT_MS = 5000;
+
   public static ArrayList<PeerInHandshake> peerInHandshakes = new ArrayList<>();
   @Getter private ReentrantLock peerInHandshakesLock = new ReentrantLock(false);
   public static BlockingQueue<Peer> peersToReadAndParse = new LinkedBlockingQueue<>(600);
@@ -861,6 +869,13 @@ public class ConnectionHandler extends Thread {
     }
   }
 
+  /**
+   * Completes a handshake and registers the peer. <b>Runs on the NIO selector thread.</b>
+   *
+   * <p>It holds {@code peerOrigin.writeBufferLock} across the whole body and takes the peer list
+   * write lock inside it — that is the documented order (see {@link PeerList}, "Lock order"), and
+   * no code may take those two the other way round.
+   */
   public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
 
     ReentrantLock writeBufferLock = peerOrigin.getWriteBufferLock();
@@ -878,7 +893,27 @@ public class ConnectionHandler extends Thread {
        * If this is a new connection not initialzed by us this peer might not be in our PeerList,
        * lets add it by KademliaId
        */
-      Peer oldPeer = peerList.add(peerOrigin);
+      Peer oldPeer;
+      try {
+        oldPeer = peerList.add(peerOrigin, PEERLIST_LOCK_TIMEOUT_MS);
+      } catch (PeerList.PeerListBusyException e) {
+        // T87 safety net. The selector thread is the single thread that accepts new sockets and
+        // services the reads and writes of every existing connection, so parking it here does not
+        // cost one connection, it takes the node off the network — which is exactly what happened
+        // on 2026-07-29, where the wedged selector left the listen backlog full and the process
+        // alive but unreachable. Whatever holds the peer list lock for this long is a bug of its
+        // own, so make it loud rather than silent, and keep the event loop running.
+        logger.error(
+            "peer list lock unavailable on the selector thread, dropping the connection to {}:{}"
+                + " (KadId: {})",
+            peerOrigin.getIp(),
+            peerOrigin.getPort(),
+            peerInHandshake.getIdentity(),
+            e);
+        Log.sentry(e);
+        peerOrigin.disconnect("peer list lock unavailable on the selector thread");
+        return;
+      }
       if (oldPeer != null && oldPeer != peerOrigin) {
         // TD020: two inbound connections from the same node raced. Both handshakes saw
         // peerList.get(identity) == null in ConnectionReaderThread.parseHandshake and each built

@@ -31,7 +31,9 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.concurrent.locks.Lock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -499,44 +501,60 @@ public class InboundCommandProcessor {
   }
 
   private int handleRequestPeerList(Peer peer) {
-    serverContext.getPeerList().getReadWriteLock().readLock().lock();
+    // T87: snapshot under the peer list read lock, then release it — the response is built and
+    // written WITHOUT it. Holding it across peer.getWriteBufferLock() inverted the lock order
+    // documented on PeerList: ConnectionHandler.setupConnection() holds a peer's writeBufferLock
+    // and then takes the peer list WRITE lock, on the NIO selector thread. Reader thread and
+    // selector thread could therefore each hold one of the two and wait for the other, and because
+    // a ReentrantReadWriteLock is non-fair the selector's queued write request then blocked every
+    // subsequent reader as well. That deadlocked a public seed node on 2026-07-29: the selector
+    // stopped calling accept(), the listen backlog filled up and no client could connect any more.
+    //
+    // Snapshotting is also the pattern every other iteration site uses (NodeStore.addServerEdges,
+    // PeerJobs.runOnce, Saver.savePeers, OhForwarder.selectNextPeer); the peers themselves were
+    // never guarded by this lock, only the list structure, so nothing weakens by copying first.
+    ArrayList<Peer> snapshot;
+    Lock peerListLock = serverContext.getPeerList().getReadWriteLock().readLock();
+    peerListLock.lock();
     try {
-      var builder = SendPeerList.newBuilder();
-      for (Peer peerToCheck : serverContext.getPeerList().getPeerArrayList()) {
-        if (peerToCheck.ip == null) {
-          continue;
-        }
-        // Same predicate as on the ingest path, with the recipient as the "other side": do not
-        // hand a local-only address to a peer outside that network, and do not pass on entries
-        // that carry no dialable port. Without this we amplify exactly what we refuse to accept.
-        if (!Utils.isPlausibleAdvertisedAddress(peerToCheck.ip, peerToCheck.getPort(), peer.ip)) {
-          continue;
-        }
-        var peerBuilder =
-            PeerInfoProto.newBuilder().setIp(peerToCheck.ip).setPort(peerToCheck.getPort());
-        if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
-          peerBuilder.setNodeId(
-              NodeIdProto.newBuilder()
-                  .setPublicKeyBytes(copyFrom(peerToCheck.getNodeId().exportPublic()))
-                  .build());
-          // MS04: explicit X25519 key so light clients can pick garlic hops directly
-          peerBuilder.setEncryptionPublicKey(
-              copyFrom(peerToCheck.getNodeId().getEncryptionPubKey().getEncoded()));
-        }
-        builder.addPeers(peerBuilder.build());
-      }
-      byte[] data = builder.build().toByteArray();
-      peer.getWriteBufferLock().lock();
-      try {
-        peer.writeBuffer.put(Command.SEND_PEERLIST);
-        peer.writeBuffer.putInt(data.length);
-        peer.writeBuffer.put(data);
-        peer.setWriteBufferFilled();
-      } finally {
-        peer.getWriteBufferLock().unlock();
-      }
+      snapshot = new ArrayList<>(serverContext.getPeerList().getPeerArrayList());
     } finally {
-      serverContext.getPeerList().getReadWriteLock().readLock().unlock();
+      peerListLock.unlock();
+    }
+
+    var builder = SendPeerList.newBuilder();
+    for (Peer peerToCheck : snapshot) {
+      if (peerToCheck.ip == null) {
+        continue;
+      }
+      // Same predicate as on the ingest path, with the recipient as the "other side": do not
+      // hand a local-only address to a peer outside that network, and do not pass on entries
+      // that carry no dialable port. Without this we amplify exactly what we refuse to accept.
+      if (!Utils.isPlausibleAdvertisedAddress(peerToCheck.ip, peerToCheck.getPort(), peer.ip)) {
+        continue;
+      }
+      var peerBuilder =
+          PeerInfoProto.newBuilder().setIp(peerToCheck.ip).setPort(peerToCheck.getPort());
+      if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
+        peerBuilder.setNodeId(
+            NodeIdProto.newBuilder()
+                .setPublicKeyBytes(copyFrom(peerToCheck.getNodeId().exportPublic()))
+                .build());
+        // MS04: explicit X25519 key so light clients can pick garlic hops directly
+        peerBuilder.setEncryptionPublicKey(
+            copyFrom(peerToCheck.getNodeId().getEncryptionPubKey().getEncoded()));
+      }
+      builder.addPeers(peerBuilder.build());
+    }
+    byte[] data = builder.build().toByteArray();
+    peer.getWriteBufferLock().lock();
+    try {
+      peer.writeBuffer.put(Command.SEND_PEERLIST);
+      peer.writeBuffer.putInt(data.length);
+      peer.writeBuffer.put(data);
+      peer.setWriteBufferFilled();
+    } finally {
+      peer.getWriteBufferLock().unlock();
     }
     return 1;
   }

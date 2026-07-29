@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -19,8 +20,44 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p><b>Warning</b>: Do not change any of the required data ({@link KademliaId}, Ip, Port) of a
  * {@link Peer} if it is present in the Peerlist without updating the corresponding List/HashMap.
+ *
+ * <h2>Lock order (T87)</h2>
+ *
+ * <p>Three locks are routinely nested on the connection paths. They must always be acquired in this
+ * order, outermost first, and never in the reverse one:
+ *
+ * <ol>
+ *   <li>{@link Peer#writeBufferLock} — a single peer's write buffer
+ *   <li>{@code NodeStore.readWriteLock} — the node graph
+ *   <li>{@code PeerList.readWriteLock} — this lock
+ * </ol>
+ *
+ * <p>Violating it wedged a public seed node on 2026-07-29: {@code
+ * ConnectionHandler.setupConnection()} holds a peer's {@code writeBufferLock} and then calls {@link
+ * #add(Peer)} (the peer list <i>write</i> lock) on the NIO selector thread, while {@code
+ * InboundCommandProcessor.handleRequestPeerList()} held the peer list <i>read</i> lock and then
+ * took the same peer's {@code writeBufferLock} on a reader thread. Once the selector's write
+ * request was queued, every later reader queued behind it (the lock is non-fair, so a queued writer
+ * blocks new readers), so the whole node froze instead of merely slowing down — including {@code
+ * accept()}, which is why the listen backlog filled up and no client could connect any more.
+ *
+ * <p>Only the last of the three is guarded by this class; the other two are documented at their own
+ * acquisition sites. The rule for the peer list specifically: <b>never call anything that can block
+ * while holding one of these locks.</b> Snapshot the list under the lock, release it, then do the
+ * work — see {@code NodeStore.addServerEdges()}, {@code PeerJobs.runOnce()}, {@code
+ * Saver.savePeers()}, {@code OhForwarder.selectNextPeer()} for the established pattern.
  */
 public class PeerList {
+
+  /**
+   * Signals that the peer list write lock could not be acquired within the caller's budget. Only
+   * thrown by {@link #add(Peer, long)}; the unbounded {@link #add(Peer)} waits forever.
+   */
+  public static class PeerListBusyException extends RuntimeException {
+    public PeerListBusyException(String message) {
+      super(message);
+    }
+  }
 
   /** We store each Peer in a hashmap for fast get operations via KademliaId */
   private final HashMap<KademliaId, Peer> peerHashMap = new HashMap<>();
@@ -63,58 +100,97 @@ public class PeerList {
     // upgrade a read lock to a write lock. addPeer() re-acquires it reentrantly.
     readWriteLock.writeLock().lock();
     try {
-      Peer oldPeer = null;
-
-      // we have to check if the peer is already in the PeerList, for this we use the
-      // HashMaps since they are much faster
-      if (peer.getKademliaId() != null) {
-        oldPeer = peerHashMap.get(peer.getKademliaId());
-        if (oldPeer != null) {
-          // Peer with same KademliaId exists already
-          Log.put("Peer with same KademliaId exists already", 100);
-          return oldPeer;
-        } else {
-          /**
-           * Peer has a NodeId but was not found in list. If we would return without checking for ip
-           * and port, fast connections to same peer might make a problem.
-           */
-        }
-      }
-
-      /**
-       * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of
-       * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
-       * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to
-       * add Peers without (ip,port) here.
-       */
-      if (peer.getIp() != null) {
-        oldPeer = peerlistIpPort.get(getIpPortHash(peer));
-        if (oldPeer != null) {
-          // Peer with same Ip+Port exists already
-
-          if (peer.getNodeId() == null) {
-            // new peer to add has no node id, lets not add it
-            return oldPeer;
-          }
-
-          if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
-          } else {
-            return oldPeer;
-          }
-        }
-      }
-
-      return addPeer(peer);
+      return addLocked(peer);
     } finally {
       readWriteLock.writeLock().unlock();
     }
   }
 
+  /**
+   * Like {@link #add(Peer)}, but gives up instead of parking forever.
+   *
+   * <p>For callers that must not block indefinitely — above all {@code
+   * ConnectionHandler.setupConnection()}, which runs on the single NIO selector thread. A selector
+   * thread parked on a lock stops calling {@code accept()} and stops servicing every existing
+   * connection, so a peer list lock that is stuck for any reason takes the entire node down rather
+   * than costing one connection (T87). The timeout does not make a stuck lock correct; it turns a
+   * silent total wedge into one dropped connection plus a loud Sentry event.
+   *
+   * @param timeoutMillis how long to wait for the write lock
+   * @return old peer, null if no old peer or old peer null — same contract as {@link #add(Peer)}
+   * @throws PeerListBusyException if the write lock was not acquired in time, or the wait was
+   *     interrupted
+   */
+  public Peer add(Peer peer, long timeoutMillis) {
+    boolean locked;
+    try {
+      locked = readWriteLock.writeLock().tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PeerListBusyException("interrupted while waiting for the peer list write lock");
+    }
+    if (!locked) {
+      throw new PeerListBusyException(
+          "peer list write lock not acquired within " + timeoutMillis + " ms");
+    }
+    try {
+      return addLocked(peer);
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
+  }
+
+  /** The body of {@link #add(Peer)}. Callers must hold the write lock. */
+  private Peer addLocked(Peer peer) {
+    Peer oldPeer = null;
+
+    // we have to check if the peer is already in the PeerList, for this we use the
+    // HashMaps since they are much faster
+    if (peer.getKademliaId() != null) {
+      oldPeer = peerHashMap.get(peer.getKademliaId());
+      if (oldPeer != null) {
+        // Peer with same KademliaId exists already
+        Log.put("Peer with same KademliaId exists already", 100);
+        return oldPeer;
+      } else {
+        /**
+         * Peer has a NodeId but was not found in list. If we would return without checking for ip
+         * and port, fast connections to same peer might make a problem.
+         */
+      }
+    }
+
+    /**
+     * We allow peers without connection details (ip,port) in the PeerList, since after a wipe of
+     * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
+     * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to add
+     * Peers without (ip,port) here.
+     */
+    if (peer.getIp() != null) {
+      oldPeer = peerlistIpPort.get(getIpPortHash(peer));
+      if (oldPeer != null) {
+        // Peer with same Ip+Port exists already
+
+        if (peer.getNodeId() == null) {
+          // new peer to add has no node id, lets not add it
+          return oldPeer;
+        }
+
+        if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
+        } else {
+          return oldPeer;
+        }
+      }
+    }
+
+    return addPeer(peer);
+  }
+
   @Nullable
   private Peer addPeer(Peer peer) {
     Peer oldPeer = null;
+    readWriteLock.writeLock().lock();
     try {
-      readWriteLock.writeLock().lock();
       if (peer.getKademliaId() != null) {
         oldPeer = peerHashMap.put(peer.getKademliaId(), peer);
       }
@@ -222,8 +298,8 @@ public class PeerList {
    */
   public boolean remove(KademliaId id) {
     boolean removedOnePeer = false;
+    readWriteLock.writeLock().lock();
     try {
-      readWriteLock.writeLock().lock();
       Peer remove = peerHashMap.remove(id);
       if (remove == null) {
         return false;
@@ -246,8 +322,10 @@ public class PeerList {
   }
 
   public boolean contains(KademliaId id) {
+    // lock() outside the try: inside it, a throwing lock() would send the finally into an unlock()
+    // of a lock this thread never took.
+    readWriteLock.readLock().lock();
     try {
-      readWriteLock.readLock().lock();
       return peerHashMap.containsKey(id);
     } finally {
       readWriteLock.readLock().unlock();
@@ -255,8 +333,8 @@ public class PeerList {
   }
 
   public Peer get(KademliaId id) {
+    readWriteLock.readLock().lock();
     try {
-      readWriteLock.readLock().lock();
       return peerHashMap.get(id);
     } finally {
       readWriteLock.readLock().unlock();
