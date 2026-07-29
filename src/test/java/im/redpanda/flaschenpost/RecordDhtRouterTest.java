@@ -216,4 +216,30 @@ public class RecordDhtRouterTest {
         .as("an invalid (wrong-size) record must not be stored")
         .isNull();
   }
+
+  @Test
+  public void sizeMismatchWarn_isThrottledToOnePerInterval() {
+    // TD022: the size-mismatch drop is the one validation failure logged at WARN (protocol version
+    // skew), and since anyone can send cheap wrong-size garbage the WARN must be bounded. The
+    // throttle state is a process-global singleton, so probe it with synthetic timestamps far in
+    // the future — no other test reaches this region of the clock.
+    long base = System.currentTimeMillis() + 1000L * 60 * 60 * 24 * 365;
+
+    assertThat(GarlicRouter.tryAcquireSizeMismatchWarn(base))
+        .as("first size mismatch in the window warns")
+        .isTrue();
+    assertThat(GarlicRouter.tryAcquireSizeMismatchWarn(base + 1))
+        .as("immediate repeat is suppressed")
+        .isFalse();
+    assertThat(
+            GarlicRouter.tryAcquireSizeMismatchWarn(
+                base + GarlicRouter.SIZE_MISMATCH_WARN_INTERVAL_MS - 1))
+        .as("still inside the throttle interval")
+        .isFalse();
+    assertThat(
+            GarlicRouter.tryAcquireSizeMismatchWarn(
+                base + GarlicRouter.SIZE_MISMATCH_WARN_INTERVAL_MS))
+        .as("interval elapsed, next warn is admitted")
+        .isTrue();
+  }
 }

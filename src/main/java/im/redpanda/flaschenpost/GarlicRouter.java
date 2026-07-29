@@ -16,6 +16,7 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -53,6 +54,16 @@ public final class GarlicRouter {
           RecordStoreRateLimiter.DEFAULT_CAPACITY,
           RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
           System.currentTimeMillis());
+
+  /** Minimum interval between two size-mismatch WARN lines (see {@link #logDroppedRecordStore}). */
+  static final long SIZE_MISMATCH_WARN_INTERVAL_MS = 1000L * 60 * 10;
+
+  /**
+   * Timestamp of the last size-mismatch WARN. {@link Long#MIN_VALUE} = never warned yet (kept as an
+   * explicit sentinel so the interval subtraction in {@link #tryAcquireSizeMismatchWarn} cannot
+   * overflow).
+   */
+  private static final AtomicLong lastSizeMismatchWarnMs = new AtomicLong(Long.MIN_VALUE);
 
   /**
    * Own bucket for inbound channel-rendezvous record lookups (T46). A lookup triggers a Kademlia
@@ -298,8 +309,9 @@ public final class GarlicRouter {
             storeMsg.getPublicKey().toByteArray(),
             storeMsg.getContent().toByteArray(),
             storeMsg.getSignature().toByteArray());
-    if (!ChannelDht.isValidRecord(record, now)) {
-      log.debug("flaschenpost v2 record store record invalid (sig/size/ttl), dropping");
+    ChannelDht.RecordValidation validation = ChannelDht.validateRecord(record, now);
+    if (validation != ChannelDht.RecordValidation.VALID) {
+      logDroppedRecordStore(validation, record, now);
       return;
     }
     // Store locally first so the record is immediately resolvable on this node. Only replicate if
@@ -307,6 +319,71 @@ public final class GarlicRouter {
     // and replicating a record we ourselves won't keep would be pointless.
     if (serverContext.getKadStoreManager().put(record)) {
       new KademliaInsertJob(serverContext, record).start();
+    }
+  }
+
+  /**
+   * Logs a dropped {@code CMD_RECORD_STORE} with the concrete validation reason (TD022 — the old
+   * single "sig/size/ttl" line hid a breaking-protocol size skew behind routine garbage drops).
+   *
+   * <p>{@link ChannelDht.RecordValidation#WRONG_SIZE} means the publishing client uses a different
+   * {@link ChannelDht#RECORD_SIZE_BYTES} bucket — a deployment/version error (the constant is a
+   * breaking protocol change), not routine input validation, so it is lifted to WARN. Because
+   * stores are anonymous and the size check runs before the signature check, anyone can trigger
+   * this branch with cheap garbage — the WARN is therefore throttled to one line per {@link
+   * #SIZE_MISMATCH_WARN_INTERVAL_MS}; suppressed occurrences fall back to DEBUG. All other reasons
+   * (bad signature, expired, future-dated, missing content) are expected garbage from arbitrary
+   * senders and stay at DEBUG to avoid a remote-triggerable log flood.
+   */
+  private static void logDroppedRecordStore(
+      ChannelDht.RecordValidation validation, KadContent droppedRecord, long nowMs) {
+    switch (validation) {
+      case WRONG_SIZE -> {
+        int actualSize =
+            droppedRecord.getContent() == null ? -1 : droppedRecord.getContent().length;
+        if (tryAcquireSizeMismatchWarn(nowMs)) {
+          log.warn(
+              "flaschenpost v2 record store dropped: record size {} != expected {} — client and"
+                  + " node disagree on ChannelDht.RECORD_SIZE_BYTES (protocol version skew, check"
+                  + " deployment order); repeat occurrences logged at debug for the next {} min",
+              actualSize,
+              ChannelDht.RECORD_SIZE_BYTES,
+              SIZE_MISMATCH_WARN_INTERVAL_MS / 60_000);
+        } else {
+          log.debug(
+              "flaschenpost v2 record store record size {} != expected {} (version skew, warn"
+                  + " throttled), dropping",
+              actualSize,
+              ChannelDht.RECORD_SIZE_BYTES);
+        }
+      }
+      case BAD_SIGNATURE ->
+          log.debug("flaschenpost v2 record store record signature invalid, dropping");
+      case EXPIRED -> log.debug("flaschenpost v2 record store record older than ttl, dropping");
+      case FUTURE_DATED ->
+          log.debug("flaschenpost v2 record store record too far in the future, dropping");
+      case MISSING_CONTENT ->
+          log.debug("flaschenpost v2 record store record has no content, dropping");
+      case VALID -> {
+        // not a drop; nothing to log
+      }
+    }
+  }
+
+  /**
+   * Returns {@code true} if a size-mismatch WARN may be emitted now, and claims the slot (at most
+   * one winner per {@link #SIZE_MISMATCH_WARN_INTERVAL_MS}, race-free via CAS). Package-private for
+   * tests.
+   */
+  static boolean tryAcquireSizeMismatchWarn(long nowMs) {
+    while (true) {
+      long last = lastSizeMismatchWarnMs.get();
+      if (last != Long.MIN_VALUE && nowMs - last < SIZE_MISMATCH_WARN_INTERVAL_MS) {
+        return false;
+      }
+      if (lastSizeMismatchWarnMs.compareAndSet(last, nowMs)) {
+        return true;
+      }
     }
   }
 

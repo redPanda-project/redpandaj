@@ -134,26 +134,60 @@ public final class ChannelDht {
   }
 
   /**
+   * Distinct outcomes of {@link #validateRecord}. Callers that drop invalid records should log the
+   * reasons separately: {@link #WRONG_SIZE} indicates a client publishing a different {@link
+   * #RECORD_SIZE_BYTES} bucket — i.e. protocol-version skew between client and node (TD022), a
+   * deployment error worth surfacing — whereas the other reasons are routine input validation that
+   * any anonymous sender can trigger and must stay quiet.
+   */
+  public enum RecordValidation {
+    VALID,
+    /** No record or no content bytes at all (malformed input). */
+    MISSING_CONTENT,
+    /**
+     * Content is not exactly {@link #RECORD_SIZE_BYTES}: the sender speaks a different record
+     * format version (the size is a breaking protocol constant, see {@link #RECORD_SIZE_BYTES}).
+     * Checked before the signature, so this outcome is cheap for anyone to trigger.
+     */
+    WRONG_SIZE,
+    /** Older than {@link #MAX_RECORD_AGE_MS}. */
+    EXPIRED,
+    /** Dated further than {@link #MAX_FUTURE_SKEW_MS} ahead of now. */
+    FUTURE_DATED,
+    /** Signature does not verify against the embedded pubkey. */
+    BAD_SIGNATURE
+  }
+
+  /**
    * Validates a single record as accepted for storage / serving: signed by the embedded pubkey
    * (self-certifying — the pubkey pins the Kademlia key), exactly the fixed bucket size (uniformity
    * is part of the anti-profiling contract), not older than {@link #MAX_RECORD_AGE_MS} and not
    * further than {@link #MAX_FUTURE_SKEW_MS} in the future. The content stays opaque — the node
    * deliberately cannot tell which channel it belongs to.
+   *
+   * @return {@link RecordValidation#VALID}, or the first failed check in the order missing content
+   *     → size → age → future skew → signature (cheap checks first; the signature check is the only
+   *     expensive one)
    */
-  public static boolean isValidRecord(KadContent content, long nowMs) {
+  public static RecordValidation validateRecord(KadContent content, long nowMs) {
     if (content == null || content.getContent() == null) {
-      return false;
+      return RecordValidation.MISSING_CONTENT;
     }
     if (content.getContent().length != RECORD_SIZE_BYTES) {
-      return false;
+      return RecordValidation.WRONG_SIZE;
     }
     if (nowMs - content.getTimestamp() > MAX_RECORD_AGE_MS) {
-      return false;
+      return RecordValidation.EXPIRED;
     }
     if (content.getTimestamp() - nowMs > MAX_FUTURE_SKEW_MS) {
-      return false;
+      return RecordValidation.FUTURE_DATED;
     }
-    return content.verify();
+    return content.verify() ? RecordValidation.VALID : RecordValidation.BAD_SIGNATURE;
+  }
+
+  /** Boolean convenience over {@link #validateRecord} for callers that don't need the reason. */
+  public static boolean isValidRecord(KadContent content, long nowMs) {
+    return validateRecord(content, nowMs) == RecordValidation.VALID;
   }
 
   /**
