@@ -690,14 +690,27 @@ public class ConnectionReaderThread implements Runnable {
       long diff = System.currentTimeMillis() - a;
 
       if (diff > 5000L) {
-        // Enriched with the peer and the last successfully-parsed command byte (unsigned, since
-        // command bytes go up to 141 and print negative as a plain signed byte) so the event is
-        // self-explanatory without having to correlate timestamps against other log lines
-        // (REDPANDAJ-2DQ). Note peer.lastCommand reflects the last command parsed in this read
-        // batch, which is the stalling one only if a single command was processed; if several
-        // commands were parsed in one read(), an earlier one in the same batch may be the culprit.
+        // What is measured here is the wall-clock duration of the whole readConnection() call —
+        // socket read, buffer borrow, decrypt and the dispatch of every command in that read —
+        // and it therefore includes any time spent BLOCKED on a lock, not just CPU time spent
+        // parsing. The old wording ("command took over 5 seconds to parse") claimed the opposite
+        // and sent REDPANDAJ-2DQ through two triage cycles that looked for slow parsing on weak
+        // (ARM) hardware. The actual cause of those 2028 events was lock starvation: PeerJobs
+        // held the PeerList read lock across a 20 ms-per-peer sleep loop (5643 ms with the ~280
+        // peers a seed node had accumulated), and both observed commands wait on exactly that
+        // lock — PING via InboundCommandProcessor.handlePing -> PeerList.contains, and
+        // FLASCHENPOST_PUT via GMParser.parse's peer-list/NodeStore read locks. Fixed in #293
+        // (TD026), pressure removed at the source in #294 (T86 peer-list bloat).
+        //
+        // The peer and the last successfully-parsed command byte are included (unsigned, since
+        // command bytes go up to 161 and print negative as a plain signed byte) so the event is
+        // self-explanatory without having to correlate timestamps against other log lines. Note
+        // peer.lastCommand reflects the last command parsed in this read batch, which is the
+        // stalling one only if a single command was processed; if several commands were parsed
+        // in one read(), an earlier one in the same batch may be the culprit.
         Log.sentry(
-            "command took over 5 seconds to parse: %d ms, last parsed command byte: %d, peer: %s"
+            ("read cycle took over 5 seconds: %d ms (socket read + decrypt + dispatch, includes"
+                    + " time blocked on locks), last parsed command byte: %d, peer: %s")
                 .formatted(diff, Byte.toUnsignedInt(peer.lastCommand), peer));
       }
 
