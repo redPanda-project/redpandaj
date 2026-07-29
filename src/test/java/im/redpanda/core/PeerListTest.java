@@ -123,8 +123,9 @@ public class PeerListTest {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
-    peerList.add(new Peer("127.0.0.1", 50558));
-    peerList.removeIpPortOnly("127.0.0.1", 50558);
+    Peer peer = new Peer("127.0.0.1", 50558);
+    peerList.add(peer);
+    assertTrue(peerList.removeIpPortOnly(peer));
     assertEquals(1, peerList.size());
   }
 
