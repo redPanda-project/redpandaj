@@ -45,7 +45,8 @@ import org.jetbrains.annotations.Nullable;
  * acquisition sites. The rule for the peer list specifically: <b>never call anything that can block
  * while holding one of these locks.</b> Snapshot the list under the lock, release it, then do the
  * work — see {@code NodeStore.addServerEdges()}, {@code PeerJobs.runOnce()}, {@code
- * Saver.savePeers()}, {@code OhForwarder.selectNextPeer()} for the established pattern.
+ * Saver.savePeers()}, {@code OhForwarder.selectNextPeer()}, {@code OutboundHandler.run()} for the
+ * established pattern.
  */
 public class PeerList {
 
