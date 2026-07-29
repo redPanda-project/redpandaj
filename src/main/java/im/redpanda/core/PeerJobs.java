@@ -83,6 +83,8 @@ public class PeerJobs extends Thread {
       lock.unlock();
     }
 
+    evictUndialableDisconnectedPeers(peers);
+
     for (Peer peer : peers) {
 
       try {
@@ -125,6 +127,35 @@ public class PeerJobs extends Thread {
             peer.sendPing();
           }
         }
+      }
+    }
+  }
+
+  /**
+   * Drops peers that are neither connected nor dialable — the retention leak behind the ~280-entry
+   * peer lists (T86).
+   *
+   * <p>Every inbound connection puts a {@link Peer} into the peer list, built from the remote end
+   * of the socket plus the listening port the handshake announced. A light client has no listening
+   * socket and announces port 0, so its entry is undialable from the moment it is created and dead
+   * weight from the moment it disconnects. Nothing ever removed those again: the only eviction
+   * path, {@code OutboundHandler}, skips undialable peers <em>before</em> it reaches its
+   * retry-based removal, so their {@code retries} counter never moves. They then get written to
+   * {@code peers.dat}, restored on the next start and gossiped on to every other node. Measured on
+   * a node bootstrapped from the testnet seeds: 273 of 278 entries had port 0, each with a distinct
+   * identity — one per mobile app instance, per re-install and per e2e run.
+   *
+   * <p>A still-connected peer is kept regardless: that is the live inbound connection, and it is
+   * the one thing such an entry is good for. The entry is recreated by the next handshake, which is
+   * how it came about in the first place.
+   */
+  private void evictUndialableDisconnectedPeers(ArrayList<Peer> peers) {
+    for (Peer peer : peers) {
+      if (peer.isDialable() || peer.isConnected() || peer.isConnecting) {
+        continue;
+      }
+      if (peerList.remove(peer)) {
+        Log.put("removed undialable disconnected peer from peerList: " + peer, 40);
       }
     }
   }

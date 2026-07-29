@@ -64,9 +64,18 @@ public class Saver {
     for (Peer peer : peers) {
       // Bootstrap peers may have a NodeId with a known KademliaId but no verify key yet
       // (handshake not completed) - skip those, serializing them would NPE in NodeId#writeObject.
-      if (peer.getNodeId() != null && peer.getNodeId().hasKey()) {
-        arrayList.add(peer.toSaveable());
+      if (peer.getNodeId() == null || !peer.getNodeId().hasKey()) {
+        continue;
       }
+      // Only dialable peers are worth restoring: the whole point of peers.dat is to have addresses
+      // to connect to on the next start. Inbound-only entries (a light client announces port 0,
+      // see Peer#isDialable) cannot be dialled by anyone, and persisting them is what let them
+      // survive restarts and be re-gossiped afterwards - the affected node's peers.dat held 82
+      // loopback entries alone (T86).
+      if (!peer.isDialable()) {
+        continue;
+      }
+      arrayList.add(peer.toSaveable());
     }
 
     File mkdirs = new File(SAVE_DIR);

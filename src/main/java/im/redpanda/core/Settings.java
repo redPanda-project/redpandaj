@@ -40,9 +40,26 @@ public class Settings {
     }
   }
 
-  private static final String[] DEFAULT_KNOWN_NODES = {
-    "195.201.25.223:59558", "redpanda.im:59559", "127.0.0.1:59558"
-  };
+  /**
+   * {@code 127.0.0.1:59558} used to be part of this list and was removed: {@link #DEFAULT_PORT} is
+   * 59558 as well, so every node that is started without an explicit configuration dials its own
+   * listening port, accepts the connection and then carries the resulting loopback entry in its
+   * peer list — where {@code handleRequestPeerList} gossips it on to everyone else. Measured on a
+   * node bootstrapped from the testnet seeds: 82 of 278 peer-list entries were {@code 127.0.0.1}.
+   * Nothing needs the default: every local topology (the mobile e2e suite, the emulator gate)
+   * passes its loopback seeds explicitly via {@code REDPANDA_KNOWN_NODES} / {@code
+   * -Dredpanda.knownNodes}, and for a hand-started local node the same one variable does the job.
+   */
+  private static final String[] DEFAULT_KNOWN_NODES = {"195.201.25.223:59558", "redpanda.im:59559"};
+
+  /**
+   * Upper bound on the peer list. Peer-list gossip is unauthenticated and we re-gossip what we
+   * accept, so without a bound a single peer can grow every other node's list without limit. Well
+   * above {@link #MAX_CONNECTIONS} so that bootstrapping keeps a healthy reserve of dialable
+   * addresses; only the gossip ingest path is capped, connections we actually established are never
+   * refused.
+   */
+  public static int MAX_PEERLIST_SIZE = 200;
 
   /**
    * Bootstrap peers as {@code host:port}. Overridable without rebuilding via the system property

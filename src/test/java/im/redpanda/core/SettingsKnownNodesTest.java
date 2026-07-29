@@ -6,9 +6,21 @@ import org.junit.Test;
 
 public class SettingsKnownNodesTest {
 
-  private static final String[] DEFAULTS = {
-    "195.201.25.223:59558", "redpanda.im:59559", "127.0.0.1:59558"
-  };
+  /**
+   * No loopback entry: {@code 127.0.0.1:59558} is the node's own listening address by default, so
+   * shipping it as a bootstrap peer made every unconfigured node dial itself (T86). Local setups
+   * pass their loopback seeds explicitly.
+   */
+  private static final String[] DEFAULTS = {"195.201.25.223:59558", "redpanda.im:59559"};
+
+  @Test
+  public void defaultsDoNotContainLoopback() {
+    for (String defaultNode : Settings.parseKnownNodes(null)) {
+      org.junit.Assert.assertFalse(
+          "loopback must not be a default bootstrap peer: " + defaultNode,
+          im.redpanda.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]));
+    }
+  }
 
   @Test
   public void nullFallsBackToDefaults() {

@@ -4,6 +4,7 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import im.redpanda.crypt.Utils;
 import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.GarlicRouter;
 import im.redpanda.flaschenpost.OhForwarder;
@@ -505,6 +506,12 @@ public class InboundCommandProcessor {
         if (peerToCheck.ip == null) {
           continue;
         }
+        // Same predicate as on the ingest path, with the recipient as the "other side": do not
+        // hand a local-only address to a peer outside that network, and do not pass on entries
+        // that carry no dialable port. Without this we amplify exactly what we refuse to accept.
+        if (!Utils.isPlausibleAdvertisedAddress(peerToCheck.ip, peerToCheck.getPort(), peer.ip)) {
+          continue;
+        }
         var peerBuilder =
             PeerInfoProto.newBuilder().setIp(peerToCheck.ip).setPort(peerToCheck.getPort());
         if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
@@ -538,6 +545,10 @@ public class InboundCommandProcessor {
       throws InvalidProtocolBufferException {
     SendPeerList sendPeerList = SendPeerList.parseFrom(bytesForPeerList);
     for (PeerInfoProto peerProto : sendPeerList.getPeersList()) {
+      if (serverContext.getPeerList().size() >= Settings.MAX_PEERLIST_SIZE) {
+        Log.put("peer list is full, ignoring the rest of the gossiped peer list", 40);
+        break;
+      }
       NodeId nodeId = null;
       if (peerProto.hasNodeId()) {
         try {
@@ -549,13 +560,21 @@ public class InboundCommandProcessor {
       }
       String ip = peerProto.getIp();
       int port = peerProto.getPort();
+      // Peer-list gossip is unauthenticated: everything below this point comes from the peer and
+      // nothing above verifies it. Reject entries that the advertising peer cannot plausibly know
+      // about — otherwise any peer can steer us into dialling loopback, the local LAN or a
+      // portless address, and we then spread those entries further.
+      if (!Utils.isPlausibleAdvertisedAddress(ip, port, peer.ip)) {
+        Log.put("ignoring implausible peer list entry " + ip + ":" + port + " from " + peer.ip, 40);
+        continue;
+      }
+      if (port == serverContext.getPort() && Utils.isOwnHostAddress(ip)) {
+        Log.put("ignoring peer list entry that points back at us: " + ip + ":" + port, 40);
+        continue;
+      }
       if (nodeId != null) {
         if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
           Log.put("found ourselves in the peerlist", 80);
-          continue;
-        }
-        if (ip == null) {
-          System.out.println("found a peer with ip null...");
           continue;
         }
         Peer newPeer = new Peer(ip, port, nodeId);
