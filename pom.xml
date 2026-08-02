@@ -530,7 +530,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>2.22.2</version>
+                        <version>3.5.6</version>
                         <executions>
                             <execution>
                                 <goals>
@@ -543,6 +543,14 @@
                             <includes>
                                 <include>**/*IT.java</include>
                             </includes>
+                            <!-- The assembly fat jar (appendAssemblyId=false) replaces the main
+                                 artifact and bundles jgrapht-core's module-info.class, so failsafe
+                                 3.x would treat target/redpanda.jar as module org.jgrapht.core,
+                                 put it on the module path and collide with the real
+                                 jgrapht-core jar, collecting 0 tests. Force the plain classpath
+                                 and run ITs against the classes directory instead of the jar. -->
+                            <useModulePath>false</useModulePath>
+                            <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                         </configuration>
                     </plugin>
                 </plugins>
