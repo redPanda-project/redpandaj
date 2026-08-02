@@ -1,5 +1,7 @@
 package im.redpanda;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import org.junit.jupiter.api.Test;
 
 /** Unit test for simple App. */
@@ -9,7 +11,9 @@ class AppTest {
 
   /** Rigorous Test :-) */
   @Test
-  void shouldAnswerWithTrue() {}
+  void shouldAnswerWithTrue() {
+    assertNotNull(app);
+  }
 
   // @Test
   // public void testSentry() {

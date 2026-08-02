@@ -5,7 +5,6 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
-import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -19,9 +18,9 @@ public class JUnit4BanTest {
 
   @Test
   public void noJUnit4Dependencies() {
-    JavaClasses classes =
-        new ClassFileImporter()
-            .importPaths(Path.of("target/classes"), Path.of("target/test-classes"));
+    // Imports from the classpath (covers both target/classes and target/test-classes when run
+    // via surefire) and stays robust for IDE / non-Maven runners.
+    JavaClasses classes = new ClassFileImporter().importPackages("im.redpanda");
 
     ArchRule rule =
         noClasses()

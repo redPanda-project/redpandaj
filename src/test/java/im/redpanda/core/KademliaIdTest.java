@@ -24,8 +24,6 @@ class KademliaIdTest {
     KademliaId clonedByBytes = KademliaId.fromBuffer(ByteBuffer.wrap(kademliaId.getBytes()));
 
     assertEquals(kademliaId, clonedByBytes);
-
-    assertEquals(kademliaId, clonedByBytes);
   }
 
   /**
@@ -86,8 +84,6 @@ class KademliaIdTest {
     KademliaId a = collidingIdA();
     KademliaId b = collidingIdB();
 
-    assertNotEquals(a, b);
-    assertNotEquals(b, a);
     assertNotEquals(a, b);
     assertNotEquals(b, a);
   }
