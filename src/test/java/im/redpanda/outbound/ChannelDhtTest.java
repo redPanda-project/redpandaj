@@ -8,14 +8,14 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * T43: tests for the channel-rendezvous DHT primitives — deterministic record-key derivation from
  * the channel secret, fixed-size padded (opaque) records, TTL / signature / size validation and
  * newest-wins result selection.
  */
-public class ChannelDhtTest {
+class ChannelDhtTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -39,7 +39,7 @@ public class ChannelDhtTest {
   // --- Record key derivation ---
 
   @Test
-  public void deriveRecordNodeId_isDeterministic() {
+  void deriveRecordNodeId_isDeterministic() {
     byte[] secret = randomChannelSecret();
 
     NodeId first = ChannelDht.deriveRecordNodeId(secret);
@@ -50,7 +50,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void deriveRecordNodeId_differsPerChannel() {
+  void deriveRecordNodeId_differsPerChannel() {
     NodeId first = ChannelDht.deriveRecordNodeId(randomChannelSecret());
     NodeId second = ChannelDht.deriveRecordNodeId(randomChannelSecret());
 
@@ -58,7 +58,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void rendezvousKademliaId_sameForEveryParticipant() {
+  void rendezvousKademliaId_sameForEveryParticipant() {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
 
@@ -67,7 +67,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void rendezvousKademliaId_isDomainSeparatedFromOhAnnounce() {
+  void rendezvousKademliaId_isDomainSeparatedFromOhAnnounce() {
     // Feeding the same 32 bytes as an oh_id vs a channel secret must land in different namespaces:
     // the channel record key is derived through a distinct domain tag.
     byte[] shared = randomChannelSecret();
@@ -80,7 +80,7 @@ public class ChannelDhtTest {
   // --- Record building (padding, signature, self-certifying key) ---
 
   @Test
-  public void buildRecordContent_recordsHaveConstantSize() {
+  void buildRecordContent_recordsHaveConstantSize() {
     long now = System.currentTimeMillis();
     for (int i = 0; i < 20; i++) {
       KadContent content =
@@ -92,7 +92,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void buildRecordContent_rejectsWrongSizeContent() {
+  void buildRecordContent_rejectsWrongSizeContent() {
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () ->
                 ChannelDht.buildRecordContent(
@@ -101,7 +101,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void buildRecordContent_isSignedAndStoredUnderDerivedKey() {
+  void buildRecordContent_isSignedAndStoredUnderDerivedKey() {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
 
@@ -113,7 +113,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void buildRecordContent_matchesTheClientCrossCheckVector() {
+  void buildRecordContent_matchesTheClientCrossCheckVector() {
     // Pins the bucket size and the exact signature the dart light client asserts against
     // (channel_rendezvous_test.dart). Both sides sign the same bytes, so a one-sided change to
     // RECORD_SIZE_BYTES — the kind that silently makes every published record undeliverable —
@@ -137,7 +137,7 @@ public class ChannelDhtTest {
   // --- Validation ---
 
   @Test
-  public void isValidRecord_acceptsFreshSignedFixedSizeRecord() {
+  void isValidRecord_acceptsFreshSignedFixedSizeRecord() {
     long now = System.currentTimeMillis();
     KadContent content =
         ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
@@ -146,7 +146,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void isValidRecord_rejectsWrongSize() {
+  void isValidRecord_rejectsWrongSize() {
     // Correctly derived key but content that is not the fixed bucket size.
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
@@ -158,7 +158,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void isValidRecord_rejectsTamperedContent() {
+  void isValidRecord_rejectsTamperedContent() {
     long now = System.currentTimeMillis();
     KadContent content =
         ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
@@ -169,7 +169,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void isValidRecord_rejectsRecordOlderThanTtl() {
+  void isValidRecord_rejectsRecordOlderThanTtl() {
     long now = System.currentTimeMillis();
     long published = now - ChannelDht.MAX_RECORD_AGE_MS - 1000;
     KadContent content =
@@ -179,7 +179,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void isValidRecord_rejectsRecordTooFarInFuture() {
+  void isValidRecord_rejectsRecordTooFarInFuture() {
     long now = System.currentTimeMillis();
     long published = now + ChannelDht.MAX_FUTURE_SKEW_MS + 60_000;
     KadContent content =
@@ -194,7 +194,7 @@ public class ChannelDhtTest {
   // record-store drop log can tell a protocol-size skew apart from routine garbage) ---
 
   @Test
-  public void validateRecord_reportsValidForFreshSignedFixedSizeRecord() {
+  void validateRecord_reportsValidForFreshSignedFixedSizeRecord() {
     long now = System.currentTimeMillis();
     KadContent content =
         ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
@@ -204,7 +204,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void validateRecord_reportsMissingContent() {
+  void validateRecord_reportsMissingContent() {
     long now = System.currentTimeMillis();
 
     assertThat(ChannelDht.validateRecord(null, now))
@@ -221,7 +221,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void validateRecord_reportsWrongSizeEvenWhenCorrectlySigned() {
+  void validateRecord_reportsWrongSizeEvenWhenCorrectlySigned() {
     // A correctly signed record of the wrong bucket size is exactly the TD022 version-skew case
     // (e.g. a client still publishing the old 512-byte bucket): the size verdict must win over
     // the signature so the drop log can name the deployment error.
@@ -236,7 +236,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void validateRecord_reportsExpired() {
+  void validateRecord_reportsExpired() {
     long now = System.currentTimeMillis();
     long published = now - ChannelDht.MAX_RECORD_AGE_MS - 1000;
     KadContent content =
@@ -247,7 +247,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void validateRecord_reportsFutureDated() {
+  void validateRecord_reportsFutureDated() {
     long now = System.currentTimeMillis();
     long published = now + ChannelDht.MAX_FUTURE_SKEW_MS + 60_000;
     KadContent content =
@@ -258,7 +258,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void validateRecord_reportsBadSignature() {
+  void validateRecord_reportsBadSignature() {
     long now = System.currentTimeMillis();
     KadContent content =
         ChannelDht.buildRecordContent(randomChannelSecret(), randomRecordContent(), now);
@@ -271,7 +271,7 @@ public class ChannelDhtTest {
   // --- Result selection (newest-wins, foreign-record rejection) ---
 
   @Test
-  public void extractNewest_picksNewestValidRecord() {
+  void extractNewest_picksNewestValidRecord() {
     byte[] secret = randomChannelSecret();
     // Fixed timestamp safely away from midnight UTC (~22:13 UTC): both records share the same UTC
     // day so they live under the same rotated key, and the explicit nowMs keeps them within TTL —
@@ -292,7 +292,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void extractNewest_rejectsRecordUnderDifferentKey() {
+  void extractNewest_rejectsRecordUnderDifferentKey() {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
     KademliaId key = ChannelDht.rendezvousKademliaId(secret, now);
@@ -305,7 +305,7 @@ public class ChannelDhtTest {
   }
 
   @Test
-  public void extractNewest_returnsNullForEmptyResults() {
+  void extractNewest_returnsNullForEmptyResults() {
     long now = System.currentTimeMillis();
     KademliaId key = ChannelDht.rendezvousKademliaId(randomChannelSecret(), now);
 

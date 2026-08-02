@@ -8,16 +8,16 @@ import im.redpanda.flaschenpost.GMEchoTest;
 import im.redpanda.flaschenpost.GMType;
 import im.redpanda.flaschenpost.GarlicMessage;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class FlaschenpostTest {
+class FlaschenpostTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void createGMEchoTest() {
+  void createGMEchoTest() {
     GMEchoTest gmEchoTest = new GMEchoTest();
     byte[] content = gmEchoTest.getContent();
 
@@ -26,7 +26,7 @@ public class FlaschenpostTest {
   }
 
   @Test
-  public void echoNestedGM() {
+  void echoNestedGM() {
 
     NodeId nodeId = new NodeId();
 

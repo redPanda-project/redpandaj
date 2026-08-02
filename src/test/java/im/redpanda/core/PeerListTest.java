@@ -1,19 +1,19 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PeerListTest {
+class PeerListTest {
 
   @Test
-  public void add() throws InterruptedException {
+  void add() throws Exception {
 
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
@@ -35,20 +35,20 @@ public class PeerListTest {
     int initSize = peerList.size();
     peerList.add(mtestip);
 
-    assertTrue(peerList.size() - initSize == 1);
+    assertEquals(1, peerList.size() - initSize);
     peerList.add(mtestip);
-    assertTrue(peerList.size() - initSize == 1);
+    assertEquals(1, peerList.size() - initSize);
 
     Peer mtestipWithNodeId = new Peer("mtestip", 5);
     mtestipWithNodeId.setNodeId(new NodeId());
     peerList.add(mtestipWithNodeId);
-    assertTrue(peerList.size() - initSize == 2);
+    assertEquals(2, peerList.size() - initSize);
 
     peerList.getReadWriteLock().writeLock().unlock();
   }
 
   @Test
-  public void addWithSameKadId() throws InterruptedException {
+  void addWithSameKadId() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
@@ -63,13 +63,13 @@ public class PeerListTest {
     int initSize = peerList.size();
     peerList.add(peerWithKadId1);
 
-    assertTrue(peerList.size() - initSize == 1);
+    assertEquals(1, peerList.size() - initSize);
     peerList.add(peerWithKadId2);
-    assertTrue(peerList.size() - initSize == 1);
+    assertEquals(1, peerList.size() - initSize);
   }
 
   @Test
-  public void remove() {
+  void remove() {
 
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
@@ -80,15 +80,15 @@ public class PeerListTest {
     int initSize = peerList.size();
     peerList.add(toRemovePeerIp);
 
-    assertTrue(peerList.size() - initSize == 1);
+    assertEquals(1, peerList.size() - initSize);
 
     peerList.remove(toRemovePeerIp);
 
-    assertTrue(peerList.size() - initSize == 0);
+    assertEquals(0, peerList.size() - initSize);
   }
 
   @Test
-  public void removeByKademliaId() {
+  void removeByKademliaId() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
@@ -109,7 +109,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void removeIpPort() {
+  void removeIpPort() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
@@ -119,7 +119,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void removeIpPortOnly() {
+  void removeIpPortOnly() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
@@ -130,7 +130,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void size() {
+  void size() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
     peerList.add(new Peer("127.0.0.1", 50558));
@@ -138,7 +138,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void clear() {
+  void clear() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
     peerList.add(new Peer("127.0.0.1", 50558));
@@ -147,7 +147,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void updateKademliaId() {
+  void updateKademliaId() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
 
@@ -166,7 +166,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void getGoodPeer() {
+  void getGoodPeer() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
     peerList.add(new Peer("127.0.0.1", 50558));
@@ -175,7 +175,7 @@ public class PeerListTest {
   }
 
   @Test
-  public void get() {
+  void get() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
     ;
@@ -205,7 +205,7 @@ public class PeerListTest {
    * without touching a lock at all, so it fails this test before the fix and passes after.
    */
   @Test
-  public void add_duplicateByKademliaId_stillTakesTheLock() throws Exception {
+  void add_duplicateByKademliaId_stillTakesTheLock() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
 
@@ -227,7 +227,7 @@ public class PeerListTest {
    * NodeId, existing entry for the same ip:port).
    */
   @Test
-  public void add_duplicateByIpPort_stillTakesTheLock() throws Exception {
+  void add_duplicateByIpPort_stillTakesTheLock() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerList peerList = serverContext.getPeerList();
 

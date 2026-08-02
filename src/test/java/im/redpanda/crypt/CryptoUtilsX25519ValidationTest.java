@@ -8,7 +8,7 @@ import java.security.InvalidKeyException;
 import java.security.SecureRandom;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for L2 (bug hunt 2026-07-26): X25519 outputs feed HKDF at every call site, so
@@ -16,7 +16,7 @@ import org.junit.Test;
  * all-zero regardless of our private key — must be rejected before the KDF ever sees them (RFC 7748
  * §6.1 contributory behaviour).
  */
-public class CryptoUtilsX25519ValidationTest {
+class CryptoUtilsX25519ValidationTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -67,7 +67,7 @@ public class CryptoUtilsX25519ValidationTest {
   private static final byte[] U_P = fieldPrime();
 
   @Test
-  public void x25519_rejectsDegeneratePeerKeys() {
+  void x25519_rejectsDegeneratePeerKeys() {
     for (byte[] degenerate : new byte[][] {ALL_ZERO, U_ONE, ORDER_EIGHT, U_P}) {
       assertThatThrownBy(
               () ->
@@ -85,7 +85,7 @@ public class CryptoUtilsX25519ValidationTest {
    * reject a well-behaved current client — the mobile side derives its keys the same way.
    */
   @Test
-  public void x25519_acceptsEveryHonestlyGeneratedKeypair() throws Exception {
+  void x25519_acceptsEveryHonestlyGeneratedKeypair() throws Exception {
     for (int i = 0; i < 500; i++) {
       X25519PrivateKeyParameters ours = new X25519PrivateKeyParameters(RANDOM);
       X25519PrivateKeyParameters theirs = new X25519PrivateKeyParameters(RANDOM);
@@ -99,7 +99,7 @@ public class CryptoUtilsX25519ValidationTest {
   }
 
   @Test
-  public void x25519_isStillAPlainAgreementForNormalKeys() {
+  void x25519_isStillAPlainAgreementForNormalKeys() {
     X25519PrivateKeyParameters ours = new X25519PrivateKeyParameters(RANDOM);
     X25519PrivateKeyParameters theirs = new X25519PrivateKeyParameters(RANDOM);
 

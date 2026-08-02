@@ -7,15 +7,14 @@ import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class AssertionsArchitectureTest {
+class AssertionsArchitectureTest {
 
   private final JavaClasses classes = new ClassFileImporter().importPackages("im.redpanda");
 
   @Test
-  public void hamcrestShouldNotBeUsed() {
+  void hamcrestShouldNotBeUsed() {
     ArchRule rule =
         noClasses()
             .that()
@@ -28,7 +27,7 @@ public class AssertionsArchitectureTest {
   }
 
   @Test
-  public void junitAssertThatShouldNotBeUsed() {
+  void junitAssertThatShouldNotBeUsed() {
     ArchRule rule =
         noClasses()
             .that()
@@ -43,7 +42,7 @@ public class AssertionsArchitectureTest {
     return new DescribedPredicate<>("call to org.junit.Assert.assertThat") {
       @Override
       public boolean test(JavaCall<?> input) {
-        return input.getTarget().getOwner().isEquivalentTo(Assert.class)
+        return input.getTarget().getOwner().getName().equals("org.junit.Assert")
             && input.getTarget().getName().equals("assertThat");
       }
     };

@@ -1,16 +1,16 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Covers the setKeys protocol documented in docs/protocol/01-nodeid-keypair.md. */
-public class NodeIdSetKeysTest {
+class NodeIdSetKeysTest {
 
   @Test
-  public void setKeys_acceptsMatchingKeysAndRejectsDuplicateSet() throws Exception {
+  void setKeys_acceptsMatchingKeysAndRejectsDuplicateSet() throws Exception {
     NodeId withKeys = NodeId.generateWithSimpleKey();
     NodeId idOnly = new NodeId(withKeys.getKademliaId());
 
@@ -25,7 +25,7 @@ public class NodeIdSetKeysTest {
   }
 
   @Test
-  public void setKeys_rejectsNull() {
+  void setKeys_rejectsNull() {
     NodeId withKeys = NodeId.generateWithSimpleKey();
     NodeId idOnly = new NodeId(withKeys.getKademliaId());
 
@@ -34,7 +34,7 @@ public class NodeIdSetKeysTest {
   }
 
   @Test
-  public void setKeys_rejectsWithoutKnownKademliaId() {
+  void setKeys_rejectsWithoutKnownKademliaId() {
     NodeId withKeys = NodeId.generateWithSimpleKey();
     NodeId noId = new NodeId((KademliaId) null);
 
@@ -42,7 +42,7 @@ public class NodeIdSetKeysTest {
   }
 
   @Test
-  public void setKeys_rejectsMismatchingKeys() {
+  void setKeys_rejectsMismatchingKeys() {
     NodeId withKeys = NodeId.generateWithSimpleKey();
     NodeId otherKeys = NodeId.generateWithSimpleKey();
     NodeId idOnly = new NodeId(withKeys.getKademliaId());

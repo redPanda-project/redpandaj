@@ -1,18 +1,18 @@
 package im.redpanda.misc;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.nio.ByteBuffer;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PoolTest {
+class PoolTest {
 
   @Test
-  public void test() throws Exception {
+  void test() throws Exception {
     BaseKeyedPooledObjectFactory<Integer, ByteBuffer> pooledObjectFactory =
         new BaseKeyedPooledObjectFactory<Integer, ByteBuffer>() {
           @Override
@@ -61,12 +61,12 @@ public class PoolTest {
       for (int i = 0; i < 500; i++) {
         ByteBuffer byteBuffer = pool.borrowObject(1);
 
-        assertTrue(byteBuffer.position() == 0);
+        assertEquals(0, byteBuffer.position());
 
         byteBuffer.putInt(1);
         pool.returnObject(1, byteBuffer);
       }
-      assertTrue(pool.getNumIdle() == 1);
+      assertEquals(1, pool.getNumIdle());
     }
   }
 }

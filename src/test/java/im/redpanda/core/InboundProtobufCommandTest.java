@@ -8,9 +8,9 @@ import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
 import java.nio.ByteBuffer;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class InboundProtobufCommandTest {
+class InboundProtobufCommandTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -18,7 +18,7 @@ public class InboundProtobufCommandTest {
   }
 
   @Test
-  public void testProtobufSend_PEERLIST() throws Exception {
+  void protobufSendPEERLIST() throws Exception {
     // Prepare a Protobuf SendPeerList
     NodeId nodeId = new NodeId();
     PeerInfoProto peerProto =

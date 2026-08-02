@@ -1,15 +1,15 @@
 package im.redpanda.docs;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtocolStep03ExceptionHandlingDocsTest {
+class ProtocolStep03ExceptionHandlingDocsTest {
 
   @Test
-  public void documentationExistsAndStatesKeypoints() throws Exception {
+  void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/03-exception-handling.md");
     String text = Files.readString(doc);
     assertTrue(text.contains("Title: Exception Handling Adjustments in Crypto"));

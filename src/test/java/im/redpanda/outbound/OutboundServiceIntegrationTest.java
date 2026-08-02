@@ -18,8 +18,8 @@ import im.redpanda.outbound.v1.Status;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS01 + MS02 End-to-End Integration Test: register → deposit → fetch (sequence-based) → ackFetch →
@@ -28,7 +28,7 @@ import org.junit.Test;
  * <p>Validates the full Outbound Handle lifecycle including sequence_id, next_cursor, mailbox
  * overflow, and delete-after-acknowledge via {@link OutboundService#handleAckFetch}.
  */
-public class OutboundServiceIntegrationTest {
+class OutboundServiceIntegrationTest {
 
   private static final String MSG1 = "msg1";
   private static final String MSG2 = "msg2";
@@ -40,8 +40,8 @@ public class OutboundServiceIntegrationTest {
   private Peer peer;
   private NodeId clientNode;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
     service = new OutboundService(handleStore, mailboxStore);
@@ -56,7 +56,7 @@ public class OutboundServiceIntegrationTest {
 
   /** Full MS01 lifecycle: register OH → deposit message → fetch message → revoke OH. */
   @Test
-  public void testFullLifecycle_Register_Deposit_Fetch_Revoke() throws Exception {
+  void fullLifecycleRegisterDepositFetchRevoke() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
 
     // 1. Register OH
@@ -96,7 +96,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testDepositMessage_OhNotRegistered_ReturnsNotFound() {
+  void depositMessageOhNotRegisteredReturnsNotFound() {
     byte[] unknownOhId = new byte[20];
     new SecureRandom().nextBytes(unknownOhId);
     OutboundService.DepositResult deposited =
@@ -105,7 +105,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testDepositMessage_MultipleMessages_AllFetched() throws Exception {
+  void depositMessageMultipleMessagesAllFetched() throws Exception {
     // Register
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
@@ -130,7 +130,7 @@ public class OutboundServiceIntegrationTest {
 
   /** MS05: a deposit with session tag is returned to the client via FetchResponse. */
   @Test
-  public void testDepositWithSessionTag_FetchReturnsTag() throws Exception {
+  void depositWithSessionTagFetchReturnsTag() throws Exception {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
 
@@ -155,7 +155,7 @@ public class OutboundServiceIntegrationTest {
 
   /** MS05: a non-empty session tag must be exactly 16 bytes. */
   @Test
-  public void testDepositWithInvalidSessionTagLength_ReturnsBadRequest() throws Exception {
+  void depositWithInvalidSessionTagLengthReturnsBadRequest() throws Exception {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
 
@@ -169,7 +169,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testDepositAfterRevoke_ReturnsFalse() throws Exception {
+  void depositAfterRevokeReturnsFalse() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
 
     // Register
@@ -187,7 +187,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testRevoke_alsoDeletesMailboxItems() throws Exception {
+  void revokeAlsoDeletesMailboxItems() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
 
     // Register and deposit messages
@@ -210,7 +210,7 @@ public class OutboundServiceIntegrationTest {
   // --- B2 AC: MailItem.message_id is set, 16 bytes, unique, and stable across re-fetch ---
 
   @Test
-  public void testDeposit_messageIdsAreSetUniqueAnd16Bytes() throws Exception {
+  void depositMessageIdsAreSetUniqueAnd16Bytes() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -241,7 +241,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testDeposit_messageIdIsStableAcrossRefetch() throws Exception {
+  void depositMessageIdIsStableAcrossRefetch() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -276,7 +276,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02 AC: FetchResponse.next_cursor is the highest sequence_id ---
 
   @Test
-  public void testFetch_nextCursorIsHighestSequenceId() throws Exception {
+  void fetchNextCursorIsHighestSequenceId() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -307,7 +307,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testFetch_emptyResult_nextCursorEqualsInputCursor() throws Exception {
+  void fetchEmptyResultNextCursorEqualsInputCursor() throws Exception {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -322,7 +322,7 @@ public class OutboundServiceIntegrationTest {
   // --- T40 (b): stale-cursor heal in handleFetch ---
 
   @Test
-  public void testFetch_staleCursorAboveLastAssigned_healsAndRedelivers() throws Exception {
+  void fetchStaleCursorAboveLastAssignedHealsAndRedelivers() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -344,7 +344,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testFetch_staleCursorEmptyMailbox_healsCursorToZero() throws Exception {
+  void fetchStaleCursorEmptyMailboxHealsCursorToZero() throws Exception {
     // Empty mailbox, counter 0 (nothing ever assigned): a stale cursor of 47 heals to 0, and the
     // empty-result next_cursor must echo the effective cursor (0), never the raw request cursor.
     service.handleRegister(peer, createSignedRegisterRequest());
@@ -359,7 +359,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testFetch_normalCursor_notHealed() throws Exception {
+  void fetchNormalCursorNotHealed() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -383,7 +383,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testFetch_negativeCursor_clampsToZero() throws Exception {
+  void fetchNegativeCursorClampsToZero() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -403,7 +403,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02 AC: AckFetch deletes items with sequence_id <= acked_sequence_id ---
 
   @Test
-  public void testAckFetch_deletesAcknowledgedItems() throws Exception {
+  void ackFetchDeletesAcknowledgedItems() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -432,7 +432,7 @@ public class OutboundServiceIntegrationTest {
   }
 
   @Test
-  public void testAckFetch_notFound_returnsNotFound() throws Exception {
+  void ackFetchNotFoundReturnsNotFound() throws Exception {
     service.handleAckFetch(peer, createSignedAckFetchRequest(1));
     AckFetchResponse res = readAckFetchResponse();
     assertThat(res.getStatus()).isEqualTo(Status.NOT_FOUND);
@@ -441,7 +441,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02 AC: mailbox_overflow flag ---
 
   @Test
-  public void testFetch_mailboxOverflowFlag_setAfterEviction() throws Exception {
+  void fetchMailboxOverflowFlagSetAfterEviction() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -471,7 +471,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02b AC: per-item size limit surfaces as BAD_REQUEST ---
 
   @Test
-  public void testDeposit_oversizedItem_returnsBadRequest() throws Exception {
+  void depositOversizedItemReturnsBadRequest() throws Exception {
     byte[] ohId = clientNode.getKademliaId().getBytes();
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
@@ -488,7 +488,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02b: successful register triggers the OH announce hook ---
 
   @Test
-  public void testRegister_invokesOhRegisteredListener() throws Exception {
+  void registerInvokesOhRegisteredListener() throws Exception {
     java.util.List<byte[]> announced = new java.util.ArrayList<>();
     service.setOhRegisteredListener(announced::add);
 
@@ -509,7 +509,7 @@ public class OutboundServiceIntegrationTest {
 
   /** The announce hook is best-effort: a throwing listener must not break the register flow. */
   @Test
-  public void testRegister_throwingListenerDoesNotBreakRegister() throws Exception {
+  void registerThrowingListenerDoesNotBreakRegister() throws Exception {
     service.setOhRegisteredListener(
         ohId -> {
           throw new IllegalStateException("announce scheduler down");
@@ -524,7 +524,7 @@ public class OutboundServiceIntegrationTest {
   // --- MS02b AC: register rate limit per connection ---
 
   @Test
-  public void testRegister_rateLimitPerConnection() throws Exception {
+  void registerRateLimitPerConnection() throws Exception {
     for (int i = 0; i < OutboundService.REGISTER_LIMIT_PER_WINDOW; i++) {
       service.handleRegister(peer, createSignedRegisterRequest());
       assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);

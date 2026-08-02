@@ -1,10 +1,10 @@
 package im.redpanda.flaschenpost;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.Node;
@@ -27,9 +27,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class GMParserAdditionalTest {
+class GMParserAdditionalTest {
 
   private static final int BUFFER_PADDING = 32;
 
@@ -120,7 +120,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void parseUnknownTypeDrops() {
+  void parseUnknownTypeDrops() {
     // An unknown type byte from the network must be dropped (null), not thrown — otherwise the
     // exception unwinds the reader loop and the connection keeps retrying (Sentry REDPANDAJ-2DR).
     byte[] content = new byte[] {(byte) 99, 0, 0, 0};
@@ -128,7 +128,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void parseAckTypeWithGarbagePayloadDrops() {
+  void parseAckTypeWithGarbagePayloadDrops() {
     // Reproduces REDPANDAJ-2DR: an end-to-end encrypted client payload whose first byte is 0x04
     // (== GMType.ACK) followed by ciphertext. GMAck.parseContent throws on the bad length; parse
     // must catch it, drop the packet and return null instead of unwinding the reader loop.
@@ -138,7 +138,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void parseAckTypeOnlyDrops() {
+  void parseAckTypeOnlyDrops() {
     // A truncated ACK (type byte only, no length/ackid) must also be dropped, not throw.
     byte[] content = new byte[] {GMType.ACK.getId()};
     assertNull(GMParser.parse(ServerContext.buildDefaultServerContext(), content));
@@ -147,20 +147,20 @@ public class GMParserAdditionalTest {
   // --- REDPANDAJ-2DR: isValidFrame pre-check used by the FlaschenpostPut legacy path ---
 
   @Test
-  public void isValidFrame_nullOrEmptyContent_isFalse() {
+  void isValidFrame_nullOrEmptyContent_isFalse() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     assertFalse(GMParser.isValidFrame(serverContext, null));
     assertFalse(GMParser.isValidFrame(serverContext, new byte[0]));
   }
 
   @Test
-  public void isValidFrame_unknownTypeByte_isFalse() {
+  void isValidFrame_unknownTypeByte_isFalse() {
     byte[] content = new byte[] {(byte) 99, 0, 0, 0};
     assertFalse(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), content));
   }
 
   @Test
-  public void isValidFrame_malformedAck_isFalse() {
+  void isValidFrame_malformedAck_isFalse() {
     // Same shape as the REDPANDAJ-2DR reproduction: an E2E-encrypted payload whose first byte
     // collides with GMType.ACK, followed by ciphertext that is not a valid GMAck body.
     byte[] content =
@@ -169,13 +169,13 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void isValidFrame_truncatedAck_isFalse() {
+  void isValidFrame_truncatedAck_isFalse() {
     byte[] content = new byte[] {GMType.ACK.getId()};
     assertFalse(GMParser.isValidFrame(ServerContext.buildDefaultServerContext(), content));
   }
 
   @Test
-  public void isValidFrame_wellFormedAck_isTrue() {
+  void isValidFrame_wellFormedAck_isTrue() {
     ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
     ack.put(GMType.ACK.getId());
     ack.putInt(4);
@@ -184,21 +184,21 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void isValidFrame_wellFormedGarlicMessage_isTrue() {
+  void isValidFrame_wellFormedGarlicMessage_isTrue() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     byte[] content = garlicMessageBytes(serverContext, serverContext.getNodeId());
     assertTrue(GMParser.isValidFrame(serverContext, content));
   }
 
   @Test
-  public void isValidFrame_malformedGarlicMessage_isFalse() {
+  void isValidFrame_malformedGarlicMessage_isFalse() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     byte[] content = new byte[] {GMType.GARLIC_MESSAGE.getId(), 0, 0, 0, 5, 1, 2}; // truncated
     assertFalse(GMParser.isValidFrame(serverContext, content));
   }
 
   @Test
-  public void garlicMessageWithTamperedCiphertextYieldsNoContent() {
+  void garlicMessageWithTamperedCiphertextYieldsNoContent() {
     // v2 (MS03): a tampered ciphertext fails GCM authentication at decryption time — the
     // packet is dropped without any nested content being parsed.
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
@@ -212,7 +212,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void duplicateGarlicMessageIsIgnored() {
+  void duplicateGarlicMessageIsIgnored() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     byte[] content = garlicMessageBytes(serverContext, serverContext.getNodeId());
 
@@ -221,7 +221,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void ackNotifiesFlaschenpostJob() {
+  void ackNotifiesFlaschenpostJob() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     StubFlaschenpostJob job = new StubFlaschenpostJob(serverContext);
     int ackId = 424242;
@@ -234,7 +234,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void ackNotifiesGarlicJob() {
+  void ackNotifiesGarlicJob() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     StubGarlicJob job = new StubGarlicJob(serverContext);
     int ackId = 434343;
@@ -247,7 +247,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void garlicMessageIsSentToConnectedPeerDirectly() {
+  void garlicMessageIsSentToConnectedPeerDirectly() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId target = NodeId.generateWithSimpleKey();
     byte[] content = garlicMessageBytes(serverContext, target);
@@ -266,7 +266,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void kadContentEntryPointsAreUsed() {
+  void kadContentEntryPointsAreUsed() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -306,7 +306,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void missingKadContentTriggersSearchAndReturnsWhenNoRoute() {
+  void missingKadContentTriggersSearchAndReturnsWhenNoRoute() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -340,7 +340,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void graphRoutingSelectsPeerWithShortestPath() {
+  void graphRoutingSelectsPeerWithShortestPath() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     Node destinationNode = new Node(serverContext, destination);
@@ -382,7 +382,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void graphRoutingSkipsWhenPathMissing() {
+  void graphRoutingSkipsWhenPathMissing() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -401,7 +401,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void nodeStoreMissesDestinationAndReturnsQuietly() {
+  void nodeStoreMissesDestinationAndReturnsQuietly() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
 
@@ -412,7 +412,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void recentKadContentSkipsRefresh() {
+  void recentKadContentSkipsRefresh() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -444,7 +444,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void entryPointAddsNodeWhenPeerUnavailable() {
+  void entryPointAddsNodeWhenPeerUnavailable() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -470,7 +470,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void entryPointWithDisconnectedPeerFallsBackToAdd() {
+  void entryPointWithDisconnectedPeerFallsBackToAdd() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     new Node(serverContext, destination);
@@ -500,7 +500,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void shortestPathBranchFalseWhenEqualWeight() {
+  void shortestPathBranchFalseWhenEqualWeight() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     Node destinationNode = new Node(serverContext, destination);
@@ -564,7 +564,7 @@ public class GMParserAdditionalTest {
    * the correct (cheaper) next hop.
    */
   @Test
-  public void selectBestRoutePeer_picksCheapestRouteNotFirstCandidate() {
+  void selectBestRoutePeer_picksCheapestRouteNotFirstCandidate() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Node selfNode = new Node(serverContext, serverContext.getNodeId());
@@ -600,7 +600,7 @@ public class GMParserAdditionalTest {
 
   /** A single candidate must be chosen when it has a valid route (behavior parity). */
   @Test
-  public void selectBestRoutePeer_singleCandidateIsChosen() {
+  void selectBestRoutePeer_singleCandidateIsChosen() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Node selfNode = new Node(serverContext, serverContext.getNodeId());
@@ -627,7 +627,7 @@ public class GMParserAdditionalTest {
 
   /** No candidate has a known direct edge from self → none is selected. */
   @Test
-  public void selectBestRoutePeer_returnsNullWhenNoDirectEdge() {
+  void selectBestRoutePeer_returnsNullWhenNoDirectEdge() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Node selfNode = new Node(serverContext, serverContext.getNodeId());
@@ -656,7 +656,7 @@ public class GMParserAdditionalTest {
    * crashing inside Dijkstra with a NullPointerException.
    */
   @Test
-  public void selectBestRoutePeer_nullTargetYieldsNoSelection() {
+  void selectBestRoutePeer_nullTargetYieldsNoSelection() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Node selfNode = new Node(serverContext, serverContext.getNodeId());
@@ -685,7 +685,7 @@ public class GMParserAdditionalTest {
    * job and crashed the caller instead of the candidate simply being skipped.
    */
   @Test
-  public void selectBestRoutePeer_survivesEdgeVanishingMidDijkstraTraversal() {
+  void selectBestRoutePeer_survivesEdgeVanishingMidDijkstraTraversal() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Node selfNode = new Node(serverContext, serverContext.getNodeId());
@@ -736,7 +736,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void existingPeerButDisconnectedTriggersFallbackRouting() {
+  void existingPeerButDisconnectedTriggersFallbackRouting() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId destination = NodeId.generateWithSimpleKey();
     TestPeer destinationPeer = new TestPeer("10.0.0.9", 9, destination);
@@ -750,7 +750,7 @@ public class GMParserAdditionalTest {
   }
 
   @Test
-  public void nullPeerArrayListReturnsGracefully() {
+  void nullPeerArrayListReturnsGracefully() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     serverContext.setPeerList(new NullPeerList(serverContext));
     NodeId destination = NodeId.generateWithSimpleKey();

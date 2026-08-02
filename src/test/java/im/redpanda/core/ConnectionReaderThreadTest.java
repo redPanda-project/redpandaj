@@ -1,13 +1,13 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ConnectionReaderThreadTest {
+class ConnectionReaderThreadTest {
 
   /**
    * sdd02 phase 1: a v22 light-client handshake is rejected (channel closed) and counted in {@link
@@ -15,7 +15,7 @@ public class ConnectionReaderThreadTest {
    * so the branch shows up in unit-test coverage.
    */
   @Test
-  public void v22LightClientHandshakeIsRejectedAndCounted() throws Exception {
+  void v22LightClientHandshakeIsRejectedAndCounted() throws Exception {
     try (SocketChannel channel = SocketChannel.open()) {
       PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
       long before = ConnectionReaderThread.REJECTED_LEGACY_V22_ATTEMPTS.get();
@@ -24,15 +24,15 @@ public class ConnectionReaderThreadTest {
           ConnectionReaderThread.parseHandshake(
               new ServerContext(), peerInHandshake, handshake(22, (byte) 160));
 
-      assertFalse("v22 light client must be rejected after the shutdown", accepted);
-      assertFalse("channel must be closed on reject", channel.isOpen());
+      assertFalse(accepted, "v22 light client must be rejected after the shutdown");
+      assertFalse(channel.isOpen(), "channel must be closed on reject");
       assertEquals(before + 1, ConnectionReaderThread.REJECTED_LEGACY_V22_ATTEMPTS.get());
     }
   }
 
   /** Unknown protocol versions are rejected too, but do not count as legacy v22 attempts. */
   @Test
-  public void unknownVersionRejectDoesNotCountAsLegacyAttempt() throws Exception {
+  void unknownVersionRejectDoesNotCountAsLegacyAttempt() throws Exception {
     try (SocketChannel channel = SocketChannel.open()) {
       PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
       long before = ConnectionReaderThread.REJECTED_LEGACY_V22_ATTEMPTS.get();

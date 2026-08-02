@@ -1,13 +1,13 @@
 package im.redpanda.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class UtilsAdditionalTest {
+class UtilsAdditionalTest {
 
   @Test
-  public void testDoubleDigestKnownVector() {
+  void doubleDigestKnownVector() {
     byte[] input = "hello".getBytes();
     byte[] dd = Utils.doubleDigest(input);
     String hex = Utils.bytesToHexString(dd);
@@ -15,7 +15,7 @@ public class UtilsAdditionalTest {
   }
 
   @Test
-  public void testBytesToHexString() {
+  void bytesToHexString() {
     byte[] arr = new byte[] {0x00, 0x0f, (byte) 0xff};
     assertEquals("000fff", Utils.bytesToHexString(arr));
   }

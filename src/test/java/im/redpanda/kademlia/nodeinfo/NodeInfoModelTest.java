@@ -1,15 +1,15 @@
 package im.redpanda.kademlia.nodeinfo;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import im.redpanda.core.NodeId;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class NodeInfoModelTest {
+class NodeInfoModelTest {
 
   @Test
-  public void exportImportTest() {
+  void exportImportTest() {
     NodeId nodeId = NodeId.importPublic(new NodeId().exportPublic());
 
     GMEntryPointModel gmEntryPointModel = new GMEntryPointModel(nodeId);

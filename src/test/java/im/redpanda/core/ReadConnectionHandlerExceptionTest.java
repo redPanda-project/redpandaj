@@ -12,9 +12,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Map;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for TD013 (review-dag finding on redpandaj#271): {@link
@@ -36,7 +36,7 @@ import org.junit.Test;
  * type — is swapped into the real handler map through reflection. This changes no production code
  * at all.
  */
-public class ReadConnectionHandlerExceptionTest {
+class ReadConnectionHandlerExceptionTest {
 
   static {
     ByteBufferPool.init();
@@ -46,16 +46,16 @@ public class ReadConnectionHandlerExceptionTest {
   private SocketChannel remoteSide;
   private SocketChannel peerSide;
 
-  @Before
-  public void setUpChannels() throws IOException {
+  @BeforeEach
+  void setUpChannels() throws IOException {
     serverSocket = ServerSocketChannel.open();
     serverSocket.bind(new InetSocketAddress("127.0.0.1", 0));
     remoteSide = SocketChannel.open(serverSocket.getLocalAddress());
     peerSide = serverSocket.accept();
   }
 
-  @After
-  public void tearDownChannels() throws IOException {
+  @AfterEach
+  void tearDownChannels() throws IOException {
     for (SocketChannel channel : new SocketChannel[] {remoteSide, peerSide}) {
       if (channel != null && channel.isOpen()) {
         channel.close();
@@ -146,8 +146,7 @@ public class ReadConnectionHandlerExceptionTest {
    * it into {@code peer.readBuffer} — even though the exception is still propagating past it.
    */
   @Test
-  public void handlerExceptionOnFullyDrainedBufferReturnsBufferToPoolWithoutLeak()
-      throws Exception {
+  void handlerExceptionOnFullyDrainedBufferReturnsBufferToPoolWithoutLeak() throws Exception {
     Peer peer = newConnectedPeer();
     ByteBuffer preBorrowed = ByteBufferPool.borrowObject(1024);
     peer.readBuffer = preBorrowed;
@@ -185,7 +184,7 @@ public class ReadConnectionHandlerExceptionTest {
    * still-unparsed second command.
    */
   @Test
-  public void handlerExceptionWithLeftoverBytesRestoresBufferIntoField() throws Exception {
+  void handlerExceptionWithLeftoverBytesRestoresBufferIntoField() throws Exception {
     Peer peer = newConnectedPeer();
     ByteBuffer preBorrowed = ByteBufferPool.borrowObject(1024);
     peer.readBuffer = preBorrowed;

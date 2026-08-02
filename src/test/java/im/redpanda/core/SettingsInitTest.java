@@ -1,27 +1,27 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
-import java.io.IOException;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class SettingsInitTest {
+class SettingsInitTest {
 
   private File redpandaJar;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     redpandaJar = new File("redpanda.jar");
     // Reset static flags to a known state
     Settings.seedNode = false;
     Settings.loadUpdates = false;
   }
 
-  @After
-  public void cleanup() {
+  @AfterEach
+  void cleanup() {
     if (redpandaJar.exists()) {
       // best effort cleanup
       redpandaJar.delete();
@@ -29,7 +29,7 @@ public class SettingsInitTest {
   }
 
   @Test
-  public void whenRedpandaJarPresent_loadUpdatesTrue() throws IOException {
+  void whenRedpandaJarPresent_loadUpdatesTrue() throws Exception {
     // Ensure file exists
     if (!redpandaJar.exists()) {
       assertTrue(redpandaJar.createNewFile());
@@ -45,7 +45,7 @@ public class SettingsInitTest {
   }
 
   @Test
-  public void whenOnlyTargetJarAndDefaultPort_seedNodeTrue() throws IOException {
+  void whenOnlyTargetJarAndDefaultPort_seedNodeTrue() throws Exception {
     // Ensure no redpanda.jar in cwd
     if (redpandaJar.exists()) {
       assertTrue(redpandaJar.delete());

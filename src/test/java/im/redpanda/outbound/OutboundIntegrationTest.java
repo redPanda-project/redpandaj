@@ -1,15 +1,15 @@
 package im.redpanda.outbound;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.outbound.v1.RegisterOhRequest;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class OutboundIntegrationTest {
+class OutboundIntegrationTest {
 
   private OutboundService service;
   private OutboundHandleStore handleStore;
@@ -18,8 +18,8 @@ public class OutboundIntegrationTest {
 
   private NodeId clientNode;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
     service = new OutboundService(handleStore, mailboxStore);
@@ -34,7 +34,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testRegister_ValidRequest_Success() throws Exception {
+  void registerValidRequestSuccess() throws Exception {
     RegisterOhRequest req = createSignedRegisterRequest();
     service.handleRegister(peer, req);
 
@@ -53,7 +53,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testFetch_Success() throws Exception {
+  void fetchSuccess() throws Exception {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);
@@ -88,7 +88,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testRevoke_Success() throws Exception {
+  void revokeSuccess() throws Exception {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);
@@ -116,7 +116,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testFetch_NotFound() throws Exception {
+  void fetchNotFound() throws Exception {
     im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
     service.handleFetch(peer, fetchReq);
 
@@ -134,7 +134,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testRevoke_NotFound() throws Exception {
+  void revokeNotFound() throws Exception {
     im.redpanda.outbound.v1.RevokeOhRequest revokeReq = createSignedRevokeRequest();
     service.handleRevoke(peer, revokeReq);
 
@@ -260,7 +260,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testRegister_InvalidSignature_Fails() throws Exception {
+  void registerInvalidSignatureFails() throws Exception {
     RegisterOhRequest req = createSignedRegisterRequest();
     // Tamper with signature
     byte[] badSig = req.getSignature().toByteArray();
@@ -284,7 +284,7 @@ public class OutboundIntegrationTest {
   }
 
   @Test
-  public void testFetch_InvalidSignature_Fails() throws Exception {
+  void fetchInvalidSignatureFails() throws Exception {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);

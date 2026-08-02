@@ -1,9 +1,9 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,25 +11,27 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Map;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
-public class SaverTest {
+class SaverTest {
 
   private static final String TEST_SAVE_DIR = "data";
   private static final String TEST_FILE = TEST_SAVE_DIR + "/peers.dat";
   private static final String TEST_TMP_FILE = TEST_FILE + ".tmp";
 
-  @Before
-  @After
-  public void cleanUp() throws IOException {
+  @BeforeEach
+  @AfterEach
+  void cleanUp() throws IOException {
     Files.deleteIfExists(Path.of(TEST_FILE));
     Files.deleteIfExists(Path.of(TEST_TMP_FILE));
   }
 
   @Test
-  public void testSaveAndLoadPeers() {
+  void saveAndLoadPeers() {
     ArrayList<Peer> peers = new ArrayList<>();
     Peer peer1 = new Peer("127.0.0.1", 1234);
     peer1.setNodeId(new NodeId());
@@ -65,7 +67,7 @@ public class SaverTest {
   }
 
   @Test
-  public void testSavePeersSkipsUndialablePeers() {
+  void savePeersSkipsUndialablePeers() {
     // T86: an inbound-only peer (a light client announces port 0 in the handshake) cannot be
     // dialled by anyone. Persisting it is what let hundreds of such entries survive restarts and
     // be re-gossiped afterwards - the affected node's peers.dat held 82 loopback entries alone.
@@ -88,7 +90,7 @@ public class SaverTest {
   }
 
   @Test
-  public void testSavePeersSkipsPeerWithoutVerifyKey() {
+  void savePeersSkipsPeerWithoutVerifyKey() {
     // Simulates the first-boot race: a bootstrap peer's KademliaId is known (e.g. from the DHT)
     // but its handshake has not completed yet, so its NodeId has no verify key. Saving must not
     // throw and must still persist the other, fully-identified peers.
@@ -128,8 +130,9 @@ public class SaverTest {
    * takes the read lock cannot make progress while the write lock is held. Deterministic and
    * one-sided, see {@link ConcurrencyTestSupport}.
    */
-  @Test(timeout = 60_000)
-  public void savePeersBlocksWhileThePeerListWriteLockIsHeld() throws Exception {
+  @Test
+  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+  void savePeersBlocksWhileThePeerListWriteLockIsHeld() throws Exception {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.setNodeId(new NodeId());
@@ -145,7 +148,7 @@ public class SaverTest {
   }
 
   @Test
-  public void testLoadMissingFile() {
+  void loadMissingFile() {
     // Ensure file does not exist
     File file = new File(TEST_FILE);
     if (file.exists()) {
@@ -161,7 +164,7 @@ public class SaverTest {
   }
 
   @Test
-  public void testLoadCorruptedFile() throws IOException {
+  void loadCorruptedFile() throws Exception {
     // Determine path
     // Create directory if needed
     new File(TEST_SAVE_DIR).mkdirs();

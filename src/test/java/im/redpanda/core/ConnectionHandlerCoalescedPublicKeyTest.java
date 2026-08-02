@@ -1,8 +1,8 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
@@ -11,7 +11,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * REDPANDAJ-2FA regression: {@code ConnectionHandler.handlePeerInHandshake} must not drop the
@@ -24,7 +24,7 @@ import org.junit.Test;
  * our ACTIVATE_ENCRYPTION, encryption never activated, and the client kept writing requests into a
  * connection the node would never answer.
  */
-public class ConnectionHandlerCoalescedPublicKeyTest {
+class ConnectionHandlerCoalescedPublicKeyTest {
 
   static {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -36,7 +36,7 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
    * ACTIVATE_ENCRYPTION closed the connection outright.
    */
   @Test
-  public void sendPublicKeySplitAcrossTwoReadsIsCarriedOver() throws Exception {
+  void sendPublicKeySplitAcrossTwoReadsIsCarriedOver() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -81,30 +81,30 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
           head.flip();
           client.write(head);
 
-          assertTrue("expected a first readable event", selector.select(10_000) > 0);
+          assertTrue(selector.select(10_000) > 0, "expected a first readable event");
           selector.selectedKeys().clear();
           handlePeerInHandshake.invoke(connectionHandler, key);
 
           assertEquals(
-              "the incomplete command must be stashed, not consumed or dropped",
               1 + firstChunk,
-              peerInHandshake.plaintextHandshakeCarryLength());
-          assertEquals("still waiting for the key", 1, peerInHandshake.getStatus());
-          assertTrue("the connection must stay open", accepted.isOpen());
+              peerInHandshake.plaintextHandshakeCarryLength(),
+              "the incomplete command must be stashed, not consumed or dropped");
+          assertEquals(1, peerInHandshake.getStatus(), "still waiting for the key");
+          assertTrue(accepted.isOpen(), "the connection must stay open");
 
           ByteBuffer tail = ByteBuffer.allocate(peerPublicExport.length - firstChunk);
           tail.put(peerPublicExport, firstChunk, peerPublicExport.length - firstChunk);
           tail.flip();
           client.write(tail);
 
-          assertTrue("expected a second readable event", selector.select(10_000) > 0);
+          assertTrue(selector.select(10_000) > 0, "expected a second readable event");
           selector.selectedKeys().clear();
           handlePeerInHandshake.invoke(connectionHandler, key);
 
           assertEquals(
-              "the split SEND_PUBLIC_KEY must be decoded once the tail arrived",
               -1,
-              peerInHandshake.getStatus());
+              peerInHandshake.getStatus(),
+              "the split SEND_PUBLIC_KEY must be decoded once the tail arrived");
           assertEquals(0, peerInHandshake.plaintextHandshakeCarryLength());
           assertNotNull(peerInHandshake.getNodeId());
         } finally {
@@ -115,7 +115,7 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
   }
 
   @Test
-  public void coalescedRequestAndSendPublicKeyArePromotedInOneEvent() throws Exception {
+  void coalescedRequestAndSendPublicKeyArePromotedInOneEvent() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -160,7 +160,7 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
           client.write(combined);
 
           assertTrue(
-              "expected the accepted channel to become readable", selector.select(10_000) > 0);
+              selector.select(10_000) > 0, "expected the accepted channel to become readable");
           SelectionKey readyKey = selector.selectedKeys().iterator().next();
 
           Method handlePeerInHandshake =
@@ -172,10 +172,10 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
           // Without the fix only REQUEST_PUBLIC_KEY was consumed and the status stayed 1, so the
           // handshake could never reach the encryption step.
           assertEquals(
-              "the coalesced SEND_PUBLIC_KEY must have been parsed in the same read event",
               -1,
-              peerInHandshake.getStatus());
-          assertNotNull("the peer's NodeId must be known now", peerInHandshake.getNodeId());
+              peerInHandshake.getStatus(),
+              "the coalesced SEND_PUBLIC_KEY must have been parsed in the same read event");
+          assertNotNull(peerInHandshake.getNodeId(), "the peer's NodeId must be known now");
           assertNotNull(peerInHandshake.getPeer().getNodeId());
 
           // Both replies must be on the wire: our public key (answer to REQUEST_PUBLIC_KEY) and
@@ -195,9 +195,9 @@ public class ConnectionHandlerCoalescedPublicKeyTest {
           }
           inbound.flip();
           assertEquals(
-              "expected SEND_PUBLIC_KEY followed by ACTIVATE_ENCRYPTION",
               expected,
-              inbound.remaining());
+              inbound.remaining(),
+              "expected SEND_PUBLIC_KEY followed by ACTIVATE_ENCRYPTION");
           assertEquals(Command.SEND_PUBLIC_KEY, inbound.get());
           inbound.position(inbound.position() + NodeId.PUBLIC_KEYLEN);
           assertEquals(Command.ACTIVATE_ENCRYPTION, inbound.get());

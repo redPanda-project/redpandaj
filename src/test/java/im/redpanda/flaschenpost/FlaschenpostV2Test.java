@@ -8,15 +8,15 @@ import im.redpanda.core.NodeId;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import javax.crypto.AEADBadTagException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** MS04: Flaschenpost v2 packet format — fixed 2048-byte size, layer crypto, validation. */
-public class FlaschenpostV2Test {
+class FlaschenpostV2Test {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
   @Test
-  public void wireFormatConstants_areLocked() {
+  void wireFormatConstants_areLocked() {
     // these constants are the wire format — changing them breaks frontend interop
     assertThat(FlaschenpostV2.PACKET_SIZE).isEqualTo(2048);
     assertThat(FlaschenpostV2.HEADER_LEN).isEqualTo(73);
@@ -28,7 +28,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void encryptBuildParseDecrypt_roundTrip() throws Exception {
+  void encryptBuildParseDecrypt_roundTrip() throws Exception {
     NodeId hop = NodeId.generateWithSimpleKey();
     byte[] plaintext = "layer plaintext".getBytes(StandardCharsets.UTF_8);
 
@@ -47,7 +47,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void decryptLayer_withWrongKey_throwsAeadBadTag() throws Exception {
+  void decryptLayer_withWrongKey_throwsAeadBadTag() throws Exception {
     NodeId hop = NodeId.generateWithSimpleKey();
     NodeId other = NodeId.generateWithSimpleKey();
     byte[] body =
@@ -60,7 +60,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void decryptLayer_withTamperedNextHop_throwsAeadBadTag() throws Exception {
+  void decryptLayer_withTamperedNextHop_throwsAeadBadTag() throws Exception {
     // the next_hop is the AAD: redirecting a packet to another relay must break authentication
     NodeId hop = NodeId.generateWithSimpleKey();
     byte[] body =
@@ -73,7 +73,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void parse_rejectsMalformedPackets() {
+  void parse_rejectsMalformedPackets() {
     NodeId hop = NodeId.generateWithSimpleKey();
 
     // wrong total size
@@ -95,7 +95,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void buildPacket_rejectsInvalidBodyLength() {
+  void buildPacket_rejectsInvalidBodyLength() {
     KademliaId nextHop = NodeId.generateWithSimpleKey().getKademliaId();
     int maxBody = FlaschenpostV2.PACKET_SIZE - 1 - 4 - KademliaId.ID_LENGTH_BYTES;
 
@@ -112,7 +112,7 @@ public class FlaschenpostV2Test {
   }
 
   @Test
-  public void buildPacket_withMaximumBody_isExactlyPacketSize() throws Exception {
+  void buildPacket_withMaximumBody_isExactlyPacketSize() throws Exception {
     // a full-size layer: ciphertext fills the packet completely, zero padding
     NodeId hop = NodeId.generateWithSimpleKey();
     byte[] plaintext =

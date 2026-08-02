@@ -2,13 +2,13 @@ package im.redpanda.flaschenpost;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** T43: token-bucket behaviour of the global channel-record store rate limiter. */
-public class RecordStoreRateLimiterTest {
+class RecordStoreRateLimiterTest {
 
   @Test
-  public void admitsUpToCapacityThenDrops() {
+  void admitsUpToCapacityThenDrops() {
     long t0 = 1_000_000L;
     RecordStoreRateLimiter limiter = new RecordStoreRateLimiter(5, 1000L, t0);
 
@@ -19,7 +19,7 @@ public class RecordStoreRateLimiterTest {
   }
 
   @Test
-  public void refillsOverTime() {
+  void refillsOverTime() {
     long t0 = 1_000_000L;
     RecordStoreRateLimiter limiter = new RecordStoreRateLimiter(5, 1000L, t0);
 
@@ -34,7 +34,7 @@ public class RecordStoreRateLimiterTest {
   }
 
   @Test
-  public void refillIsCappedAtCapacity() {
+  void refillIsCappedAtCapacity() {
     long t0 = 1_000_000L;
     RecordStoreRateLimiter limiter = new RecordStoreRateLimiter(3, 1000L, t0);
 
@@ -47,7 +47,7 @@ public class RecordStoreRateLimiterTest {
   }
 
   @Test
-  public void rejectsNonPositiveConfiguration() {
+  void rejectsNonPositiveConfiguration() {
     long t0 = 1_000_000L;
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () -> new RecordStoreRateLimiter(0, 1000L, t0))

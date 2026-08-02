@@ -2,15 +2,15 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PeerInHandshakeTest {
+class PeerInHandshakeTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -143,7 +143,7 @@ public class PeerInHandshakeTest {
   //    }
 
   @Test
-  public void hasPublicKey() {
+  void hasPublicKey() {
     Peer peerWithPublicKey = new Peer("ip", 0);
     peerWithPublicKey.setNodeId(new NodeId());
     PeerInHandshake phWithPublicKey = new PeerInHandshake("ip", peerWithPublicKey, null);
@@ -170,7 +170,7 @@ public class PeerInHandshakeTest {
    * forever.
    */
   @Test
-  public void addConnection_closesItsOwnChannelWhenRegistrationFails() throws Exception {
+  void addConnection_closesItsOwnChannelWhenRegistrationFails() throws Exception {
     Selector originalSelector = ConnectionHandler.selector;
     Selector closedSelector = Selector.open();
     closedSelector.close();
@@ -200,7 +200,7 @@ public class PeerInHandshakeTest {
    * pacing therefore never fired for those attempts.
    */
   @Test
-  public void addConnection_returnsFalseWhenRegistrationFails() throws Exception {
+  void addConnection_returnsFalseWhenRegistrationFails() throws Exception {
     SocketChannel channel = SocketChannel.open();
     channel.close(); // configureBlocking() on a closed channel throws ClosedChannelException
 
@@ -211,7 +211,7 @@ public class PeerInHandshakeTest {
   }
 
   @Test
-  public void addConnection_returnsTrueWhenRegistrationSucceeds() throws Exception {
+  void addConnection_returnsTrueWhenRegistrationSucceeds() throws Exception {
     SocketChannel channel = SocketChannel.open();
     Peer peer = new Peer("127.0.0.1", 1234);
     PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", peer, channel);

@@ -5,24 +5,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.protobuf.ByteString;
 import im.redpanda.outbound.v1.MailItem;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class OutboundHandleStoreTest {
+class OutboundHandleStoreTest {
 
   private OutboundHandleStore store;
   private byte[] ohId;
   private byte[] authKey;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     store = new OutboundHandleStore(); // Uses in-memory
     ohId = Hex.decode("123456");
     authKey = Hex.decode("ABCDEF");
   }
 
   @Test
-  public void testPutAndGet() {
+  void putAndGet() {
     long created = System.currentTimeMillis();
     long expires = created + 10000;
     OutboundHandleStore.HandleRecord handleRecord =
@@ -38,7 +38,7 @@ public class OutboundHandleStoreTest {
   }
 
   @Test
-  public void testRemove() {
+  void remove() {
     long created = System.currentTimeMillis();
     OutboundHandleStore.HandleRecord handleRecord =
         new OutboundHandleStore.HandleRecord(authKey, created, created + 10000);
@@ -50,7 +50,7 @@ public class OutboundHandleStoreTest {
   }
 
   @Test
-  public void testCleanupExpired() {
+  void cleanupExpired() {
     long now = System.currentTimeMillis();
 
     // Valid handle
@@ -70,7 +70,7 @@ public class OutboundHandleStoreTest {
   // --- MS02 AC: Expired OHs also have their mailboxes deleted ---
 
   @Test
-  public void cleanupExpired_withMailboxStore_alsoDeletesMailbox() {
+  void cleanupExpired_withMailboxStore_alsoDeletesMailbox() {
     long now = System.currentTimeMillis();
     OutboundMailboxStore mailboxStore = new OutboundMailboxStore();
 

@@ -1,10 +1,11 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class SettingsKnownNodesTest {
+class SettingsKnownNodesTest {
 
   /**
    * No loopback entry: {@code 127.0.0.1:59558} is the node's own listening address by default, so
@@ -14,41 +15,41 @@ public class SettingsKnownNodesTest {
   private static final String[] DEFAULTS = {"195.201.25.223:59558", "redpanda.im:59559"};
 
   @Test
-  public void defaultsDoNotContainLoopback() {
+  void defaultsDoNotContainLoopback() {
     for (String defaultNode : Settings.parseKnownNodes(null)) {
-      org.junit.Assert.assertFalse(
-          "loopback must not be a default bootstrap peer: " + defaultNode,
-          im.redpanda.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]));
+      assertFalse(
+          im.redpanda.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]),
+          "loopback must not be a default bootstrap peer: " + defaultNode);
     }
   }
 
   @Test
-  public void nullFallsBackToDefaults() {
+  void nullFallsBackToDefaults() {
     assertArrayEquals(DEFAULTS, Settings.parseKnownNodes(null));
   }
 
   @Test
-  public void blankFallsBackToDefaults() {
+  void blankFallsBackToDefaults() {
     assertArrayEquals(DEFAULTS, Settings.parseKnownNodes("   "));
     assertArrayEquals(DEFAULTS, Settings.parseKnownNodes(",,"));
   }
 
   @Test
-  public void parsesCommaSeparatedListAndTrims() {
+  void parsesCommaSeparatedListAndTrims() {
     assertArrayEquals(
         new String[] {"5.75.137.166:59558", "46.224.156.238:59558"},
         Settings.parseKnownNodes(" 5.75.137.166:59558 , 46.224.156.238:59558 "));
   }
 
   @Test
-  public void dropsEmptyEntries() {
+  void dropsEmptyEntries() {
     assertArrayEquals(
         new String[] {"node.example.org:59558"},
         Settings.parseKnownNodes("node.example.org:59558,, "));
   }
 
   @Test
-  public void dropsInvalidEntriesButKeepsValidOnes() {
+  void dropsInvalidEntriesButKeepsValidOnes() {
     assertArrayEquals(
         new String[] {"5.75.137.166:59558"},
         Settings.parseKnownNodes(
@@ -56,18 +57,18 @@ public class SettingsKnownNodesTest {
   }
 
   @Test
-  public void allInvalidFallsBackToDefaults() {
+  void allInvalidFallsBackToDefaults() {
     assertArrayEquals(DEFAULTS, Settings.parseKnownNodes("no-port,host:notaport"));
   }
 
   @Test
-  public void noneDisablesBootstrapping() {
+  void noneDisablesBootstrapping() {
     assertArrayEquals(new String[0], Settings.parseKnownNodes("none"));
     assertArrayEquals(new String[0], Settings.parseKnownNodes(" NONE "));
   }
 
   @Test
-  public void acceptsBracketedIpv6() {
+  void acceptsBracketedIpv6() {
     assertArrayEquals(new String[] {"[2001:db8::1]"}, Settings.parseKnownNodes("[2001:db8::1]"));
   }
 }

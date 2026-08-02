@@ -1,13 +1,18 @@
 package im.redpanda.flaschenpost;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class GarlicMessageTest {
+class GarlicMessageTest {
 
   private static final ServerContext serverContext;
 
@@ -17,7 +22,7 @@ public class GarlicMessageTest {
   }
 
   @Test
-  public void simpleCreationTest() {
+  void simpleCreationTest() {
 
     // lets target to ourselves without the private key!
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
@@ -33,11 +38,11 @@ public class GarlicMessageTest {
 
     assertNotNull(parse);
 
-    assertEquals(parse.getClass(), GarlicMessage.class);
+    assertEquals(GarlicMessage.class, parse.getClass());
   }
 
   @Test
-  public void parseTestAckGarlicMessage() {
+  void parseTestAckGarlicMessage() {
 
     // lets target to ourselves without the private key!
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
@@ -53,19 +58,19 @@ public class GarlicMessageTest {
 
     assertNotNull(parse);
 
-    assertEquals(parse.getClass(), GarlicMessage.class);
+    assertEquals(GarlicMessage.class, parse.getClass());
 
     GarlicMessage parsedGM = (GarlicMessage) parse;
 
     assertEquals(serverContext.getNodeId().getKademliaId(), parsedGM.destination);
 
-    assertEquals(true, parsedGM.isTargetedToUs());
+    assertTrue(parsedGM.isTargetedToUs());
 
     assertEquals(1, parsedGM.getGMContent().size());
 
     GMContent gmContent = parsedGM.getGMContent().getFirst();
 
-    assertEquals(gmContent.getClass(), GMAck.class);
+    assertEquals(GMAck.class, gmContent.getClass());
 
     GMAck parsedAck = (GMAck) gmContent;
 
@@ -73,7 +78,7 @@ public class GarlicMessageTest {
   }
 
   @Test
-  public void parseTestRandomDestinationGarlicMessage() {
+  void parseTestRandomDestinationGarlicMessage() {
     // lets target to a random node id!
     NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
 
@@ -92,7 +97,7 @@ public class GarlicMessageTest {
 
     assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
-    assertEquals(false, parsedGM.isTargetedToUs());
+    assertFalse(parsedGM.isTargetedToUs());
 
     assertEquals(targetId.getKademliaId(), parsedGM.destination);
 
@@ -100,7 +105,7 @@ public class GarlicMessageTest {
   }
 
   @Test
-  public void parseTestSecondParse() {
+  void parseTestSecondParse() {
     // lets target to a random node id!
     NodeId targetId = NodeId.importPublic(new NodeId().exportPublic());
 
@@ -119,7 +124,7 @@ public class GarlicMessageTest {
   }
 
   @Test
-  public void tamperedCiphertextFailsWithAeadBadTagException() {
+  void tamperedCiphertextFailsWithAeadBadTagException() {
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
     GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
@@ -140,7 +145,7 @@ public class GarlicMessageTest {
   }
 
   @Test
-  public void aadBindsCiphertextToDestination() {
+  void aadBindsCiphertextToDestination() {
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
     GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);

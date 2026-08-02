@@ -1,17 +1,19 @@
 package im.redpanda.proto;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import java.nio.ByteBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class KademliaProtobufTest {
+class KademliaProtobufTest {
 
   @Test
-  public void testKademliaStoreSerialization() throws Exception {
+  void kademliaStoreSerialization() throws Exception {
     NodeId nodeId = new NodeId();
     byte[] content = "test-content".getBytes();
     KadContent kadContent =
@@ -38,7 +40,7 @@ public class KademliaProtobufTest {
   }
 
   @Test
-  public void testKademliaGetSerialization() throws Exception {
+  void kademliaGetSerialization() throws Exception {
     KademliaId id = new KademliaId();
     KademliaGet getMsg =
         KademliaGet.newBuilder()
@@ -57,7 +59,7 @@ public class KademliaProtobufTest {
   }
 
   @Test
-  public void testInboundKademliaStore() throws Exception {
+  void inboundKademliaStore() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
 

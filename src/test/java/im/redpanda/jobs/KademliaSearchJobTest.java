@@ -2,9 +2,9 @@ package im.redpanda.jobs;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class KademliaSearchJobTest {
+class KademliaSearchJobTest {
 
   private static final ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
@@ -16,7 +16,7 @@ public class KademliaSearchJobTest {
    * blacklisting the id).
    */
   @Test
-  public void work_afterBlacklistedInitDoesNotThrow() {
+  void work_afterBlacklistedInitDoesNotThrow() {
     KademliaId id = new KademliaId();
 
     KademliaSearchJob first = new KademliaSearchJob(serverContext, id);

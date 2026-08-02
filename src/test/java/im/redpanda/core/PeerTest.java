@@ -1,13 +1,12 @@
 package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -16,19 +15,19 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Random;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PeerTest {
+class PeerTest {
 
   static {
     ByteBufferPool.init();
   }
 
   @Test
-  public void getNodeId() {}
+  void getNodeId() {}
 
   @Test
-  public void equalsIpAndPort() {
+  void equalsIpAndPort() {
 
     Peer peer = new Peer("1.1.1.1", 123);
     Peer peer2 = new Peer("1.1.1.1", 123);
@@ -41,7 +40,7 @@ public class PeerTest {
   }
 
   @Test
-  public void equalsNonce() {
+  void equalsNonce() {
 
     Peer peer = new Peer("1.1.1.1", 123);
     Peer peer2 = new Peer("1.1.1.1", 123);
@@ -62,7 +61,7 @@ public class PeerTest {
   }
 
   @Test
-  public void equalsInstance() {
+  void equalsInstance() {
 
     Peer peer = new Peer("1.1.1.1", 123);
     Peer peer2 = new Peer("1.1.1.1", 123);
@@ -72,15 +71,15 @@ public class PeerTest {
   }
 
   @Test
-  public void setNodeId() {
+  void setNodeId() {
     Peer peer = new Peer("1.1.1.1", 123);
     KademliaId id1 = new KademliaId();
     peer.setNodeId(new NodeId(id1));
-    assertTrue(peer.getKademliaId().equals(id1));
+    assertEquals(peer.getKademliaId(), id1);
   }
 
   @Test
-  public void peerIsHigher() {
+  void peerIsHigher() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     Peer peer = new Peer("1.1.1.1", 123);
@@ -103,7 +102,7 @@ public class PeerTest {
   }
 
   @Test
-  public void decryptInputDataNoBytes() throws PeerProtocolException {
+  void decryptInputDataNoBytes() throws Exception {
     Peer peer = new Peer("ip", 59558, new NodeId());
 
     setUpTestCipherStreams(peer);
@@ -120,7 +119,7 @@ public class PeerTest {
   }
 
   @Test
-  public void decryptInputDataSimpleBytes() throws PeerProtocolException {
+  void decryptInputDataSimpleBytes() throws Exception {
     Peer peer = new Peer("ip", 59558, new NodeId());
 
     setUpTestCipherStreams(peer);
@@ -146,7 +145,7 @@ public class PeerTest {
   }
 
   @Test
-  public void decryptInputDataTooSmallReadBuffer() throws PeerProtocolException {
+  void decryptInputDataTooSmallReadBuffer() throws Exception {
     Peer peer = new Peer("ip", 59558, new NodeId());
 
     setUpTestCipherStreams(peer);
@@ -185,8 +184,7 @@ public class PeerTest {
    * the fix relies on.
    */
   @Test
-  public void decryptInputDataGrow_swapsReadBufferAndReturnsOldInstanceToPool()
-      throws PeerProtocolException {
+  void decryptInputDataGrow_swapsReadBufferAndReturnsOldInstanceToPool() throws Exception {
     Peer peer = new Peer("ip", 59558, new NodeId());
 
     setUpTestCipherStreams(peer);
@@ -230,7 +228,7 @@ public class PeerTest {
    * exactly as a caller mid-{@code tryLock()} would observe it). Must not throw NPE.
    */
   @Test
-  public void sendPingWithNullWriteBufferDoesNotThrowNpe() throws Exception {
+  void sendPingWithNullWriteBufferDoesNotThrowNpe() throws Exception {
     try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         Selector selector = Selector.open()) {
       serverSocketChannel.configureBlocking(false);
@@ -250,7 +248,7 @@ public class PeerTest {
         peer.sendPing();
 
         assertFalse(
-            "sendPing must mark the peer disconnected on a null writeBuffer", peer.isConnected());
+            peer.isConnected(), "sendPing must mark the peer disconnected on a null writeBuffer");
       }
     }
   }
@@ -260,7 +258,7 @@ public class PeerTest {
    * writeBuffer path must still queue a PING byte (guards against an overzealous TD008 fix).
    */
   @Test
-  public void sendPingWithNonNullWriteBufferPutsPingByte() throws Exception {
+  void sendPingWithNonNullWriteBufferPutsPingByte() throws Exception {
     try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         Selector selector = Selector.open()) {
       serverSocketChannel.configureBlocking(false);
@@ -298,8 +296,7 @@ public class PeerTest {
    * refactor of the added early return cannot silently break normal connection setup.
    */
   @Test
-  public void setupConnectionForPeer_happyPath_populatesConnectionStateAndBuffers()
-      throws Exception {
+  void setupConnectionForPeer_happyPath_populatesConnectionStateAndBuffers() throws Exception {
     try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         Selector selector = Selector.open()) {
       serverSocketChannel.configureBlocking(false);

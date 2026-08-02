@@ -1,14 +1,14 @@
 package im.redpanda.crypt;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class UtilsIsLocalAddressTest {
+class UtilsIsLocalAddressTest {
 
   @Test
-  public void testLocalAndNonLocalAddresses() {
+  void localAndNonLocalAddresses() {
     assertTrue(Utils.isLocalAddress("127.0.0.1"));
     assertTrue(Utils.isLocalAddress("localhost"));
     assertTrue(Utils.isLocalAddress("192.168.1.10"));
@@ -18,7 +18,7 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void coversTheWholeLoopbackAndPrivateSpace() {
+  void coversTheWholeLoopbackAndPrivateSpace() {
     assertTrue(Utils.isLocalAddress("127.0.0.1"));
     assertTrue(Utils.isLocalAddress("127.255.255.254"));
     assertTrue(Utils.isLocalAddress("10.0.2.2")); // emulator gate host address
@@ -40,7 +40,7 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void publicAddressesAreNotLocal() {
+  void publicAddressesAreNotLocal() {
     assertFalse(Utils.isLocalAddress("5.75.137.166"));
     assertFalse(Utils.isLocalAddress("195.201.25.223"));
     assertFalse(Utils.isLocalAddress("84.147.60.253"));
@@ -53,13 +53,13 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void publicAdvertisementIsAlwaysPlausible() {
+  void publicAdvertisementIsAlwaysPlausible() {
     assertTrue(Utils.isPlausibleAdvertisedAddress("5.75.137.166", 59558, "46.224.156.238"));
     assertTrue(Utils.isPlausibleAdvertisedAddress("5.75.137.166", 59558, "127.0.0.1"));
   }
 
   @Test
-  public void localAdvertisementOnlyPlausibleFromLocalPeer() {
+  void localAdvertisementOnlyPlausibleFromLocalPeer() {
     // a peer we reached over loopback may gossip loopback and LAN addresses...
     assertTrue(Utils.isPlausibleAdvertisedAddress("127.0.0.1", 59560, "127.0.0.1"));
     assertTrue(Utils.isPlausibleAdvertisedAddress("192.168.1.5", 59558, "10.0.2.2"));
@@ -79,7 +79,7 @@ public class UtilsIsLocalAddressTest {
    * or a LAN address and bypass the locality rule entirely.
    */
   @Test
-  public void gossipedHostNamesAreNeverPlausible() {
+  void gossipedHostNamesAreNeverPlausible() {
     assertFalse(Utils.isPlausibleAdvertisedAddress("redpanda.im", 59559, "84.147.60.253"));
     assertFalse(Utils.isPlausibleAdvertisedAddress("evil.example.com", 59558, "84.147.60.253"));
     // also from a loopback peer - a name is untrusted regardless of who sends it
@@ -93,7 +93,7 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void ipLiteralsAreDistinguishedFromNames() {
+  void ipLiteralsAreDistinguishedFromNames() {
     assertTrue(Utils.isIpLiteral("127.0.0.1"));
     assertTrue(Utils.isIpLiteral("5.75.137.166"));
     assertTrue(Utils.isIpLiteral("::1"));
@@ -109,7 +109,7 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void unusableAdvertisementsAreRejectedRegardlessOfOrigin() {
+  void unusableAdvertisementsAreRejectedRegardlessOfOrigin() {
     // port 0 is what an inbound-only peer carries; nobody can dial it
     assertFalse(Utils.isPlausibleAdvertisedAddress("84.147.60.253", 0, "127.0.0.1"));
     assertFalse(Utils.isPlausibleAdvertisedAddress("84.147.60.253", 70000, "127.0.0.1"));
@@ -121,7 +121,7 @@ public class UtilsIsLocalAddressTest {
   }
 
   @Test
-  public void ownHostAddressRecognisesLoopback() {
+  void ownHostAddressRecognisesLoopback() {
     assertTrue(Utils.isOwnHostAddress("127.0.0.1"));
     assertTrue(Utils.isOwnHostAddress("localhost"));
     assertTrue(Utils.isOwnHostAddress("::1"));

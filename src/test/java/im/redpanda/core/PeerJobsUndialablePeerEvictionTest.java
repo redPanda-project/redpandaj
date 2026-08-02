@@ -2,8 +2,8 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Pins the retention fix for T86.
@@ -15,10 +15,10 @@ import org.junit.Test;
  * of 278, one per mobile app instance, per re-install and per e2e run, persisted to {@code
  * peers.dat} and gossiped on.
  */
-public class PeerJobsUndialablePeerEvictionTest {
+class PeerJobsUndialablePeerEvictionTest {
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     ConnectionHandler.peerInHandshakes.clear();
   }
 
@@ -39,7 +39,7 @@ public class PeerJobsUndialablePeerEvictionTest {
   }
 
   @Test
-  public void runOnce_dropsDisconnectedUndialablePeers() {
+  void runOnce_dropsDisconnectedUndialablePeers() {
     ServerContext ctx = context();
     Peer lightClient = inboundPeer("84.147.60.253");
     Peer loopbackLightClient = inboundPeer("127.0.0.1");
@@ -52,7 +52,7 @@ public class PeerJobsUndialablePeerEvictionTest {
   }
 
   @Test
-  public void runOnce_keepsTheLiveInboundConnection() {
+  void runOnce_keepsTheLiveInboundConnection() {
     ServerContext ctx = context();
     Peer connectedLightClient = inboundPeer("84.147.60.253");
     connectedLightClient.setConnected(true);
@@ -66,7 +66,7 @@ public class PeerJobsUndialablePeerEvictionTest {
   }
 
   @Test
-  public void runOnce_keepsDialablePeersEvenWhileDisconnected() {
+  void runOnce_keepsDialablePeersEvenWhileDisconnected() {
     ServerContext ctx = context();
     Peer node = new Peer("46.224.156.238", 59558);
     node.setNodeId(NodeId.generateWithSimpleKey());
@@ -82,7 +82,7 @@ public class PeerJobsUndialablePeerEvictionTest {
   }
 
   @Test
-  public void isDialableRejectsMissingConnectionDetails() {
+  void isDialableRejectsMissingConnectionDetails() {
     Peer peer = new Peer("46.224.156.238", 59558);
     assertThat(peer.isDialable()).isTrue();
     peer.removeIpAndPort();

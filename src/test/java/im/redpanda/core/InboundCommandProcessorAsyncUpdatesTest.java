@@ -1,6 +1,8 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -10,23 +12,22 @@ import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class InboundCommandProcessorAsyncUpdatesTest {
 
   private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
 
-  @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
+  @TempDir public File tempFolder;
 
   private ServerContext ctx;
   private InboundCommandProcessor proc;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     ctx = ServerContext.buildDefaultServerContext();
     proc = new InboundCommandProcessor(ctx);
     ByteBufferPool.init();
@@ -35,8 +36,8 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     Settings.loadUpdates = false;
   }
 
-  @After
-  public void cleanup() {
+  @AfterEach
+  void cleanup() {
     // Remove files created by tests
     System.clearProperty(JAR_PATH_PROPERTY);
     new File("tmp_redpanda.jar").delete();
@@ -51,13 +52,13 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   }
 
   @Test
-  public void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws IOException {
+  void updateRequestContent_sendsJarFrame_whenSignaturePresent() throws Exception {
     byte[] data = "jar".getBytes();
 
     // Point the handler at a private temp-dir jar so this test cannot collide with other
     // Surefire forks sharing the working directory (e.g. SettingsInitTest, which creates and
     // deletes a CWD-relative redpanda.jar).
-    Path jarPath = tempFolder.newFile("redpanda.jar").toPath();
+    Path jarPath = newFile(tempFolder, "redpanda.jar").toPath();
     System.setProperty(JAR_PATH_PROPERTY, jarPath.toString());
     try (FileOutputStream fos = new FileOutputStream(jarPath.toFile())) {
       fos.write(data);
@@ -98,7 +99,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   }
 
   @Test
-  public void androidUpdateRequestContent_doesNotSend_whenSignatureInvalid() throws IOException {
+  void androidUpdateRequestContent_doesNotSend_whenSignatureInvalid() throws Exception {
     // Prepare android.apk data
     byte[] data = "apk".getBytes();
     try (FileOutputStream fos = new FileOutputStream(ConnectionReaderThread.ANDROID_UPDATE_FILE)) {
@@ -125,7 +126,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   }
 
   @Test
-  public void updateAnswerContent_rejectsFakeSignature() {
+  void updateAnswerContent_rejectsFakeSignature() {
     Peer peer = new Peer("127.0.0.1", 7777, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);
@@ -145,7 +146,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
     File tmp = new File("tmp_redpanda.jar");
-    assertFalse("tmp file should NOT exist because signature is fake", tmp.exists());
+    assertFalse(tmp.exists(), "tmp file should NOT exist because signature is fake");
   }
 
   private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
@@ -161,5 +162,11 @@ public class InboundCommandProcessorAsyncUpdatesTest {
 
   private static void parkFor(long millis) {
     LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(millis));
+  }
+
+  private static File newFile(File parent, String child) throws IOException {
+    File result = new File(parent, child);
+    result.createNewFile();
+    return result;
   }
 }

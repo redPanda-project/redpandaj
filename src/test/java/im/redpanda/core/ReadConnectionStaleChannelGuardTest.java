@@ -14,7 +14,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Collections;
 import java.util.Set;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for TD012 (review-dag finding on redpandaj#271): the stale-connection guards in
@@ -36,7 +36,7 @@ import org.junit.Test;
  * (which unconditionally runs before the guard check, see {@code readConnection}) still happens
  * regardless of the swap.
  */
-public class ReadConnectionStaleChannelGuardTest {
+class ReadConnectionStaleChannelGuardTest {
 
   static {
     ByteBufferPool.init();
@@ -60,8 +60,7 @@ public class ReadConnectionStaleChannelGuardTest {
    * instance.
    */
   @Test
-  public void staleReadFailureAfterConcurrentSwapDoesNotDisconnectFreshConnection()
-      throws Exception {
+  void staleReadFailureAfterConcurrentSwapDoesNotDisconnectFreshConnection() throws Exception {
     Peer peer = newConnectedPeer();
     CancelTrackingSelectionKey key = new CancelTrackingSelectionKey();
     peer.setSelectionKey(key);
@@ -97,7 +96,7 @@ public class ReadConnectionStaleChannelGuardTest {
    * result comes from the swap, not from the guard being a no-op.
    */
   @Test
-  public void staleReadFailureWithoutSwapDisconnectsTheSingleConnection() throws Exception {
+  void staleReadFailureWithoutSwapDisconnectsTheSingleConnection() throws Exception {
     Peer peer = newConnectedPeer();
     CancelTrackingSelectionKey key = new CancelTrackingSelectionKey();
     peer.setSelectionKey(key);
@@ -123,8 +122,7 @@ public class ReadConnectionStaleChannelGuardTest {
    * construction cannot silently rot. Without a swap the guard must not suppress the disconnect.
    */
   @Test
-  public void nonIoThrowableFailureBuildsDebugStringAndDisconnectsSingleConnection()
-      throws Exception {
+  void nonIoThrowableFailureBuildsDebugStringAndDisconnectsSingleConnection() throws Exception {
     Peer peer = newConnectedPeer();
     CancelTrackingSelectionKey key = new CancelTrackingSelectionKey();
     peer.setSelectionKey(key);

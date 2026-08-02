@@ -1,15 +1,15 @@
 package im.redpanda.store;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class NodeEdgeTest {
+class NodeEdgeTest {
 
   @Test
-  public void testComparator() {
+  void comparator() {
     ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
     NodeEdge oldEdge = new NodeEdge();
     oldEdge.lastTimeCheckStarted = 5;
@@ -23,7 +23,7 @@ public class NodeEdgeTest {
   }
 
   @Test
-  public void testComparatorMaxValue() {
+  void comparatorMaxValue() {
     ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
     NodeEdge oldEdge = new NodeEdge();
     oldEdge.lastTimeCheckStarted = 5;
@@ -37,7 +37,7 @@ public class NodeEdgeTest {
   }
 
   @Test
-  public void testComparatorMinValue() {
+  void comparatorMinValue() {
     ArrayList<NodeEdge> nodeEdges = new ArrayList<>();
     NodeEdge oldEdge = new NodeEdge();
     oldEdge.lastTimeCheckStarted = 5;

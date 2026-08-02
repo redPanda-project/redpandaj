@@ -1,7 +1,8 @@
 package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -11,11 +12,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
-public class LocalSettingsPersistenceTest {
+class LocalSettingsPersistenceTest {
 
   static {
     Security.addProvider(new BouncyCastleProvider());
@@ -23,16 +25,16 @@ public class LocalSettingsPersistenceTest {
 
   private int port;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     // Use a unique, unlikely port to avoid clobbering other tests/files
     port = 49123;
     // Cleanup pre-existing files if any
     deleteSettingsFiles();
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     deleteSettingsFiles();
   }
 
@@ -51,7 +53,7 @@ public class LocalSettingsPersistenceTest {
   }
 
   @Test
-  public void saveAndLoadRoundtrip() {
+  void saveAndLoadRoundtrip() {
     LocalSettings ls = new LocalSettings();
     ls.setUpdateTimestamp(123456789L);
     byte[] sig = new byte[] {1, 2, 3, 4};
@@ -81,7 +83,7 @@ public class LocalSettingsPersistenceTest {
    */
   @SuppressWarnings({"rawtypes", "unchecked"})
   @Test
-  public void failedSaveKeepsPreviousFile() throws Exception {
+  void failedSaveKeepsPreviousFile() throws Exception {
     LocalSettings ls = new LocalSettings();
     ls.setUpdateTimestamp(4711L);
     ls.save(port);
@@ -108,8 +110,9 @@ public class LocalSettingsPersistenceTest {
    * write the same file (and the same temporary file). save() therefore has to hold the monitor of
    * the settings instance for the whole write.
    */
-  @Test(timeout = 60_000)
-  public void savesExcludeEachOther() throws Exception {
+  @Test
+  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+  void savesExcludeEachOther() throws Exception {
     LocalSettings ls = new LocalSettings();
     ls.setUpdateTimestamp(4711L);
 
@@ -148,8 +151,9 @@ public class LocalSettingsPersistenceTest {
    * lock cannot make progress while the write lock is held. That is deterministic and one-sided —
    * see {@link ConcurrencyTestSupport}.
    */
-  @Test(timeout = 60_000)
-  public void saveBlocksWhileTheNodeGraphWriteLockIsHeld() throws Exception {
+  @Test
+  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+  void saveBlocksWhileTheNodeGraphWriteLockIsHeld() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     LocalSettings localSettings = serverContext.getLocalSettings();
     localSettings.setUpdateTimestamp(4711L);
@@ -165,8 +169,9 @@ public class LocalSettingsPersistenceTest {
   }
 
   /** A LocalSettings that no NodeStore has adopted (e.g. Updater) still has to save. */
-  @Test(timeout = 60_000)
-  public void saveWorksWithoutANodeGraphLock() {
+  @Test
+  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+  void saveWorksWithoutANodeGraphLock() {
     LocalSettings localSettings = new LocalSettings();
     localSettings.setUpdateTimestamp(1234L);
 

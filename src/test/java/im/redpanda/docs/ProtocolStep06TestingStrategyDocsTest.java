@@ -1,15 +1,15 @@
 package im.redpanda.docs;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtocolStep06TestingStrategyDocsTest {
+class ProtocolStep06TestingStrategyDocsTest {
 
   @Test
-  public void documentationExistsAndStatesKeypoints() throws Exception {
+  void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/06-testing-strategy.md");
     String text = Files.readString(doc);
     assertTrue(text.contains("Title: Testing Strategy Enhancements"));

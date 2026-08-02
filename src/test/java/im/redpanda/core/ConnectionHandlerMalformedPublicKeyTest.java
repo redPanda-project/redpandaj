@@ -1,9 +1,9 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * REDPANDAJ-2EH regression: the 64 bytes following a plaintext SEND_PUBLIC_KEY are unauthenticated
@@ -23,14 +23,14 @@ import org.junit.Test;
  * instead be a quiet per-connection rejection, exactly like the KademliaId-mismatch case right
  * below it.
  */
-public class ConnectionHandlerMalformedPublicKeyTest {
+class ConnectionHandlerMalformedPublicKeyTest {
 
   static {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void malformedPublicKeyIsRejectedQuietlyAndClosesTheConnection() throws Exception {
+  void malformedPublicKeyIsRejectedQuietlyAndClosesTheConnection() throws Exception {
     // Verified empirically against BouncyCastle 1.84: both encodings below make
     // Ed25519PublicKeyParameters throw "invalid public key" — all-zero decodes to a small-order
     // point (rejected), all-0xFF has y >= p with the sign bit set (non-canonical).
@@ -51,10 +51,10 @@ public class ConnectionHandlerMalformedPublicKeyTest {
             // rejection is handled like the KademliaId mismatch.
             boolean keepProcessing = invokeParse(connectionHandler, peerInHandshake, buffer);
 
-            assertFalse("the read event must not be processed further", keepProcessing);
-            assertEquals("disconnect status must be set", 2, peerInHandshake.getStatus());
+            assertFalse(keepProcessing, "the read event must not be processed further");
+            assertEquals(2, peerInHandshake.getStatus(), "disconnect status must be set");
             assertFalse(
-                "the socket must be closed exactly like the mismatch path", accepted.isOpen());
+                accepted.isOpen(), "the socket must be closed exactly like the mismatch path");
           });
     }
   }
@@ -65,7 +65,7 @@ public class ConnectionHandlerMalformedPublicKeyTest {
    * quiet rejection as a contiguous one.
    */
   @Test
-  public void malformedPublicKeySplitAcrossTwoReadsIsStillRejectedQuietly() throws Exception {
+  void malformedPublicKeySplitAcrossTwoReadsIsStillRejectedQuietly() throws Exception {
     withHandshakeAwaitingPublicKey(
         (connectionHandler, peerInHandshake, peerIdentity, accepted) -> {
           byte[] malformedKey = new byte[NodeId.PUBLIC_KEYLEN]; // all-zero, see test above
@@ -77,13 +77,13 @@ public class ConnectionHandlerMalformedPublicKeyTest {
           head.flip();
 
           assertTrue(
-              "incomplete command must wait for more bytes",
-              invokeParse(connectionHandler, peerInHandshake, head));
+              invokeParse(connectionHandler, peerInHandshake, head),
+              "incomplete command must wait for more bytes");
           assertEquals(
-              "the incomplete command must be stashed",
               1 + firstChunk,
-              peerInHandshake.plaintextHandshakeCarryLength());
-          assertTrue("the connection must stay open while waiting", accepted.isOpen());
+              peerInHandshake.plaintextHandshakeCarryLength(),
+              "the incomplete command must be stashed");
+          assertTrue(accepted.isOpen(), "the connection must stay open while waiting");
 
           ByteBuffer tail = ByteBuffer.allocate(NodeId.PUBLIC_KEYLEN - firstChunk);
           tail.put(malformedKey, firstChunk, NodeId.PUBLIC_KEYLEN - firstChunk);
@@ -92,15 +92,15 @@ public class ConnectionHandlerMalformedPublicKeyTest {
 
           boolean keepProcessing = invokeParse(connectionHandler, peerInHandshake, reassembled);
 
-          assertFalse("the read event must not be processed further", keepProcessing);
-          assertEquals("disconnect status must be set", 2, peerInHandshake.getStatus());
-          assertFalse("the socket must be closed", accepted.isOpen());
+          assertFalse(keepProcessing, "the read event must not be processed further");
+          assertEquals(2, peerInHandshake.getStatus(), "disconnect status must be set");
+          assertFalse(accepted.isOpen(), "the socket must be closed");
         });
   }
 
   /** Interop guard: a conforming peer's public key still completes this handshake step. */
   @Test
-  public void validPublicKeyStillCompletesTheHandshakeStep() throws Exception {
+  void validPublicKeyStillCompletesTheHandshakeStep() throws Exception {
     withHandshakeAwaitingPublicKey(
         (connectionHandler, peerInHandshake, peerIdentity, accepted) -> {
           ByteBuffer buffer = ByteBuffer.allocate(1 + NodeId.PUBLIC_KEYLEN);
@@ -110,18 +110,18 @@ public class ConnectionHandlerMalformedPublicKeyTest {
 
           boolean keepProcessing = invokeParse(connectionHandler, peerInHandshake, buffer);
 
-          assertTrue("a valid key must not tear down the connection", keepProcessing);
+          assertTrue(keepProcessing, "a valid key must not tear down the connection");
           assertEquals(
-              "status must advance to awaiting encryption", -1, peerInHandshake.getStatus());
+              -1, peerInHandshake.getStatus(), "status must advance to awaiting encryption");
           assertNotNull(peerInHandshake.getNodeId());
           assertNotNull(peerInHandshake.getPeer().getNodeId());
-          assertTrue("the connection must stay open", accepted.isOpen());
+          assertTrue(accepted.isOpen(), "the connection must stay open");
         });
   }
 
   /** The pre-existing semantic rejection must be unchanged by the malformed-key guard. */
   @Test
-  public void kademliaIdMismatchStillClosesTheConnection() throws Exception {
+  void kademliaIdMismatchStillClosesTheConnection() throws Exception {
     withHandshakeAwaitingPublicKey(
         (connectionHandler, peerInHandshake, peerIdentity, accepted) -> {
           // A perfectly well-formed key pair — just not the one the peer identified itself with.
@@ -133,9 +133,9 @@ public class ConnectionHandlerMalformedPublicKeyTest {
 
           boolean keepProcessing = invokeParse(connectionHandler, peerInHandshake, buffer);
 
-          assertFalse("the read event must not be processed further", keepProcessing);
-          assertEquals("disconnect status must be set", 2, peerInHandshake.getStatus());
-          assertFalse("the socket must be closed", accepted.isOpen());
+          assertFalse(keepProcessing, "the read event must not be processed further");
+          assertEquals(2, peerInHandshake.getStatus(), "disconnect status must be set");
+          assertFalse(accepted.isOpen(), "the socket must be closed");
         });
   }
 

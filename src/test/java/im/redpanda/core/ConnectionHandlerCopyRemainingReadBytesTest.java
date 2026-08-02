@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for TD014 (review-dag-Retest finding on redpandaj#271): {@link
@@ -24,7 +24,7 @@ import org.junit.Test;
  * tempHandshakeReadBuffer} in the same flipped ("read mode") state the real caller ({@code
  * handleFirstEncryptedCommand}) leaves it in after consuming the command byte.
  */
-public class ConnectionHandlerCopyRemainingReadBytesTest {
+class ConnectionHandlerCopyRemainingReadBytesTest {
 
   static {
     ByteBufferPool.init();
@@ -51,7 +51,7 @@ public class ConnectionHandlerCopyRemainingReadBytesTest {
    * the remaining bytes and put all of them into it.
    */
   @Test
-  public void nullReadBufferAllocatesAndFillsFromPool() throws Exception {
+  void nullReadBufferAllocatesAndFillsFromPool() throws Exception {
     ConnectionHandler connectionHandler =
         new ConnectionHandler(ServerContext.buildDefaultServerContext(), false);
     Peer peer = new Peer("127.0.0.1", 0, new NodeId());
@@ -84,7 +84,7 @@ public class ConnectionHandlerCopyRemainingReadBytesTest {
    * a second one.
    */
   @Test
-  public void nonNullReadBufferAppendsPreservingExistingContent() throws Exception {
+  void nonNullReadBufferAppendsPreservingExistingContent() throws Exception {
     ConnectionHandler connectionHandler =
         new ConnectionHandler(ServerContext.buildDefaultServerContext(), false);
     Peer peer = new Peer("127.0.0.1", 0, new NodeId());

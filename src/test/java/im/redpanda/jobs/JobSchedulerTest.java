@@ -1,11 +1,11 @@
 package im.redpanda.jobs;
 
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.concurrent.ScheduledFuture;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class JobSchedulerTest {
+class JobSchedulerTest {
 
   /**
    * Jittered job delays sampled from [0, n] can hit 0 (seen as a flaky IllegalArgumentException
@@ -13,7 +13,7 @@ public class JobSchedulerTest {
    * scheduleWithFixedDelay reject the period.
    */
   @Test
-  public void insertAcceptsZeroDelay() {
+  void insertAcceptsZeroDelay() {
     ScheduledFuture<?> future = JobScheduler.insert(() -> {}, 0);
     assertNotNull(future);
     future.cancel(false);

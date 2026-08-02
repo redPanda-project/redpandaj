@@ -1,35 +1,35 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.proto.*;
 import java.nio.ByteBuffer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class InboundCommandProcessorEvenMoreCoverageTest {
+class InboundCommandProcessorEvenMoreCoverageTest {
 
   private ServerContext ctx;
   private InboundCommandProcessor proc;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     ctx = ServerContext.buildDefaultServerContext();
     proc = new InboundCommandProcessor(ctx);
     ByteBufferPool.init();
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     // nothing special
   }
 
   @Test
-  public void ping_fromUnknownPeer_addsPeerAndReturnsZero() {
+  void ping_fromUnknownPeer_addsPeerAndReturnsZero() {
     Peer peer = new Peer("10.0.0.1", 1111, ctx.getNodeId());
     peer.setConnected(true);
 
@@ -43,7 +43,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
   }
 
   @Test
-  public void requestPeerList_writesSendPeerListFrame() {
+  void requestPeerList_writesSendPeerListFrame() {
     // Build two peers on server side: one with NodeId, one without
     Peer withId = new Peer("192.168.1.2", 2222, NodeId.generateWithSimpleKey());
     withId.setConnected(true);
@@ -62,7 +62,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
 
     requester.writeBuffer.flip();
     assertTrue(
-        "should have written at least command + len", requester.writeBuffer.remaining() >= 1 + 4);
+        requester.writeBuffer.remaining() >= 1 + 4, "should have written at least command + len");
     assertEquals(Command.SEND_PEERLIST, requester.writeBuffer.get());
     int payloadLen = requester.writeBuffer.getInt();
     assertTrue(payloadLen > 0);
@@ -71,11 +71,11 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
     requester.writeBuffer.get(payload);
     ByteBuffer peerListBytes = ByteBuffer.wrap(payload);
     int count = peerListBytes.getInt();
-    assertTrue("at least one entry listed", count >= 1);
+    assertTrue(count >= 1, "at least one entry listed");
   }
 
   @Test
-  public void sendPeerList_parsesEntries_addsPeers_skipsInvalidIpAndSelf() {
+  void sendPeerList_parsesEntries_addsPeers_skipsInvalidIpAndSelf() {
     // Build a SEND_PEERLIST payload with two entries
     NodeId otherNode = NodeId.generateWithSimpleKey();
 
@@ -115,7 +115,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
   }
 
   @Test
-  public void parseJobAck_consumesBytes_whenJobRunning() {
+  void parseJobAck_consumesBytes_whenJobRunning() {
     // Prepare a running KademliaInsertJob so Job.getRunningJob finds it
     NodeId author = NodeId.generateWithSimpleKey();
     byte[] content = "ack-me".getBytes();
@@ -152,7 +152,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
   }
 
   @Test
-  public void kademliaGet_miss_startsSearch_returnsConsumed() {
+  void kademliaGet_miss_startsSearch_returnsConsumed() {
     Peer peer = new Peer("127.0.0.1", 8888, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);
@@ -179,7 +179,7 @@ public class InboundCommandProcessorEvenMoreCoverageTest {
   }
 
   @Test
-  public void flaschenpostPut_withAckPayload_isConsumed() {
+  void flaschenpostPut_withAckPayload_isConsumed() {
     Peer peer = new Peer("127.0.0.1", 9999, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);

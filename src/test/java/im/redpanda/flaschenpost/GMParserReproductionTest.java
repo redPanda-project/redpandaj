@@ -1,6 +1,6 @@
 package im.redpanda.flaschenpost;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.NodeId;
@@ -8,9 +8,9 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class GMParserReproductionTest {
+class GMParserReproductionTest {
 
   private static class TestPeer extends Peer {
 
@@ -31,7 +31,7 @@ public class GMParserReproductionTest {
   }
 
   @Test
-  public void sendFpToPeer_sendsValidProtobuf() throws Exception {
+  void sendFpToPeer_sendsValidProtobuf() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeId target = NodeId.generateWithSimpleKey();
     byte[] content = garlicMessageBytes(serverContext, target);

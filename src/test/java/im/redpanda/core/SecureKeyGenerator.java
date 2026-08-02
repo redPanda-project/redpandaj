@@ -1,19 +1,18 @@
 package im.redpanda.core;
 
 import im.redpanda.crypt.Base58;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Security;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class SecureKeyGenerator {
+class SecureKeyGenerator {
 
   @Test
-  public void generateAndApplyKeys() throws IOException {
+  void generateAndApplyKeys() throws Exception {
     System.out.println("Generating new secure keys...");
 
     // 1. Generate Keys
