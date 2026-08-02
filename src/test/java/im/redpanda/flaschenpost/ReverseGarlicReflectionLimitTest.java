@@ -12,9 +12,9 @@ import im.redpanda.outbound.OutboundService;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for L1 (bug hunt 2026-07-26): the return-path hop descriptors are chosen
@@ -23,7 +23,7 @@ import org.junit.Test;
  * bounded (≤ {@link ReturnPath#MAX_HOPS} hops, one ack-sized packet, fire-and-forget), but nothing
  * capped the rate of attacker-driven emission.
  */
-public class ReverseGarlicReflectionLimitTest {
+class ReverseGarlicReflectionLimitTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -34,8 +34,8 @@ public class ReverseGarlicReflectionLimitTest {
   private Peer relayToTarget;
   private RecordStoreRateLimiter previousLimiter;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     relay = ServerContext.buildDefaultServerContext();
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
@@ -49,15 +49,15 @@ public class ReverseGarlicReflectionLimitTest {
     relay.getPeerList().add(relayToTarget);
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     if (previousLimiter != null) {
       ReverseGarlic.swapReflectionRateLimiterForTest(previousLimiter);
     }
   }
 
   @Test
-  public void hopCarryingEmissionIsRateLimited() {
+  void hopCarryingEmissionIsRateLimited() {
     // one token, refilled once a minute → the second emission is deterministically over budget
     previousLimiter =
         ReverseGarlic.swapReflectionRateLimiterForTest(
@@ -80,7 +80,7 @@ public class ReverseGarlicReflectionLimitTest {
    * keep working even with an exhausted bucket.
    */
   @Test
-  public void zeroHopDeliveryIsNotRateLimited() {
+  void zeroHopDeliveryIsNotRateLimited() {
     previousLimiter =
         ReverseGarlic.swapReflectionRateLimiterForTest(
             new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));

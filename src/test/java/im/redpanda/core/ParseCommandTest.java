@@ -2,12 +2,12 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
 import java.nio.ByteBuffer;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 public class ParseCommandTest {
 
@@ -24,7 +24,7 @@ public class ParseCommandTest {
   }
 
   @Test
-  public void testLoopCommands() {
+  void loopCommands() {
 
     ServerContext serverContext = new ServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
@@ -93,7 +93,7 @@ public class ParseCommandTest {
    * asserting on the guard directly.
    */
   @Test
-  public void loopCommands_doesNotTouchBufferAfterHandlerDisconnectsPeer() {
+  void loopCommands_doesNotTouchBufferAfterHandlerDisconnectsPeer() {
     ServerContext serverContext = new ServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
 
@@ -130,7 +130,7 @@ public class ParseCommandTest {
    * (non-owned) wiring.
    */
   @Test
-  public void loopCommands_compactsClaimedBufferEvenAfterHandlerDisconnectsPeer() {
+  void loopCommands_compactsClaimedBufferEvenAfterHandlerDisconnectsPeer() {
     ServerContext serverContext = new ServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
 
@@ -165,7 +165,7 @@ public class ParseCommandTest {
    * resyncs. Drives a real unknown command through the actual loop.
    */
   @Test
-  public void loopCommands_disconnectsPeerOnUnknownCommand() {
+  void loopCommands_disconnectsPeerOnUnknownCommand() {
     ServerContext serverContext = new ServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
 
@@ -188,7 +188,7 @@ public class ParseCommandTest {
   }
 
   @Test
-  public void testREQUEST_PEERLIST() {
+  void requestPeerlist() {
     ServerContext serverContext = new ServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
     PeerList peerList = serverContext.getPeerList();
@@ -228,31 +228,30 @@ public class ParseCommandTest {
 
     writeBuffer.get(bytesForProtoPeerList);
 
-    try {
-      SendPeerList sendPeerList = SendPeerList.parseFrom(bytesForProtoPeerList);
-      int peerListSize = sendPeerList.getPeersCount();
-      assertThat(peerListSize).isEqualTo(peerList.size());
+    Assertions.assertDoesNotThrow(
+        () -> {
+          SendPeerList sendPeerList = SendPeerList.parseFrom(bytesForProtoPeerList);
+          int peerListSize = sendPeerList.getPeersCount();
+          assertThat(peerListSize).isEqualTo(peerList.size());
 
-      // Check content of a few entries
-      for (int k = 0; k < peerListSize; k++) {
-        PeerInfoProto peerProto = sendPeerList.getPeers(k);
-        // Note: The order isn't guaranteed to be strictly predictable unless we sort,
-        // but for this test setup
-        // the peerList implementation might return them in order or not.
-        // However, the test logic was building peers with ip "203.0.113." + i
-        // Let's verify that the ip matches the pattern or exists in our set
-        // For simplicity, we just assert the structure is valid.
-        assertThat(peerProto.getIp()).startsWith("203.0.113.");
-        assertThat(peerProto.getPort()).isGreaterThan(0);
-        if (peerProto.hasNodeId()) {
-          assertThat(peerProto.getNodeId().getPublicKeyBytes().size())
-              .isEqualTo(NodeId.PUBLIC_KEYLEN);
-        }
-      }
-
-    } catch (InvalidProtocolBufferException e) {
-      org.junit.Assert.fail("Failed to parse SendPeerList protobuf: " + e.getMessage());
-    }
+          // Check content of a few entries
+          for (int k = 0; k < peerListSize; k++) {
+            PeerInfoProto peerProto = sendPeerList.getPeers(k);
+            // Note: The order isn't guaranteed to be strictly predictable unless we sort,
+            // but for this test setup
+            // the peerList implementation might return them in order or not.
+            // However, the test logic was building peers with ip "203.0.113." + i
+            // Let's verify that the ip matches the pattern or exists in our set
+            // For simplicity, we just assert the structure is valid.
+            assertThat(peerProto.getIp()).startsWith("203.0.113.");
+            assertThat(peerProto.getPort()).isGreaterThan(0);
+            if (peerProto.hasNodeId()) {
+              assertThat(peerProto.getNodeId().getPublicKeyBytes().size())
+                  .isEqualTo(NodeId.PUBLIC_KEYLEN);
+            }
+          }
+        },
+        "Failed to parse SendPeerList protobuf: ");
 
     assertThat(writeBuffer.remaining()).isZero();
 
@@ -265,7 +264,7 @@ public class ParseCommandTest {
   }
 
   @Test
-  public void testSend_PEERLIST() {
+  void sendPEERLIST() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor processor = new InboundCommandProcessor(serverContext);
     PeerList peerList = serverContext.getPeerList();

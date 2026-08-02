@@ -1,11 +1,11 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for TD026: {@code PeerJobs.runOnce()} used to hold the {@link PeerList} read lock
@@ -22,7 +22,7 @@ import org.junit.Test;
  * the test thread has had its chance at the write lock, so a slow machine only gives the writer
  * more time to succeed, never less.
  */
-public class PeerJobsPeerListLockTest {
+class PeerJobsPeerListLockTest {
 
   /**
    * Generous upper bound for acquiring the write lock while {@code runOnce()} is mid-loop. With the
@@ -32,7 +32,7 @@ public class PeerJobsPeerListLockTest {
   private static final long WRITE_LOCK_TIMEOUT_MS = 2000;
 
   @Test
-  public void runOnce_doesNotHoldThePeerListReadLockWhileIteratingPeers() throws Exception {
+  void runOnce_doesNotHoldThePeerListReadLockWhileIteratingPeers() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     serverContext.setConnectionHandler(new ConnectionHandler(serverContext, false));
     ConnectionHandler.peerInHandshakes.clear();
@@ -64,7 +64,7 @@ public class PeerJobsPeerListLockTest {
     jobThread.setDaemon(true);
     jobThread.start();
 
-    assertTrue("runOnce() never reached the per-peer loop", insideLoop.await(30, TimeUnit.SECONDS));
+    assertTrue(insideLoop.await(30, TimeUnit.SECONDS), "runOnce() never reached the per-peer loop");
 
     Lock writeLock = serverContext.getPeerList().getReadWriteLock().writeLock();
     boolean acquired = writeLock.tryLock(WRITE_LOCK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -76,8 +76,8 @@ public class PeerJobsPeerListLockTest {
     jobThread.join(TimeUnit.SECONDS.toMillis(30));
 
     assertTrue(
+        acquired,
         "PeerJobs.runOnce() must not hold the peer list read lock while it iterates and sleeps —"
-            + " it starves peerList.add() on the selector thread and stalls all peer I/O",
-        acquired);
+            + " it starves peerList.add() on the selector thread and stalls all peer I/O");
   }
 }

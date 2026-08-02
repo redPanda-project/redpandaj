@@ -11,8 +11,8 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for TD009 (T50 review finding, fixed in T53): {@code myReaderBuffer} in {@link
@@ -36,7 +36,7 @@ import org.junit.Test;
  *       a buffer with leftover bytes" scenario asked for in T53.
  * </ul>
  */
-public class ConnectionReaderThreadBufferIsolationTest {
+class ConnectionReaderThreadBufferIsolationTest {
 
   static {
     ByteBufferPool.init();
@@ -45,8 +45,8 @@ public class ConnectionReaderThreadBufferIsolationTest {
   private final List<ServerSocketChannel> serverSockets = new ArrayList<>();
   private final List<SocketChannel> openChannels = new ArrayList<>();
 
-  @After
-  public void tearDownChannels() throws IOException {
+  @AfterEach
+  void tearDownChannels() throws IOException {
     for (SocketChannel channel : openChannels) {
       if (channel.isOpen()) {
         channel.close();
@@ -135,7 +135,7 @@ public class ConnectionReaderThreadBufferIsolationTest {
    * first peer's bytes.
    */
   @Test
-  public void corruptedFrameDoesNotLeakIntoNextPeersRead() throws Exception {
+  void corruptedFrameDoesNotLeakIntoNextPeersRead() throws Exception {
     ConnectionReaderThread readerThread = newReaderThread();
 
     PeerFixture peer1 = newConnectedPeerFixture();
@@ -169,7 +169,7 @@ public class ConnectionReaderThreadBufferIsolationTest {
    * check (`pos != 0 && limit != capacity`) used to let through silently.
    */
   @Test
-  public void invariantGuardClearsBufferAndDisconnectsPeerOnDirectViolation() throws Exception {
+  void invariantGuardClearsBufferAndDisconnectsPeerOnDirectViolation() throws Exception {
     ConnectionReaderThread readerThread = newReaderThread();
     PeerFixture peer1 = newConnectedPeerFixture();
 

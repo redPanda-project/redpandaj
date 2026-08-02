@@ -1,30 +1,30 @@
 package im.redpanda.store;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.File;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.HTreeMap;
 
-public class HashMapCacheToDiskTest {
+class HashMapCacheToDiskTest {
 
   @Test
-  public void test() {
+  void test() {
 
     HashMapCacheToDisk<Long, String> longStringHashMapCacheToDisk = new HashMapCacheToDisk<>();
 
     longStringHashMapCacheToDisk.put(123L, "test");
 
-    assertTrue(longStringHashMapCacheToDisk.get(123L).equals("test"));
+    assertEquals("test", longStringHashMapCacheToDisk.get(123L));
   }
 
   @Test
-  public void test2() {
+  void test2() {
 
     ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(10);
 

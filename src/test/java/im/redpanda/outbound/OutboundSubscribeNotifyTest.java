@@ -14,15 +14,15 @@ import im.redpanda.outbound.v1.SubscribeResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * T38 Connection-Notify: subscribe ownership proof (valid / bad signature / replay / NOT_FOUND),
  * one-way Notify on deposit into a subscribed vs. non-subscribed mailbox, disconnect cleanup,
  * idempotent re-subscribe, and multiple OHs per connection.
  */
-public class OutboundSubscribeNotifyTest {
+class OutboundSubscribeNotifyTest {
 
   private OutboundService service;
   private OutboundHandleStore handleStore;
@@ -30,8 +30,8 @@ public class OutboundSubscribeNotifyTest {
   private Peer peer;
   private NodeId clientNode;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
     service = new OutboundService(handleStore, mailboxStore);
@@ -57,7 +57,7 @@ public class OutboundSubscribeNotifyTest {
   // --- Subscribe auth ---
 
   @Test
-  public void subscribe_validSignature_returnsOkAndBinds() throws Exception {
+  void subscribe_validSignature_returnsOkAndBinds() throws Exception {
     registerOh();
     service.handleSubscribe(peer, createSignedSubscribeRequest());
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
@@ -70,7 +70,7 @@ public class OutboundSubscribeNotifyTest {
   }
 
   @Test
-  public void subscribe_badSignature_returnsInvalidSignature_noNotify() throws Exception {
+  void subscribe_badSignature_returnsInvalidSignature_noNotify() throws Exception {
     registerOh();
     SubscribeRequest tampered =
         createSignedSubscribeRequest().toBuilder()
@@ -85,7 +85,7 @@ public class OutboundSubscribeNotifyTest {
   }
 
   @Test
-  public void subscribe_replayedNonce_returnsReplay() throws Exception {
+  void subscribe_replayedNonce_returnsReplay() throws Exception {
     registerOh();
     SubscribeRequest req = createSignedSubscribeRequest();
     service.handleSubscribe(peer, req);
@@ -97,7 +97,7 @@ public class OutboundSubscribeNotifyTest {
   }
 
   @Test
-  public void subscribe_unknownOhId_returnsNotFound() throws Exception {
+  void subscribe_unknownOhId_returnsNotFound() throws Exception {
     // No register → handle store has no record for this oh_id
     service.handleSubscribe(peer, createSignedSubscribeRequest());
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.NOT_FOUND);
@@ -106,14 +106,14 @@ public class OutboundSubscribeNotifyTest {
   // --- Notify opt-in semantics ---
 
   @Test
-  public void deposit_intoNonSubscribedMailbox_sendsNoNotify() throws Exception {
+  void deposit_intoNonSubscribedMailbox_sendsNoNotify() throws Exception {
     registerOh(); // registered but never subscribed
     service.depositMessage(ohId(), "hi".getBytes(StandardCharsets.UTF_8));
     assertNoMoreData(peer);
   }
 
   @Test
-  public void resubscribe_isIdempotent_stillOneNotify() throws Exception {
+  void resubscribe_isIdempotent_stillOneNotify() throws Exception {
     registerOh();
     service.handleSubscribe(peer, createSignedSubscribeRequest());
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
@@ -126,7 +126,7 @@ public class OutboundSubscribeNotifyTest {
   }
 
   @Test
-  public void disconnect_removesSubscription_noNotify() throws Exception {
+  void disconnect_removesSubscription_noNotify() throws Exception {
     registerOh();
     service.handleSubscribe(peer, createSignedSubscribeRequest());
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
@@ -139,7 +139,7 @@ public class OutboundSubscribeNotifyTest {
   }
 
   @Test
-  public void multipleOhsPerConnection_eachNotified() throws Exception {
+  void multipleOhsPerConnection_eachNotified() throws Exception {
     // OH #1 (the shared clientNode) + a second OH on the same connection
     registerOh();
     service.handleSubscribe(peer, createSignedSubscribeRequest());

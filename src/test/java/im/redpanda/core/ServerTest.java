@@ -1,11 +1,11 @@
 package im.redpanda.core;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ServerTest {
+class ServerTest {
 
   @Test
-  public void findPeer() {
+  void findPeer() {
 
     // Server.peerListLock.writeLock().lock();
     //
@@ -35,7 +35,7 @@ public class ServerTest {
   }
 
   @Test
-  public void removePeer() {
+  void removePeer() {
 
     // Server.peerListLock.writeLock().lock();
     //

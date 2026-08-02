@@ -13,9 +13,9 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for the accepted/readable socket leaks found in the 2026-07-26 bug hunt (H3 and
@@ -23,17 +23,17 @@ import org.junit.Test;
  * that connects and resets immediately (or a read burst that fills the bounded read queue) leaks
  * one file descriptor per occurrence.
  */
-public class ConnectionHandlerSocketLeakTest {
+class ConnectionHandlerSocketLeakTest {
 
   private ConnectionHandler handler;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     handler = new ConnectionHandler(ServerContext.buildDefaultServerContext(), false);
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     ConnectionHandler.peerInHandshakes.clear();
     ConnectionHandler.peersToReadAndParse.clear();
     ConnectionHandler.workingRead.clear();
@@ -45,7 +45,7 @@ public class ConnectionHandlerSocketLeakTest {
    * escaped keyAccept's own handler.
    */
   @Test
-  public void keyAccept_ignoresNullAcceptFromSpuriousWakeup() throws Exception {
+  void keyAccept_ignoresNullAcceptFromSpuriousWakeup() throws Exception {
     try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
       serverChannel.configureBlocking(false);
       serverChannel.bind(new InetSocketAddress("127.0.0.1", 0));
@@ -69,7 +69,7 @@ public class ConnectionHandlerSocketLeakTest {
    * unconnected channel reproduces that case — {@code socket().getInetAddress()} is null.
    */
   @Test
-  public void setupAcceptedChannel_closesChannelWhenPeerIsAlreadyGone() throws Exception {
+  void setupAcceptedChannel_closesChannelWhenPeerIsAlreadyGone() throws Exception {
     SocketChannel channel = SocketChannel.open();
     try {
       int handshakesBefore = ConnectionHandler.peerInHandshakes.size();
@@ -88,7 +88,7 @@ public class ConnectionHandlerSocketLeakTest {
    * code only logged and left the accepted channel open.
    */
   @Test
-  public void setupAcceptedChannel_closesChannelWhenSetupThrows() throws Exception {
+  void setupAcceptedChannel_closesChannelWhenSetupThrows() throws Exception {
     Selector originalSelector = ConnectionHandler.selector;
     Selector closedSelector = Selector.open();
     closedSelector.close();
@@ -120,7 +120,7 @@ public class ConnectionHandlerSocketLeakTest {
    * cancels the key but leaves the socket open and the peer in the peerList.
    */
   @Test
-  public void handleKeyReadable_disconnectsPeerWhenReadQueueIsFull() throws Exception {
+  void handleKeyReadable_disconnectsPeerWhenReadQueueIsFull() throws Exception {
     SocketChannel channel = SocketChannel.open();
     channel.configureBlocking(false);
     SelectionKey key = channel.register(ConnectionHandler.selector, SelectionKey.OP_READ);

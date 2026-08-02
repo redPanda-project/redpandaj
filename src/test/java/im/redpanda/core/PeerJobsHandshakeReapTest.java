@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Field;
 import java.nio.channels.SocketChannel;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for T68 (b): {@code PeerJobs} skipped the stale-{@link PeerInHandshake} cleanup
@@ -13,15 +13,15 @@ import org.junit.Test;
  * reaped while the peer list was empty — a fresh node or one that just lost every connection is
  * exactly the situation in which half-open handshakes pile up.
  */
-public class PeerJobsHandshakeReapTest {
+class PeerJobsHandshakeReapTest {
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     ConnectionHandler.peerInHandshakes.clear();
   }
 
   @Test
-  public void runOnce_reapsStaleHandshakesWhilePeerListIsEmpty() throws Exception {
+  void runOnce_reapsStaleHandshakesWhilePeerListIsEmpty() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     serverContext.setConnectionHandler(new ConnectionHandler(serverContext, false));
     ConnectionHandler.peerInHandshakes.clear();
@@ -44,7 +44,7 @@ public class PeerJobsHandshakeReapTest {
   }
 
   @Test
-  public void runOnce_keepsFreshHandshakes() throws Exception {
+  void runOnce_keepsFreshHandshakes() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     serverContext.setConnectionHandler(new ConnectionHandler(serverContext, false));
     ConnectionHandler.peerInHandshakes.clear();

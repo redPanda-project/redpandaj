@@ -7,9 +7,9 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for the T50 / REDPANDAJ-2EF readBuffer ownership handoff in {@link
@@ -31,7 +31,7 @@ import org.junit.Test;
  * Instead these tests pin every state transition of the claim/restore protocol (drain, restore,
  * disconnect-while-claimed, stale-connection drop) deterministically.
  */
-public class ReadConnectionOwnershipHandoffTest {
+class ReadConnectionOwnershipHandoffTest {
 
   static {
     ByteBufferPool.init();
@@ -41,16 +41,16 @@ public class ReadConnectionOwnershipHandoffTest {
   private SocketChannel remoteSide;
   private SocketChannel peerSide;
 
-  @Before
-  public void setUpChannels() throws IOException {
+  @BeforeEach
+  void setUpChannels() throws IOException {
     serverSocket = ServerSocketChannel.open();
     serverSocket.bind(new InetSocketAddress("127.0.0.1", 0));
     remoteSide = SocketChannel.open(serverSocket.getLocalAddress());
     peerSide = serverSocket.accept();
   }
 
-  @After
-  public void tearDownChannels() throws IOException {
+  @AfterEach
+  void tearDownChannels() throws IOException {
     for (SocketChannel channel : new SocketChannel[] {remoteSide, peerSide}) {
       if (channel != null && channel.isOpen()) {
         channel.close();
@@ -98,7 +98,7 @@ public class ReadConnectionOwnershipHandoffTest {
    * throw an IllegalStateException out of readConnection).
    */
   @Test
-  public void drainedBufferIsReturnedToPoolAndFieldStaysNull() throws Exception {
+  void drainedBufferIsReturnedToPoolAndFieldStaysNull() throws Exception {
     Peer peer = newConnectedPeer();
     ByteBuffer preBorrowed = ByteBufferPool.borrowObject(1024);
     peer.readBuffer = preBorrowed;
@@ -126,7 +126,7 @@ public class ReadConnectionOwnershipHandoffTest {
    * peer.readBuffer} (same instance, bytes preserved) so the next read can complete the command.
    */
   @Test
-  public void bufferWithLeftoverBytesIsRestoredIntoField() throws Exception {
+  void bufferWithLeftoverBytesIsRestoredIntoField() throws Exception {
     Peer peer = newConnectedPeer();
     ByteBuffer preBorrowed = ByteBufferPool.borrowObject(1024);
     peer.readBuffer = preBorrowed;
@@ -163,7 +163,7 @@ public class ReadConnectionOwnershipHandoffTest {
    * the pool and fail this test.
    */
   @Test
-  public void disconnectWhileBufferClaimedReturnsBufferExactlyOnce() throws Exception {
+  void disconnectWhileBufferClaimedReturnsBufferExactlyOnce() throws Exception {
     Peer peer = newConnectedPeer();
     ByteBuffer preBorrowed = ByteBufferPool.borrowObject(1024);
     peer.readBuffer = preBorrowed;
@@ -190,7 +190,7 @@ public class ReadConnectionOwnershipHandoffTest {
    * counter of a replacement connection, REDPANDAJ-2EE), no borrow, no parse.
    */
   @Test
-  public void staleBytesAfterDisconnectAreDroppedWithoutDecrypt() throws Exception {
+  void staleBytesAfterDisconnectAreDroppedWithoutDecrypt() throws Exception {
     Peer peer = newConnectedPeer();
 
     sendEncrypted(peer, new byte[] {Command.PONG});
@@ -210,7 +210,7 @@ public class ReadConnectionOwnershipHandoffTest {
    * no reset, no pool return.
    */
   @Test
-  public void disconnectDoesNotTouchClaimedBuffer() {
+  void disconnectDoesNotTouchClaimedBuffer() {
     Peer peer = new Peer("127.0.0.1", 0, new NodeId());
     peer.setConnected(true);
 

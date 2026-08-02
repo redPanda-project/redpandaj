@@ -1,13 +1,13 @@
 package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.sun.management.UnixOperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.reflect.Method;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for H4 (bug hunt 2026-07-26): {@code OutboundHandler.connectTo} opened a
@@ -15,16 +15,16 @@ import org.junit.Test;
  * descriptor per attempt. {@code run()} retries unreachable peers continuously, so this accumulated
  * until FD exhaustion.
  */
-public class OutboundHandlerConnectLeakTest {
+class OutboundHandlerConnectLeakTest {
 
   private static final int ATTEMPTS = 50;
 
   @Test
-  public void connectTo_doesNotLeakSocketChannelWhenConnectFails() throws Exception {
+  void connectTo_doesNotLeakSocketChannelWhenConnectFails() throws Exception {
     OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
     assumeTrue(
-        "open file descriptor count is not available on this platform",
-        osBean instanceof UnixOperatingSystemMXBean);
+        osBean instanceof UnixOperatingSystemMXBean,
+        "open file descriptor count is not available on this platform");
     UnixOperatingSystemMXBean unixBean = (UnixOperatingSystemMXBean) osBean;
 
     ServerContext serverContext = ServerContext.buildDefaultServerContext();

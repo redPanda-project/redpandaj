@@ -1,18 +1,18 @@
 package im.redpanda.outbound;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import im.redpanda.core.NodeId;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class OutboundAuthTest {
+class OutboundAuthTest {
 
   private OutboundAuth auth;
   private NodeId clientNode;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     auth = new OutboundAuth();
     // Generate a valid keypair for testing
     clientNode = NodeId.generateWithSimpleKey();
@@ -34,7 +34,7 @@ public class OutboundAuthTest {
   }
 
   @Test
-  public void testVerify_Valid() {
+  void verifyValid() {
     long timestamp = System.currentTimeMillis();
     byte[] ohId = clientNode.getKademliaId().getBytes();
     byte[] payload = "testPayload".getBytes();
@@ -49,7 +49,7 @@ public class OutboundAuthTest {
   }
 
   @Test
-  public void testVerify_InvalidSignature() {
+  void verifyInvalidSignature() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonce2".getBytes();
@@ -72,7 +72,7 @@ public class OutboundAuthTest {
    * the version/algorithm byte is part of the signed data.
    */
   @Test
-  public void testVerify_MissingSigningVersionByteIsRejected() {
+  void verifyMissingSigningVersionByteIsRejected() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceNoVersion".getBytes();
@@ -92,7 +92,7 @@ public class OutboundAuthTest {
    * retired legacy format) is rejected as an unsupported key length, whatever the signature.
    */
   @Test
-  public void testVerify_LegacyEcdsa65ByteKeyRejected() {
+  void verifyLegacyEcdsa65ByteKeyRejected() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceLegacy".getBytes();
@@ -109,7 +109,7 @@ public class OutboundAuthTest {
   }
 
   @Test
-  public void testVerify_InvalidTimestamp() {
+  void verifyInvalidTimestamp() {
     long now = System.currentTimeMillis();
     long oldTimestamp = now - (10 * 60 * 1000); // 10 mins ago (window is 5 mins)
 
@@ -125,7 +125,7 @@ public class OutboundAuthTest {
   }
 
   @Test
-  public void replay_sameCommandTwiceWithinWindow_secondRejected() {
+  void replay_sameCommandTwiceWithinWindow_secondRejected() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceReplay".getBytes();
@@ -150,7 +150,7 @@ public class OutboundAuthTest {
    * uniqueness is what the cache tracks.
    */
   @Test
-  public void floodFromOneSource_doesNotEvictOtherSources_andCapsSource() {
+  void floodFromOneSource_doesNotEvictOtherSources_andCapsSource() {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
 
@@ -168,7 +168,6 @@ public class OutboundAuthTest {
     byte[] signatureA = signV2(attacker, payload);
     for (int i = 0; i < OutboundAuth.MAX_ENTRIES_PER_SOURCE; i++) {
       assertEquals(
-          "flood command " + i + " must be accepted",
           OutboundAuth.AuthResult.OK,
           auth.verify(
               attacker.getVerifyKeyBytes(),
@@ -176,7 +175,8 @@ public class OutboundAuthTest {
               signatureA,
               timestamp,
               ohIdA,
-              ("floodNonce" + i).getBytes()));
+              ("floodNonce" + i).getBytes()),
+          "flood command " + i + " must be accepted");
     }
 
     // Command MAX+1 from A -> rejected by the cap
@@ -202,7 +202,7 @@ public class OutboundAuthTest {
    * have expired.
    */
   @Test
-  public void cleanup_removesOnlyExpiredEntries_andRebuildsSourceCounts() {
+  void cleanup_removesOnlyExpiredEntries_andRebuildsSourceCounts() {
     long now = System.currentTimeMillis();
     // Still inside the ±window when inserted (60 s margin so slow CI runs stay valid), but
     // expired after the cleanup below
@@ -225,7 +225,6 @@ public class OutboundAuthTest {
               ("agingNonce" + i).getBytes()));
     }
     assertEquals(
-        "source A must be capped before cleanup",
         OutboundAuth.AuthResult.REPLAY,
         auth.verify(
             sourceA.getVerifyKeyBytes(),
@@ -233,7 +232,8 @@ public class OutboundAuthTest {
             signatureA,
             agingTimestamp,
             ohIdA,
-            "cappedNonce".getBytes()));
+            "cappedNonce".getBytes()),
+        "source A must be capped before cleanup");
 
     // One fresh entry from source B that must survive the cleanup
     byte[] ohIdB = clientNode.getKademliaId().getBytes();

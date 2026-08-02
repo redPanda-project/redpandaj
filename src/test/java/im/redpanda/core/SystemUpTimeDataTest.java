@@ -6,19 +6,21 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.time.Duration;
 import java.util.TreeSet;
-import org.junit.Test;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
-public class SystemUpTimeDataTest {
+class SystemUpTimeDataTest {
 
   @Test
-  public void testCeilToLastFullHour_simple() {
+  void ceilToLastFullHourSimple() {
     long current = System.currentTimeMillis();
     System.out.println(current);
     assertThat(SystemUpTimeData.ceilToLastFullHour(current)).isLessThan(current);
   }
 
   @Test
-  public void testCeilToLastFullHour_sameHour() {
+  void ceilToLastFullHourSameHour() {
     long timeOne = 1649679240673L;
     long timeFiveMinutesLater = timeOne - 1000 * 60 * 5;
     long timeOneCeil = SystemUpTimeData.ceilToLastFullHour(timeOne);
@@ -27,15 +29,16 @@ public class SystemUpTimeDataTest {
   }
 
   @Test
-  public void uptimeReportNow() {
+  void uptimeReportNow() {
     SystemUpTimeData systemUpTimeData = new SystemUpTimeData();
     systemUpTimeData.reportNow();
     systemUpTimeData.clearTooOldHits();
     assertThat(systemUpTimeData.getUptimePercent()).isGreaterThan(0d);
   }
 
-  @Test(timeout = 60_000)
-  public void serializeWhileMutating_doesNotThrow() throws Exception {
+  @Test
+  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
+  void serializeWhileMutating_doesNotThrow() throws Exception {
     TreeSet<Long> hits = new TreeSet<>();
     long oldBase = System.currentTimeMillis() - Duration.ofDays(30).toMillis();
     for (long i = 0; i < 200_000; i++) {
@@ -57,7 +60,7 @@ public class SystemUpTimeDataTest {
   }
 
   @Test
-  public void clearOldData() {
+  void clearOldData() {
     TreeSet<Long> longs = new TreeSet<>();
     longs.add(1L);
     longs.add(0L);

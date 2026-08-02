@@ -1,13 +1,13 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class NodeAdditionalTest {
+class NodeAdditionalTest {
 
   @Test
-  public void connectionPoints_addSeenAndOrderByEarliest() throws InterruptedException {
+  void connectionPoints_addSeenAndOrderByEarliest() throws Exception {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     ctx.setNode(new Node(ctx, ctx.getNodeId()));
 
@@ -15,7 +15,7 @@ public class NodeAdditionalTest {
     assertNull(n.latestSeenConnectionPoint());
 
     assertTrue(n.addConnectionPoint("127.0.0.1", 1234));
-    assertFalse("duplicate add should return false", n.addConnectionPoint("127.0.0.1", 1234));
+    assertFalse(n.addConnectionPoint("127.0.0.1", 1234), "duplicate add should return false");
 
     n.seen("10.0.0.1", 1111);
     Thread.sleep(2);
@@ -31,7 +31,7 @@ public class NodeAdditionalTest {
   }
 
   @Test
-  public void blacklistAndScore_resetsAndCalculates() {
+  void blacklistAndScore_resetsAndCalculates() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     ctx.setNode(new Node(ctx, ctx.getNodeId()));
     Node n = new Node(ctx, new NodeId());

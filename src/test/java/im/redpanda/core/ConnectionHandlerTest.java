@@ -1,9 +1,9 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
@@ -13,23 +13,23 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.HashSet;
 import java.util.Set;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class ConnectionHandlerTest {
+class ConnectionHandlerTest {
 
   private ServerContext serverContext;
   private Set<ServerSocketChannel> channelsToClose;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     serverContext = ServerContext.buildDefaultServerContext();
     channelsToClose = new HashSet<>();
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @AfterEach
+  void tearDown() throws Exception {
     // Clean up any channels we registered with the shared selector so other tests are unaffected.
     for (SelectionKey key : ConnectionHandler.selector.keys()) {
       if (key.channel() instanceof ServerSocketChannel) {
@@ -44,7 +44,7 @@ public class ConnectionHandlerTest {
   }
 
   @Test
-  public void bindToNextAvailablePortSkipsOccupiedPort() throws Exception {
+  void bindToNextAvailablePortSkipsOccupiedPort() throws Exception {
     int occupiedPort;
     try (ServerSocket occupied = new ServerSocket(0)) {
       occupiedPort = occupied.getLocalPort();
@@ -61,15 +61,15 @@ public class ConnectionHandlerTest {
 
         int boundPort = (int) method.invoke(handler, occupiedPort, channel);
 
-        assertNotEquals("should skip the occupied port", occupiedPort, boundPort);
+        assertNotEquals(occupiedPort, boundPort, "should skip the occupied port");
         assertEquals(
-            "channel should be bound to returned port", boundPort, channel.socket().getLocalPort());
+            boundPort, channel.socket().getLocalPort(), "channel should be bound to returned port");
       }
     }
   }
 
   @Test
-  public void addAndRemovePeerInHandshakeUpdatesCollection() throws Exception {
+  void addAndRemovePeerInHandshakeUpdatesCollection() throws Exception {
     ConnectionHandler handler = new ConnectionHandler(serverContext, false);
 
     try (SocketChannel socketChannel = SocketChannel.open()) {
@@ -87,7 +87,7 @@ public class ConnectionHandlerTest {
   }
 
   @Test
-  public void addServerSocketChannelRegistersForAccept() throws Exception {
+  void addServerSocketChannelRegistersForAccept() throws Exception {
     ConnectionHandler handler = new ConnectionHandler(serverContext, false);
 
     try (ServerSocketChannel channel = ServerSocketChannel.open()) {
@@ -105,7 +105,7 @@ public class ConnectionHandlerTest {
           break;
         }
       }
-      assertTrue("channel should be registered with selector", found);
+      assertTrue(found, "channel should be registered with selector");
     }
   }
 }

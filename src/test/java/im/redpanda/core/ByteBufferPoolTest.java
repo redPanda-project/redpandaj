@@ -1,20 +1,20 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.ByteBuffer;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
-public class ByteBufferPoolTest {
+class ByteBufferPoolTest {
 
   static {
     ByteBufferPool.init();
   }
 
   @Test
-  @Ignore("Does not work if too many RAM available?")
-  public void testLimits() {
+  @Disabled("Does not work if too many RAM available?")
+  void limits() {
 
     boolean limit = false;
 
@@ -30,7 +30,7 @@ public class ByteBufferPoolTest {
   }
 
   @Test
-  public void borrowTest() {
+  void borrowTest() {
     ByteBuffer byteBufferFirst = ByteBufferPool.borrowObject(512);
     ByteBuffer byteBufferSecond = ByteBufferPool.borrowObject(512);
 
@@ -49,7 +49,7 @@ public class ByteBufferPoolTest {
   }
 
   @Test
-  public void defectReturnedObject() {
+  void defectReturnedObject() {
 
     ByteBuffer buffer = ByteBufferPool.borrowObject(512);
     buffer.putInt(1);

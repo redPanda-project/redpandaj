@@ -1,20 +1,26 @@
 package im.redpanda.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.math.BigInteger;
 import java.util.Arrays;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class Sha256HashAdditionalTest {
+class Sha256HashAdditionalTest {
 
-  @Test(expected = IllegalArgumentException.class)
-  public void constructor_rejectsWrongLength() {
-    new Sha256Hash(new byte[31]);
+  @Test
+  void constructor_rejectsWrongLength() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> {
+          new Sha256Hash(new byte[31]);
+        });
   }
 
   @Test
-  public void equalsHashCodeAndToString_work() {
+  void equalsHashCodeAndToString_work() {
     byte[] data = new byte[32];
     Arrays.fill(data, (byte) 1);
 

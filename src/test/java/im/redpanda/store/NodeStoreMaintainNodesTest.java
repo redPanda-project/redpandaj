@@ -1,17 +1,18 @@
 package im.redpanda.store;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class NodeStoreMaintainNodesTest {
+class NodeStoreMaintainNodesTest {
 
   @Test
-  public void maintain_addsVerticesAndEdges_andRemovesBadNodes() {
+  void maintain_addsVerticesAndEdges_andRemovesBadNodes() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
 
     // Create and register the server node
@@ -52,7 +53,7 @@ public class NodeStoreMaintainNodesTest {
 
     // Bad node should either be absent from graph or blacklisted
     boolean present = g.containsVertex(bad);
-    assertFalse("bad node should be removed from graph", present);
-    assertTrue("bad node should be blacklisted", bad.isBlacklisted());
+    assertFalse(present, "bad node should be removed from graph");
+    assertTrue(bad.isBlacklisted(), "bad node should be blacklisted");
   }
 }

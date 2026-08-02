@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.crypt.CryptoUtils;
 import java.lang.reflect.Method;
@@ -15,7 +15,7 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * REDPANDAJ-2DS unit-level regression: {@code ConnectionHandler.handlePeerInHandshake} must not
@@ -25,14 +25,14 @@ import org.junit.Test;
  * a plain unit test (part of the default {@code mvn verify}/coverage run) instead of spinning up a
  * separate node process under the {@code e2e} Maven profile.
  */
-public class ConnectionHandlerCoalescedHandshakeTest {
+class ConnectionHandlerCoalescedHandshakeTest {
 
   static {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void coalescedActivateEncryptionAndFirstFrameArePromotedInOneEvent() throws Exception {
+  void coalescedActivateEncryptionAndFirstFrameArePromotedInOneEvent() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -131,7 +131,7 @@ public class ConnectionHandlerCoalescedHandshakeTest {
     client.write(combined);
 
     // let the node process this single coalesced read()
-    assertTrue("expected the accepted channel to become readable", selector.select(10_000) > 0);
+    assertTrue(selector.select(10_000) > 0, "expected the accepted channel to become readable");
     SelectionKey readyKey = selector.selectedKeys().iterator().next();
 
     Method handlePeerInHandshake =
@@ -143,15 +143,15 @@ public class ConnectionHandlerCoalescedHandshakeTest {
     // and the peer got promoted out of the handshake list. Before the fix, the leftover bytes
     // were silently dropped and the peer would still be stuck here.
     assertFalse(
+        ConnectionHandler.peerInHandshakes.contains(peerInHandshake),
         "peer must have been promoted out of the handshake list in the same event that processed"
-            + " the coalesced ACTIVATE_ENCRYPTION + first frame",
-        ConnectionHandler.peerInHandshakes.contains(peerInHandshake));
+            + " the coalesced ACTIVATE_ENCRYPTION + first frame");
 
     // the node always sends its own ping right after activating encryption, regardless of the
     // fix - reading it here just drains the socket so the accepted channel can be closed cleanly.
     client.configureBlocking(true);
     client.socket().setSoTimeout(5_000);
     ByteBuffer inbound = ByteBuffer.allocate(64);
-    assertTrue("expected the node's own ping", client.read(inbound) > 0);
+    assertTrue(client.read(inbound) > 0, "expected the node's own ping");
   }
 }

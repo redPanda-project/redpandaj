@@ -1,15 +1,15 @@
 package im.redpanda.docs;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtocolStep08FutureImprovementsDocsTest {
+class ProtocolStep08FutureImprovementsDocsTest {
 
   @Test
-  public void documentationExistsAndStatesKeypoints() throws Exception {
+  void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/08-future-improvements.md");
     String text = Files.readString(doc);
     assertTrue(text.contains("Title: Future Improvements"));

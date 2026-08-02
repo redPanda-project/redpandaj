@@ -20,15 +20,15 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS02b acceptance: a FlaschenpostPut whose OH is not registered locally is forwarded across an
  * intermediate node with the {@code oh_id} preserved and deposited into the correct mailbox on the
  * host node.
  */
-public class OhForwarderTest {
+class OhForwarderTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -48,8 +48,8 @@ public class OhForwarderTest {
 
   private byte[] ohId;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     nodeA = ServerContext.buildDefaultServerContext();
     handleStoreA = new OutboundHandleStore();
     mailboxA = new OutboundMailboxStore();
@@ -89,8 +89,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void forwardedDeposit_acrossIntermediateNode_keepsOhIdAndLandsInMailbox()
-      throws Exception {
+  void forwardedDeposit_acrossIntermediateNode_keepsOhIdAndLandsInMailbox() throws Exception {
     // Node B has announced its OH in the DHT; node A has the (padded, signed) record locally.
     nodeA
         .getKadStoreManager()
@@ -143,7 +142,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void forwardedDeposit_atHopLimit_isDroppedNotForwarded() {
+  void forwardedDeposit_atHopLimit_isDroppedNotForwarded() {
     nodeA
         .getKadStoreManager()
         .put(
@@ -170,7 +169,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void routeToNode_withoutDirectPeer_dropsWhenNoCloserCandidate() {
+  void routeToNode_withoutDirectPeer_dropsWhenNoCloserCandidate() {
     // No peers at all — routing must simply drop without throwing
     OhForwarder.routeToNode(
         nodeA, NodeId.generateWithSimpleKey().getKademliaId(), deposit(new byte[8], null));
@@ -204,7 +203,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void resolveFailure_finalAttempt_withReturnPath_sendsExactlyOneHandleExpiredAck()
+  void resolveFailure_finalAttempt_withReturnPath_sendsExactlyOneHandleExpiredAck()
       throws Exception {
     ReturnPath ackPath = registerLocalAckPathA();
 
@@ -217,7 +216,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void resolveFailure_finalAttempt_withoutReturnPath_isPlainDrop() {
+  void resolveFailure_finalAttempt_withoutReturnPath_isPlainDrop() {
     // parseAckPath returns null for absent / empty return paths → no ack, no exception
     assertThat(OhForwarder.parseAckPath(null)).isNull();
     assertThat(OhForwarder.parseAckPath(new byte[0])).isNull();
@@ -226,7 +225,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void parseAckPath_malformedReturnPath_isNullSoDropStaysSilent() {
+  void parseAckPath_malformedReturnPath_isNullSoDropStaysSilent() {
     // a structurally invalid return-path block must NOT ack (nobody safe to ack) — plain drop
     assertThat(OhForwarder.parseAckPath(new byte[] {1, 2, 3})).isNull();
     OhForwarder.onResolveFailed(
@@ -234,7 +233,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void noRoute_withReturnPath_sendsExactlyOneHandleExpiredAck() throws Exception {
+  void noRoute_withReturnPath_sendsExactlyOneHandleExpiredAck() throws Exception {
     ReturnPath ackPath = registerLocalAckPathA();
 
     // resolve succeeded but there is no peer to forward toward → async no-route drop must ack
@@ -248,7 +247,7 @@ public class OhForwarderTest {
   // --- T32: parked retry instead of first-failure drop ---
 
   @Test
-  public void resolveFailure_firstAttempt_parksForRetryInsteadOfDropping() throws Exception {
+  void resolveFailure_firstAttempt_parksForRetryInsteadOfDropping() throws Exception {
     ReturnPath ackPath = registerLocalAckPathA();
     int parkedBefore = OhForwarder.pendingRetries.get();
 
@@ -262,7 +261,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void retryDeposit_afterLateLocalRegistration_deliversAndAcksStored() throws Exception {
+  void retryDeposit_afterLateLocalRegistration_deliversAndAcksStored() throws Exception {
     // T32 regression: the deposit arrived while the OH registration was lost (cut-off
     // connection); the client re-registers on THIS node before the retry fires. The retried
     // deposit must land locally instead of being dropped.
@@ -284,7 +283,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void resolveFailure_retryBufferFull_dropsWithHandleExpiredAck() throws Exception {
+  void resolveFailure_retryBufferFull_dropsWithHandleExpiredAck() throws Exception {
     ReturnPath ackPath = registerLocalAckPathA();
     int parkedBefore = OhForwarder.pendingRetries.get();
     // fill the bounded buffer artificially (way past the cap so concurrent decrements from other
@@ -302,7 +301,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void routeToNode_targetIsSelf_depositsLocallyInsteadOfDropping() throws Exception {
+  void routeToNode_targetIsSelf_depositsLocallyInsteadOfDropping() throws Exception {
     // resolve returned OUR node id (the OH registered here between the caller's NOT_FOUND check
     // and the resolve callback) — there is never a route to ourselves, so this must deposit
     ReturnPath ackPath = registerLocalAckPathA();
@@ -320,7 +319,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void routeToNode_targetIsSelf_unknownOh_acksHandleExpired() throws Exception {
+  void routeToNode_targetIsSelf_unknownOh_acksHandleExpired() throws Exception {
     // announce points at us but the OH is not registered here (expired/revoked) — final drop
     ReturnPath ackPath = registerLocalAckPathA();
 
@@ -332,7 +331,7 @@ public class OhForwarderTest {
   }
 
   @Test
-  public void hopLimitDrop_doesNotAck_soCallerAcksWithoutDoubleAck() throws Exception {
+  void hopLimitDrop_doesNotAck_soCallerAcksWithoutDoubleAck() throws Exception {
     // a valid, LOCALLY resolvable ack path so any accidental ack would land where we can see it
     ReturnPath ackPath = registerLocalAckPathA();
 
@@ -362,8 +361,7 @@ public class OhForwarderTest {
    * through to the greedy Kademlia fallback), failing this test.
    */
   @Test
-  public void selectNextPeer_graphRoutingBlocksWhileNodeStoreWriteLockIsHeldElsewhere()
-      throws Exception {
+  void selectNextPeer_graphRoutingBlocksWhileNodeStoreWriteLockIsHeldElsewhere() throws Exception {
     // graph routing is only attempted once our own Node is wired up
     nodeA.setNode(new im.redpanda.core.Node(nodeA, nodeA.getNodeId()));
 

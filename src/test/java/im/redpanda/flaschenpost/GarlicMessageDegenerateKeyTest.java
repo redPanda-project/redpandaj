@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
 import java.security.SecureRandom;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for L2 (bug hunt 2026-07-26) on the packet-parsing paths: a garlic message or
@@ -21,12 +21,12 @@ import org.junit.Test;
  * paths catch only {@code GeneralSecurityException}, so a remote peer could throw an unchecked
  * exception onto a reader thread with a 32-byte payload.
  */
-public class GarlicMessageDegenerateKeyTest {
+class GarlicMessageDegenerateKeyTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
   @Test
-  public void garlicMessageWithDegenerateEphemeralKey_isDroppedWithoutThrowing() {
+  void garlicMessageWithDegenerateEphemeralKey_isDroppedWithoutThrowing() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     GarlicMessage message =
@@ -38,7 +38,7 @@ public class GarlicMessageDegenerateKeyTest {
   }
 
   @Test
-  public void decryptPayload_reportsTheDegenerateKeyAsAnInvalidKey() {
+  void decryptPayload_reportsTheDegenerateKeyAsAnInvalidKey() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     GarlicMessage message =
@@ -48,7 +48,7 @@ public class GarlicMessageDegenerateKeyTest {
   }
 
   @Test
-  public void flaschenpostLayerWithDegenerateEphemeralKey_isDroppedWithoutThrowing() {
+  void flaschenpostLayerWithDegenerateEphemeralKey_isDroppedWithoutThrowing() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     // a well-formed MS04 layer body whose ephemeral_pub is an all-zero (degenerate) point
@@ -101,7 +101,7 @@ public class GarlicMessageDegenerateKeyTest {
 
   /** Sanity: the all-zero point really is rejected by the primitive this test relies on. */
   @Test
-  public void allZeroPointIsRejectedByTheAgreement() {
+  void allZeroPointIsRejectedByTheAgreement() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     assertThatThrownBy(
             () ->

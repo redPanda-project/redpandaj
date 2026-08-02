@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.security.Security;
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for M5 (bug hunt 2026-07-26): {@code Node.seen(ip, port)} used to {@code break}
@@ -14,14 +14,14 @@ import org.junit.Test;
  * NodeConnectionPointsSeenJob}. The connection points are persisted with the node, so they
  * accumulated without the intended 14-day bound.
  */
-public class NodeSeenEvictionTest {
+class NodeSeenEvictionTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void seen_evictsStalePointsBehindTheMatchedOne() {
+  void seen_evictsStalePointsBehindTheMatchedOne() {
     Node node = newNode();
 
     node.addConnectionPoint("10.0.0.1", 1000); // the stable, always-matching point
@@ -41,7 +41,7 @@ public class NodeSeenEvictionTest {
   }
 
   @Test
-  public void seen_keepsTheMatchedPointEvenIfItWasStale() {
+  void seen_keepsTheMatchedPointEvenIfItWasStale() {
     Node node = newNode();
 
     node.addConnectionPoint("10.0.0.1", 1000);
@@ -55,7 +55,7 @@ public class NodeSeenEvictionTest {
   }
 
   @Test
-  public void seen_addsAnUnknownPointAndStillEvicts() {
+  void seen_addsAnUnknownPointAndStillEvicts() {
     Node node = newNode();
 
     node.addConnectionPoint("10.0.0.2", 2000);

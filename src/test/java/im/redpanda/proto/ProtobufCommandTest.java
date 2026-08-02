@@ -1,17 +1,17 @@
 package im.redpanda.proto;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtobufCommandTest {
+class ProtobufCommandTest {
 
   @Test
-  public void testKademliaIdSerialization() {
+  void kademliaIdSerialization() {
     KademliaId originalId = new KademliaId();
     byte[] originalBytes = originalId.getBytes();
 
@@ -32,7 +32,7 @@ public class ProtobufCommandTest {
   }
 
   @Test
-  public void testSendPeerListSerialization() {
+  void sendPeerListSerialization() {
     NodeId nodeId = new NodeId();
     PeerInfoProto peer =
         PeerInfoProto.newBuilder()

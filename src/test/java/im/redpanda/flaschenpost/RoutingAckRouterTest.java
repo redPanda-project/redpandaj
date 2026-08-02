@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS06 acceptance: a {@code CMD_DELIVER_ACKED} deliver deposits like MS04/MS05 and the node with
@@ -31,7 +31,7 @@ import org.junit.Test;
  * fallback conserves the return path so the OH host node acks (including the handle_expired R-ACK
  * when the hop budget is exhausted at a non-host).
  */
-public class RoutingAckRouterTest {
+class RoutingAckRouterTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -55,8 +55,8 @@ public class RoutingAckRouterTest {
   private byte[] aliceOhId;
   private byte[] ackSessionTag;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     bobHost = ServerContext.buildDefaultServerContext();
     bobHandles = new OutboundHandleStore();
     bobMailbox = new OutboundMailboxStore();
@@ -182,7 +182,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_depositsMessage_andRAckTraversesReturnPathHops() throws Exception {
+  void ackedDeliver_depositsMessage_andRAckTraversesReturnPathHops() throws Exception {
     Peer bobToRelay = connect(bobHost, relay, 9601);
     Peer relayToAlice = connect(relay, aliceHost, 9602);
 
@@ -215,8 +215,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_withSessionTag_storesTag_andZeroHopRAckIsDepositedLocally()
-      throws Exception {
+  void ackedDeliver_withSessionTag_storesTag_andZeroHopRAckIsDepositedLocally() throws Exception {
     // Alice's ack OH lives on the same node that hosts Bob's OH: hop_count = 0 means the
     // depositing node delivers the R-ACK itself, without building an onion
     long now = System.currentTimeMillis();
@@ -246,7 +245,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_mailboxFull_sendsMailboxFullRAck() throws Exception {
+  void ackedDeliver_mailboxFull_sendsMailboxFullRAck() throws Exception {
     long now = System.currentTimeMillis();
     bobHandles.put(
         aliceOhId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
@@ -272,7 +271,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_invalidTagLength_isDroppedSilently() throws Exception {
+  void ackedDeliver_invalidTagLength_isDroppedSilently() throws Exception {
     // tag_len must be 0 or 16 — a layer claiming 5 is malformed and must not deposit anything
     byte[] returnPathBytes = returnPath().serialize();
     byte[] tag5 = randomBytes(5);
@@ -294,7 +293,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_hopCountAboveLimit_isDroppedSilently() throws Exception {
+  void ackedDeliver_hopCountAboveLimit_isDroppedSilently() throws Exception {
     // a return path claiming more than ReturnPath.MAX_HOPS hops is structurally invalid
     ByteBuffer rp = ByteBuffer.allocate(ReturnPath.FIXED_LEN + 5 * ReturnPath.HOP_LEN);
     rp.put(aliceOhId);
@@ -312,7 +311,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliver_truncatedReturnPath_isDroppedSilently() throws Exception {
+  void ackedDeliver_truncatedReturnPath_isDroppedSilently() throws Exception {
     // hop_count = 2 but only one hop descriptor present: the payload_len read then overlaps the
     // descriptor bytes — parse must fail on the length checks, nothing may be deposited
     ByteBuffer rp = ByteBuffer.allocate(ReturnPath.FIXED_LEN + ReturnPath.HOP_LEN);
@@ -334,8 +333,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void ackedDeliverForRemoteOh_conservesReturnPathOnMs02bForward_andHostAcks()
-      throws Exception {
+  void ackedDeliverForRemoteOh_conservesReturnPathOnMs02bForward_andHostAcks() throws Exception {
     // the final garlic hop (relay) does not host Bob's OH: it must forward a FlaschenpostPut
     // carrying oh_id, payload AND return_path toward the host node, which then acks
     relay
@@ -373,7 +371,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void flaschenpostPut_atHopLimitForUnknownOh_sendsHandleExpiredRAck() throws Exception {
+  void flaschenpostPut_atHopLimitForUnknownOh_sendsHandleExpiredRAck() throws Exception {
     // a forwarded acked deposit arrives at the hop limit on a node that does not host the OH:
     // forwarding is no longer possible, the sender gets a handle_expired R-ACK
     Peer relayToAlice = connect(relay, aliceHost, 9671);
@@ -398,7 +396,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void flaschenpostPut_withMalformedReturnPath_rejectsDeposit() throws Exception {
+  void flaschenpostPut_withMalformedReturnPath_rejectsDeposit() throws Exception {
     im.redpanda.proto.FlaschenpostPut put =
         im.redpanda.proto.FlaschenpostPut.newBuilder()
             .setContent(com.google.protobuf.ByteString.copyFrom("payload".getBytes()))
@@ -414,7 +412,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void returnPath_serializeParse_roundtrips() {
+  void returnPath_serializeParse_roundtrips() {
     ReturnPath original = returnPath(relay, aliceHost);
     byte[] serialized = original.serialize();
     assertThat(serialized).hasSize(ReturnPath.FIXED_LEN + 2 * ReturnPath.HOP_LEN);
@@ -430,7 +428,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void returnPath_constructor_rejectsInvalidComponents() {
+  void returnPath_constructor_rejectsInvalidComponents() {
     ReturnPath.Hop hop =
         new ReturnPath.Hop(relay.getNonce(), relay.getNodeId().getEncryptionPubKey().getEncoded());
     org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -452,7 +450,7 @@ public class RoutingAckRouterTest {
   }
 
   @Test
-  public void returnPath_parseExact_rejectsTrailingBytes() {
+  void returnPath_parseExact_rejectsTrailingBytes() {
     byte[] serialized = returnPath(relay).serialize();
     byte[] withTrailing = new byte[serialized.length + 1];
     System.arraycopy(serialized, 0, withTrailing, 0, serialized.length);

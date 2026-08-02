@@ -3,8 +3,8 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.ByteBuffer;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for TD029 (REDPANDAJ-2EJ), seen on a public seed node 76 s after the deploy of
@@ -22,10 +22,10 @@ import org.junit.Test;
  * ConcurrencyTestSupport}): a slow machine only gives the reaper more time to do the thing it must
  * not do.
  */
-public class PeerJobsWriteBufferReapTest {
+class PeerJobsWriteBufferReapTest {
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     ConnectionHandler.peerInHandshakes.clear();
   }
 
@@ -48,7 +48,7 @@ public class PeerJobsWriteBufferReapTest {
   }
 
   @Test
-  public void runOnce_freesTheWriteBuffersOnlyUnderTheWriteBufferLock() throws Exception {
+  void runOnce_freesTheWriteBuffersOnlyUnderTheWriteBufferLock() throws Exception {
     ServerContext ctx = context();
     Peer peer = silentPeer();
     ctx.getPeerList().add(peer);
@@ -71,7 +71,7 @@ public class PeerJobsWriteBufferReapTest {
    * down a live connection, so the condition is re-tested under the lock.
    */
   @Test
-  public void runOnce_doesNotFreeTheBuffersOfAPeerThatReconnectedInTheMeantime() {
+  void runOnce_doesNotFreeTheBuffersOfAPeerThatReconnectedInTheMeantime() {
     ServerContext ctx = context();
     Peer peer =
         new Peer("46.224.156.238", 59558, NodeId.generateWithSimpleKey()) {

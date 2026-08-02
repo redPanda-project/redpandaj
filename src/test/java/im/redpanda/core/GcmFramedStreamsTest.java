@@ -1,17 +1,17 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** MS03: framed AES-256-GCM TCP stream encryption (protocol v23). */
-public class GcmFramedStreamsTest {
+class GcmFramedStreamsTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -31,7 +31,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void roundtripSingleFrame() throws Exception {
+  void roundtripSingleFrame() throws Exception {
     GcmFramedStreams[] streams = pair();
 
     byte[] message = "hello redpanda v23".getBytes();
@@ -51,7 +51,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void roundtripWithPartialDeliveryAndMultipleFrames() throws Exception {
+  void roundtripWithPartialDeliveryAndMultipleFrames() throws Exception {
     GcmFramedStreams[] streams = pair();
 
     byte[] message = new byte[100_000]; // forces multiple frames (> MAX_PLAINTEXT_PER_FRAME)
@@ -79,7 +79,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void flippedBitCausesDecryptionFailureNotSilentCorruption() throws Exception {
+  void flippedBitCausesDecryptionFailureNotSilentCorruption() throws Exception {
     GcmFramedStreams[] streams = pair();
 
     ByteBuffer wire = ByteBuffer.allocate(1024);
@@ -94,11 +94,11 @@ public class GcmFramedStreamsTest {
     PeerProtocolException e =
         assertThrows(PeerProtocolException.class, () -> streams[1].decrypt(wire, plain));
     assertTrue(e.getMessage().contains("authentication failed"));
-    assertEquals("no plaintext may be produced", 0, plain.position());
+    assertEquals(0, plain.position(), "no plaintext may be produced");
   }
 
   @Test
-  public void replayedFrameIsRejectedByNonceCounter() throws Exception {
+  void replayedFrameIsRejectedByNonceCounter() throws Exception {
     GcmFramedStreams[] streams = pair();
 
     ByteBuffer wire = ByteBuffer.allocate(1024);
@@ -117,7 +117,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void decryptKeepsFrameBufferedWhenOutputBufferIsTooSmall() throws Exception {
+  void decryptKeepsFrameBufferedWhenOutputBufferIsTooSmall() throws Exception {
     GcmFramedStreams[] streams = pair();
 
     byte[] message = new byte[256];
@@ -143,7 +143,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void invalidFrameLengthIsRejected() {
+  void invalidFrameLengthIsRejected() {
     GcmFramedStreams streams = new GcmFramedStreams(randomKey(), randomKey());
 
     ByteBuffer bogus = ByteBuffer.allocate(8);
@@ -156,7 +156,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void encryptStopsWhenOutputBufferIsFull() {
+  void encryptStopsWhenOutputBufferIsFull() {
     GcmFramedStreams streams = new GcmFramedStreams(randomKey(), randomKey());
 
     byte[] message = new byte[1000];
@@ -171,7 +171,7 @@ public class GcmFramedStreamsTest {
   }
 
   @Test
-  public void nonceIsBigEndianCounter() {
+  void nonceIsBigEndianCounter() {
     assertArrayEquals(
         new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, GcmFramedStreams.nonceFromCounter(0));
     assertArrayEquals(

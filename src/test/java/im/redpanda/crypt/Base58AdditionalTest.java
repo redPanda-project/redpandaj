@@ -1,13 +1,13 @@
 package im.redpanda.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class Base58AdditionalTest {
+class Base58AdditionalTest {
 
   @Test
-  public void testDecodeCheckedRoundtrip() throws Exception {
+  void decodeCheckedRoundtrip() throws Exception {
     byte[] data = new byte[] {'a', 'b', 'c'};
     byte[] checksumFull = Utils.doubleDigest(data);
     byte[] combined = new byte[data.length + 4];
@@ -20,7 +20,7 @@ public class Base58AdditionalTest {
   }
 
   @Test
-  public void testDecodeCheckedInvalidChecksumThrows() throws Exception {
+  void decodeCheckedInvalidChecksumThrows() throws Exception {
     byte[] data = new byte[] {1, 2, 3, 4};
     byte[] checksumFull = Utils.doubleDigest(data);
     byte[] combined = new byte[data.length + 4];

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.CryptoUtils;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for L2 (bug hunt 2026-07-26) on the handshake path: an ephemeral X25519 key that
@@ -15,14 +15,14 @@ import org.junit.Test;
  * {@code ConnectionHandler.handlePeerInHandshake} drops such a handshake quietly and closes the
  * channel instead of reporting a Sentry error per occurrence.
  */
-public class PeerInHandshakeDegenerateKeyTest {
+class PeerInHandshakeDegenerateKeyTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void calculateSharedSecret_rejectsADegenerateEphemeralKey() {
+  void calculateSharedSecret_rejectsADegenerateEphemeralKey() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerInHandshake handshake =
         newHandshakeWith(serverContext, new byte[CryptoUtils.X25519_KEY_LEN]);
@@ -34,7 +34,7 @@ public class PeerInHandshakeDegenerateKeyTest {
 
   /** Interop guard: an ephemeral key from a conforming client still completes the key schedule. */
   @Test
-  public void calculateSharedSecret_acceptsAnHonestEphemeralKey() {
+  void calculateSharedSecret_acceptsAnHonestEphemeralKey() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerInHandshake theirSide = new PeerInHandshake("127.0.0.1", new Peer("127.0.0.1", 1234), null);
     PeerInHandshake handshake =

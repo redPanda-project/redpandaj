@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS04 acceptance: a 3-layer Flaschenpost v2 garlic packet traverses three relays — every relay
@@ -26,7 +26,7 @@ import org.junit.Test;
  * deposits the payload into the OH mailbox. Plus the negative paths: dedup, foreign packets,
  * malformed packets.
  */
-public class GarlicRouterTest {
+class GarlicRouterTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -40,8 +40,8 @@ public class GarlicRouterTest {
 
   private byte[] ohId;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     node1 = ServerContext.buildDefaultServerContext();
     node1.setOutboundService(
         new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
@@ -134,7 +134,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void threeLayerPacket_isPeeledByThreeRelays_andDeliveredToOhMailbox() throws Exception {
+  void threeLayerPacket_isPeeledByThreeRelays_andDeliveredToOhMailbox() throws Exception {
     Peer peer1To2 = connect(node1, node2, 9401);
     Peer peer2To3 = connect(node2, node3, 9402);
 
@@ -166,7 +166,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void duplicatePacketId_isProcessedOnlyOnce() throws Exception {
+  void duplicatePacketId_isProcessedOnlyOnce() throws Exception {
     Peer peer1To2 = connect(node1, node2, 9411);
     byte[] packet = buildLayeredPacket(new byte[16], node1, node2);
 
@@ -183,7 +183,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void foreignPacket_failsAuthentication_andIsDroppedSilently() throws Exception {
+  void foreignPacket_failsAuthentication_andIsDroppedSilently() throws Exception {
     Peer peer1To2 = connect(node1, node2, 9421);
 
     // layer encrypted for node 2, but addressed (next_hop) to node 1: node 1 cannot
@@ -201,7 +201,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void packetForAnotherNode_isRoutedUnchangedTowardNextHop() throws Exception {
+  void packetForAnotherNode_isRoutedUnchangedTowardNextHop() throws Exception {
     Peer peer1To2 = connect(node1, node2, 9431);
 
     // single-layer packet addressed to node 2 arrives at node 1: pure Kademlia step, the
@@ -215,7 +215,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void malformedPacket_isDroppedWithoutCrash() {
+  void malformedPacket_isDroppedWithoutCrash() {
     Peer peer1To2 = connect(node1, node2, 9441);
 
     // wrong size — must be dropped before any processing
@@ -227,7 +227,7 @@ public class GarlicRouterTest {
   }
 
   @Test
-  public void deliverForRemoteOh_fallsBackToMs02bForwarding() throws Exception {
+  void deliverForRemoteOh_fallsBackToMs02bForwarding() throws Exception {
     // the final garlic hop (node 1) does not host the OH; it knows the announce record
     // pointing to node 2 and must forward a FlaschenpostPut with the oh_id preserved
     byte[] remoteOhId = new byte[KademliaId.ID_LENGTH_BYTES];

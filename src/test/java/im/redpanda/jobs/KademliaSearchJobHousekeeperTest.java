@@ -9,16 +9,16 @@ import com.tngtech.archunit.lang.ArchRule;
 import im.redpanda.core.KademliaId;
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class KademliaSearchJobHousekeeperTest {
+class KademliaSearchJobHousekeeperTest {
 
   private final Map<KademliaId, Long> blacklistBackup = new HashMap<>();
 
-  @Before
-  public void backupBlacklist() {
+  @BeforeEach
+  void backupBlacklist() {
     KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
     try {
       blacklistBackup.putAll(KademliaSearchJob.getKademliaIdSearchBlacklist());
@@ -28,8 +28,8 @@ public class KademliaSearchJobHousekeeperTest {
     }
   }
 
-  @After
-  public void restoreBlacklist() {
+  @AfterEach
+  void restoreBlacklist() {
     KademliaSearchJob.getKademliaIdSearchBlacklistLock().lock();
     try {
       KademliaSearchJob.getKademliaIdSearchBlacklist().clear();
@@ -40,7 +40,7 @@ public class KademliaSearchJobHousekeeperTest {
   }
 
   @Test
-  public void work_evictsExpiredEntriesAndKeepsLiveOnes() {
+  void work_evictsExpiredEntriesAndKeepsLiveOnes() {
     KademliaId expired = new KademliaId();
     KademliaId live = new KademliaId();
 
@@ -77,7 +77,7 @@ public class KademliaSearchJobHousekeeperTest {
    * the only bound on its size. It must stay in the same order of magnitude as the entry lifetime.
    */
   @Test
-  public void runIntervalIsBoundedByTheBlacklistLifetime() {
+  void runIntervalIsBoundedByTheBlacklistLifetime() {
     assertThat(KademliaSearchJobHousekeeper.RUN_INTERVAL)
         .isLessThanOrEqualTo(4L * KademliaSearchJob.BLACKLIST_KEY_FOR);
   }
@@ -87,7 +87,7 @@ public class KademliaSearchJobHousekeeperTest {
    * correct, but nothing instantiated it, so the blacklist grew for the whole process lifetime.
    */
   @Test
-  public void housekeeperIsWiredUpInApp() {
+  void housekeeperIsWiredUpInApp() {
     JavaClasses importedClasses = new ClassFileImporter().importPackages("im.redpanda");
 
     ArchRule rule =

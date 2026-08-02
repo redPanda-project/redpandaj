@@ -1,18 +1,21 @@
 package im.redpanda.docs;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.crypt.CryptoUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import javax.crypto.AEADBadTagException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtocolStep02ECCryptoDocsTest {
+class ProtocolStep02ECCryptoDocsTest {
 
   @Test
-  public void documentationExistsAndStatesKeypoints() throws Exception {
+  void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/02-eccrypto-iv-and-format.md");
     String text = Files.readString(doc);
     assertTrue(
@@ -23,7 +26,7 @@ public class ProtocolStep02ECCryptoDocsTest {
   }
 
   @Test
-  public void gcmRoundTripAndTagFailure() throws Exception {
+  void gcmRoundTripAndTagFailure() throws Exception {
     SecureRandom random = new SecureRandom();
     byte[] key = new byte[CryptoUtils.AES_KEY_LEN];
     byte[] nonce = new byte[CryptoUtils.GCM_NONCE_LEN];

@@ -1,21 +1,21 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.ByteBuffer;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.HashMap;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class KademliaIdTest {
+class KademliaIdTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void testEquals() {
+  void equals() {
 
     NodeId nodeId = new NodeId();
 
@@ -24,8 +24,6 @@ public class KademliaIdTest {
     KademliaId clonedByBytes = KademliaId.fromBuffer(ByteBuffer.wrap(kademliaId.getBytes()));
 
     assertEquals(kademliaId, clonedByBytes);
-
-    assertTrue(kademliaId.equals(clonedByBytes));
   }
 
   /**
@@ -60,15 +58,15 @@ public class KademliaIdTest {
    * silently stop testing anything.
    */
   @Test
-  public void collidingFixture_reallyCollidesOn32Bits() {
+  void collidingFixture_reallyCollidesOn32Bits() {
     KademliaId a = collidingIdA();
     KademliaId b = collidingIdB();
 
-    assertFalse("fixture must be two DIFFERENT ids", Arrays.equals(a.getBytes(), b.getBytes()));
+    assertFalse(Arrays.equals(a.getBytes(), b.getBytes()), "fixture must be two DIFFERENT ids");
     assertEquals(
-        "fixture must collide under Arrays.hashCode",
         Arrays.hashCode(a.getBytes()),
-        Arrays.hashCode(b.getBytes()));
+        Arrays.hashCode(b.getBytes()),
+        "fixture must collide under Arrays.hashCode");
     // and therefore also under KademliaId.hashCode(), which is a pure function of it
     assertEquals(a.hashCode(), b.hashCode());
   }
@@ -82,14 +80,12 @@ public class KademliaIdTest {
    * GarlicRouter}. Equality must compare the full 160-bit id.
    */
   @Test
-  public void equals_distinctIdsCollidingOn32BitHash_areNotEqual() {
+  void equals_distinctIdsCollidingOn32BitHash_areNotEqual() {
     KademliaId a = collidingIdA();
     KademliaId b = collidingIdB();
 
     assertNotEquals(a, b);
     assertNotEquals(b, a);
-    assertFalse(a.equals(b));
-    assertFalse(b.equals(a));
   }
 
   /**
@@ -98,7 +94,7 @@ public class KademliaIdTest {
    * persisted MapDB node store and the serialized JGraphT graph) needs a rehash or a migration.
    */
   @Test
-  public void hashCode_isStillConsistentWithEquals() {
+  void hashCode_isStillConsistentWithEquals() {
     KademliaId id = new KademliaId();
     KademliaId sameBytes = new KademliaId(Arrays.copyOf(id.getBytes(), id.getBytes().length));
 
@@ -115,7 +111,7 @@ public class KademliaIdTest {
    * the same hash bucket, so this also exercises the bucket's equals-based collision handling.
    */
   @Test
-  public void hashMapKeyedByKademliaId_keepsCollidingIdsApart() {
+  void hashMapKeyedByKademliaId_keepsCollidingIdsApart() {
     KademliaId a = collidingIdA();
     KademliaId b = collidingIdB();
 
@@ -134,7 +130,7 @@ public class KademliaIdTest {
    * colliding KademliaIds must be distinct identities.
    */
   @Test
-  public void nodeIdEquals_inheritsTheStricterComparison() {
+  void nodeIdEquals_inheritsTheStricterComparison() {
     NodeId a = new NodeId(collidingIdA());
     NodeId b = new NodeId(collidingIdB());
 

@@ -1,30 +1,34 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.proto.*;
 import java.io.File;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class InboundCommandProcessorMoreCoverageTest {
+class InboundCommandProcessorMoreCoverageTest {
 
   private ServerContext ctx;
   private InboundCommandProcessor proc;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     ctx = ServerContext.buildDefaultServerContext();
     proc = new InboundCommandProcessor(ctx);
   }
 
-  @After
-  public void cleanup() {
+  @AfterEach
+  void cleanup() {
     // Ensure android.apk from tests is removed
     File f = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
     if (f.exists()) {
@@ -39,7 +43,7 @@ public class InboundCommandProcessorMoreCoverageTest {
   }
 
   @Test
-  public void kademliaGet_servesFromStore() {
+  void kademliaGet_servesFromStore() {
     Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);
@@ -79,19 +83,18 @@ public class InboundCommandProcessorMoreCoverageTest {
     byte[] answerBytes = new byte[len];
     peer.writeBuffer.get(answerBytes);
 
-    try {
-      KademliaGetAnswer answer = KademliaGetAnswer.parseFrom(answerBytes);
-      assertEquals(jobId, answer.getAckId());
-      assertEquals(ts, answer.getTimestamp());
-      assertArrayEquals(author.exportPublic(), answer.getPublicKey().toByteArray());
-      assertEquals(content.length, answer.getContent().size());
-    } catch (Exception e) {
-      fail(e.getMessage());
-    }
+    Assertions.assertDoesNotThrow(
+        () -> {
+          KademliaGetAnswer answer = KademliaGetAnswer.parseFrom(answerBytes);
+          assertEquals(jobId, answer.getAckId());
+          assertEquals(ts, answer.getTimestamp());
+          assertArrayEquals(author.exportPublic(), answer.getPublicKey().toByteArray());
+          assertEquals(content.length, answer.getContent().size());
+        });
   }
 
   @Test
-  public void updateAnswerTimestamp_consumesBytes() {
+  void updateAnswerTimestamp_consumesBytes() {
     Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);
@@ -107,7 +110,7 @@ public class InboundCommandProcessorMoreCoverageTest {
   }
 
   @Test
-  public void androidUpdateRequestTimestamp_behavesDependingOnFilePresence() throws IOException {
+  void androidUpdateRequestTimestamp_behavesDependingOnFilePresence() throws Exception {
     Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
     // Avoid NPE in setWriteBufferFilled by marking as not connected (still writes
     // to buffer)
@@ -144,7 +147,7 @@ public class InboundCommandProcessorMoreCoverageTest {
   }
 
   @Test
-  public void androidUpdateAnswerContent_rejectsInvalidSignature() {
+  void androidUpdateAnswerContent_rejectsInvalidSignature() {
     Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);
@@ -170,15 +173,15 @@ public class InboundCommandProcessorMoreCoverageTest {
     assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
     // File should NOT exist and settings NOT updated because signature is invalid
-    assertFalse("APK should not be created with invalid signature", apk.exists());
+    assertFalse(apk.exists(), "APK should not be created with invalid signature");
     assertNotEquals(
-        "Timestamp should not update with invalid signature",
         newerTs,
-        ctx.getLocalSettings().getUpdateAndroidTimestamp());
+        ctx.getLocalSettings().getUpdateAndroidTimestamp(),
+        "Timestamp should not update with invalid signature");
   }
 
   @Test
-  public void updateAnswerContent_consumesWithoutWritingWhenNotNewer() {
+  void updateAnswerContent_consumesWithoutWritingWhenNotNewer() {
     Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
     peer.setConnected(true);
     ctx.getPeerList().add(peer);

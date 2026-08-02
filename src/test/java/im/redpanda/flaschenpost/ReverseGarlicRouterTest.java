@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS05 acceptance: a reverse-garlic reply — built by the responder along the return-path hops the
@@ -31,7 +31,7 @@ import org.junit.Test;
  * payload length, and the MS02b fallback preserving the session tag when the final hop is not the
  * OH host.
  */
-public class ReverseGarlicRouterTest {
+class ReverseGarlicRouterTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -49,8 +49,8 @@ public class ReverseGarlicRouterTest {
   /** The session tag Alice chose for this conversation's reply path. */
   private byte[] sessionTag;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     hop1 = ServerContext.buildDefaultServerContext();
     hop1.setOutboundService(
         new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
@@ -154,7 +154,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void replyPacket_traversesThreeRelays_andIsDepositedWithSessionTag() throws Exception {
+  void replyPacket_traversesThreeRelays_andIsDepositedWithSessionTag() throws Exception {
     Peer peer1To2 = connect(hop1, hop2, 9501);
     Peer peer2To3 = connect(hop2, hop3, 9502);
 
@@ -187,7 +187,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void untaggedDeliver_keepsWorking_withEmptySessionTag() throws Exception {
+  void untaggedDeliver_keepsWorking_withEmptySessionTag() throws Exception {
     // backward compatibility: an MS04 CMD_DELIVER (no tag) still deposits, tag stays empty
     byte[] payload = "plain ms04 deliver".getBytes(StandardCharsets.UTF_8);
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4 + payload.length);
@@ -209,7 +209,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void replayedReplyPacket_isDroppedByDedup() throws Exception {
+  void replayedReplyPacket_isDroppedByDedup() throws Exception {
     Peer peer1To2 = connect(hop1, hop2, 9521);
     byte[] packet = buildReplyPacket(new byte[16], hop1, hop2, hop3);
 
@@ -225,7 +225,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void taggedDeliverLayer_tooShortForTag_isDroppedSilently() throws Exception {
+  void taggedDeliverLayer_tooShortForTag_isDroppedSilently() throws Exception {
     // CMD_DELIVER_TAGGED needs 1 + 20 + 16 + 4 = 41 plaintext bytes; this layer only carries
     // the untagged minimum (25) and must be dropped without crash or deposit
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4);
@@ -243,7 +243,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void taggedDeliver_invalidPayloadLength_isDropped() throws Exception {
+  void taggedDeliver_invalidPayloadLength_isDropped() throws Exception {
     // payload_len claims more bytes than the plaintext contains — must be rejected
     ByteBuffer deliver =
         ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + FlaschenpostV2.SESSION_TAG_LEN + 4);
@@ -262,7 +262,7 @@ public class ReverseGarlicRouterTest {
   }
 
   @Test
-  public void taggedDeliverForRemoteOh_fallsBackToMs02b_preservingSessionTag() throws Exception {
+  void taggedDeliverForRemoteOh_fallsBackToMs02b_preservingSessionTag() throws Exception {
     // the final return-path hop (hop1) does not host Alice's OH; it must forward a
     // FlaschenpostPut that carries oh_id, payload AND the session tag toward the host node
     byte[] remoteOhId = new byte[KademliaId.ID_LENGTH_BYTES];

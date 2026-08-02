@@ -6,7 +6,7 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for the two {@code oldPeer != null} outcomes of {@code peerList.add(peerOrigin)}
@@ -25,7 +25,7 @@ import org.junit.Test;
  *       connected.
  * </ul>
  */
-public class ConnectionHandlerDuplicateConnectionTest {
+class ConnectionHandlerDuplicateConnectionTest {
 
   static {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
@@ -40,7 +40,7 @@ public class ConnectionHandlerDuplicateConnectionTest {
    * winner.
    */
   @Test
-  public void parallelHandshakeLoserIsDisconnectedAndNotRegistered() throws Exception {
+  void parallelHandshakeLoserIsDisconnectedAndNotRegistered() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -94,8 +94,7 @@ public class ConnectionHandlerDuplicateConnectionTest {
    * setupConnectionForPeer}) and must NOT take the TD020 disconnect path.
    */
   @Test
-  public void reconnectOfSameRegisteredPeerHitsDiagnosticBranchAndStaysConnected()
-      throws Exception {
+  void reconnectOfSameRegisteredPeerHitsDiagnosticBranchAndStaysConnected() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -139,7 +138,7 @@ public class ConnectionHandlerDuplicateConnectionTest {
    * retry, which is what wedged the S4 airplane-mode scenario (154 duplicate lines, no delivery).
    */
   @Test
-  public void reconnectAfterEvictionIsRegisteredInsteadOfDroppedAsDuplicate() throws Exception {
+  void reconnectAfterEvictionIsRegisteredInsteadOfDroppedAsDuplicate() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);

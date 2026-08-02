@@ -10,13 +10,13 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * MS02b: tests for the OH → host-node DHT discovery primitives — deterministic announce-key
  * derivation, fixed-size (padded) records, and validation of resolve results.
  */
-public class OhDhtTest {
+class OhDhtTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -35,7 +35,7 @@ public class OhDhtTest {
   // --- Announce key derivation ---
 
   @Test
-  public void deriveAnnounceNodeId_isDeterministic() {
+  void deriveAnnounceNodeId_isDeterministic() {
     byte[] ohId = randomOhId();
 
     NodeId first = OhDht.deriveAnnounceNodeId(ohId);
@@ -46,7 +46,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void deriveAnnounceNodeId_differsPerOhId() {
+  void deriveAnnounceNodeId_differsPerOhId() {
     NodeId first = OhDht.deriveAnnounceNodeId(randomOhId());
     NodeId second = OhDht.deriveAnnounceNodeId(randomOhId());
 
@@ -54,7 +54,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void deriveAnnounceNodeId_exportsWireCompatiblePublicKeyAndSigns() {
+  void deriveAnnounceNodeId_exportsWireCompatiblePublicKeyAndSigns() {
     NodeId announceId = OhDht.deriveAnnounceNodeId(randomOhId());
 
     // Same public key length as regular NodeIds → fits all existing wire formats
@@ -69,7 +69,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void announceKademliaId_sameForEveryoneKnowingOhId() {
+  void announceKademliaId_sameForEveryoneKnowingOhId() {
     byte[] ohId = randomOhId();
     long timestamp = System.currentTimeMillis();
 
@@ -80,7 +80,7 @@ public class OhDhtTest {
   // --- Announce record building (padding) ---
 
   @Test
-  public void buildAnnounceContent_recordsHaveConstantSize() {
+  void buildAnnounceContent_recordsHaveConstantSize() {
     long now = System.currentTimeMillis();
     int expectedSize = OhDht.RECORD_SIZE_BYTES;
 
@@ -93,7 +93,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void buildAnnounceContent_isSignedAndStoredUnderDerivedKey() {
+  void buildAnnounceContent_isSignedAndStoredUnderDerivedKey() {
     byte[] ohId = randomOhId();
     KademliaId hostNode = randomNodeKadId();
     long now = System.currentTimeMillis();
@@ -108,7 +108,7 @@ public class OhDhtTest {
   // --- Resolve-result validation ---
 
   @Test
-  public void extractValidRecord_returnsRecordWithHostNode() throws Exception {
+  void extractValidRecord_returnsRecordWithHostNode() throws Exception {
     byte[] ohId = randomOhId();
     KademliaId hostNode = randomNodeKadId();
     long now = System.currentTimeMillis();
@@ -122,7 +122,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_picksNewestValidRecord() {
+  void extractValidRecord_picksNewestValidRecord() {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
     KademliaId oldNode = randomNodeKadId();
@@ -140,7 +140,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_rejectsRecordSignedByForeignKey() {
+  void extractValidRecord_rejectsRecordSignedByForeignKey() {
     byte[] ohId = randomOhId();
     byte[] otherOhId = randomOhId();
     long now = System.currentTimeMillis();
@@ -152,7 +152,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_rejectsTamperedOhIdHash() throws Exception {
+  void extractValidRecord_rejectsTamperedOhIdHash() throws Exception {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
@@ -173,7 +173,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_rejectsNonPaddedRecord() {
+  void extractValidRecord_rejectsNonPaddedRecord() {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
@@ -193,7 +193,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_rejectsStaleRecord() {
+  void extractValidRecord_rejectsStaleRecord() {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
@@ -204,7 +204,7 @@ public class OhDhtTest {
   }
 
   @Test
-  public void extractValidRecord_emptyOrNullInput_returnsNull() {
+  void extractValidRecord_emptyOrNullInput_returnsNull() {
     byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 

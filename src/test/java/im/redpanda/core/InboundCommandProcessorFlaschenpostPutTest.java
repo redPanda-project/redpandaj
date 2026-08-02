@@ -1,7 +1,8 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -13,8 +14,8 @@ import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests for the {@code oh_id} routing path introduced in MS01 for {@code FLASCHENPOST_PUT} handling
@@ -24,7 +25,7 @@ import org.junit.Test;
  * explicit-oh_id path introduced in MS02b (rejected/unknown deposits are dropped, opt-in status
  * responses for light clients), and backward compatibility when {@code oh_id} is absent.
  */
-public class InboundCommandProcessorFlaschenpostPutTest {
+class InboundCommandProcessorFlaschenpostPutTest {
 
   private static final int HANDLE_KEY_LENGTH = 32;
   private static final long HANDLE_EXPIRY_MILLIS = 60_000;
@@ -34,8 +35,8 @@ public class InboundCommandProcessorFlaschenpostPutTest {
   private OutboundHandleStore handleStore;
   private OutboundMailboxStore mailboxStore;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     ctx = ServerContext.buildDefaultServerContext();
     handleStore = new OutboundHandleStore();
     mailboxStore = new OutboundMailboxStore();
@@ -75,7 +76,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * into the mailbox and the handler returns early (GMParser is not invoked).
    */
   @Test
-  public void flaschenpostPut_withValidRegisteredOhId_depositsToMailbox() {
+  void flaschenpostPut_withValidRegisteredOhId_depositsToMailbox() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 
@@ -107,7 +108,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * raw client payloads (e.g. encrypted chat payloads) as GarlicMessages.
    */
   @Test
-  public void flaschenpostPut_withOhIdButNoRegisteredOh_isDroppedWithoutLegacyFallthrough() {
+  void flaschenpostPut_withOhIdButNoRegisteredOh_isDroppedWithoutLegacyFallthrough() {
     byte[] ohId = sampleOhId();
     // Intentionally skip registerOh() so depositMessage returns NOT_FOUND
 
@@ -140,7 +141,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * light client with want_response would receive BAD_REQUEST).
    */
   @Test
-  public void flaschenpostPut_withInvalidOhIdLength_isDropped() {
+  void flaschenpostPut_withInvalidOhIdLength_isDropped() {
     byte[] wrongLengthId = new byte[5]; // too short, not ID_LENGTH_BYTES
 
     byte[] rawPayload = new byte[64];
@@ -167,7 +168,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * This ensures backward compatibility with messages that do not carry an explicit {@code oh_id}.
    */
   @Test
-  public void flaschenpostPut_withoutOhId_usesLegacyPathWithoutError() {
+  void flaschenpostPut_withoutOhId_usesLegacyPathWithoutError() {
     // Build GMAck payload with no oh_id field – mimics pre-MS01 behavior
     ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
     ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
@@ -194,7 +195,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * skips direct deposit and falls through to the legacy GMParser path.
    */
   @Test
-  public void flaschenpostPut_withOhIdButNullOutboundService_fallsThroughToLegacy() {
+  void flaschenpostPut_withOhIdButNullOutboundService_fallsThroughToLegacy() {
     // Build a ServerContext without OutboundService
     ServerContext noServiceCtx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor noServiceProc = new InboundCommandProcessor(noServiceCtx);
@@ -226,7 +227,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * rather than being newly rejected as if oh_id were absent.
    */
   @Test
-  public void flaschenpostPut_withOhIdButNullOutboundService_invalidContentIsNotRejected() {
+  void flaschenpostPut_withOhIdButNullOutboundService_invalidContentIsNotRejected() {
     ServerContext noServiceCtx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor noServiceProc = new InboundCommandProcessor(noServiceCtx);
 
@@ -263,7 +264,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * matches a registered OH, {@code tryDepositToLocalOh} deposits the message and returns early.
    */
   @Test
-  public void flaschenpostPut_legacyPathDepositsViaGarlicMessageDestination() {
+  void flaschenpostPut_legacyPathDepositsViaGarlicMessageDestination() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 
@@ -303,7 +304,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * the valid ACK payload. This exercises the {@code content.length < headerLen} guard.
    */
   @Test
-  public void flaschenpostPut_withContentShorterThanGarlicHeader_tryDepositReturnsFalse() {
+  void flaschenpostPut_withContentShorterThanGarlicHeader_tryDepositReturnsFalse() {
     // ACK payload is 9 bytes, shorter than GarlicMessage header (25 bytes)
     byte[] ackBytes = buildAckPayload(33);
 
@@ -324,7 +325,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * dropped on the explicit path.
    */
   @Test
-  public void flaschenpostPut_withExpiredOhHandle_isDropped() {
+  void flaschenpostPut_withExpiredOhHandle_isDropped() {
     byte[] ohId = sampleOhId();
     // Register with an already-expired handle
     long now = System.currentTimeMillis();
@@ -357,7 +358,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * ordering.
    */
   @Test
-  public void flaschenpostPut_multipleDepositsToSameOh_allStored() {
+  void flaschenpostPut_multipleDepositsToSameOh_allStored() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 
@@ -393,7 +394,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * falls through to the legacy path.
    */
   @Test
-  public void flaschenpostPut_withEmptyOhId_usesLegacyPath() {
+  void flaschenpostPut_withEmptyOhId_usesLegacyPath() {
     byte[] ackBytes = buildAckPayload(88);
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
@@ -420,7 +421,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * consume the frame regardless.
    */
   @Test
-  public void flaschenpostPut_emptyOhIdWithEncryptedAckLikePayload_isDroppedWithoutThrowing() {
+  void flaschenpostPut_emptyOhIdWithEncryptedAckLikePayload_isDroppedWithoutThrowing() {
     byte[] encryptedPayload = new byte[48];
     encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
     for (int i = 1; i < encryptedPayload.length; i++) {
@@ -449,7 +450,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * silence, so it learns the deposit failed rather than retrying blindly for hours.
    */
   @Test
-  public void flaschenpostPut_emptyOhIdWithInvalidContent_lightClientWantResponse_getsBadRequest() {
+  void flaschenpostPut_emptyOhIdWithInvalidContent_lightClientWantResponse_getsBadRequest() {
     byte[] encryptedPayload = new byte[48];
     encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
     for (int i = 1; i < encryptedPayload.length; i++) {
@@ -494,7 +495,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * content triggers the new pre-check.
    */
   @Test
-  public void flaschenpostPut_emptyOhIdWithValidAck_isNotRejected() {
+  void flaschenpostPut_emptyOhIdWithValidAck_isNotRejected() {
     byte[] ackBytes = buildAckPayload(123);
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
@@ -522,7 +523,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
 
   /** Light client with want_response gets an OK FlaschenpostPutResponse on successful deposit. */
   @Test
-  public void flaschenpostPut_lightClientWantResponse_receivesOkStatus() {
+  void flaschenpostPut_lightClientWantResponse_receivesOkStatus() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 
@@ -536,7 +537,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * host node was accepted (MS02b best-effort forwarding).
    */
   @Test
-  public void flaschenpostPut_lightClientWantResponse_unknownOhAcceptedForForwarding() {
+  void flaschenpostPut_lightClientWantResponse_unknownOhAcceptedForForwarding() {
     byte[] ohId = sampleOhId(); // not registered
 
     im.redpanda.outbound.v1.FlaschenpostPutResponse res =
@@ -549,7 +550,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
    * being forwarded through the network only to be rejected by the host node.
    */
   @Test
-  public void flaschenpostPut_oversizedPayloadToUnknownOh_isRejectedNotForwarded() {
+  void flaschenpostPut_oversizedPayloadToUnknownOh_isRejectedNotForwarded() {
     byte[] ohId = sampleOhId(); // not registered
     byte[] oversized = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
 
@@ -560,7 +561,7 @@ public class InboundCommandProcessorFlaschenpostPutTest {
 
   /** At the hop limit an unknown OH is NOT forwarded again — the client sees NOT_FOUND. */
   @Test
-  public void flaschenpostPut_lightClientWantResponse_unknownOhAtHopLimitIsNotFound() {
+  void flaschenpostPut_lightClientWantResponse_unknownOhAtHopLimitIsNotFound() {
     byte[] ohId = sampleOhId(); // not registered
 
     FlaschenpostPut putMsg =
@@ -596,18 +597,18 @@ public class InboundCommandProcessorFlaschenpostPutTest {
 
   /** Full nodes never receive command 158, even if they set want_response. */
   @Test
-  public void flaschenpostPut_fullNodeWantResponse_receivesNoResponse() {
+  void flaschenpostPut_fullNodeWantResponse_receivesNoResponse() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     Peer peer = depositWithPeer(ohId, new byte[16], true, false);
     assertEquals(
-        "no response bytes must be written for full nodes", 0, peer.writeBuffer.position());
+        0, peer.writeBuffer.position(), "no response bytes must be written for full nodes");
   }
 
   /** Light clients that do not set want_response keep the fire-and-forget behavior. */
   @Test
-  public void flaschenpostPut_lightClientWithoutWantResponse_receivesNoResponse() {
+  void flaschenpostPut_lightClientWithoutWantResponse_receivesNoResponse() {
     byte[] ohId = sampleOhId();
     registerOh(ohId);
 

@@ -1,20 +1,20 @@
 package im.redpanda.flaschenpost;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class FlaschenpostTest {
+class FlaschenpostTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void simpleTargetTest() {
+  void simpleTargetTest() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());

@@ -1,15 +1,15 @@
 package im.redpanda.docs;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class ProtocolStep07OperationalNotesDocsTest {
+class ProtocolStep07OperationalNotesDocsTest {
 
   @Test
-  public void documentationExistsAndStatesKeypoints() throws Exception {
+  void documentationExistsAndStatesKeypoints() throws Exception {
     Path doc = Path.of("docs/protocol/07-operational-notes.md");
     String text = Files.readString(doc);
     assertTrue(text.contains("Title: Operational Notes"));

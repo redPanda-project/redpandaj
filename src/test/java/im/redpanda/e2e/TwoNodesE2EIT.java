@@ -1,10 +1,11 @@
 package im.redpanda.e2e;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.testutil.TestNodeProcess;
+import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -14,18 +15,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class TwoNodesE2EIT {
 
-  @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
+  @TempDir public File temporaryFolder;
 
   @Test
-  public void nodesStartLogCleanlyAndShutDown() throws Exception {
-    Path nodeADir = temporaryFolder.newFolder("nodeA").toPath();
-    Path nodeBDir = temporaryFolder.newFolder("nodeB").toPath();
+  void nodesStartLogCleanlyAndShutDown() throws Exception {
+    Path nodeADir = newFolder(temporaryFolder, "nodeA").toPath();
+    Path nodeBDir = newFolder(temporaryFolder, "nodeB").toPath();
 
     int portA = nextFreePort();
     int portB = nextFreePort();
@@ -33,8 +33,8 @@ public class TwoNodesE2EIT {
     try (TestNodeProcess nodeA = TestNodeProcess.start(nodeADir, portA, "", 0);
         TestNodeProcess nodeB = TestNodeProcess.start(nodeBDir, portB, "", 0)) {
 
-      assertTrue("Node A failed to announce readiness", nodeA.awaitReady(Duration.ofSeconds(30)));
-      assertTrue("Node B failed to announce readiness", nodeB.awaitReady(Duration.ofSeconds(30)));
+      assertTrue(nodeA.awaitReady(Duration.ofSeconds(30)), "Node A failed to announce readiness");
+      assertTrue(nodeB.awaitReady(Duration.ofSeconds(30)), "Node B failed to announce readiness");
 
       CountDownLatch pause = new CountDownLatch(1);
       pause.await(2, TimeUnit.SECONDS);
@@ -54,8 +54,8 @@ public class TwoNodesE2EIT {
         Files.writeString(logDir.resolve("nodeB.log"), nodeBOutput);
       }
 
-      assertEquals("Node A exit code\n" + nodeAOutput, 0, nodeA.exitCode());
-      assertEquals("Node B exit code\n" + nodeBOutput, 0, nodeB.exitCode());
+      assertEquals(0, nodeA.exitCode(), "Node A exit code\n" + nodeAOutput);
+      assertEquals(0, nodeB.exitCode(), "Node B exit code\n" + nodeBOutput);
 
       assertNoUnexpectedLogIssues("nodeA", nodeA.getCombinedOutput());
       assertNoUnexpectedLogIssues("nodeB", nodeB.getCombinedOutput());
@@ -97,5 +97,14 @@ public class TwoNodesE2EIT {
       socket.setReuseAddress(true);
       return socket.getLocalPort();
     }
+  }
+
+  private static File newFolder(File root, String... subDirs) throws IOException {
+    String subFolder = String.join("/", subDirs);
+    File result = new File(root, subFolder);
+    if (!result.mkdirs()) {
+      throw new IOException("Couldn't create folders " + root);
+    }
+    return result;
   }
 }

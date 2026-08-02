@@ -16,8 +16,8 @@ import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * T43 acceptance: a garlic-wrapped {@code CMD_RECORD_STORE} stores a channel-rendezvous record in
@@ -26,7 +26,7 @@ import org.junit.Test;
  * return path so the answer is deposited locally and deterministically, mirroring the MS06 R-ACK
  * router test. Also covers the not-found answer and that an invalid record is not stored.
  */
-public class RecordDhtRouterTest {
+class RecordDhtRouterTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -36,8 +36,8 @@ public class RecordDhtRouterTest {
   private byte[] ackOhId;
   private byte[] ackSessionTag;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     node = ServerContext.buildDefaultServerContext();
     handles = new OutboundHandleStore();
     mailbox = new OutboundMailboxStore();
@@ -103,7 +103,7 @@ public class RecordDhtRouterTest {
   }
 
   @Test
-  public void storeThenLookup_roundTripsRecordBackThroughReturnPath() throws Exception {
+  void storeThenLookup_roundTripsRecordBackThroughReturnPath() throws Exception {
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
     byte[] content = randomBytes(ChannelDht.RECORD_SIZE_BYTES);
@@ -136,7 +136,7 @@ public class RecordDhtRouterTest {
   }
 
   @Test
-  public void lookup_unknownKey_returnsNotFound() throws Exception {
+  void lookup_unknownKey_returnsNotFound() throws Exception {
     KademliaId unknown =
         ChannelDht.rendezvousKademliaId(randomChannelSecret(), System.currentTimeMillis());
 
@@ -166,7 +166,7 @@ public class RecordDhtRouterTest {
   }
 
   @Test
-  public void lookup_rateLimitExhausted_dropsWithoutSearching() throws Exception {
+  void lookup_rateLimitExhausted_dropsWithoutSearching() throws Exception {
     // Swap in a 1-token bucket with a refill interval far longer than the lookup job's own
     // anti-profiling jitter (up to 1.5 s, see RecordLookupJob.LOOKUP_DELAY_JITTER_MS) so the second
     // call is deterministically over budget regardless of how long the first answer takes.
@@ -201,7 +201,7 @@ public class RecordDhtRouterTest {
   }
 
   @Test
-  public void store_invalidRecord_isNotStored() throws Exception {
+  void store_invalidRecord_isNotStored() throws Exception {
     // A record whose content is not padded to the fixed bucket size must be rejected by the node.
     byte[] secret = randomChannelSecret();
     long now = System.currentTimeMillis();
@@ -218,7 +218,7 @@ public class RecordDhtRouterTest {
   }
 
   @Test
-  public void sizeMismatchWarn_isThrottledToOnePerInterval() {
+  void sizeMismatchWarn_isThrottledToOnePerInterval() {
     // TD022: the size-mismatch drop is the one validation failure logged at WARN (protocol version
     // skew), and since anyone can send cheap wrong-size garbage the WARN must be bounded. The
     // throttle state is a process-global singleton, so probe it with synthetic timestamps far in

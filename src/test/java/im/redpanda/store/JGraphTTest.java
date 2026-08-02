@@ -1,6 +1,6 @@
 package im.redpanda.store;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import im.redpanda.core.KademliaId;
 import java.util.ArrayList;
@@ -9,12 +9,12 @@ import java.util.Set;
 import java.util.function.Supplier;
 import org.jgrapht.graph.DefaultEdge;
 import org.jgrapht.graph.SimpleWeightedGraph;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class JGraphTTest {
+class JGraphTTest {
 
   @Test
-  public void testBasicGraphBehavior() {
+  void basicGraphBehavior() {
 
     SimpleWeightedGraph<KademliaId, DefaultEdge> g =
         new SimpleWeightedGraph<KademliaId, DefaultEdge>(DefaultEdge.class);

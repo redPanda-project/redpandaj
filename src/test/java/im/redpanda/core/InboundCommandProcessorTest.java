@@ -1,24 +1,28 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGetAnswer;
 import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
-public class InboundCommandProcessorTest {
+class InboundCommandProcessorTest {
 
   private InboundCommandProcessor newProcessor(ServerContext ctx) {
     return new InboundCommandProcessor(ctx);
   }
 
   @Test
-  public void parseCommand_ping_writesPong() {
+  void parseCommand_ping_writesPong() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor proc = newProcessor(ctx);
 
@@ -39,7 +43,7 @@ public class InboundCommandProcessorTest {
   }
 
   @Test
-  public void parseCommand_pong_updatesMetrics() {
+  void parseCommand_pong_updatesMetrics() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor proc = newProcessor(ctx);
 
@@ -58,7 +62,7 @@ public class InboundCommandProcessorTest {
   }
 
   @Test
-  public void parseCommand_kademliaGetAnswer_consumesExpectedLength() {
+  void parseCommand_kademliaGetAnswer_consumesExpectedLength() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor proc = newProcessor(ctx);
 
@@ -100,7 +104,7 @@ public class InboundCommandProcessorTest {
   }
 
   @Test
-  public void parseCommand_kademliaStore_savesAndAcks() {
+  void parseCommand_kademliaStore_savesAndAcks() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor proc = newProcessor(ctx);
 
@@ -141,32 +145,31 @@ public class InboundCommandProcessorTest {
     int consumed = proc.parseCommand(Command.KADEMLIA_STORE, buf, peer);
 
     // Verify consumed bytes
-    org.junit.Assert.assertEquals(1 + 4 + payload.length, consumed);
+    assertEquals(1 + 4 + payload.length, consumed);
 
     // Verify content is stored
     KadContent stored = ctx.getKadStoreManager().get(kadContent.getId());
-    org.junit.Assert.assertNotNull(stored);
+    assertNotNull(stored);
 
     // Verify ACK written
     peer.writeBuffer.flip();
-    org.junit.Assert.assertTrue(peer.writeBuffer.remaining() >= 1 + 4);
-    org.junit.Assert.assertEquals(Command.JOB_ACK, peer.writeBuffer.get());
+    assertTrue(peer.writeBuffer.remaining() >= 1 + 4);
+    assertEquals(Command.JOB_ACK, peer.writeBuffer.get());
 
     int ackLen = peer.writeBuffer.getInt();
     byte[] ackBytes = new byte[ackLen];
     peer.writeBuffer.get(ackBytes);
 
-    try {
-      JobAck ackProto = JobAck.parseFrom(ackBytes);
-      org.junit.Assert.assertEquals(jobId, ackProto.getJobId());
-    } catch (InvalidProtocolBufferException e) {
-      org.junit.Assert.fail("Failed to parse ACK protobuf: " + e.getMessage());
-    }
+    Assertions.assertDoesNotThrow(
+        () -> {
+          JobAck ackProto = JobAck.parseFrom(ackBytes);
+          assertEquals(jobId, ackProto.getJobId());
+        },
+        "Failed to parse ACK protobuf: ");
   }
 
   @Test
-  public void parseCommand_requestPeerList_skipsPeerWithNullIp()
-      throws InvalidProtocolBufferException {
+  void parseCommand_requestPeerList_skipsPeerWithNullIp() throws Exception {
     ServerContext ctx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor proc = newProcessor(ctx);
 
@@ -202,13 +205,12 @@ public class InboundCommandProcessorTest {
     for (im.redpanda.proto.PeerInfoProto p : sendPeerList.getPeersList()) {
       if (p.getPort() == 22222) foundInvalid = true;
     }
-    assertFalse("Peer with null IP should be skipped", foundInvalid);
+    assertFalse(foundInvalid, "Peer with null IP should be skipped");
     assertTrue(sendPeerList.getPeersCount() >= 1);
   }
 
   @Test
-  public void parseCommand_requestPeerList_includesEncryptionPublicKey()
-      throws InvalidProtocolBufferException {
+  void parseCommand_requestPeerList_includesEncryptionPublicKey() throws Exception {
     // MS04: peers with a known NodeId must expose their X25519 encryption public key so
     // clients can select garlic hops
     ServerContext ctx = ServerContext.buildDefaultServerContext();
@@ -235,11 +237,11 @@ public class InboundCommandProcessorTest {
     for (im.redpanda.proto.PeerInfoProto p : sendPeerList.getPeersList()) {
       if (p.getPort() == 44444) {
         found = true;
-        org.junit.Assert.assertArrayEquals(
+        assertArrayEquals(
             knownNodeId.getEncryptionPubKey().getEncoded(),
             p.getEncryptionPublicKey().toByteArray());
       }
     }
-    assertTrue("peer with known NodeId must be in the list", found);
+    assertTrue(found, "peer with known NodeId must be in the list");
   }
 }

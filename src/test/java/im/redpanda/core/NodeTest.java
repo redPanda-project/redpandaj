@@ -1,19 +1,20 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.store.NodeStore;
 import java.security.Security;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class NodeTest {
+class NodeTest {
 
   static {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
   @Test
-  public void getByKademliaId() {
+  void getByKademliaId() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     NodeStore nodeStore = serverContext.getNodeStore();
 
@@ -28,10 +29,10 @@ public class NodeTest {
 
     assertTrue(byKademliaId != null);
 
-    assertTrue(byKademliaId.getNodeId().getKademliaId().equals(kademliaId));
+    assertEquals(byKademliaId.getNodeId().getKademliaId(), kademliaId);
 
     assertTrue(byKademliaId.getNodeId().hasPrivate());
 
-    assertTrue(nodeStore.size() - size == 1);
+    assertEquals(1, nodeStore.size() - size);
   }
 }

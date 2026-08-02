@@ -1,10 +1,10 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
@@ -12,9 +12,9 @@ import im.redpanda.proto.SendPeerList;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Pins the plausibility filter on the peer-list gossip path (T86).
@@ -30,7 +30,7 @@ import org.junit.Test;
  * {@code 10.0.2.2}), hence the "who advertises what" rule rather than a blanket ban — the {@code
  * fromLoopbackPeer} cases below are what guards that.
  */
-public class InboundCommandProcessorPeerListFilterTest {
+class InboundCommandProcessorPeerListFilterTest {
 
   private static final String PUBLIC_PEER_IP = "84.147.60.253";
   private static final String LOOPBACK_PEER_IP = "127.0.0.1";
@@ -39,8 +39,8 @@ public class InboundCommandProcessorPeerListFilterTest {
   private InboundCommandProcessor proc;
   private int originalMaxPeerListSize;
 
-  @Before
-  public void setup() {
+  @BeforeEach
+  void setup() {
     ctx = ServerContext.buildDefaultServerContext();
     ctx.setPort(59558);
     proc = new InboundCommandProcessor(ctx);
@@ -48,13 +48,13 @@ public class InboundCommandProcessorPeerListFilterTest {
     originalMaxPeerListSize = Settings.MAX_PEERLIST_SIZE;
   }
 
-  @After
-  public void tearDown() {
+  @AfterEach
+  void tearDown() {
     Settings.MAX_PEERLIST_SIZE = originalMaxPeerListSize;
   }
 
   @Test
-  public void gossipFromPublicPeer_dropsLoopbackPrivateAndPortlessEntries() {
+  void gossipFromPublicPeer_dropsLoopbackPrivateAndPortlessEntries() {
     Peer advertiser = connectedPeer(PUBLIC_PEER_IP, 59558);
 
     gossip(
@@ -84,7 +84,7 @@ public class InboundCommandProcessorPeerListFilterTest {
 
   /** The loopback e2e topology: nodes on 127.0.0.1 must keep discovering each other. */
   @Test
-  public void gossipFromLoopbackPeer_keepsLoopbackAndPrivateEntries() {
+  void gossipFromLoopbackPeer_keepsLoopbackAndPrivateEntries() {
     Peer advertiser = connectedPeer(LOOPBACK_PEER_IP, 59559);
 
     gossip(
@@ -109,7 +109,7 @@ public class InboundCommandProcessorPeerListFilterTest {
    * #configuredSeedsMayStillUseHostNames()}).
    */
   @Test
-  public void gossipedHostNames_areDropped() {
+  void gossipedHostNames_areDropped() {
     Peer advertiser = connectedPeer(PUBLIC_PEER_IP, 59558);
 
     gossip(
@@ -128,17 +128,17 @@ public class InboundCommandProcessorPeerListFilterTest {
   }
 
   @Test
-  public void gossipedHostNames_areDroppedFromALoopbackPeerToo() {
+  void gossipedHostNames_areDroppedFromALoopbackPeerToo() {
     Peer advertiser = connectedPeer(LOOPBACK_PEER_IP, 59559);
 
     gossip(advertiser, entry("localhost", 59560), entry("127.0.0.1", 59560));
 
-    assertFalse("a name is untrusted no matter who sends it", contains("localhost", 59560));
-    assertTrue("the literal the e2e topology exchanges still works", contains("127.0.0.1", 59560));
+    assertFalse(contains("localhost", 59560), "a name is untrusted no matter who sends it");
+    assertTrue(contains("127.0.0.1", 59560), "the literal the e2e topology exchanges still works");
   }
 
   @Test
-  public void weDoNotAdvertiseHostNames() {
+  void weDoNotAdvertiseHostNames() {
     ctx.getPeerList().add(connectedPeer("redpanda.im", 59559)); // as reseeding creates it
     ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));
 
@@ -147,16 +147,16 @@ public class InboundCommandProcessorPeerListFilterTest {
 
   /** Operator input is trusted and must keep working — the default seed list ships a name. */
   @Test
-  public void configuredSeedsMayStillUseHostNames() {
+  void configuredSeedsMayStillUseHostNames() {
     assertArrayEquals(
         new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
     assertTrue(
-        "the default seed list must keep its host name entry",
-        List.of(Settings.parseKnownNodes(null)).contains("redpanda.im:59559"));
+        List.of(Settings.parseKnownNodes(null)).contains("redpanda.im:59559"),
+        "the default seed list must keep its host name entry");
   }
 
   @Test
-  public void gossipedEntryPointingBackAtUs_isDropped() {
+  void gossipedEntryPointingBackAtUs_isDropped() {
     // even a loopback peer may not make us dial our own listening address
     Peer advertiser = connectedPeer(LOOPBACK_PEER_IP, 59559);
 
@@ -167,7 +167,7 @@ public class InboundCommandProcessorPeerListFilterTest {
   }
 
   @Test
-  public void gossipWithIdentity_isFilteredTheSameWay() {
+  void gossipWithIdentity_isFilteredTheSameWay() {
     Peer advertiser = connectedPeer(PUBLIC_PEER_IP, 59558);
     NodeId loopbackNode = NodeId.generateWithSimpleKey();
     NodeId publicNode = NodeId.generateWithSimpleKey();
@@ -182,7 +182,7 @@ public class InboundCommandProcessorPeerListFilterTest {
   }
 
   @Test
-  public void gossipStopsAtThePeerListBound() {
+  void gossipStopsAtThePeerListBound() {
     Peer advertiser = connectedPeer(LOOPBACK_PEER_IP, 59559);
     Settings.MAX_PEERLIST_SIZE = ctx.getPeerList().size() + 3;
 
@@ -196,7 +196,7 @@ public class InboundCommandProcessorPeerListFilterTest {
   }
 
   @Test
-  public void weDoNotAdvertiseLocalAddressesToAPublicPeer() {
+  void weDoNotAdvertiseLocalAddressesToAPublicPeer() {
     ctx.getPeerList().add(connectedPeer("127.0.0.1", 59560));
     ctx.getPeerList().add(connectedPeer("192.168.1.5", 59558));
     ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));
@@ -208,7 +208,7 @@ public class InboundCommandProcessorPeerListFilterTest {
   }
 
   @Test
-  public void weStillAdvertiseLocalAddressesToALoopbackPeer() {
+  void weStillAdvertiseLocalAddressesToALoopbackPeer() {
     ctx.getPeerList().add(connectedPeer("127.0.0.1", 59560));
     ctx.getPeerList().add(connectedPeer("192.168.1.5", 59558));
     ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));

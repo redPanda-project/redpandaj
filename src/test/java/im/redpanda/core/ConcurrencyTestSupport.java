@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -64,7 +64,7 @@ public final class ConcurrencyTestSupport {
                 action.run();
               });
       assertTrue(
-          "probe thread never started", started.await(MUST_FINISH_SECONDS, TimeUnit.SECONDS));
+          started.await(MUST_FINISH_SECONDS, TimeUnit.SECONDS), "probe thread never started");
 
       try {
         probe.get(MUST_STAY_BLOCKED_MS, TimeUnit.MILLISECONDS);

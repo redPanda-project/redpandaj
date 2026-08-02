@@ -1,9 +1,9 @@
 package im.redpanda.e2e;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.GcmFramedStreams;
@@ -12,6 +12,7 @@ import im.redpanda.core.PeerInHandshake;
 import im.redpanda.crypt.CryptoUtils;
 import im.redpanda.testutil.TestNodeProcess;
 import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -26,9 +27,8 @@ import java.time.Duration;
 import java.util.Arrays;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
 import org.bouncycastle.crypto.params.X25519PublicKeyParameters;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * MS03 acceptance: real TCP handshakes against a running node.
@@ -49,15 +49,15 @@ public class HandshakeVersionsE2EIT {
     java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
   }
 
-  @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
+  @TempDir public File temporaryFolder;
 
   @Test
-  public void v23LightClientHandshakeWithFramedGcmAndTamperDetection() throws Exception {
-    Path nodeDir = temporaryFolder.newFolder("nodeV23").toPath();
+  void v23LightClientHandshakeWithFramedGcmAndTamperDetection() throws Exception {
+    Path nodeDir = newFolder(temporaryFolder, "nodeV23").toPath();
     int port = nextFreePort();
 
     try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
-      assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
+      assertTrue(node.awaitReady(Duration.ofSeconds(30)), "node failed to start");
 
       // 1. happy path: handshake + encrypted ping/pong
       try (V23Client client = V23Client.connect(port)) {
@@ -83,7 +83,7 @@ public class HandshakeVersionsE2EIT {
         LightClientBase.pause();
 
         client.sendTamperedFrame(new byte[] {Command.PING});
-        assertTrue("node must disconnect after a tampered frame", client.awaitDisconnect(10_000));
+        assertTrue(client.awaitDisconnect(10_000), "node must disconnect after a tampered frame");
       }
 
       node.stop(Duration.ofSeconds(10));
@@ -99,12 +99,12 @@ public class HandshakeVersionsE2EIT {
    * (expected counter 0)".
    */
   @Test
-  public void v23HandshakeSurvivesCoalescedActivateEncryptionAndFirstFrame() throws Exception {
-    Path nodeDir = temporaryFolder.newFolder("nodeV23Coalesced").toPath();
+  void v23HandshakeSurvivesCoalescedActivateEncryptionAndFirstFrame() throws Exception {
+    Path nodeDir = newFolder(temporaryFolder, "nodeV23Coalesced").toPath();
     int port = nextFreePort();
 
     try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
-      assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
+      assertTrue(node.awaitReady(Duration.ofSeconds(30)), "node failed to start");
 
       try (V23Client client = V23Client.connectWithCoalescedFirstFrame(port)) {
         // the node sends its own initial ping as soon as it activates encryption, regardless of
@@ -117,10 +117,10 @@ public class HandshakeVersionsE2EIT {
         // (the node cancelled the connection after the "unexpected GCM frame nonce" exception).
         client.sendEncrypted(new byte[] {Command.PING});
         assertEquals(
-            "node must complete the handshake and answer a ping even when ACTIVATE_ENCRYPTION and"
-                + " the first GCM frame were coalesced into one read()",
             Command.PONG,
-            client.readEncryptedCommand());
+            client.readEncryptedCommand(),
+            "node must complete the handshake and answer a ping even when ACTIVATE_ENCRYPTION and"
+                + " the first GCM frame were coalesced into one read()");
       }
 
       node.stop(Duration.ofSeconds(10));
@@ -128,12 +128,12 @@ public class HandshakeVersionsE2EIT {
   }
 
   @Test
-  public void v22LegacyLightClientIsRejectedAfterShutdown() throws Exception {
-    Path nodeDir = temporaryFolder.newFolder("nodeV22").toPath();
+  void v22LegacyLightClientIsRejectedAfterShutdown() throws Exception {
+    Path nodeDir = newFolder(temporaryFolder, "nodeV22").toPath();
     int port = nextFreePort();
 
     try (TestNodeProcess node = TestNodeProcess.start(nodeDir, port, "", 0)) {
-      assertTrue("node failed to start", node.awaitReady(Duration.ofSeconds(30)));
+      assertTrue(node.awaitReady(Duration.ofSeconds(30)), "node failed to start");
 
       // startup logs a benign FileNotFoundException for the not-yet-existing localSettings —
       // only the output produced by the reject itself must be exception-free (stdout and stderr
@@ -167,8 +167,10 @@ public class HandshakeVersionsE2EIT {
           // a TCP reset is also a disconnect
         }
         assertTrue(
-            "node must not proceed past its own handshake, but sent " + bytesBeforeClose + " bytes",
-            bytesBeforeClose <= 30);
+            bytesBeforeClose <= 30,
+            "node must not proceed past its own handshake, but sent "
+                + bytesBeforeClose
+                + " bytes");
       }
 
       // the pipe reader may lag slightly behind the socket close — poll for the counter line
@@ -184,14 +186,14 @@ public class HandshakeVersionsE2EIT {
         Thread.sleep(200);
       }
       assertTrue(
-          "expected the rejected-v22 counter log line, got:\n" + rejectLog,
-          rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1"));
+          rejectLog.contains("rejected legacy v22 light client handshake, total rejected: 1"),
+          "expected the rejected-v22 counter log line, got:\n" + rejectLog);
       assertFalse(
-          "the reject must not cause a server exception:\n" + rejectLog,
-          rejectLog.contains("Exception"));
+          rejectLog.contains("Exception"),
+          "the reject must not cause a server exception:\n" + rejectLog);
 
       node.stop(Duration.ofSeconds(10));
-      assertEquals("node exit code\n" + node.getCombinedOutput(), 0, node.exitCode());
+      assertEquals(0, node.exitCode(), "node exit code\n" + node.getCombinedOutput());
     }
   }
 
@@ -446,5 +448,14 @@ public class HandshakeVersionsE2EIT {
       out.write(bytes);
       out.flush();
     }
+  }
+
+  private static File newFolder(File root, String... subDirs) throws IOException {
+    String subFolder = String.join("/", subDirs);
+    File result = new File(root, subFolder);
+    if (!result.mkdirs()) {
+      throw new IOException("Couldn't create folders " + root);
+    }
+    return result;
   }
 }

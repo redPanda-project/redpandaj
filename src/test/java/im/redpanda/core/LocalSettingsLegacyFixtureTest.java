@@ -1,12 +1,12 @@
 package im.redpanda.core;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.nio.charset.StandardCharsets;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Guards the on-disk compatibility of pre-v22-removal {@code localSettings*.dat} files (sdd02 phase
@@ -20,26 +20,26 @@ import org.junit.Test;
  * back to FRESH settings and every deployed node would lose its identity (Kademlia standing, update
  * timestamps, node graph) on the next restart. This test failing means: do not ship.
  */
-public class LocalSettingsLegacyFixtureTest {
+class LocalSettingsLegacyFixtureTest {
 
   @Test
-  public void load_datWithLegacyIdentity_preservesNodeIdentity() throws Exception {
+  void load_datWithLegacyIdentity_preservesNodeIdentity() throws Exception {
     final String expectedIdentity;
     try (InputStream in =
         getClass().getResourceAsStream("/fixtures/localSettings_v22era.identity")) {
-      assertNotNull("identity fixture missing", in);
+      assertNotNull(in, "identity fixture missing");
       expectedIdentity = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
     }
 
     final InputStream raw = getClass().getResourceAsStream("/fixtures/localSettings_v22era.dat");
-    assertNotNull("settings fixture missing", raw);
+    assertNotNull(raw, "settings fixture missing");
     try (raw;
         ObjectInputStream in = new ObjectInputStream(raw)) {
       LocalSettings settings = (LocalSettings) in.readObject();
       assertEquals(
-          "node identity must survive deserialization of a pre-removal settings file",
           expectedIdentity,
-          settings.getMyIdentity().getKademliaId().toString());
+          settings.getMyIdentity().getKademliaId().toString(),
+          "node identity must survive deserialization of a pre-removal settings file");
     }
   }
 }

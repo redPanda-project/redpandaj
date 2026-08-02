@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.nio.ByteBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression tests for L4 (bug hunt 2026-07-26): the update-distribution runnables dereferenced
@@ -14,10 +14,10 @@ import org.junit.Test;
  * no Sentry. Two of the sites additionally did {@code lock(); put(); unlock();} without a {@code
  * finally}, so the NPE left {@code writeBufferLock} locked forever.
  */
-public class InboundCommandProcessorUpdateDisconnectTest {
+class InboundCommandProcessorUpdateDisconnectTest {
 
   @Test
-  public void requestUpdateContent_abortsCleanlyWhenThePeerDisconnected() {
+  void requestUpdateContent_abortsCleanlyWhenThePeerDisconnected() {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = null; // what disconnect() leaves behind
 
@@ -29,7 +29,7 @@ public class InboundCommandProcessorUpdateDisconnectTest {
   }
 
   @Test
-  public void requestUpdateContent_writesTheCommandWhenConnected() {
+  void requestUpdateContent_writesTheCommandWhenConnected() {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = ByteBuffer.allocate(64);
 
@@ -42,7 +42,7 @@ public class InboundCommandProcessorUpdateDisconnectTest {
   }
 
   @Test
-  public void appendToWriteBuffer_abortsCleanlyWhenThePeerDisconnected() {
+  void appendToWriteBuffer_abortsCleanlyWhenThePeerDisconnected() {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = null;
 
@@ -55,7 +55,7 @@ public class InboundCommandProcessorUpdateDisconnectTest {
   }
 
   @Test
-  public void appendToWriteBuffer_growsTheBufferWhenTheFrameDoesNotFit() {
+  void appendToWriteBuffer_growsTheBufferWhenTheFrameDoesNotFit() {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = ByteBuffer.allocate(4);
 
@@ -71,7 +71,7 @@ public class InboundCommandProcessorUpdateDisconnectTest {
 
   /** An unchecked failure in a submitted update task must be reported, not swallowed. */
   @Test
-  public void reporting_absorbsAndReportsUncheckedExceptions() {
+  void reporting_absorbsAndReportsUncheckedExceptions() {
     Runnable wrapped =
         InboundCommandProcessor.reporting(
             "unit-test",
@@ -84,7 +84,7 @@ public class InboundCommandProcessorUpdateDisconnectTest {
 
   /** Errors stay fatal — they are reported and rethrown. */
   @Test
-  public void reporting_rethrowsErrors() {
+  void reporting_rethrowsErrors() {
     Runnable wrapped =
         InboundCommandProcessor.reporting(
             "unit-test",

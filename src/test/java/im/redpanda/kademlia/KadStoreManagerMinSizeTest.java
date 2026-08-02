@@ -6,37 +6,37 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import java.lang.reflect.Field;
 import java.util.Map;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression test for L6 (bug hunt 2026-07-26): {@code MIN_SIZE} was declared as {@code 1024 * 1024
  * * 10 * 0}, so the periodic entry-eviction sweep was gated on {@code size > 0} and ran on every
  * put (throttled to ~10 s) instead of only once the store exceeds 10 MB.
  */
-public class KadStoreManagerMinSizeTest {
+class KadStoreManagerMinSizeTest {
 
   private static final long ONE_DAY_MS = 1000L * 60L * 60L * 24L;
 
   private ServerContext serverContext;
   private KadStoreManager kadStoreManager;
 
-  @Before
-  public void setUp() throws Exception {
+  @BeforeEach
+  void setUp() throws Exception {
     serverContext = ServerContext.buildDefaultServerContext();
     kadStoreManager = new KadStoreManager(serverContext);
     resetStore();
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @AfterEach
+  void tearDown() throws Exception {
     resetStore();
   }
 
   /** Below the threshold the sweep must not run, so even a long-expired entry survives a put. */
   @Test
-  public void put_doesNotSweepWhileStoreIsBelowMinSize() throws Exception {
+  void put_doesNotSweepWhileStoreIsBelowMinSize() throws Exception {
     KadContent ancient = storeDirectly(100L * ONE_DAY_MS);
 
     assertThat(kadStoreManager.put(freshContent())).isTrue();
@@ -46,7 +46,7 @@ public class KadStoreManagerMinSizeTest {
 
   /** Above the threshold the sweep runs and evicts entries past their keepTime. */
   @Test
-  public void put_sweepsOnceStoreExceedsMinSize() throws Exception {
+  void put_sweepsOnceStoreExceedsMinSize() throws Exception {
     KadContent ancient = storeDirectly(100L * ONE_DAY_MS);
     setStaticField("size", 11 * 1024 * 1024);
 

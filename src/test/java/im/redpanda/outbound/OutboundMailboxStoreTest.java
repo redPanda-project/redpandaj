@@ -5,22 +5,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.protobuf.ByteString;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class OutboundMailboxStoreTest {
 
-  @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
+  @TempDir public File tempFolder;
 
   private OutboundMailboxStore store;
   private byte[] ohId;
 
-  @Before
-  public void setUp() {
+  @BeforeEach
+  void setUp() {
     store = new OutboundMailboxStore(); // Uses in-memory
     ohId = Hex.decode("123456");
   }
@@ -32,7 +32,7 @@ public class OutboundMailboxStoreTest {
   // --- AC: MailItem has monotone sequence_id per OH ---
 
   @Test
-  public void addMessage_assignsMonotoneSequenceIds() {
+  void addMessage_assignsMonotoneSequenceIds() {
     MailItem item1 = MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("msg1")).build();
     MailItem item2 = MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("msg2")).build();
 
@@ -48,7 +48,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void addMessage_sequenceIdsAreIndependentPerOh() {
+  void addMessage_sequenceIdsAreIndependentPerOh() {
     byte[] ohId2 = Hex.decode("abcdef");
 
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
@@ -68,7 +68,7 @@ public class OutboundMailboxStoreTest {
   // --- AC: fetchMessages with afterSequence cursor ---
 
   @Test
-  public void fetchMessages_withAfterSequenceCursor_returnsOnlyNewerItems() {
+  void fetchMessages_withAfterSequenceCursor_returnsOnlyNewerItems() {
     for (int i = 0; i < 5; i++) {
       store.addMessage(
           ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("msg" + i)).build());
@@ -94,12 +94,12 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void fetchMessages_emptyMailbox_returnsEmptyList() {
+  void fetchMessages_emptyMailbox_returnsEmptyList() {
     assertThat(store.fetchMessages(ohId, 10, 0)).isEmpty();
   }
 
   @Test
-  public void fetchMessages_afterSequenceExceedsMax_returnsEmpty() {
+  void fetchMessages_afterSequenceExceedsMax_returnsEmpty() {
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("x")).build());
     assertThat(store.fetchMessages(ohId, 10, 100)).isEmpty();
   }
@@ -107,7 +107,7 @@ public class OutboundMailboxStoreTest {
   // --- AC: deleteUpTo removes items with sequence_id <= ackedSeqId ---
 
   @Test
-  public void deleteUpTo_removesItemsUpToSequenceId() {
+  void deleteUpTo_removesItemsUpToSequenceId() {
     for (int i = 1; i <= 5; i++) {
       store.addMessage(
           ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("msg" + i)).build());
@@ -122,7 +122,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void deleteUpTo_allItems_leavesEmptyMailbox() {
+  void deleteUpTo_allItems_leavesEmptyMailbox() {
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("b")).build());
 
@@ -132,7 +132,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void deleteUpTo_noop_whenSequenceIdBeforeFirstItem() {
+  void deleteUpTo_noop_whenSequenceIdBeforeFirstItem() {
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
 
     store.deleteUpTo(ohId, 0);
@@ -143,7 +143,7 @@ public class OutboundMailboxStoreTest {
   // --- AC: deleteAll removes all items for an OH ---
 
   @Test
-  public void deleteAll_removesAllItemsForOh() {
+  void deleteAll_removesAllItemsForOh() {
     byte[] ohId2 = Hex.decode("abcdef");
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
     store.addMessage(ohId2, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("b")).build());
@@ -157,7 +157,7 @@ public class OutboundMailboxStoreTest {
   // --- MS02b AC: full mailbox rejects new deposits (reject-new) and sets overflow flag ---
 
   @Test
-  public void addMessage_whenMailboxFull_rejectsNewAndSetsOverflowFlag() {
+  void addMessage_whenMailboxFull_rejectsNewAndSetsOverflowFlag() {
     // Fill to capacity
     for (int i = 0; i < OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
       OutboundMailboxStore.AddResult result =
@@ -181,7 +181,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void overflowFlag_clearedAfterCheck() {
+  void overflowFlag_clearedAfterCheck() {
     for (int i = 0; i <= OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX; i++) {
       store.addMessage(
           ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("v" + i)).build());
@@ -194,7 +194,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void testMailboxLimit_rejectNewKeepsOldest() {
+  void mailboxLimitRejectNewKeepsOldest() {
     int limit = OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX;
     for (int i = 0; i < limit + 5; i++) {
       store.addMessage(
@@ -210,7 +210,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void addMessage_afterAckFreesSpace_acceptsAgain() {
+  void addMessage_afterAckFreesSpace_acceptsAgain() {
     int limit = OutboundMailboxStore.MAX_ITEMS_PER_MAILBOX;
     for (int i = 0; i < limit; i++) {
       store.addMessage(
@@ -232,7 +232,7 @@ public class OutboundMailboxStoreTest {
   // --- MS02b AC: per-item size limit ---
 
   @Test
-  public void addMessage_itemAboveSizeLimit_isRejected() {
+  void addMessage_itemAboveSizeLimit_isRejected() {
     byte[] tooLarge = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
 
     OutboundMailboxStore.AddResult result =
@@ -244,7 +244,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void addMessage_itemJustBelowSizeLimit_isAccepted() {
+  void addMessage_itemJustBelowSizeLimit_isAccepted() {
     // Leave room for the message_id/seq/timestamp fields of the serialized MailItem
     byte[] payload = new byte[OutboundMailboxStore.MAX_ITEM_BYTES - 64];
 
@@ -260,8 +260,9 @@ public class OutboundMailboxStoreTest {
   // --- T40 (a): persisted sequence counter survives a restart of a fully-acked mailbox ---
 
   @Test
-  public void addMessage_afterRestartOfFullyAckedMailbox_continuesSequence() throws Exception {
-    String path = new File(tempFolder.newFolder(), "outbound_mailbox.mapdb").getAbsolutePath();
+  void addMessage_afterRestartOfFullyAckedMailbox_continuesSequence() throws Exception {
+    String path =
+        new File(newFolder(tempFolder, "junit"), "outbound_mailbox.mapdb").getAbsolutePath();
 
     OutboundMailboxStore first = new OutboundMailboxStore(path);
     try {
@@ -292,8 +293,9 @@ public class OutboundMailboxStoreTest {
   // --- T40 cleanup: deleteAllByHexKey drops the persisted counter, next mailbox life restarts at 1
 
   @Test
-  public void deleteAllByHexKey_resetsPersistedCounter() throws Exception {
-    String path = new File(tempFolder.newFolder(), "outbound_mailbox.mapdb").getAbsolutePath();
+  void deleteAllByHexKey_resetsPersistedCounter() throws Exception {
+    String path =
+        new File(newFolder(tempFolder, "junit"), "outbound_mailbox.mapdb").getAbsolutePath();
 
     OutboundMailboxStore first = new OutboundMailboxStore(path);
     try {
@@ -323,7 +325,7 @@ public class OutboundMailboxStoreTest {
   // --- T40 (b) unit-level: lastAssignedSeq tracks the highest id ever assigned ---
 
   @Test
-  public void lastAssignedSeq_reflectsAssignmentsAndIsZeroForUnknownOh() {
+  void lastAssignedSeq_reflectsAssignmentsAndIsZeroForUnknownOh() {
     assertThat(store.lastAssignedSeq(ohId)).isZero();
     store.addMessage(ohId, msg("a"));
     assertThat(store.lastAssignedSeq(ohId)).isEqualTo(1L);
@@ -335,7 +337,7 @@ public class OutboundMailboxStoreTest {
   }
 
   @Test
-  public void addMessage_byteQuotaReached_rejectsBeforeItemCap() {
+  void addMessage_byteQuotaReached_rejectsBeforeItemCap() {
     // ~63 KiB per item: the 4 MiB quota is hit after ~66 items, far below the 500-item cap
     byte[] payload = new byte[63 * 1024];
 
@@ -365,5 +367,14 @@ public class OutboundMailboxStoreTest {
             store.addMessage(
                 ohId, MailItem.newBuilder().setPayload(ByteString.copyFrom(payload)).build()))
         .isEqualTo(OutboundMailboxStore.AddResult.ADDED);
+  }
+
+  private static File newFolder(File root, String... subDirs) throws IOException {
+    String subFolder = String.join("/", subDirs);
+    File result = new File(root, subFolder);
+    if (!result.mkdirs()) {
+      throw new IOException("Couldn't create folders " + root);
+    }
+    return result;
   }
 }

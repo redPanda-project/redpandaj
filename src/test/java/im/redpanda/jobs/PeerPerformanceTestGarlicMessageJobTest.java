@@ -1,8 +1,8 @@
 package im.redpanda.jobs;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.ConcurrencyTestSupport;
 import im.redpanda.core.Node;
@@ -16,9 +16,9 @@ import java.lang.reflect.Method;
 import java.security.Security;
 import java.util.ArrayList;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PeerPerformanceTestGarlicMessageJobTest {
+class PeerPerformanceTestGarlicMessageJobTest {
 
   private static final ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
@@ -27,7 +27,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
   }
 
   @Test
-  public void calculateNestedGarlicMessagesTest() {
+  void calculateNestedGarlicMessagesTest() {
 
     ArrayList<Node> nodes = new ArrayList<Node>();
 
@@ -55,7 +55,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * throwing once it's no longer in the graph.
    */
   @Test
-  public void dismissCheckByTimeoutIfEdgeQualityBad_edgeRemovedFromGraphIsDismissedNotThrown()
+  void dismissCheckByTimeoutIfEdgeQualityBad_edgeRemovedFromGraphIsDismissedNotThrown()
       throws Exception {
     Node nodeA = new Node(serverContext, serverContext.getNodeId());
     Node nodeB = new Node(serverContext, NodeId.generateWithSimpleKey());
@@ -95,8 +95,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * init() and complete without exception.
    */
   @Test
-  public void done_insertPeerDisconnectedBetweenInitAndAck_successPathDoesNotThrow()
-      throws Exception {
+  void done_insertPeerDisconnectedBetweenInitAndAck_successPathDoesNotThrow() throws Exception {
     PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
 
     // GMAck arrives after the peer disconnected: must terminate cleanly, not NPE.
@@ -109,8 +108,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * same way, which also defeated the init() guard that relies on done() for a clean abort.
    */
   @Test
-  public void done_insertPeerDisconnectedBetweenInitAndTimeout_failPathDoesNotThrow()
-      throws Exception {
+  void done_insertPeerDisconnectedBetweenInitAndTimeout_failPathDoesNotThrow() throws Exception {
     PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
 
     job.done();
@@ -154,7 +152,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * override must also run at most once, otherwise nodes are double-scored.
    */
   @Test
-  public void done_calledTwice_scoresInsertNodeOnlyOnce() throws Exception {
+  void done_calledTwice_scoresInsertNodeOnlyOnce() throws Exception {
     PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
     Node insertNode = (Node) getPrivateField(job, "insertNode");
 
@@ -176,7 +174,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * so must the insert node itself.
    */
   @Test
-  public void done_success_scoresInsertNodeOnlyOnceNotTwice() throws Exception {
+  void done_success_scoresInsertNodeOnlyOnceNotTwice() throws Exception {
     Node ownNode = new Node(serverContext, serverContext.getNodeId());
     Node insertNode = new Node(serverContext, NodeId.generateWithSimpleKey());
     Node hopNode = new Node(serverContext, NodeId.generateWithSimpleKey());
@@ -207,7 +205,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * scoring instead of throwing an NPE.
    */
   @Test
-  public void done_beforeInsertNodeCaptured_terminatesCleanlyWithoutScoring() throws Exception {
+  void done_beforeInsertNodeCaptured_terminatesCleanlyWithoutScoring() throws Exception {
     Node ownNode = new Node(serverContext, serverContext.getNodeId());
     Node otherNode = new Node(serverContext, NodeId.generateWithSimpleKey());
 
@@ -229,7 +227,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * alive (and leaked in the running-jobs map) forever.
    */
   @Test
-  public void work_timeoutWithDisconnectedInsertPeer_terminatesJob() throws Exception {
+  void work_timeoutWithDisconnectedInsertPeer_terminatesJob() throws Exception {
     PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
     Node insertNode = (Node) getPrivateField(job, "insertNode");
     // reRunDelay is 2500 ms; three runs exceed JOB_TIMEOUT (5000 ms).
@@ -255,7 +253,7 @@ public class PeerPerformanceTestGarlicMessageJobTest {
    * the scoring pass then finishes while the graph is locked by someone else.
    */
   @Test
-  public void done_scoringGraphBlocksWhileNodeStoreWriteLockIsHeldElsewhere() throws Exception {
+  void done_scoringGraphBlocksWhileNodeStoreWriteLockIsHeldElsewhere() throws Exception {
     PeerPerformanceTestGarlicMessageJob job = buildJobWithDisconnectedInsertPeer();
     Node insertNode = (Node) getPrivateField(job, "insertNode");
 

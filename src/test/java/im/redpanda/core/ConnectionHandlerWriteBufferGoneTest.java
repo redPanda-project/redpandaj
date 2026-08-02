@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Second half of TD029 (REDPANDAJ-2EJ): {@code handleKeyWriteable()} dereferenced {@code
@@ -20,10 +20,10 @@ import org.junit.Test;
  * {@code handleSelectionKey()}, which cancels the key — so the connection died either way, only
  * silently and with a Sentry event.
  */
-public class ConnectionHandlerWriteBufferGoneTest {
+class ConnectionHandlerWriteBufferGoneTest {
 
   @Test
-  public void writableKeyOfAPeerWithoutBuffersIsTornDownInsteadOfThrowing() {
+  void writableKeyOfAPeerWithoutBuffersIsTornDownInsteadOfThrowing() {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);

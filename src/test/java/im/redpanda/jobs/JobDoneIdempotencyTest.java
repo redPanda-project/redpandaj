@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Regression for REDPANDAJ-2E2 / REDPANDAJ-2EA ("CODE 17dh6"). {@link Job#done()} used to check the
@@ -17,7 +17,7 @@ import org.junit.Test;
  * and threw. {@code done()} must now be atomic and idempotent: it deregisters the job exactly once
  * and any further call is a no-op.
  */
-public class JobDoneIdempotencyTest {
+class JobDoneIdempotencyTest {
 
   private static final ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
@@ -36,7 +36,7 @@ public class JobDoneIdempotencyTest {
   }
 
   @Test
-  public void doneIsIdempotentAndDeregistersOnce() {
+  void doneIsIdempotentAndDeregistersOnce() {
     Job job = noopJob();
     job.start();
     Integer jobId = job.getJobId();
@@ -51,7 +51,7 @@ public class JobDoneIdempotencyTest {
   }
 
   @Test
-  public void concurrentDoneDeregistersExactlyOnceWithoutError() throws Exception {
+  void concurrentDoneDeregistersExactlyOnceWithoutError() throws Exception {
     Job job = noopJob();
     job.start();
     Integer jobId = job.getJobId();

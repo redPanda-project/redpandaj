@@ -2,7 +2,7 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Pins the ip+port map against the {@link KademliaId} map (T88).
@@ -26,7 +26,7 @@ import org.junit.Test;
  * instead of by peer ({@code removeIpPortOnly}, used by {@code clearConnectionDetails}) is
  * value-checked like the other two.
  */
-public class PeerListIpPortConsistencyTest {
+class PeerListIpPortConsistencyTest {
 
   /** An inbound light client as {@code ConnectionHandler.setupConnection} builds it: port 0. */
   private static Peer inboundLightClient(String ip, NodeId identity) {
@@ -36,7 +36,7 @@ public class PeerListIpPortConsistencyTest {
   }
 
   @Test
-  public void removingAnUndialablePeerAlsoDropsItsIpPortEntry() {
+  void removingAnUndialablePeerAlsoDropsItsIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     NodeId identity = NodeId.generateWithSimpleKey();
@@ -62,7 +62,7 @@ public class PeerListIpPortConsistencyTest {
    * find something if the removal left the entry behind.
    */
   @Test
-  public void removingAnUndialablePeerWithoutIdentityAlsoDropsItsIpPortEntry() {
+  void removingAnUndialablePeerWithoutIdentityAlsoDropsItsIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer anonymous = new Peer("127.0.0.1", 0);
@@ -82,7 +82,7 @@ public class PeerListIpPortConsistencyTest {
    * rather than a plain {@code remove(key)}.
    */
   @Test
-  public void removalDoesNotStealAColocatedPeersIpPortEntry() {
+  void removalDoesNotStealAColocatedPeersIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
@@ -102,7 +102,7 @@ public class PeerListIpPortConsistencyTest {
 
   /** A dialable peer keeps behaving as before — the guard removal must not change that. */
   @Test
-  public void removingADialablePeerStillDropsItsIpPortEntry() {
+  void removingADialablePeerStillDropsItsIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     NodeId identity = NodeId.generateWithSimpleKey();
@@ -136,7 +136,7 @@ public class PeerListIpPortConsistencyTest {
 
   /** Guards the premise of the two tests below: without a collision they would prove nothing. */
   @Test
-  public void theTwoAddressesReallyCollideUnderTheOldHashKey() {
+  void theTwoAddressesReallyCollideUnderTheOldHashKey() {
     assertThat(COLLIDING_IP_A.hashCode() + COLLIDING_PORT_A)
         .as("the old key was ip.hashCode() + port and these two addresses shared it")
         .isEqualTo(COLLIDING_IP_B.hashCode() + COLLIDING_PORT_B);
@@ -156,7 +156,7 @@ public class PeerListIpPortConsistencyTest {
    * different address.
    */
   @Test
-  public void twoPeersWithCollidingAddressHashesKeepTheirOwnMapping() {
+  void twoPeersWithCollidingAddressHashesKeepTheirOwnMapping() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer a = new Peer(COLLIDING_IP_A, COLLIDING_PORT_A, NodeId.generateWithSimpleKey());
@@ -193,7 +193,7 @@ public class PeerListIpPortConsistencyTest {
    * Alice's connection details used to drop Bob's mapping instead.
    */
   @Test
-  public void clearingConnectionDetailsDoesNotStealAColocatedPeersIpPortEntry() {
+  void clearingConnectionDetailsDoesNotStealAColocatedPeersIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
@@ -214,7 +214,7 @@ public class PeerListIpPortConsistencyTest {
 
   /** {@code removeIpPortOnly} reports whether it removed <em>this</em> peer's mapping. */
   @Test
-  public void removeIpPortOnlyOnlyRemovesTheMappingThePeerOwns() {
+  void removeIpPortOnlyOnlyRemovesTheMappingThePeerOwns() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
@@ -236,7 +236,7 @@ public class PeerListIpPortConsistencyTest {
    * address map instead of landing in a shared {@code "null:0"} bucket.
    */
   @Test
-  public void peersWithoutConnectionDetailsStayOutOfTheAddressMap() {
+  void peersWithoutConnectionDetailsStayOutOfTheAddressMap() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer wiped = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
