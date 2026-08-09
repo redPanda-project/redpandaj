@@ -276,6 +276,12 @@ public class GMParser {
           Collections.shuffle(entryPoints);
 
           for (GMEntryPointModel entryPoint : entryPoints) {
+            // REDPANDAJ-2EH/TD032: NodeIdTypeAdapter returns a null nodeId for an entry point whose
+            // Base58 string decoded to a crypto-invalid public key (dropped, siblings kept). Skip
+            // it here instead of dereferencing null.
+            if (entryPoint.getNodeId() == null) {
+              continue;
+            }
             Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
             if (peer == null || !peer.isConnected()) {
               Node.addNodeIfNotPresent(
