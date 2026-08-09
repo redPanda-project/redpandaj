@@ -298,15 +298,18 @@ class InboundCommandProcessorUpdateHardeningTest {
     int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, newPeer(8815));
     assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
 
-    // There is no restart trigger on the android path, so the last observable install step is the
-    // settings timestamp (set after the apk write); once it lands, apk file and signature are
-    // stable and can be asserted directly.
-    awaitCondition(() -> ctx.getLocalSettings().getUpdateAndroidTimestamp() == othersTs, 10_000);
+    // There is no restart trigger on the android path, so poll for the last observable install
+    // step instead: installApkUpdate writes the apk, then sets the timestamp, then the signature
+    // (Copilot review: waiting on the timestamp alone could pass before the signature is set).
+    // Once the signature matches, timestamp and apk file are stable and can be asserted directly.
+    awaitCondition(
+        () -> java.util.Arrays.equals(sig, ctx.getLocalSettings().getUpdateAndroidSignature()),
+        10_000);
+    assertEquals(othersTs, ctx.getLocalSettings().getUpdateAndroidTimestamp());
     assertTrue(apkFile.exists(), "apk file must exist after the install completed");
     assertTrue(
         java.util.Arrays.equals(data, Files.readAllBytes(apkFile.toPath())),
         "installed apk file must contain the received data");
-    assertTrue(java.util.Arrays.equals(sig, ctx.getLocalSettings().getUpdateAndroidSignature()));
   }
 
   @Test

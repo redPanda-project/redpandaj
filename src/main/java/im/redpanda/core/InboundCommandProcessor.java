@@ -214,12 +214,14 @@ public class InboundCommandProcessor {
   }
 
   /**
-   * Staging file a jar update is written to before being moved to {@link #updateInstallPath()}.
-   * Kept a sibling of the install destination so the {@code Files.move} never crosses a filesystem
-   * boundary (and so a test override relocates both files together).
+   * Staging file a jar update is written to before being moved to the given install destination.
+   * Derived as a sibling of that destination so the {@code Files.move} never crosses a filesystem
+   * boundary (and so a test override relocates both files together). Takes the already-resolved
+   * install path instead of re-reading the system property, so a property change mid-install (e.g.
+   * a test cleaning up after a timeout) cannot make the tmp file and the move destination diverge.
    */
-  static Path updateInstallTmpPath() {
-    return updateInstallPath().resolveSibling("tmp_redpanda.jar");
+  static Path updateInstallTmpPath(Path installPath) {
+    return installPath.resolveSibling("tmp_redpanda.jar");
   }
 
   /**
@@ -809,7 +811,10 @@ public class InboundCommandProcessor {
    */
   private void installJarUpdate(long othersTimestamp, byte[] signatureBytes, byte[] data) {
     installThreadHookForTests.accept(Thread.currentThread());
-    Path tmpPath = updateInstallTmpPath();
+    // Resolve the install path exactly once and derive the tmp path from it, so both stay
+    // consistent even if the overriding system property changes while the install is running.
+    Path installPath = updateInstallPath();
+    Path tmpPath = updateInstallTmpPath(installPath);
     try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {
       fos.write(data);
     } catch (IOException e) {
@@ -820,7 +825,7 @@ public class InboundCommandProcessor {
     try {
       // Install the update
       // Save to 'update' file so the shell script can pick it up and restart
-      Files.move(tmpPath, updateInstallPath(), StandardCopyOption.REPLACE_EXISTING);
+      Files.move(tmpPath, installPath, StandardCopyOption.REPLACE_EXISTING);
 
       // Update local settings
       serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
@@ -828,7 +833,10 @@ public class InboundCommandProcessor {
       serverContext.getLocalSettings().save(serverContext.getPort());
 
       System.out.println(
-          "Update successfully verified and saved to 'update'. New timestamp: " + othersTimestamp);
+          "Update successfully verified and saved to '"
+              + installPath
+              + "'. New timestamp: "
+              + othersTimestamp);
       System.out.println("Stopping server to apply update...");
 
       // Exit asynchronously to allow current method to return and log to be written
