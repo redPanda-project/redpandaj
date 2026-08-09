@@ -88,6 +88,45 @@ class NodeIdTypeAdapterPoisonTest {
     assertEquals("3.3.3.3", entryPoints.get(2).getIp());
   }
 
+  /**
+   * Copilot review follow-up: a non-string {@code nodeId} token (JSON null, number, object) used to
+   * throw {@code IllegalStateException} from {@code nextString()} before the catch, aborting the
+   * whole nodeinfo parse. It must be consumed and dropped like an unparseable node id.
+   */
+  @Test
+  void nonStringNodeIdTokenIsDroppedNotThrown() {
+    String valid = validNodeIdString();
+    String json =
+        "{\"entryPoints\":["
+            + "{\"nodeId\":null,\"ip\":\"1.1.1.1\",\"port\":1},"
+            + "{\"nodeId\":123,\"ip\":\"2.2.2.2\",\"port\":2},"
+            + "{\"nodeId\":{\"a\":1},\"ip\":\"3.3.3.3\",\"port\":3},"
+            + ("{\"nodeId\":\"" + valid + "\",\"ip\":\"4.4.4.4\",\"port\":4}")
+            + "],\"services\":[]}";
+
+    NodeInfoModel model = assertDoesNotThrow(() -> NodeInfoModel.importFromString(json));
+    assertNotNull(model);
+    assertEquals(4, model.getEntryPoints().size());
+    assertNull(model.getEntryPoints().get(0).getNodeId());
+    assertNull(model.getEntryPoints().get(1).getNodeId());
+    assertNull(model.getEntryPoints().get(2).getNodeId());
+    assertNotNull(model.getEntryPoints().get(3).getNodeId(), "valid sibling must survive");
+  }
+
+  /**
+   * Copilot review follow-up: the {@code entryPoints} array itself may contain null elements — they
+   * must parse into null list entries without blowing up (the consumer skips them).
+   */
+  @Test
+  void nullArrayElementIsKept() {
+    String json = "{\"entryPoints\":[null],\"services\":[]}";
+
+    NodeInfoModel model = assertDoesNotThrow(() -> NodeInfoModel.importFromString(json));
+    assertNotNull(model);
+    assertEquals(1, model.getEntryPoints().size());
+    assertNull(model.getEntryPoints().getFirst());
+  }
+
   /** A well-formed record must still round-trip unchanged (no regression). */
   @Test
   void validRecordStillParses() {

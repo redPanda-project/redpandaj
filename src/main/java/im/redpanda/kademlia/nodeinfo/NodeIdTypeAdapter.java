@@ -2,6 +2,7 @@ package im.redpanda.kademlia.nodeinfo;
 
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import im.redpanda.core.Log;
 import im.redpanda.core.NodeId;
@@ -18,6 +19,15 @@ public class NodeIdTypeAdapter extends TypeAdapter<NodeId> {
 
   @Override
   public NodeId read(JsonReader jsonReader) throws IOException {
+    if (jsonReader.peek() != JsonToken.STRING) {
+      // Copilot review follow-up: the JSON is attacker-controlled, so the nodeId value may be any
+      // token (null, number, object, ...). nextString() would throw IllegalStateException before
+      // reaching the catch below and abort the whole nodeinfo parse — consume the token and treat
+      // it like an unparseable node id instead.
+      Log.put("dropping nodeinfo entry with non-string node id token", 50);
+      jsonReader.skipValue();
+      return null;
+    }
     String s = jsonReader.nextString();
     try {
       return NodeId.importPublic(Base58.decode(s));
