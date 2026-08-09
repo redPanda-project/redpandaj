@@ -276,6 +276,13 @@ public class GMParser {
           Collections.shuffle(entryPoints);
 
           for (GMEntryPointModel entryPoint : entryPoints) {
+            // REDPANDAJ-2EH/TD032: the JSON is attacker-controlled, so the array may contain null
+            // elements, and NodeIdTypeAdapter returns a null nodeId for an entry point whose
+            // Base58 string decoded to a crypto-invalid public key (dropped, siblings kept). Skip
+            // both here instead of dereferencing null.
+            if (entryPoint == null || entryPoint.getNodeId() == null) {
+              continue;
+            }
             Peer peer = serverContext.getPeerList().get(entryPoint.getNodeId().getKademliaId());
             if (peer == null || !peer.isConnected()) {
               Node.addNodeIfNotPresent(
