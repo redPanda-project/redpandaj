@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.ScheduledFuture;
@@ -26,13 +27,24 @@ import java.util.concurrent.locks.ReentrantLock;
 public class KadStoreManager {
 
   /**
-   * Total stored content size (without keys) above which the periodic entry eviction sweep runs. A
-   * trailing {@code * 0} used to zero this out, so the sweep ran on every put once the store held
-   * anything at all, instead of only once it exceeds 10 MB.
+   * Total stored content size (without keys) above which the eviction sweep additionally applies
+   * the shorter, distance-based {@code keepTime} (space pressure). Below this threshold entries are
+   * kept for the full {@link #MAX_KEEP_TIME}: for a random id the XOR distance to our node is
+   * almost always ~160, which would collapse the distance-based retention to its 61-minute floor
+   * and effectively wipe small stores (the pre-L6 behavior, see PR #279). A trailing {@code * 0}
+   * used to zero this threshold out by accident.
+   *
+   * <p>T67 retention decision: expiry at {@code MAX_KEEP_TIME} is enforced on every node regardless
+   * of store size — by the periodic sweep in {@link #put(KadContent)} and lazily in {@link
+   * #get(KademliaId)} — so a node never serves or re-spreads a record that {@code put()} would
+   * reject as too old. Only the distance-based shortening stays gated on this size.
    */
   private static final int MIN_SIZE = 1024 * 1024 * 10;
 
-  /** How long a stored entry is kept before the eviction sweep may drop it: 14 days. */
+  /**
+   * Hard retention limit: 14 days. {@code put()} rejects anything older, the eviction sweep drops
+   * entries past this age even below {@link #MIN_SIZE}, and {@code get()} never returns them.
+   */
   private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L;
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -84,38 +96,48 @@ public class KadStoreManager {
       }
 
       // todo max size!
-      if (size > MIN_SIZE && currTime > lastCleanup + 1000L * 10L * 1L) {
+      // The sweep runs regardless of store size (throttled to ~10 s) so entries older than
+      // MAX_KEEP_TIME are evicted on every node, matching the put() age gate above (T67). The
+      // shorter distance-based keepTime only kicks in under space pressure (> MIN_SIZE),
+      // measured after the hard expiry pass so stale bulk cannot trigger it.
+      if (currTime > lastCleanup + 1000L * 10L * 1L) {
         lastCleanup = currTime;
 
-        ArrayList<KademliaId> kademliaIds = new ArrayList<>();
+        // pass 1: hard expiry at MAX_KEEP_TIME, independent of store size
+        expireEntriesOlderThan(currTime - MAX_KEEP_TIME);
 
-        for (KadContent c : entries.values()) {
+        // pass 2: distance-based shortening, only if the post-expiry store is still above
+        // MIN_SIZE
+        if (size > MIN_SIZE) {
+          ArrayList<KademliaId> kademliaIds = new ArrayList<>();
 
-          int distance = serverContext.getNonce().getDistance(c.getId());
+          for (KadContent c : entries.values()) {
 
-          // long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
-          long keepTime = (long) Math.ceil(1000L * 60L * 60L * 24L * (long) (160 - distance));
+            int distance = serverContext.getNonce().getDistance(c.getId());
 
-          keepTime =
-              Math.max(keepTime, 1000L * 60L * 61L); // at least 61 mins such that the maintenance
-          // routine can spread the entry
-          keepTime = Math.min(keepTime, MAX_KEEP_TIME); // max time
+            // long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
+            long keepTime = (long) Math.ceil(1000L * 60L * 60L * 24L * (long) (160 - distance));
 
-          // System.out.println("keep time: " +
-          // formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
-          // System.out.println("id: " + Server.NONCE);
-          // System.out.println("id: " + c.getId());
+            keepTime =
+                Math.max(keepTime, 1000L * 60L * 61L); // at least 61 mins such that the maintenance
+            // routine can spread the entry
+            keepTime = Math.min(keepTime, MAX_KEEP_TIME); // max time
 
-          // todo: shorter times for key far away from our id
-          if (c.getTimestamp() < currTime - keepTime) {
-            kademliaIds.add(c.getId());
-            // entries.remove(c.getId());
-            size -= c.getContent().length;
+            // System.out.println("keep time: " +
+            // formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
+            // System.out.println("id: " + Server.NONCE);
+            // System.out.println("id: " + c.getId());
+
+            if (c.getTimestamp() < currTime - keepTime) {
+              kademliaIds.add(c.getId());
+              // entries.remove(c.getId());
+              size -= c.getContent().length;
+            }
           }
-        }
 
-        for (KademliaId kadId : kademliaIds) {
-          entries.remove(kadId);
+          for (KademliaId kadId : kademliaIds) {
+            entries.remove(kadId);
+          }
         }
       }
 
@@ -130,10 +152,25 @@ public class KadStoreManager {
     return get(KadContent.createKademliaId(node.getNodeId()));
   }
 
+  /**
+   * Returns the stored content for the given id, or {@code null} if there is none or it is older
+   * than {@link #MAX_KEEP_TIME}. Entries past that age are expired lazily here because the eviction
+   * sweep only runs from {@link #put(KadContent)} — a node that receives no puts must still never
+   * serve a record that {@code put()} would reject as too old (T67).
+   */
   public KadContent get(KademliaId id) {
     lock.lock();
     try {
-      return entries.get(id);
+      KadContent content = entries.get(id);
+      if (content == null) {
+        return null;
+      }
+      if (content.getTimestamp() < System.currentTimeMillis() - MAX_KEEP_TIME) {
+        entries.remove(id);
+        size -= content.getContent().length;
+        return null;
+      }
+      return content;
     } finally {
       lock.unlock();
     }
@@ -253,11 +290,29 @@ public class KadStoreManager {
   public static void maintain(ServerContext serverContext) {
     lock.lock();
     try {
+      // expire instead of re-spreading entries every other node's put() would reject as too
+      // old (T67) — maintain() may be the only caller on a node that receives no puts
+      expireEntriesOlderThan(System.currentTimeMillis() - MAX_KEEP_TIME);
       for (KadContent kc : entries.values()) {
         new KademliaInsertJob(serverContext, kc).start();
       }
     } finally {
       lock.unlock();
+    }
+  }
+
+  /**
+   * Removes all entries with a timestamp older than the given cutoff and updates {@link #size}.
+   * Callers must hold {@link #lock}.
+   */
+  private static void expireEntriesOlderThan(long cutoff) {
+    Iterator<KadContent> iterator = entries.values().iterator();
+    while (iterator.hasNext()) {
+      KadContent c = iterator.next();
+      if (c.getTimestamp() < cutoff) {
+        size -= c.getContent().length;
+        iterator.remove();
+      }
     }
   }
 

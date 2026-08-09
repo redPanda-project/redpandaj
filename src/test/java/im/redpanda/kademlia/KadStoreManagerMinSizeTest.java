@@ -11,9 +11,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression test for L6 (bug hunt 2026-07-26): {@code MIN_SIZE} was declared as {@code 1024 * 1024
- * * 10 * 0}, so the periodic entry-eviction sweep was gated on {@code size > 0} and ran on every
- * put (throttled to ~10 s) instead of only once the store exceeds 10 MB.
+ * Regression tests for the {@code KadStoreManager} retention rules (L6 / bug hunt 2026-07-26 and
+ * the T67 follow-up):
+ *
+ * <ul>
+ *   <li>expiry at {@code MAX_KEEP_TIME} (14 days) is enforced regardless of store size — by the
+ *       periodic sweep in {@code put()} and lazily in {@code get()} — so a node never serves a
+ *       record that {@code put()} would reject as too old,
+ *   <li>the shorter, distance-based {@code keepTime} only applies above the 10 MB {@code MIN_SIZE}
+ *       gate (space pressure); below it, dropping the gate would collapse retention to the
+ *       61-minute floor for typical entries (XOR distance ~160) and wipe small stores.
+ * </ul>
  */
 class KadStoreManagerMinSizeTest {
 
@@ -34,25 +42,83 @@ class KadStoreManagerMinSizeTest {
     resetStore();
   }
 
-  /** Below the threshold the sweep must not run, so even a long-expired entry survives a put. */
+  /**
+   * Even below MIN_SIZE the sweep must drop entries older than MAX_KEEP_TIME: the map itself no
+   * longer contains the entry after a put (not just filtered by get()).
+   */
   @Test
-  void put_doesNotSweepWhileStoreIsBelowMinSize() throws Exception {
-    KadContent ancient = storeDirectly(100L * ONE_DAY_MS);
+  void put_evictsEntriesOlderThanMaxKeepTimeEvenBelowMinSize() throws Exception {
+    KadContent ancient = storeDirectly(100L * ONE_DAY_MS, null);
 
     assertThat(kadStoreManager.put(freshContent())).isTrue();
 
-    assertThat(kadStoreManager.get(ancient.getId())).isNotNull();
+    assertThat(rawEntries().containsKey(ancient.getId())).isFalse();
   }
 
-  /** Above the threshold the sweep runs and evicts entries past their keepTime. */
+  /**
+   * Below MIN_SIZE the distance-based shortening must NOT apply: a 2-day-old entry at the maximum
+   * XOR distance (keepTime would be the 61-minute floor under space pressure) survives the sweep.
+   */
   @Test
-  void put_sweepsOnceStoreExceedsMinSize() throws Exception {
-    KadContent ancient = storeDirectly(100L * ONE_DAY_MS);
+  void put_doesNotApplyDistanceBasedKeepTimeBelowMinSize() throws Exception {
+    KadContent recent = storeDirectly(2L * ONE_DAY_MS, idAtMaxDistanceFromUs());
+
+    assertThat(kadStoreManager.put(freshContent())).isTrue();
+
+    assertThat(kadStoreManager.get(recent.getId())).isNotNull();
+  }
+
+  /** Above MIN_SIZE the same 2-day-old, maximum-distance entry is evicted (keepTime 61 min). */
+  @Test
+  void put_appliesDistanceBasedKeepTimeAboveMinSize() throws Exception {
+    KadContent recent = storeDirectly(2L * ONE_DAY_MS, idAtMaxDistanceFromUs());
     setStaticField("size", 11 * 1024 * 1024);
 
     assertThat(kadStoreManager.put(freshContent())).isTrue();
 
+    assertThat(kadStoreManager.get(recent.getId())).isNull();
+  }
+
+  /**
+   * Space pressure must be measured after the hard-expiry pass: if the store exceeds MIN_SIZE only
+   * because of stale (&gt;MAX_KEEP_TIME) bulk, the distance-based shortening must not fire and a
+   * 2-day-old, maximum-distance entry survives the sweep.
+   */
+  @Test
+  void put_ignoresStaleBulkWhenDecidingSpacePressure() throws Exception {
+    storeDirectly(100L * ONE_DAY_MS, null, new byte[11 * 1024 * 1024]);
+    KadContent recent = storeDirectly(2L * ONE_DAY_MS, idAtMaxDistanceFromUs());
+
+    assertThat(kadStoreManager.put(freshContent())).isTrue();
+
+    assertThat(kadStoreManager.get(recent.getId())).isNotNull();
+  }
+
+  /**
+   * maintain() may be the only regularly running entry point on a node that receives no puts and no
+   * gets: it must expire stale entries (map and size bookkeeping) instead of retaining them
+   * forever.
+   */
+  @Test
+  void maintain_expiresStaleEntriesInsteadOfRespreadingThem() throws Exception {
+    storeDirectly(100L * ONE_DAY_MS, null);
+
+    KadStoreManager.maintain(serverContext);
+
+    assertThat(rawEntries()).isEmpty();
+    assertThat(currentSize()).isZero();
+  }
+
+  /**
+   * The sweep only runs from put(): a node receiving no puts must still never serve an entry older
+   * than MAX_KEEP_TIME — get() expires it lazily and removes it from the store.
+   */
+  @Test
+  void get_expiresEntriesOlderThanMaxKeepTime() throws Exception {
+    KadContent ancient = storeDirectly(100L * ONE_DAY_MS, null);
+
     assertThat(kadStoreManager.get(ancient.getId())).isNull();
+    assertThat(rawEntries().containsKey(ancient.getId())).isFalse();
   }
 
   private KadContent freshContent() {
@@ -60,20 +126,41 @@ class KadStoreManagerMinSizeTest {
   }
 
   /**
-   * Puts an entry straight into the backing map: {@code put()} itself rejects anything older than
-   * MAX_KEEP_TIME, and this entry has to be older than any possible keepTime.
+   * An id whose most significant bit differs from our node id: XOR distance 160, the worst case for
+   * the distance-based keepTime (clamped to the 61-minute floor).
    */
-  @SuppressWarnings("unchecked")
-  private KadContent storeDirectly(long ageMillis) throws Exception {
-    KadContent content =
-        new KadContent(System.currentTimeMillis() - ageMillis, randomKey(), new byte[16]);
+  private KademliaId idAtMaxDistanceFromUs() {
+    byte[] bytes = serverContext.getNonce().getBytes().clone();
+    bytes[0] ^= (byte) 0x80;
+    return new KademliaId(bytes);
+  }
 
-    Field entriesField = KadStoreManager.class.getDeclaredField("entries");
-    entriesField.setAccessible(true);
-    ((Map<KademliaId, KadContent>) entriesField.get(null)).put(content.getId(), content);
-    setStaticField("size", content.getContent().length);
+  private KadContent storeDirectly(long ageMillis, KademliaId forcedId) throws Exception {
+    return storeDirectly(ageMillis, forcedId, new byte[16]);
+  }
+
+  /**
+   * Puts an entry straight into the backing map: {@code put()} itself rejects anything older than
+   * MAX_KEEP_TIME. An optional forced id allows a deterministic XOR distance to our node id.
+   */
+  private KadContent storeDirectly(long ageMillis, KademliaId forcedId, byte[] payload)
+      throws Exception {
+    KadContent content =
+        new KadContent(System.currentTimeMillis() - ageMillis, randomKey(), payload);
+    if (forcedId != null) {
+      content.setId(forcedId);
+    }
+
+    rawEntries().put(content.getId(), content);
+    setStaticField("size", currentSize() + payload.length);
 
     return content;
+  }
+
+  private static int currentSize() throws Exception {
+    Field field = KadStoreManager.class.getDeclaredField("size");
+    field.setAccessible(true);
+    return (int) field.get(null);
   }
 
   private static byte[] randomKey() {
@@ -81,10 +168,14 @@ class KadStoreManagerMinSizeTest {
   }
 
   @SuppressWarnings("unchecked")
-  private static void resetStore() throws Exception {
+  private static Map<KademliaId, KadContent> rawEntries() throws Exception {
     Field entriesField = KadStoreManager.class.getDeclaredField("entries");
     entriesField.setAccessible(true);
-    ((Map<KademliaId, KadContent>) entriesField.get(null)).clear();
+    return (Map<KademliaId, KadContent>) entriesField.get(null);
+  }
+
+  private static void resetStore() throws Exception {
+    rawEntries().clear();
 
     setStaticField("size", 0);
     setStaticField("lastCleanup", 0L);
