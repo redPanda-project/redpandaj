@@ -17,7 +17,6 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
 
-        <logback.version>1.4.14</logback.version>
         <bcprov.version>1.84</bcprov.version>
         <commons-text.version>1.15.0</commons-text.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
@@ -132,10 +131,11 @@
         </dependency>
 
 
+        <!-- Route slf4j to log4j-core so log4j2.xml governs all logging output -->
         <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
+            <version>2.25.4</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>

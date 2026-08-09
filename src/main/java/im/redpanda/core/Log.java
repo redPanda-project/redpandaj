@@ -18,7 +18,13 @@ public class Log {
 
   private static final Logger logger = LogManager.getLogger();
 
+  /**
+   * Legacy verbosity level, no longer consulted by {@link #put(String, int)} and {@link
+   * #putStd(String)} — log output is governed by log4j2.xml. Kept for compatibility (e.g. {@link
+   * ListenConsole}).
+   */
   public static int LEVEL = 10;
+
   private static AtomicInteger rating;
 
   public static void init(ServerContext serverContext) {
@@ -45,18 +51,24 @@ public class Log {
     }.start();
   }
 
+  /**
+   * Shim onto log4j: the legacy numeric level is mapped to log4j levels ({@code <= 50} to info,
+   * {@code <= 150} to debug, everything else to trace). Filtering is done exclusively by
+   * log4j2.xml, the legacy {@link #LEVEL} field is no longer consulted.
+   */
   public static void put(String msg, int level) {
-    if (level > LEVEL) {
-      return;
+    if (level <= 50) {
+      logger.info(msg);
+    } else if (level <= 150) {
+      logger.debug(msg);
+    } else {
+      logger.trace(msg);
     }
-    System.out.println("Log: " + msg);
   }
 
+  /** Shim onto log4j: standard messages are logged at info level. */
   public static void putStd(String msg) {
-    if (20 > LEVEL) {
-      return;
-    }
-    System.out.println("Log: " + msg);
+    logger.info(msg);
   }
 
   public static void putCritical(Throwable e) {
