@@ -454,10 +454,11 @@ public class ConnectionHandler extends Thread {
       // MAX_CONNECTIONS. Soft-eviction was rejected: picking and disconnecting a victim on the
       // selector thread touches peer write locks (the T87 lock-order hazard) for a state that only
       // an attack reaches. Returning with success == false lets the finally close the channel.
-      if (selector.keys().size() >= Settings.MAX_INBOUND_CONNECTIONS) {
+      int registeredSockets = selector.keys().size();
+      if (registeredSockets >= Settings.MAX_INBOUND_CONNECTIONS) {
         Log.put(
             "inbound connection rejected: socket budget exhausted ("
-                + selector.keys().size()
+                + registeredSockets
                 + " selector keys >= "
                 + Settings.MAX_INBOUND_CONNECTIONS
                 + ")",
