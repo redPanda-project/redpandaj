@@ -169,6 +169,11 @@ public class InboundCommandProcessor {
   private static final String APK_PATH_PROPERTY = "redpanda.update.apk.path";
 
   /**
+   * System property overriding {@link #updateInstallPath()}; used by tests to avoid CWD sharing.
+   */
+  private static final String INSTALL_PATH_PROPERTY = "redpanda.update.install.path";
+
+  /**
    * Path of the local redpanda.jar that gets uploaded to peers requesting it. Defaults to the usual
    * seed-node vs. client layout, overridable via {@value #JAR_PATH_PROPERTY} (tests only, so
    * Surefire forks sharing the working directory don't collide).
@@ -192,6 +197,29 @@ public class InboundCommandProcessor {
       return override;
     }
     return Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+  }
+
+  /**
+   * Destination a received-and-verified jar update is installed to (the {@code update} file the
+   * restart shell script picks up). Defaults to the CWD-relative {@code update} file, overridable
+   * via {@value #INSTALL_PATH_PROPERTY} (tests only, so Surefire forks sharing the working
+   * directory don't collide).
+   */
+  static Path updateInstallPath() {
+    Path override = pathOverride(INSTALL_PATH_PROPERTY);
+    if (override != null) {
+      return override;
+    }
+    return Path.of("update");
+  }
+
+  /**
+   * Staging file a jar update is written to before being moved to {@link #updateInstallPath()}.
+   * Kept a sibling of the install destination so the {@code Files.move} never crosses a filesystem
+   * boundary (and so a test override relocates both files together).
+   */
+  static Path updateInstallTmpPath() {
+    return updateInstallPath().resolveSibling("tmp_redpanda.jar");
   }
 
   /**
@@ -781,7 +809,8 @@ public class InboundCommandProcessor {
    */
   private void installJarUpdate(long othersTimestamp, byte[] signatureBytes, byte[] data) {
     installThreadHookForTests.accept(Thread.currentThread());
-    try (FileOutputStream fos = new FileOutputStream("tmp_redpanda.jar")) {
+    Path tmpPath = updateInstallTmpPath();
+    try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {
       fos.write(data);
     } catch (IOException e) {
       Log.sentry(e);
@@ -791,8 +820,7 @@ public class InboundCommandProcessor {
     try {
       // Install the update
       // Save to 'update' file so the shell script can pick it up and restart
-      Files.move(
-          Path.of("tmp_redpanda.jar"), Path.of("update"), StandardCopyOption.REPLACE_EXISTING);
+      Files.move(tmpPath, updateInstallPath(), StandardCopyOption.REPLACE_EXISTING);
 
       // Update local settings
       serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
