@@ -11,6 +11,19 @@ public class Settings {
   public static int STD_PORT = 59558;
   public static int MIN_CONNECTIONS = 20;
   public static int MAX_CONNECTIONS = 50;
+
+  /**
+   * Hard ceiling for accepting inbound connections (T66), enforced in {@code
+   * ConnectionHandler.setupAcceptedChannel} against the number of keys registered with the
+   * selector, i.e. every socket the networking layer owns. Deliberately far above {@link
+   * #MAX_CONNECTIONS} (4x): a light client is only recognizable once its handshake arrives, so an
+   * accept-time check cannot tell a mobile client from a flood — a cap at {@code MAX_CONNECTIONS}
+   * would reject legitimate clients on a busy node. Below this ceiling nothing is refused; at the
+   * ceiling new accepts are closed immediately, which bounds the file descriptors and handshake
+   * state an accept flood can pin.
+   */
+  public static int MAX_INBOUND_CONNECTIONS = 200;
+
   public static long pingTimeout = 65L * 1000L; // time in ms
   public static int pingDelay = 1000; // time in ms
   public static int peerListRequestDelay = 60 * 60; // time in sec
