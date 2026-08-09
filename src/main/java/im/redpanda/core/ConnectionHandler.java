@@ -444,6 +444,28 @@ public class ConnectionHandler extends Thread {
     PeerInHandshake peerInHandshake = null;
     boolean success = false;
     try {
+      // T66: hard inbound budget. Light clients only identify themselves in the handshake, so an
+      // accept-time check cannot special-case them — capping here at MAX_CONNECTIONS would turn
+      // away legitimate mobile clients on a busy node (the reason redpandaj#278 added no such
+      // check). Instead we stop accepting only at a generous global socket budget: the selector
+      // key count covers every socket this layer owns, which is exactly the resource an accept
+      // flood exhausts. The node recovers below the ceiling on its own — PeerJobs reaps stale
+      // handshakes after HANDSHAKE_TIMEOUT_MS and the outbound loop trims connected peers toward
+      // MAX_CONNECTIONS. Soft-eviction was rejected: picking and disconnecting a victim on the
+      // selector thread touches peer write locks (the T87 lock-order hazard) for a state that only
+      // an attack reaches. Returning with success == false lets the finally close the channel.
+      int registeredSockets = selector.keys().size();
+      if (registeredSockets >= Settings.MAX_INBOUND_CONNECTIONS) {
+        Log.put(
+            "inbound connection rejected: socket budget exhausted ("
+                + registeredSockets
+                + " selector keys >= "
+                + Settings.MAX_INBOUND_CONNECTIONS
+                + ")",
+            50);
+        return;
+      }
+
       socketChannel.configureBlocking(false);
 
       // null if the peer already reset the connection — routine for scanners, so handle it as a
