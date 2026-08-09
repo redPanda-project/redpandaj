@@ -80,6 +80,36 @@ class KadStoreManagerMinSizeTest {
   }
 
   /**
+   * Space pressure must be measured after the hard-expiry pass: if the store exceeds MIN_SIZE only
+   * because of stale (&gt;MAX_KEEP_TIME) bulk, the distance-based shortening must not fire and a
+   * 2-day-old, maximum-distance entry survives the sweep.
+   */
+  @Test
+  void put_ignoresStaleBulkWhenDecidingSpacePressure() throws Exception {
+    storeDirectly(100L * ONE_DAY_MS, null, new byte[11 * 1024 * 1024]);
+    KadContent recent = storeDirectly(2L * ONE_DAY_MS, idAtMaxDistanceFromUs());
+
+    assertThat(kadStoreManager.put(freshContent())).isTrue();
+
+    assertThat(kadStoreManager.get(recent.getId())).isNotNull();
+  }
+
+  /**
+   * maintain() may be the only regularly running entry point on a node that receives no puts and no
+   * gets: it must expire stale entries (map and size bookkeeping) instead of retaining them
+   * forever.
+   */
+  @Test
+  void maintain_expiresStaleEntriesInsteadOfRespreadingThem() throws Exception {
+    storeDirectly(100L * ONE_DAY_MS, null);
+
+    KadStoreManager.maintain(serverContext);
+
+    assertThat(rawEntries()).isEmpty();
+    assertThat(currentSize()).isZero();
+  }
+
+  /**
    * The sweep only runs from put(): a node receiving no puts must still never serve an entry older
    * than MAX_KEEP_TIME — get() expires it lazily and removes it from the store.
    */
@@ -105,21 +135,32 @@ class KadStoreManagerMinSizeTest {
     return new KademliaId(bytes);
   }
 
+  private KadContent storeDirectly(long ageMillis, KademliaId forcedId) throws Exception {
+    return storeDirectly(ageMillis, forcedId, new byte[16]);
+  }
+
   /**
    * Puts an entry straight into the backing map: {@code put()} itself rejects anything older than
    * MAX_KEEP_TIME. An optional forced id allows a deterministic XOR distance to our node id.
    */
-  private KadContent storeDirectly(long ageMillis, KademliaId forcedId) throws Exception {
+  private KadContent storeDirectly(long ageMillis, KademliaId forcedId, byte[] payload)
+      throws Exception {
     KadContent content =
-        new KadContent(System.currentTimeMillis() - ageMillis, randomKey(), new byte[16]);
+        new KadContent(System.currentTimeMillis() - ageMillis, randomKey(), payload);
     if (forcedId != null) {
       content.setId(forcedId);
     }
 
     rawEntries().put(content.getId(), content);
-    setStaticField("size", content.getContent().length);
+    setStaticField("size", currentSize() + payload.length);
 
     return content;
+  }
+
+  private static int currentSize() throws Exception {
+    Field field = KadStoreManager.class.getDeclaredField("size");
+    field.setAccessible(true);
+    return (int) field.get(null);
   }
 
   private static byte[] randomKey() {
