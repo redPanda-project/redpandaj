@@ -19,8 +19,6 @@ class FlaschenpostTest {
 
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
 
-    GMAck gmAck = new GMAck();
-
     GarlicMessage garlicMessage = new GarlicMessage(serverContext, targetId);
 
     assertEquals(targetId.getKademliaId(), garlicMessage.destination);
