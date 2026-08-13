@@ -118,6 +118,16 @@ class ChannelDhtTest {
     // (channel_rendezvous_test.dart). Both sides sign the same bytes, so a one-sided change to
     // RECORD_SIZE_BYTES — the kind that silently makes every published record undeliverable —
     // fails here instead of in the field.
+    //
+    // TD022: this vector is only half of the check. It keeps THIS side from drifting away from
+    // its own constant, but a hand-copied twin in the other repo cannot notice that the two
+    // disagree. The live half lives in redpanda-mobile's e2e suite
+    // channel_record_format_crosscheck_test.dart, which computes these same values by running
+    // ChannelDht out of the downloaded redpanda.jar of our latest release and comparing them
+    // against ChannelRendezvous. So when a deliberate format change makes this test red, the
+    // fix is not "regenerate the vector" alone: update the same vector in
+    // channel_rendezvous_test.dart, and expect mobile CI to go red — by name, with the
+    // deployment-order hint — from the release that ships this change until the client follows.
     byte[] secret = new byte[32];
     for (int i = 0; i < secret.length; i++) {
       secret[i] = (byte) i;

@@ -69,6 +69,14 @@ public final class ChannelDht {
    * every record of a different size, so nodes on the old bucket drop records published by upgraded
    * clients and vice versa. Roll the network out before the clients; channels whose record is
    * dropped in the meantime keep healing over the in-band {@code oh_update} announce.
+   *
+   * <p>The clients are gated on this constant (TD022): redpanda-mobile's e2e suite {@code
+   * channel_record_format_crosscheck_test.dart} runs this class out of the downloaded {@code
+   * redpanda.jar} of our <em>latest release</em> and fails by name if its own {@code
+   * ChannelRendezvous.recordSizeBytes} — or the derived key, rotating Kademlia id or record
+   * signature — disagrees. So changing the format here turns the mobile CI red as soon as this
+   * lands in a release, which is the intended reminder to ship the client change; it is not a
+   * mobile regression.
    */
   public static final int RECORD_SIZE_BYTES = 1024;
 
