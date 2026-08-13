@@ -24,8 +24,7 @@ class PeerInHandshakeDegenerateKeyTest {
   @Test
   void calculateSharedSecret_rejectsADegenerateEphemeralKey() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    PeerInHandshake handshake =
-        newHandshakeWith(serverContext, new byte[CryptoUtils.X25519_KEY_LEN]);
+    PeerInHandshake handshake = newHandshakeWith(new byte[CryptoUtils.X25519_KEY_LEN]);
 
     assertThatThrownBy(() -> handshake.calculateSharedSecret(serverContext))
         .isInstanceOf(PeerProtocolException.class)
@@ -37,14 +36,12 @@ class PeerInHandshakeDegenerateKeyTest {
   void calculateSharedSecret_acceptsAnHonestEphemeralKey() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     PeerInHandshake theirSide = new PeerInHandshake("127.0.0.1", new Peer("127.0.0.1", 1234), null);
-    PeerInHandshake handshake =
-        newHandshakeWith(serverContext, theirSide.getEphemeralPublicFromUs());
+    PeerInHandshake handshake = newHandshakeWith(theirSide.getEphemeralPublicFromUs());
 
     assertThatCode(() -> handshake.calculateSharedSecret(serverContext)).doesNotThrowAnyException();
   }
 
-  private static PeerInHandshake newHandshakeWith(
-      ServerContext serverContext, byte[] ephemeralFromThem) {
+  private static PeerInHandshake newHandshakeWith(byte[] ephemeralFromThem) {
     Peer peer = new Peer("127.0.0.1", 1234);
     PeerInHandshake handshake = new PeerInHandshake("127.0.0.1", peer, null);
     handshake.setNodeId(NodeId.importPublic(new NodeId().exportPublic()));
