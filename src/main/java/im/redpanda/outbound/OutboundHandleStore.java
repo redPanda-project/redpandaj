@@ -31,13 +31,11 @@ public class OutboundHandleStore {
     private byte[] ohAuthPublicKey;
     private long createdAtMs;
     private long expiresAtMs;
-    private long lastSeenMs;
 
     public HandleRecord(byte[] ohAuthPublicKey, long createdAtMs, long expiresAtMs) {
       this.ohAuthPublicKey = ohAuthPublicKey;
       this.createdAtMs = createdAtMs;
       this.expiresAtMs = expiresAtMs;
-      this.lastSeenMs = System.currentTimeMillis();
     }
 
     public byte[] getOhAuthPublicKey() {
@@ -50,10 +48,6 @@ public class OutboundHandleStore {
 
     public long getExpiresAtMs() {
       return expiresAtMs;
-    }
-
-    public long getLastSeenMs() {
-      return lastSeenMs;
     }
   }
 

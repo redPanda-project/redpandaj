@@ -5,7 +5,6 @@
  */
 package im.redpanda.core;
 
-import im.redpanda.crypt.AddressFormatException;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Utils;
 import java.io.Serializable;
@@ -13,9 +12,12 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.BitSet;
 
 public class KademliaId implements Serializable {
+
+  // Pinned to the value computed before the 2026-08 dead-code removal (T99): instances are
+  // Java-serialized to disk (localSettings.dat, node store), so the UID must stay stable.
+  private static final long serialVersionUID = 4978904080119646082L;
 
   public static final transient int ID_LENGTH = 160;
   public static final transient int ID_LENGTH_BYTES = ID_LENGTH / 8;
@@ -160,46 +162,6 @@ public class KademliaId implements Serializable {
   }
 
   /**
-   * Generates a NodeId that is some distance away from this NodeId
-   *
-   * @param distance in number of bits
-   * @return NodeId The newly generated NodeId
-   */
-  public KademliaId generateNodeIdByDistance(int distance) {
-    byte[] result = new byte[ID_LENGTH / 8];
-
-    /*
-     * Since distance = ID_LENGTH - prefixLength, we need to fill that amount with
-     * 0's
-     */
-    int numByteZeroes = (ID_LENGTH - distance) / 8;
-    int numBitZeroes = 8 - (distance % 8);
-
-    /* Filling byte zeroes */
-    for (int i = 0; i < numByteZeroes; i++) {
-      result[i] = 0;
-    }
-
-    /* Filling bit zeroes */
-    BitSet bits = new BitSet(8);
-    bits.set(0, 8);
-
-    for (int i = 0; i < numBitZeroes; i++) {
-      /* Shift 1 zero into the start of the value */
-      bits.clear(i);
-    }
-    bits.flip(0, 8); // Flip the bits since they're in reverse order
-    result[numByteZeroes] = bits.toByteArray()[0];
-
-    /* Set the remaining bytes to Maximum value */
-    for (int i = numByteZeroes + 1; i < result.length; i++) {
-      result[i] = Byte.MAX_VALUE;
-    }
-
-    return this.xor(new KademliaId(result));
-  }
-
-  /**
    * Counts the number of leading 0's in this NodeId
    *
    * @return Integer The number of leading 0's
@@ -254,10 +216,6 @@ public class KademliaId implements Serializable {
   @Override
   public String toString() {
     return Base58.encode(keyBytes).substring(0, 10);
-  }
-
-  public static KademliaId fromBase58(String base58String) throws AddressFormatException {
-    return new KademliaId(Base58.decode(base58String));
   }
 
   /**

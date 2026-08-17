@@ -476,16 +476,6 @@ public class NodeStore {
     }
   }
 
-  public void printAllNotBlacklisted() {
-
-    for (Node node : nodeGraph.vertexSet()) {
-      // if (nodeBlacklist.containsKey(node)) {
-      // continue;
-      // }
-      System.out.println(node.toString() + " " + (node.isBlacklisted() ? "b" : ""));
-    }
-  }
-
   public void clearGraph() {
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     nodeGraph.addVertex(serverContext.getNode());

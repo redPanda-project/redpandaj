@@ -38,6 +38,10 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
  */
 public class NodeId implements Serializable {
 
+  // Pinned to the value computed before the 2026-08 dead-code removal (T99): instances are
+  // Java-serialized to disk (localSettings.dat, node store), so the UID must stay stable.
+  private static final long serialVersionUID = 2928261161442787061L;
+
   /** Public export length: 32-byte Ed25519 verify key + 32-byte X25519 encryption key. */
   public static final int PUBLIC_KEYLEN = 64;
 
@@ -202,12 +206,6 @@ public class NodeId implements Serializable {
       throw new IllegalArgumentException("public keys in private export do not match private keys");
     }
     return new NodeId(signing, verify, encryption, encryptionPub);
-  }
-
-  public static NodeId fromBufferGetPublic(ByteBuffer buffer) {
-    byte[] publicKeyBytes = new byte[PUBLIC_KEYLEN];
-    buffer.get(publicKeyBytes);
-    return importPublic(publicKeyBytes);
   }
 
   /** Signs the bytes with Ed25519 — deterministic 64-byte signature (no hashing beforehand). */
