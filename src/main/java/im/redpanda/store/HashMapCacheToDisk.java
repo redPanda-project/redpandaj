@@ -122,10 +122,6 @@ public class HashMapCacheToDisk<K, V> extends HashMap<K, V> {
     return result;
   }
 
-  public Object getNative(Object key) {
-    return super.get(key);
-  }
-
   public Object removeNative(Object key) {
     return super.remove(key);
   }

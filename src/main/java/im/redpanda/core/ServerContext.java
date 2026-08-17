@@ -17,7 +17,7 @@ public class ServerContext {
   private int port;
   private LocalSettings localSettings;
   private final KadStoreManager kadStoreManager = new KadStoreManager(this);
-  private PeerList peerList = new PeerList(this);
+  private PeerList peerList = new PeerList();
   private NodeStore nodeStore;
   private Node node;
   private NodeId nodeId;

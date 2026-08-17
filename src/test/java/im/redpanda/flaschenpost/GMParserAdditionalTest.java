@@ -109,9 +109,6 @@ class GMParserAdditionalTest {
   }
 
   private static class NullPeerList extends PeerList {
-    NullPeerList(ServerContext serverContext) {
-      super(serverContext);
-    }
 
     @Override
     public ArrayList<Peer> getPeerArrayList() {
@@ -752,7 +749,7 @@ class GMParserAdditionalTest {
   @Test
   void nullPeerArrayListReturnsGracefully() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    serverContext.setPeerList(new NullPeerList(serverContext));
+    serverContext.setPeerList(new NullPeerList());
     NodeId destination = NodeId.generateWithSimpleKey();
 
     GMContent parsed =

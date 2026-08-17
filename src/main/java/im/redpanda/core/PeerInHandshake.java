@@ -238,15 +238,6 @@ public class PeerInHandshake {
     this.nodeId = nodeId;
   }
 
-  public boolean isProtocolV23() {
-    return protocolVersion >= 23;
-  }
-
-  /** True if we opened this connection — the TCP "client" role of the v23 key schedule. */
-  public boolean isInitiatedByUs() {
-    return initiatedByUs;
-  }
-
   // -------------------------------------------------------------------------------------------
   // v23: ephemeral X25519 key exchange + HKDF key schedule
   // -------------------------------------------------------------------------------------------
@@ -261,10 +252,6 @@ public class PeerInHandshake {
 
   public void setEphemeralPublicFromThem(byte[] ephemeralPublicFromThem) {
     this.ephemeralPublicFromThem = ephemeralPublicFromThem;
-  }
-
-  public byte[] getEphemeralPublicFromThem() {
-    return ephemeralPublicFromThem;
   }
 
   /**
@@ -374,9 +361,5 @@ public class PeerInHandshake {
 
   public void setProtocolVersion(int protocolVersion) {
     this.protocolVersion = protocolVersion;
-  }
-
-  public int getProtocolVersion() {
-    return protocolVersion;
   }
 }

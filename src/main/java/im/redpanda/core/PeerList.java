@@ -1,12 +1,9 @@
 package im.redpanda.core;
 
-import im.redpanda.kademlia.PeerComparator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jetbrains.annotations.Nullable;
@@ -98,7 +95,7 @@ public class PeerList {
 
   private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
-  public PeerList(ServerContext serverContext) {
+  public PeerList() {
     initBlacklist();
   }
 
@@ -481,63 +478,6 @@ public class PeerList {
     Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
     removeIpPortOnly(peer);
     peer.removeIpAndPort();
-  }
-
-  /**
-   * does not use connected peers or light clients
-   *
-   * @param targetId
-   * @return
-   */
-  public Peer getClosestGoodPeer(KademliaId targetId) {
-
-    Peer goodPeer = get(targetId);
-    if (goodPeer == null || !goodPeer.isConnected()) {
-
-      TreeSet<Peer> peers = new TreeSet<>(new PeerComparator(targetId));
-
-      // insert all nodes
-      Lock lock = getReadWriteLock().readLock();
-      lock.lock();
-      try {
-        ArrayList<Peer> peerArrayList = getPeerArrayList();
-
-        for (Peer peer : peerArrayList) {
-
-          // do not add the peer if the peer is not connected or the nodeId is unknown!
-          if (peer.getNodeId() == null || !peer.isConnected()) {
-            continue;
-          }
-
-          // remove all light clients
-          if (peer.isLightClient()) {
-            continue;
-          }
-
-          if (peer.getNode() == null) {
-            continue;
-          }
-
-          // if (targetId.getDistanceToUs(serverContext) <
-          // peer.getKademliaId().getDistance(targetId)) {
-          // continue;
-          // }
-
-          peers.add(peer);
-        }
-      } finally {
-        lock.unlock();
-      }
-
-      if (peers.size() == 0) {
-        // System.out.println(String.format("no peer found for destination %s which is
-        // near to target", targetId));
-        return null;
-      }
-
-      goodPeer = peers.first();
-    }
-    return goodPeer;
   }
 
   private void initBlacklist() {

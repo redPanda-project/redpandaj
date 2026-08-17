@@ -750,8 +750,4 @@ public class ConnectionReaderThread implements Runnable {
     byteBuffer.position(byteBuffer.position() + length);
     return new String(byteBuffer.array(), byteBuffer.arrayOffset(), length);
   }
-
-  public static KademliaId parseKademliaId(ByteBuffer byteBuffer) {
-    return KademliaId.fromBuffer(byteBuffer);
-  }
 }
