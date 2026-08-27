@@ -18,7 +18,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-    - name: Set up JDK 17
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -44,6 +44,7 @@ jobs:
     - name: coverage
       run: mvn -B jacoco:prepare-agent install jacoco:report
     - name: Build and analyze
+      id: sonar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -54,9 +55,57 @@ jobs:
         # push events it is empty. Tests already gated the PR in the coverage step.
         if [ "${{ github.event.pull_request.user.login }}" = "dependabot[bot]" ] || [ "${{ github.actor }}" = "dependabot[bot]" ] || [ -z "$SONAR_TOKEN" ]; then
           echo "Dependabot run or SONAR_TOKEN not available; skipping Sonar analysis."
+          echo "skipped=true" >> "$GITHUB_OUTPUT"
         else
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
           mvn -B jacoco:prepare-agent verify jacoco:report sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj
         fi
+
+    # TD054: the analysis above is skipped on Dependabot runs, so a bump of the Sonar
+    # scanner itself would otherwise get a fully green CI without the changed plugin ever
+    # being executed. This step closes that blind spot: it runs the sonar goal without a
+    # token and only checks how far it gets.
+    #   green  -> Maven resolved and started the sonar mojo and the scanner ran until it
+    #             was rejected for missing authentication
+    #   red    -> the goal did not resolve at all, or it died before reaching auth
+    #             (e.g. the 5.x runtime bootstrap of JRE/scanner-engine is broken)
+    # This does talk to sonarcloud.io - that round trip is exactly the point, because it
+    # is what exercises the 5.x JRE provisioning and scanner-engine startup. Without a
+    # token the scanner cannot upload an analysis, so no results are published.
+    - name: Sonar goal smoke test (no token)
+      if: steps.sonar.outputs.skipped == 'true'
+      # Deliberately no SONAR_TOKEN in this step's env.
+      run: |
+        # A failing mvn here is an expected outcome. The default shell is `bash -e`
+        # without pipefail, so today `tee` already masks it; the guard keeps that true
+        # if anyone later adds `shell: bash` (which turns pipefail on).
+        set +e
+        mvn -B sonar:sonar -Dsonar.projectKey=redPanda-project_redpandaj 2>&1 | tee sonar-smoke.log
+        rc=${PIPESTATUS[0]}
+        set -e
+
+        # Maven prints this header only once it has resolved a goal and begins executing
+        # it. The format is Maven core's, not the scanner's, so it survives scanner bumps.
+        if ! grep -qE '^\[INFO\] --- .*:sonar \(' sonar-smoke.log; then
+          echo "::error::Sonar goal did not resolve/start - the scanner plugin is broken."
+          exit 1
+        fi
+
+        if [ "$rc" -eq 0 ]; then
+          echo "Sonar goal resolved, started and completed."
+          exit 0
+        fi
+
+        # Only the tail is searched: an incidental mention of a token or a 401 earlier in
+        # the log must not be able to pass off an unrelated failure as "just missing auth".
+        if tail -n 50 sonar-smoke.log | grep -qiE "SONAR_TOKEN|sonar\.token|not authorized|unauthorized|HTTP 401|HTTP 403"; then
+          echo "Sonar goal resolved, started and ran until the expected authentication error."
+          exit 0
+        fi
+
+        echo "::error::Sonar goal started but failed before reaching authentication."
+        echo "Either the scanner is broken or sonarcloud.io was unreachable (rerun case)."
+        exit 1
 
   e2e:
     name: E2E Integration Tests
@@ -66,7 +115,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
