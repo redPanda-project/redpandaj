@@ -6,7 +6,7 @@ import im.redpanda.core.Log;
 import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
-import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

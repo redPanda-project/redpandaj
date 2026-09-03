@@ -1,6 +1,6 @@
 package im.redpanda.store;
 
-import im.redpanda.jobs.PeerPerformanceTestGarlicMessageJob;
+import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultEdge;
 
 public class NodeEdge extends DefaultEdge implements Comparable<NodeEdge> {

@@ -3,8 +3,8 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.dht.KademliaCommandHandler;
-import im.redpanda.flaschenpost.FlaschenpostCommandHandler;
 import im.redpanda.mailbox.OutboundCommandHandler;
+import im.redpanda.routing.FlaschenpostCommandHandler;
 import im.redpanda.updater.ApkUpdateHandler;
 import im.redpanda.updater.JarUpdateHandler;
 import java.nio.ByteBuffer;

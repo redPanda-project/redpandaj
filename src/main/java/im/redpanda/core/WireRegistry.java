@@ -1,6 +1,6 @@
 package im.redpanda.core;
 
-import im.redpanda.flaschenpost.FlaschenpostV2;
+import im.redpanda.routing.FlaschenpostV2;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -76,7 +76,7 @@ public final class WireRegistry {
   public static String render(Path protoDir) throws IOException {
     StringBuilder sb = new StringBuilder();
     sb.append("<!-- Redpanda wire registry - GENERATED FILE, do not edit by hand.\n");
-    sb.append("     Sources: im.redpanda.core.Command, im.redpanda.flaschenpost.FlaschenpostV2,\n");
+    sb.append("     Sources: im.redpanda.core.Command, im.redpanda.routing.FlaschenpostV2,\n");
     sb.append("     ").append(PROTO_DIR).append("/*.proto\n");
     sb.append("     Regenerate: mvn -q compile && java -cp target/classes ")
         .append(WireRegistry.class.getName())
@@ -87,7 +87,7 @@ public final class WireRegistry {
     sb.append("First byte of every frame on a peer connection.\n\n");
     appendCommandTable(sb, byteConstants(Command.class, ""));
 
-    sb.append("\n## Garlic layer commands (`im.redpanda.flaschenpost.FlaschenpostV2`)\n\n");
+    sb.append("\n## Garlic layer commands (`im.redpanda.routing.FlaschenpostV2`)\n\n");
     sb.append(
         "First byte of a decrypted garlic layer, inside a `FLASCHENPOST_V2` (142) packet.\n\n");
     appendCommandTable(sb, byteConstants(FlaschenpostV2.class, "CMD_"));

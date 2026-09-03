@@ -1,8 +1,8 @@
 package im.redpanda.mailbox;
 
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.ReverseGarlic;
 import im.redpanda.outbound.v1.RoutingAck;
+import im.redpanda.routing.ReverseGarlic;
 
 /**
  * MS06 R-ACK dispatch: builds the {@link RoutingAck} for a deposit decision and sends it back

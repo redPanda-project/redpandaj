@@ -1,0 +1,425 @@
+package im.redpanda.routing;
+
+import im.redpanda.core.Command;
+import im.redpanda.core.Node;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.Job;
+import im.redpanda.store.NodeEdge;
+import im.redpanda.store.NodeStore;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import org.jgrapht.graph.DefaultDirectedWeightedGraph;
+
+public class PeerPerformanceTestGarlicMessageJob extends Job {
+
+  public static final int TEST_HOPS_MAX = 8;
+  public static final int TEST_HOPS_MIN = 2;
+
+  public static final double LINK_FAILED = 12;
+  public static final double CUT_HARD = 12;
+  public static final int CUT_MID = 10;
+  public static final double CUT_LOW = 3;
+  public static final int MAX_WEIGHT = 15;
+  public static final int MIN_WEIGHT = 1;
+  public static final float DELTA_SUCCESS = -1;
+  public static final float DELTA_FAIL = 0.4f;
+  public static final long JOB_TIMEOUT = 1000L * 5L;
+  public static final long WAIT_CURT_HARD = 1000L * 60 * 4;
+  public static final long WAIT_CUT_MID = 1000L * 30;
+  public static final long WAIT_CUT_LOW = 1000L * 15;
+
+  public static final String ANSI_RESET = "\u001B[0m";
+  public static final String ANSI_RED = "\u001B[31m";
+  public static final String ANSI_GREEN = "\u001B[32m";
+
+  private static final AtomicInteger countSuccess = new AtomicInteger();
+  private static final AtomicInteger countFailed = new AtomicInteger();
+
+  ArrayList<Node> nodes;
+  boolean success = false;
+  private Peer flaschenPostInsertPeer;
+
+  /**
+   * Node of {@link #flaschenPostInsertPeer}, captured in {@code calculatePathOrAbort()} while it is
+   * validated non-null under the NodeStore write lock. {@code Peer.disconnect()} calls {@code
+   * clearNode()} at any time, so {@code done()} must use this stable reference instead of
+   * re-reading {@code flaschenPostInsertPeer.getNode()} (Sentry REDPANDAJ-2EG). Volatile: written
+   * on the job-scheduler thread in init(), read in done() possibly from the thread parsing the
+   * GMAck.
+   */
+  private volatile Node insertNode;
+
+  /**
+   * done() can be entered concurrently (GMAck arrival via GMParser vs. timeout via the job
+   * scheduler). {@code Job.done()} is idempotent for the cleanup, but the scoring in our override
+   * must also run at most once (REDPANDAJ-2EG review follow-up).
+   */
+  private final AtomicBoolean scored = new AtomicBoolean(false);
+
+  boolean includeReversedPath = false;
+
+  public PeerPerformanceTestGarlicMessageJob(ServerContext serverContext) {
+    super(serverContext, 2500L);
+    nodes = new ArrayList<>();
+  }
+
+  public byte[] calculateNestedGarlicMessages(List<Node> nodes, int jobId) {
+    // lets target to ourselves without the private key!
+    NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
+
+    GMAck gmAck = new GMAck(jobId);
+
+    GarlicMessage currentLayer = new GarlicMessage(serverContext, targetId);
+    currentLayer.addGMContent(gmAck);
+
+    // omit own node at position 0 and node.size
+    for (int i = nodes.size() - 2; i > 0; i--) {
+      Node node = nodes.get(i);
+      GarlicMessage newLayer = new GarlicMessage(serverContext, node.getNodeId());
+      newLayer.addGMContent(currentLayer);
+
+      currentLayer = newLayer;
+    }
+
+    return currentLayer.getContent();
+  }
+
+  @Override
+  public void init() {
+    // Same lock object for lock and unlock: serverContext's NodeStore can be replaced by
+    // NodeStore.saveToDisk()'s recovery path, and re-reading getNodeStore() for the unlock would
+    // then release a lock this thread never took (IllegalMonitorStateException).
+    Lock initGraphLock = serverContext.getNodeStore().getReadWriteLock().writeLock();
+    initGraphLock.lock();
+    try {
+      if (calculatePathOrAbort()) {
+        return;
+      }
+    } finally {
+      initGraphLock.unlock();
+    }
+    byte[] content = calculateNestedGarlicMessages(this.nodes, getJobId());
+
+    // TOCTOU (REDPANDAJ-2EC): calculatePathOrAbort() validated flaschenPostInsertPeer.getNode()
+    // != null, but it did so under the NodeStore write lock which has since been released above.
+    // The peer can disconnect in the meantime (Peer.disconnect() -> clearNode()), leaving
+    // getNode() null. Re-read once on the now-unlocked reference and abort gracefully (writing
+    // to a disconnected peer's buffer is pointless); done() itself is safe either way since it
+    // only uses the captured insertNode field (REDPANDAJ-2EG).
+    if (flaschenPostInsertPeer.getNode() == null) {
+      done();
+      return;
+    }
+    insertNode.cleanChecks();
+
+    var putMsg =
+        im.redpanda.proto.FlaschenpostPut.newBuilder()
+            .setContent(com.google.protobuf.ByteString.copyFrom(content))
+            .build();
+    flaschenPostInsertPeer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray());
+  }
+
+  private boolean calculatePathOrAbort() {
+    DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph =
+        serverContext.getNodeStore().getNodeGraph();
+    if (nodeGraph.vertexSet().isEmpty()) {
+      super.done();
+      return true;
+    }
+
+    // nodes = hops + 1
+    int garlicSequenceLength =
+        TEST_HOPS_MIN + Server.secureRandom.nextInt(TEST_HOPS_MAX - TEST_HOPS_MIN) + 1;
+    if (nodeGraph.vertexSet().size() < garlicSequenceLength) {
+      garlicSequenceLength = nodeGraph.vertexSet().size();
+    }
+
+    if (getSuccessRate() < 0.8) {
+      garlicSequenceLength = 1;
+    }
+
+    Node startingNode = serverContext.getNode();
+
+    this.nodes = new ArrayList<>();
+    Node currentNode = startingNode;
+    nodes.add(currentNode);
+    int currentLength = 0;
+    double pathWeight = 0;
+
+    while (currentLength < garlicSequenceLength) {
+      ArrayList<NodeEdge> edges = new ArrayList<>(nodeGraph.outgoingEdgesOf(currentNode));
+      Collections.sort(edges);
+      for (NodeEdge edge : edges) {
+        // if an edge is bad we should only test it rarely
+
+        if (edge.isInLastTimeCheckWindow()
+            || dismissCheckByTimeoutIfEdgeQualityBad(nodeGraph, edge)) {
+          continue;
+        }
+
+        // the edge may have been removed from the graph since we copied the
+        // edge list, check membership before resolving its target
+        // (Sentry REDPANDAJ-2DW, REDPANDAJ-2E5)
+        if (!nodeGraph.containsEdge(edge)) {
+          continue;
+        }
+        Node target = nodeGraph.getEdgeTarget(edge);
+        if (target == null || nodes.contains(target)) {
+          continue;
+        }
+
+        if (currentLength == 0) {
+          Peer targetPeer = serverContext.getPeerList().get(target.getNodeId().getKademliaId());
+          if (targetPeer == null || !targetPeer.isConnected()) {
+            continue;
+          }
+        }
+
+        currentNode = target;
+        nodes.add(currentNode);
+        edge.touchLastTimeCheckStarted();
+        currentNode.cleanChecks();
+        pathWeight += nodeGraph.getEdgeWeight(edge);
+        break;
+      }
+
+      currentLength++;
+
+      if (pathWeight > 10) {
+        if (currentLength >= 2) {
+          addReversePath();
+        }
+        break;
+      }
+    }
+
+    if (nodes.size() < 2) {
+      super.done();
+      return true;
+    }
+
+    nodes.add(serverContext.getNode());
+
+    flaschenPostInsertPeer =
+        serverContext.getPeerList().get(nodes.get(1).getNodeId().getKademliaId());
+
+    // REDPANDAJ-2EG: read getNode() exactly once — the peer can disconnect (and clear its node)
+    // at any time, so a re-read after the null-check could still yield null. done() may run much
+    // later (GMAck arrival or timeout); the captured field stays valid regardless.
+    insertNode = flaschenPostInsertPeer == null ? null : flaschenPostInsertPeer.getNode();
+    if (flaschenPostInsertPeer == null || insertNode == null) {
+      super.done();
+      return true;
+    }
+    return false;
+  }
+
+  private void addReversePath() {
+    includeReversedPath = true;
+    for (int currentNodeIndex = nodes.size() - 1; currentNodeIndex > 1; currentNodeIndex--) {
+      Node currentNode = nodes.get(currentNodeIndex);
+      Node targetNode = nodes.get(currentNodeIndex - 1);
+      serverContext.getNodeStore().getNodeGraph().addEdge(currentNode, targetNode);
+      NodeEdge edge = serverContext.getNodeStore().getNodeGraph().getEdge(currentNode, targetNode);
+      edge.touchLastTimeCheckStarted();
+      nodes.add(targetNode);
+    }
+  }
+
+  private boolean dismissCheckByTimeoutIfEdgeQualityBad(
+      DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph, NodeEdge edge) {
+    // the edge may have been removed from the graph concurrently since the caller
+    // copied the edge list; check membership before resolving its weight
+    // (Sentry REDPANDAJ-2DW, REDPANDAJ-2E5 pattern)
+    if (!nodeGraph.containsEdge(edge)) {
+      return true;
+    }
+    if (edge.isLastCheckFailed()) {
+      double edgeWeight = nodeGraph.getEdgeWeight(edge);
+      if (edgeWeight >= MAX_WEIGHT) {
+        return System.currentTimeMillis() - edge.getTimeLastCheckFailed()
+            < WAIT_CURT_HARD + rand.nextInt((int) Duration.ofSeconds(60).toMillis());
+      } else if (edgeWeight > CUT_HARD) {
+        return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CURT_HARD;
+      } else if (edgeWeight > CUT_MID) {
+        return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_MID;
+      } else if (edgeWeight > CUT_LOW) {
+        return System.currentTimeMillis() - edge.getTimeLastCheckFailed() < WAIT_CUT_LOW;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public void work() {
+    if (getEstimatedRuntime() > JOB_TIMEOUT) {
+      // REDPANDAJ-2EG: no getNode() guard here — the peer disconnecting must not keep the job
+      // alive forever (it would leak in the running-jobs map). work() only runs after init()
+      // completed, so insertNode is set and done() is safe to call.
+      done();
+    }
+  }
+
+  @Override
+  public void done() {
+    super.done();
+
+    // Only the first caller may score: done() can race with itself (GMAck thread vs. timeout on
+    // the job-scheduler thread), which used to double-score nodes and edges (REDPANDAJ-2EG
+    // review follow-up; super.done() only dedups the cleanup, not this override).
+    if (!scored.compareAndSet(false, true)) {
+      return;
+    }
+
+    if (nodes.size() < 2) {
+      throw new RuntimeException("job started with too less nodes, this should not happen");
+    }
+
+    // REDPANDAJ-2EG: done() can be reached before init() captured insertNode, e.g. when the
+    // Job.run() catch-all calls done() after an exception inside calculatePathOrAbort(). No
+    // garlic message was sent in that case, so there is nothing to score.
+    if (insertNode == null) {
+      return;
+    }
+
+    float scoreToAdd = 0;
+    // TD007: insertNode is always nodes.get(1) — calculatePathOrAbort() picks
+    // flaschenPostInsertPeer (and captures insertNode from it) as the peer for that exact graph
+    // node, and NodeStore.maintainNodes() adds graph edges using peer.getNode() as the vertex, so
+    // both refer to the same Node instance. It is therefore already covered by the nodes loop
+    // below; a historical explicit increment here (predating the path-based selection, back when
+    // flaschenPostInsertPeer could be a node outside `nodes`) double-scored it on every run. The
+    // insertNode != null check above still gates the loop: it is how done() detects that init()
+    // never got as far as building a real path (see REDPANDAJ-2EG below).
+    //
+    // TD017: the own node (serverContext.getNode()) is deliberately left in `nodes` twice — once
+    // as nodes.get(0) (path start in calculatePathOrAbort()) and once as the appended last element
+    // (the GMAck target = ourselves). Both positions are structurally required to build the nested
+    // garlic layers and the edge-scoring path below, so they are NOT deduplicated. The scoring loop
+    // therefore increments the own node's GM-test counters twice per run — but this is inert, not a
+    // bug: nothing acts on the own node's inflated stats. The only score-based decision that could
+    // touch it, NodeStore.removeBadScoredNode(), explicitly skips the own node
+    // (`node.equals(serverContext.getNode())`); NodeStore.addRandomNodeToGraph() sorts onHeap by
+    // score only to ADD new vertices, and the own node is already a graph vertex; and
+    // Peer.getPriority() reads Node.getGmTests* only for connected remote peers, which the own node
+    // never is. Unlike the TD007 insert-peer double-count (which was a real bug fixed in
+    // redpandaj#272), the own-node double-count changes no observable behavior, so it is documented
+    // here rather than removed (KISS — deduping would mean special-casing the own node inside the
+    // structurally-shared `nodes` list).
+    if (success) {
+      for (Node node : nodes) {
+        node.increaseGmTestsSuccessful();
+        node.seen();
+      }
+
+      scoreToAdd = DELTA_SUCCESS;
+    } else {
+      for (Node node : nodes) {
+        node.increaseGmTestsFailed();
+      }
+      scoreToAdd = DELTA_FAIL;
+    }
+
+    // The scoring loop below WRITES the shared JGraphT graph (setEdgeWeight) while reading its
+    // structure (getEdge/containsEdge/getEdgeWeight). NodeStore.maintainNodes() mutates the same
+    // graph (removeVertex/addEdge/setEdgeWeight) under the NodeStore write lock, so this loop must
+    // hold it too — otherwise two writers race inside the graph's non-thread-safe LinkedHashMaps
+    // (Sentry REDPANDAJ-2DW class: CME or silent structural corruption of the routing graph).
+    // The `scored` CAS above only dedups done() against itself, it gives no mutual exclusion
+    // against the maintainer thread. init() takes the same write lock (see above).
+    // No blocking I/O runs under the lock: the path string is only assembled here and printed
+    // after the lock is released.
+    // The NodeStore reference is resolved ONCE and both the lock and the graph are taken from it:
+    // NodeStore.saveToDisk() replaces serverContext's NodeStore on its recovery path, so re-reading
+    // getNodeStore() per access could unlock a different lock than was locked
+    // (IllegalMonitorStateException) or guard a different graph than the one being mutated.
+    NodeStore nodeStore = serverContext.getNodeStore();
+    Lock graphLock = nodeStore.getReadWriteLock().writeLock();
+    String pathString = "";
+    graphLock.lock();
+    try {
+      DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph = nodeStore.getNodeGraph();
+      Node nodeBefore = null;
+      for (Node node : nodes) {
+        if (nodeBefore != null) {
+          NodeEdge edge = nodeGraph.getEdge(nodeBefore, node);
+          if (!nodeGraph.containsEdge(edge)) {
+            continue;
+          }
+          double newWeight = nodeGraph.getEdgeWeight(edge) + scoreToAdd;
+          if (newWeight > MAX_WEIGHT) {
+            newWeight = MAX_WEIGHT;
+          } else if (newWeight < MIN_WEIGHT) {
+            newWeight = MIN_WEIGHT;
+          }
+          nodeGraph.setEdgeWeight(edge, newWeight);
+          edge.setLastCheckFailed(!success);
+          pathString += " -(" + "%.0f".formatted(newWeight) + ")-> " + node;
+        } else {
+          pathString += node;
+        }
+        nodeBefore = node;
+      }
+    } finally {
+      graphLock.unlock();
+    }
+
+    // if (!success) {
+    System.out.println(
+        (success ? ANSI_GREEN : ANSI_RED)
+            + "path: "
+            + pathString
+            + " hops: "
+            + (nodes.size() - 1)
+            + " inserted to peer: "
+            + insertNode
+            + ANSI_RESET
+            + (includeReversedPath ? " REVERSED" : ""));
+    // }
+
+    if (success) {
+      countSuccess.incrementAndGet();
+    } else {
+      countFailed.incrementAndGet();
+    }
+  }
+
+  public void success() {
+    success = true;
+    done();
+  }
+
+  public static int getCountSuccess() {
+    return countSuccess.get();
+  }
+
+  public static int getCountFailed() {
+    return countFailed.get();
+  }
+
+  public static double getSuccessRate() {
+    if (countSuccess.get() + countFailed.get() == 0) {
+      return 0;
+    }
+    return (double) countSuccess.get() / (double) (countSuccess.get() + countFailed.get());
+  }
+
+  public static void decayRates() {
+    int newCountSuccess = countSuccess.decrementAndGet();
+    if (newCountSuccess < 0) {
+      countSuccess.set(0);
+    }
+    int newCountFailed = countFailed.decrementAndGet();
+    if (newCountFailed < 0) {
+      countFailed.set(0);
+    }
+  }
+}

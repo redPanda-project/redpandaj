@@ -4,10 +4,10 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.GMParser;
-import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.routing.GMParser;
+import im.redpanda.routing.OhForwarder;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -19,13 +19,12 @@ import lombok.extern.slf4j.Slf4j;
  * status a light client sees. The parser now only parses the frame and delegates here; this class
  * holds the policy and is wire-invariant (same bytes, same order, same log effects).
  *
- * <p><b>Placement:</b> the review names {@code OutboundService} as the target. Everything this
- * policy orchestrates besides the deposit itself ({@link OhForwarder}, {@link RoutingAckSender},
- * {@link ReturnPath}, {@link GMParser}) lives in this package, and {@code im.redpanda.outbound}
- * currently imports nothing from {@code im.redpanda.flaschenpost} — moving the policy into {@code
- * OutboundService} would invert that one clean package edge into a cycle. Both classes belong to
- * the same target bounded context (N-MAILBOX), so the policy sits next to the forwarder until the
- * package cut of that context happens.
+ * <p><b>Placement:</b> the review names {@code OutboundService} as the target; T108 parked the
+ * policy next to the forwarder instead, and T118 (#340) moved it here into the N-MAILBOX package.
+ * It stays a class of its own rather than methods on {@code OutboundService}: the policy
+ * orchestrates the routing context as well ({@link im.redpanda.routing.OhForwarder}, {@link
+ * im.redpanda.routing.GMParser}), which is the {@code N-MAILBOX ──deposit──▶ N-ROUTING} edge of the
+ * context map — {@code OutboundService} itself stays free of routing imports.
  *
  * <p>Policy order (do not reorder — the sender's status and the R-ACK depend on it):
  *
