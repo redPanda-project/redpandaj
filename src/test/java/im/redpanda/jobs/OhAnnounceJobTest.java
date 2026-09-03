@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.OhAnnounceJob.SingleAnnounceJob;
+import im.redpanda.outbound.OhId;
 import java.security.SecureRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,13 +20,14 @@ class OhAnnounceJobTest {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private ServerContext serverContext;
-  private byte[] ohId;
+  private OhId ohId;
 
   @BeforeEach
   void setUp() {
     serverContext = ServerContext.buildDefaultServerContext();
-    ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ohId);
+    byte[] ohIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ohIdBytes);
+    ohId = OhId.fromBytes(ohIdBytes);
   }
 
   @Test

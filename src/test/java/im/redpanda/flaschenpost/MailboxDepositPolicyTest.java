@@ -9,6 +9,7 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -47,7 +48,7 @@ class MailboxDepositPolicyTest {
   /** A second node used as the resolved OH host in the forwarding tests. */
   private ServerContext hostNode;
 
-  private byte[] ohId;
+  private OhId ohId;
 
   @BeforeEach
   void setUp() {
@@ -61,7 +62,7 @@ class MailboxDepositPolicyTest {
     hostNode = ServerContext.buildDefaultServerContext();
     hostNode.setOutboundService(new OutboundService(OutboundStore.inMemory()));
 
-    ohId = randomBytes(KademliaId.ID_LENGTH_BYTES);
+    ohId = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
   }
 
   private static byte[] randomBytes(int len) {
@@ -71,7 +72,7 @@ class MailboxDepositPolicyTest {
   }
 
   /** Registers an OH handle with a future expiry on the local node. */
-  private void registerOh(byte[] id) {
+  private void registerOh(OhId id) {
     long now = System.currentTimeMillis();
     handleStore.put(id, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
   }
@@ -99,7 +100,7 @@ class MailboxDepositPolicyTest {
 
   /** Registers a local ack OH and returns a hop-less return path pointing at it. */
   private ReturnPath localAckPath() {
-    byte[] ackOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);
+    OhId ackOhId = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
     registerOh(ackOhId);
     return new ReturnPath(ackOhId, randomBytes(OutboundService.SESSION_TAG_BYTES), List.of());
   }
@@ -126,7 +127,7 @@ class MailboxDepositPolicyTest {
     Peer sender = lightClient(9401);
 
     MailboxDepositPolicy.handlePut(
-        node, outboundService, put(content).setOhId(ByteString.copyFrom(ohId)).build(), sender);
+        node, outboundService, put(content).setOhId(ohId.toByteString()).build(), sender);
 
     List<MailItem> items = mailboxStore.fetchMessages(ohId, 10, 0);
     assertThat(items).hasSize(1);
@@ -148,14 +149,11 @@ class MailboxDepositPolicyTest {
         outboundService,
         FlaschenpostPut.newBuilder()
             .setContent(ByteString.copyFrom(new byte[8]))
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .build(),
         peerWithoutFlag);
     MailboxDepositPolicy.handlePut(
-        node,
-        outboundService,
-        put(new byte[8]).setOhId(ByteString.copyFrom(ohId)).build(),
-        fullPeer);
+        node, outboundService, put(new byte[8]).setOhId(ohId.toByteString()).build(), fullPeer);
 
     assertThat(PeerTestSupport.writeBuffer(peerWithoutFlag).position())
         .as("no want_response ⇒ no command 158")
@@ -182,7 +180,7 @@ class MailboxDepositPolicyTest {
     Peer sender = lightClient(9405);
 
     MailboxDepositPolicy.handlePut(
-        node, outboundService, put(content).setOhId(ByteString.copyFrom(ohId)).build(), sender);
+        node, outboundService, put(content).setOhId(ohId.toByteString()).build(), sender);
 
     ByteBuffer out = PeerTestSupport.writeBuffer(hostPeer);
     out.flip();
@@ -191,7 +189,7 @@ class MailboxDepositPolicyTest {
     byte[] forwardedBytes = new byte[out.getInt()];
     out.get(forwardedBytes);
     FlaschenpostPut forwarded = FlaschenpostPut.parseFrom(forwardedBytes);
-    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(ohId);
+    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(ohId.toBytes());
     assertThat(forwarded.getContent().toByteArray()).isEqualTo(content);
     assertThat(forwarded.getHopCount()).isEqualTo(1);
 
@@ -208,10 +206,7 @@ class MailboxDepositPolicyTest {
     MailboxDepositPolicy.handlePut(
         node,
         outboundService,
-        put(new byte[8])
-            .setOhId(ByteString.copyFrom(ohId))
-            .setHopCount(OhForwarder.MAX_HOPS)
-            .build(),
+        put(new byte[8]).setOhId(ohId.toByteString()).setHopCount(OhForwarder.MAX_HOPS).build(),
         sender);
 
     assertThat(responseStatus(sender)).isEqualTo(Status.NOT_FOUND);
@@ -229,7 +224,7 @@ class MailboxDepositPolicyTest {
         node,
         outboundService,
         put("acked".getBytes(StandardCharsets.UTF_8))
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setReturnPath(ByteString.copyFrom(ackPath.serialize()))
             .build(),
         sender);
@@ -247,7 +242,7 @@ class MailboxDepositPolicyTest {
         node,
         outboundService,
         put(new byte[8])
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setHopCount(OhForwarder.MAX_HOPS)
             .setReturnPath(ByteString.copyFrom(ackPath.serialize()))
             .build(),
@@ -270,7 +265,7 @@ class MailboxDepositPolicyTest {
         sender);
 
     assertThat(responseStatus(sender)).isEqualTo(Status.BAD_REQUEST);
-    assertThat(mailboxStore.fetchMessages(new byte[5], 10, 0)).isEmpty();
+    assertThat(mailboxStore.fetchMessages(ohId, 10, 0)).isEmpty();
   }
 
   @Test
@@ -281,9 +276,7 @@ class MailboxDepositPolicyTest {
     MailboxDepositPolicy.handlePut(
         node,
         outboundService,
-        put(new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1])
-            .setOhId(ByteString.copyFrom(ohId))
-            .build(),
+        put(new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1]).setOhId(ohId.toByteString()).build(),
         sender);
 
     assertThat(responseStatus(sender)).isEqualTo(Status.BAD_REQUEST);
@@ -299,7 +292,7 @@ class MailboxDepositPolicyTest {
         node,
         outboundService,
         put(new byte[8])
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setSessionTag(ByteString.copyFrom(new byte[OutboundService.SESSION_TAG_BYTES - 1]))
             .build(),
         sender);
@@ -317,7 +310,7 @@ class MailboxDepositPolicyTest {
         node,
         outboundService,
         put(new byte[8])
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setReturnPath(ByteString.copyFrom(new byte[7]))
             .build(),
         sender);
@@ -335,7 +328,7 @@ class MailboxDepositPolicyTest {
         node,
         outboundService,
         put(new byte[8])
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setReturnPath(ByteString.copyFrom(new byte[ReturnPath.MAX_SERIALIZED_LEN + 1]))
             .build(),
         sender);
@@ -353,7 +346,7 @@ class MailboxDepositPolicyTest {
     ByteBuffer gm = ByteBuffer.allocate(1 + 4 + KademliaId.ID_LENGTH_BYTES + body.length);
     gm.put(GMType.GARLIC_MESSAGE.getId());
     gm.putInt(4 + KademliaId.ID_LENGTH_BYTES + body.length);
-    gm.put(ohId);
+    ohId.writeTo(gm);
     gm.put(body);
     byte[] gmBytes = gm.array();
 
@@ -391,7 +384,7 @@ class MailboxDepositPolicyTest {
     MailboxDepositPolicy.handlePut(
         node,
         null,
-        put(new byte[] {(byte) 0x2a, 1, 2, 3}).setOhId(ByteString.copyFrom(ohId)).build(),
+        put(new byte[] {(byte) 0x2a, 1, 2, 3}).setOhId(ohId.toByteString()).build(),
         sender);
 
     assertThat(PeerTestSupport.writeBuffer(sender).position())

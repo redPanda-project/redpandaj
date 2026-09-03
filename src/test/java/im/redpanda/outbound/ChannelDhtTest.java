@@ -74,7 +74,7 @@ class ChannelDhtTest {
     long now = System.currentTimeMillis();
 
     assertThat(ChannelDht.rendezvousKademliaId(shared, now))
-        .isNotEqualTo(OhDht.announceKademliaId(shared, now));
+        .isNotEqualTo(OhDht.announceKademliaId(OhId.fromBytes(shared), now));
   }
 
   // --- Record building (padding, signature, self-certifying key) ---

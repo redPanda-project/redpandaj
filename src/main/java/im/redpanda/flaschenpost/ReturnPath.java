@@ -2,6 +2,7 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.outbound.OhId;
 import java.nio.ByteBuffer;
 import java.util.List;
 
@@ -24,7 +25,7 @@ import java.util.List;
  * {@code hop_count = 0} the depositing node delivers the R-ACK directly (local deposit or MS02b
  * forward toward the ack OH host).
  */
-public record ReturnPath(byte[] ackOhId, byte[] ackSessionTag, List<Hop> hops) {
+public record ReturnPath(OhId ackOhId, byte[] ackSessionTag, List<Hop> hops) {
 
   /** One return-path relay: its KademliaId and X25519 encryption public key. */
   public record Hop(KademliaId kademliaId, byte[] encryptionPub) {}
@@ -44,8 +45,8 @@ public record ReturnPath(byte[] ackOhId, byte[] ackSessionTag, List<Hop> hops) {
 
   /** Validates the wire-format invariants up front so {@link #serialize()} cannot fail late. */
   public ReturnPath {
-    if (ackOhId.length != KademliaId.ID_LENGTH_BYTES) {
-      throw new IllegalArgumentException("invalid ack_oh_id length: " + ackOhId.length);
+    if (!ackOhId.hasGarlicLength()) {
+      throw new IllegalArgumentException("invalid ack_oh_id length: " + ackOhId.length());
     }
     if (ackSessionTag.length != FlaschenpostV2.SESSION_TAG_LEN) {
       throw new IllegalArgumentException("invalid ack_session_tag length: " + ackSessionTag.length);
@@ -71,8 +72,7 @@ public record ReturnPath(byte[] ackOhId, byte[] ackSessionTag, List<Hop> hops) {
     if (buffer.remaining() < FIXED_LEN) {
       return null;
     }
-    byte[] ackOhId = new byte[KademliaId.ID_LENGTH_BYTES];
-    buffer.get(ackOhId);
+    OhId ackOhId = OhId.readGarlicSlot(buffer);
     byte[] ackSessionTag = new byte[FlaschenpostV2.SESSION_TAG_LEN];
     buffer.get(ackSessionTag);
     int hopCount = buffer.get() & 0xFF;
@@ -102,7 +102,7 @@ public record ReturnPath(byte[] ackOhId, byte[] ackSessionTag, List<Hop> hops) {
   /** Serializes this block into the documented wire format. */
   public byte[] serialize() {
     ByteBuffer buffer = ByteBuffer.allocate(FIXED_LEN + hops.size() * HOP_LEN);
-    buffer.put(ackOhId);
+    ackOhId.writeTo(buffer);
     buffer.put(ackSessionTag);
     buffer.put((byte) hops.size());
     for (Hop hop : hops) {

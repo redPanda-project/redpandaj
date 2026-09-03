@@ -9,6 +9,7 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -53,8 +54,8 @@ class RoutingAckRouterTest {
   private OutboundMailboxStore aliceMailbox;
   private OutboundHandleStore bobHandles;
 
-  private byte[] bobOhId;
-  private byte[] aliceOhId;
+  private OhId bobOhId;
+  private OhId aliceOhId;
   private byte[] ackSessionTag;
 
   @BeforeEach
@@ -77,8 +78,8 @@ class RoutingAckRouterTest {
     aliceHost.setOutboundService(new OutboundService(aliceStore));
     aliceProcessor = new InboundCommandProcessor(aliceHost);
 
-    bobOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);
-    aliceOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);
+    bobOhId = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
+    aliceOhId = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
     ackSessionTag = randomBytes(FlaschenpostV2.SESSION_TAG_LEN);
 
     long now = System.currentTimeMillis();
@@ -146,7 +147,7 @@ class RoutingAckRouterTest {
 
   /** Builds the CMD_DELIVER_ACKED plaintext. {@code sessionTag} may be empty (untagged). */
   private byte[] buildAckedDeliverPlaintext(
-      byte[] ohId, byte[] sessionTag, byte[] returnPathBytes, byte[] payload) {
+      OhId ohId, byte[] sessionTag, byte[] returnPathBytes, byte[] payload) {
     ByteBuffer deliver =
         ByteBuffer.allocate(
             1
@@ -157,7 +158,7 @@ class RoutingAckRouterTest {
                 + 4
                 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER_ACKED);
-    deliver.put(ohId);
+    ohId.writeTo(deliver);
     deliver.put((byte) sessionTag.length);
     deliver.put(sessionTag);
     deliver.put(returnPathBytes);
@@ -282,7 +283,7 @@ class RoutingAckRouterTest {
         ByteBuffer.allocate(
             1 + KademliaId.ID_LENGTH_BYTES + 1 + tag5.length + returnPathBytes.length + 4);
     deliver.put(FlaschenpostV2.CMD_DELIVER_ACKED);
-    deliver.put(bobOhId);
+    bobOhId.writeTo(deliver);
     deliver.put((byte) tag5.length);
     deliver.put(tag5);
     deliver.put(returnPathBytes);
@@ -299,7 +300,7 @@ class RoutingAckRouterTest {
   void ackedDeliver_hopCountAboveLimit_isDroppedSilently() throws Exception {
     // a return path claiming more than ReturnPath.MAX_HOPS hops is structurally invalid
     ByteBuffer rp = ByteBuffer.allocate(ReturnPath.FIXED_LEN + 5 * ReturnPath.HOP_LEN);
-    rp.put(aliceOhId);
+    aliceOhId.writeTo(rp);
     rp.put(ackSessionTag);
     rp.put((byte) 5);
     rp.put(randomBytes(5 * ReturnPath.HOP_LEN));
@@ -318,13 +319,13 @@ class RoutingAckRouterTest {
     // hop_count = 2 but only one hop descriptor present: the payload_len read then overlaps the
     // descriptor bytes — parse must fail on the length checks, nothing may be deposited
     ByteBuffer rp = ByteBuffer.allocate(ReturnPath.FIXED_LEN + ReturnPath.HOP_LEN);
-    rp.put(aliceOhId);
+    aliceOhId.writeTo(rp);
     rp.put(ackSessionTag);
     rp.put((byte) 2);
     rp.put(randomBytes(ReturnPath.HOP_LEN));
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 1 + rp.capacity());
     deliver.put(FlaschenpostV2.CMD_DELIVER_ACKED);
-    deliver.put(bobOhId);
+    bobOhId.writeTo(deliver);
     deliver.put((byte) 0);
     deliver.put(rp.array());
     bobProcessor.parseCommand(
@@ -357,7 +358,7 @@ class RoutingAckRouterTest {
 
     byte[] putBytes = readFrame(relayToBob, Command.FLASCHENPOST_PUT);
     im.redpanda.proto.FlaschenpostPut put = im.redpanda.proto.FlaschenpostPut.parseFrom(putBytes);
-    assertThat(put.getOhId().toByteArray()).isEqualTo(bobOhId);
+    assertThat(put.getOhId().toByteArray()).isEqualTo(bobOhId.toBytes());
     assertThat(put.getContent().toByteArray()).isEqualTo(payload);
     assertThat(put.getReturnPath().toByteArray())
         .as("the return path must survive the MS02b fallback")
@@ -384,7 +385,7 @@ class RoutingAckRouterTest {
     im.redpanda.proto.FlaschenpostPut put =
         im.redpanda.proto.FlaschenpostPut.newBuilder()
             .setContent(com.google.protobuf.ByteString.copyFrom("late packet".getBytes()))
-            .setOhId(com.google.protobuf.ByteString.copyFrom(bobOhId))
+            .setOhId(bobOhId.toByteString())
             .setHopCount(OhForwarder.MAX_HOPS)
             .setReturnPath(
                 com.google.protobuf.ByteString.copyFrom(returnPath(aliceHost).serialize()))
@@ -405,7 +406,7 @@ class RoutingAckRouterTest {
     im.redpanda.proto.FlaschenpostPut put =
         im.redpanda.proto.FlaschenpostPut.newBuilder()
             .setContent(com.google.protobuf.ByteString.copyFrom("payload".getBytes()))
-            .setOhId(com.google.protobuf.ByteString.copyFrom(bobOhId))
+            .setOhId(bobOhId.toByteString())
             .setReturnPath(com.google.protobuf.ByteString.copyFrom(randomBytes(7)))
             .build();
     bobProcessor.parseCommand(
@@ -438,7 +439,12 @@ class RoutingAckRouterTest {
         new ReturnPath.Hop(
             relay.getOwnNodeId(), relay.getNodeId().getEncryptionPubKey().getEncoded());
     org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> new ReturnPath(randomBytes(19), ackSessionTag, List.of(hop)))
+            () -> new ReturnPath(OhId.fromBytes(randomBytes(19)), ackSessionTag, List.of(hop)))
+        .isInstanceOf(IllegalArgumentException.class);
+    // T113: an oh_id that is valid per OhId but not the fixed 20-byte garlic slot width is
+    // rejected by ReturnPath itself, not by OhId's own range check above.
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> new ReturnPath(OhId.fromBytes(randomBytes(32)), ackSessionTag, List.of(hop)))
         .isInstanceOf(IllegalArgumentException.class);
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () -> new ReturnPath(aliceOhId, randomBytes(15), List.of(hop)))
