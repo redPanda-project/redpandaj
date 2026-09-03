@@ -56,7 +56,7 @@ public final class MailboxDepositPolicy {
       OutboundService outboundService,
       FlaschenpostPut putMsg,
       Peer peer) {
-    byte[] content = putMsg.getContent().toByteArray();
+    ByteString contentBytes = putMsg.getContent();
 
     // MS01: Direct OH routing via explicit oh_id field.
     // MS02b: this path is authoritative — a packet with an explicit oh_id is deposited or
@@ -76,8 +76,9 @@ public final class MailboxDepositPolicy {
       byte[] ohId = ohIdBytes.toByteArray();
       // Pre-check the size limit before any deposit/forward decision: an oversized payload is
       // rejected by every host node anyway, so forwarding it (and answering OK) would only waste
-      // hops and mislead the sender.
-      if (content.length > OutboundMailboxStore.MAX_ITEM_BYTES) {
+      // hops and mislead the sender. Checked on the ByteString so an oversized payload is never
+      // copied into a second array just to be rejected (cf. oh_id above).
+      if (contentBytes.size() > OutboundMailboxStore.MAX_ITEM_BYTES) {
         respondToDeposit(outboundService, peer, putMsg, Status.BAD_REQUEST);
         return;
       }
@@ -107,6 +108,7 @@ public final class MailboxDepositPolicy {
           return;
         }
       }
+      byte[] content = contentBytes.toByteArray();
       OutboundService.DepositResult result =
           outboundService.depositMessage(ohId, content, sessionTag);
       if (result == OutboundService.DepositResult.NOT_FOUND) {
@@ -142,6 +144,7 @@ public final class MailboxDepositPolicy {
     }
 
     // Legacy: Try to route via GarlicMessage destination header
+    byte[] content = contentBytes.toByteArray();
     if (tryDepositToLocalOh(outboundService, content)) {
       return;
     }
@@ -191,8 +194,11 @@ public final class MailboxDepositPolicy {
    * lookup. Once no legacy traffic remains, remove this method and the implicit shared-namespace
    * behavior — new code must never rely on it.
    *
-   * @return true if the deposit targeted a locally registered OH (stored or rejected by the MS02b
-   *     hardening — in both cases the packet is handled here)
+   * @return true if the deposit targeted a locally registered OH — either stored, or rejected by
+   *     the mailbox store's own limits (per-item size, item cap, byte quota). In both cases the
+   *     packet is handled here and must not leak into the legacy forwarding pipeline. The
+   *     empty-{@code oh_id} REDPANDAJ-2DR frame check runs afterwards, and only when this returns
+   *     false.
    */
   private static boolean tryDepositToLocalOh(OutboundService outboundService, byte[] content) {
     if (outboundService == null) {
