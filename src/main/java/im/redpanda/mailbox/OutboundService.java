@@ -1,10 +1,10 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
-import im.redpanda.outbound.OutboundAuth.AuthResult;
-import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import im.redpanda.mailbox.OutboundAuth.AuthResult;
+import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.AckFetchResponse;
 import im.redpanda.outbound.v1.FetchRequest;

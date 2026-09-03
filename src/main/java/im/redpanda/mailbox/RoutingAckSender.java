@@ -1,7 +1,7 @@
-package im.redpanda.flaschenpost;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OutboundService;
+import im.redpanda.flaschenpost.ReverseGarlic;
 import im.redpanda.outbound.v1.RoutingAck;
 
 /**

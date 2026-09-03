@@ -1,7 +1,7 @@
-package im.redpanda.jobs;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OutboundStore;
+import im.redpanda.jobs.Job;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

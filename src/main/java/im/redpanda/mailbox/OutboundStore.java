@@ -1,8 +1,8 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

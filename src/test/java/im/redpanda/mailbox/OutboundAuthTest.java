@@ -1,4 +1,4 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

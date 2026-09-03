@@ -1,4 +1,4 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Utils;

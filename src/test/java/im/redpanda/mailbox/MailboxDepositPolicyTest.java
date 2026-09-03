@@ -1,4 +1,4 @@
-package im.redpanda.flaschenpost;
+package im.redpanda.mailbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,12 +8,8 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OhDht;
-import im.redpanda.outbound.OhId;
-import im.redpanda.outbound.OutboundHandleStore;
-import im.redpanda.outbound.OutboundMailboxStore;
-import im.redpanda.outbound.OutboundService;
-import im.redpanda.outbound.OutboundStore;
+import im.redpanda.flaschenpost.GMType;
+import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RoutingAck;

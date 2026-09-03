@@ -6,10 +6,12 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
-import im.redpanda.jobs.OhResolveJob;
 import im.redpanda.kademlia.PeerComparator;
-import im.redpanda.outbound.OhId;
-import im.redpanda.outbound.OutboundService;
+import im.redpanda.mailbox.OhId;
+import im.redpanda.mailbox.OhResolveJob;
+import im.redpanda.mailbox.OutboundService;
+import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.mailbox.RoutingAckSender;
 import im.redpanda.store.NodeEdge;
 import im.redpanda.store.NodeStore;
 import java.util.Arrays;
@@ -42,7 +44,7 @@ public final class OhForwarder {
 
   /**
    * Cap on concurrently parked deposits awaiting their retry. Each payload is at most {@link
-   * im.redpanda.outbound.OutboundMailboxStore#MAX_ITEM_BYTES} (pre-checked by the caller), so the
+   * im.redpanda.mailbox.OutboundMailboxStore#MAX_ITEM_BYTES} (pre-checked by the caller), so the
    * buffer is memory-bounded at ~4 MiB; the single fixed-delay retry doubles as the TTL.
    */
   static final int MAX_PENDING_RETRIES = 64;

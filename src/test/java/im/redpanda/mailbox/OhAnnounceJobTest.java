@@ -1,11 +1,10 @@
-package im.redpanda.jobs;
+package im.redpanda.mailbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.jobs.OhAnnounceJob.SingleAnnounceJob;
-import im.redpanda.outbound.OhId;
+import im.redpanda.mailbox.OhAnnounceJob.SingleAnnounceJob;
 import java.security.SecureRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

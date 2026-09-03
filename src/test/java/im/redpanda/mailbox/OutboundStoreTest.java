@@ -1,10 +1,10 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.io.IOException;
@@ -305,7 +305,7 @@ class OutboundStoreTest {
     assertThat(raw)
         .as("the handle record must be stored as its own JSON, with no class name pinned")
         .contains("ohAuthPublicKey")
-        .doesNotContain("im.redpanda.outbound.OutboundHandleStore");
+        .doesNotContain("im.redpanda.mailbox.OutboundHandleStore");
   }
 
   /**

@@ -3,7 +3,8 @@ package im.redpanda.flaschenpost;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OutboundService;
+import im.redpanda.mailbox.MailboxDepositPolicy;
+import im.redpanda.mailbox.OutboundService;
 import im.redpanda.proto.FlaschenpostPut;
 
 /**

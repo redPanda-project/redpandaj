@@ -1,8 +1,8 @@
-package im.redpanda.flaschenpost;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.crypt.CryptoUtils;
-import im.redpanda.outbound.OhId;
+import im.redpanda.flaschenpost.FlaschenpostV2;
 import java.nio.ByteBuffer;
 import java.util.List;
 

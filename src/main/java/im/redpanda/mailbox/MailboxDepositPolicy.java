@@ -1,12 +1,11 @@
-package im.redpanda.flaschenpost;
+package im.redpanda.mailbox;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OhId;
-import im.redpanda.outbound.OutboundMailboxStore;
-import im.redpanda.outbound.OutboundService;
+import im.redpanda.flaschenpost.GMParser;
+import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
 import lombok.extern.slf4j.Slf4j;

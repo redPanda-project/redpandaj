@@ -4,6 +4,7 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.kademlia.KadContent;
+import im.redpanda.mailbox.OhDht;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.Security;
