@@ -536,7 +536,7 @@
                             </execution>
                         </executions>
                         <configuration>
-                            <mainClass>im.redpanda.core.Updater</mainClass>
+                            <mainClass>im.redpanda.updater.Updater</mainClass>
                         </configuration>
                     </plugin>
                 </plugins>

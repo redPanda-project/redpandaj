@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
+import im.redpanda.updater.Updater;
 import java.nio.ByteBuffer;
 import java.security.Security;
 import org.junit.jupiter.api.Assertions;

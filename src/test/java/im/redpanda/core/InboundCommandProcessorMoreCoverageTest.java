@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.proto.*;
+import im.redpanda.updater.UpdateTransfer;
 import java.io.File;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.AfterEach;
@@ -30,7 +31,7 @@ class InboundCommandProcessorMoreCoverageTest {
   @AfterEach
   void cleanup() {
     // Ensure android.apk from tests is removed
-    File f = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    File f = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
     if (f.exists()) {
       // ignore deletion result
       f.delete();
@@ -119,7 +120,7 @@ class InboundCommandProcessorMoreCoverageTest {
     peer.writeBuffer = ByteBuffer.allocate(32);
 
     // Ensure apk does not exist
-    File f = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    File f = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
     if (f.exists()) f.delete();
 
     int consumedNoFile =
@@ -164,7 +165,7 @@ class InboundCommandProcessorMoreCoverageTest {
     in.flip();
 
     // Ensure apk does not exist before test
-    File apk = new File(ConnectionReaderThread.ANDROID_UPDATE_FILE);
+    File apk = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
     if (apk.exists()) {
       apk.delete();
     }

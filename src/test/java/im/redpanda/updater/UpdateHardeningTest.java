@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.updater;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -7,6 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import im.redpanda.core.ByteBufferPool;
+import im.redpanda.core.Command;
+import im.redpanda.core.InboundCommandProcessor;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.ServerContext;
+import im.redpanda.core.Settings;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -32,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * InboundCommandProcessorMoreCoverageTest) delete CWD-relative {@code tmp_redpanda.jar} in their
  * cleanup, which could race this class's write/move window in another fork (T70 flakiness).
  */
-class InboundCommandProcessorUpdateHardeningTest {
+class UpdateHardeningTest {
 
   private static final int TEST_PORT = 49781;
 
@@ -47,7 +54,7 @@ class InboundCommandProcessorUpdateHardeningTest {
   /** Redirected staging file, always a sibling of {@link #updateFile}. */
   private File tmpJarFile;
 
-  /** Redirected apk destination ({@link ConnectionReaderThread#ANDROID_UPDATE_FILE} in prod). */
+  /** Redirected apk destination ({@link UpdateTransfer#ANDROID_UPDATE_FILE} in prod). */
   private File apkFile;
 
   private ServerContext ctx;
@@ -78,8 +85,8 @@ class InboundCommandProcessorUpdateHardeningTest {
     // wait for their delayed restart trigger, but if such a test fails/times out before the
     // 2s-delayed background thread fires, restoring System.exit(0) here would let that straggler
     // thread kill the whole Surefire fork mid-suite.
-    InboundCommandProcessor.restartAction = () -> {};
-    InboundCommandProcessor.installThreadHookForTests = t -> {};
+    UpdateTransfer.restartAction = () -> {};
+    UpdateTransfer.installThreadHookForTests = t -> {};
     new File(Settings.SAVE_DIR + "/localSettings" + TEST_PORT + ".dat").delete();
   }
 
@@ -201,7 +208,7 @@ class InboundCommandProcessorUpdateHardeningTest {
     // instead of being polled for.
     AtomicInteger restartCount = new AtomicInteger();
     CountDownLatch restartLatch = new CountDownLatch(1);
-    InboundCommandProcessor.restartAction =
+    UpdateTransfer.restartAction =
         () -> {
           restartCount.incrementAndGet();
           restartLatch.countDown();
@@ -245,14 +252,14 @@ class InboundCommandProcessorUpdateHardeningTest {
     // (see comment there): await the restart latch, then assert all side effects directly.
     AtomicInteger restartCount = new AtomicInteger();
     CountDownLatch restartLatch = new CountDownLatch(1);
-    InboundCommandProcessor.restartAction =
+    UpdateTransfer.restartAction =
         () -> {
           restartCount.incrementAndGet();
           restartLatch.countDown();
         };
 
     AtomicReference<Thread> writerThread = new AtomicReference<>();
-    InboundCommandProcessor.installThreadHookForTests = writerThread::set;
+    UpdateTransfer.installThreadHookForTests = writerThread::set;
 
     byte[] data = "fake-jar-bytes-for-offload-check".getBytes();
     long othersTs = Updater.MIN_UPDATE_TIMESTAMP_MS + 1_000_000L;

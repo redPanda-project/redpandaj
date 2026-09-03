@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.updater;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

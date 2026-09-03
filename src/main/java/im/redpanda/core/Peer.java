@@ -523,7 +523,9 @@ public class Peer implements Comparable<Peer> {
    * <p>Package-private: this is the raw, unframed escape hatch, and handing it to another package
    * would allow exactly the thing the {@code enqueue*} methods exist to prevent — bytes written
    * into the stream without the {@code [cmd][len][payload]} framing, which desyncs the connection.
-   * Its callers are the two update-timestamp handlers, which write {@code [cmd][long]}.
+   * The only unframed shape on this connection is {@code [cmd][long]}, and that has its own narrow
+   * public entry point, {@link #enqueueTimestamp(byte, long)} (T116: the updater moved to its own
+   * package and must not get the escape hatch with it).
    *
    * <p>{@code writer} must not block and must not acquire another lock: the documented lock order
    * (see {@link PeerList}) puts {@code writeBufferLock} outermost, so anything taken inside it can
@@ -554,6 +556,24 @@ public class Peer implements Comparable<Peer> {
    */
   public boolean enqueueCommand(byte command) {
     return writeBufferLocked(buffer -> buffer.put(command));
+  }
+
+  /**
+   * Queues an unframed {@code [command][timestamp:8]} answer — the only shape on this connection
+   * that carries a payload without the {@code [len:4]} prefix, used by the four update-timestamp
+   * commands (9/10 and 13/14).
+   *
+   * <p>Exists so the updater package (T116) does not need the package-private {@link
+   * #writeBufferLocked(Consumer)} escape hatch: this one can only ever write these nine bytes.
+   *
+   * @return {@code true} if the bytes were queued, {@code false} if the peer is gone
+   */
+  public boolean enqueueTimestamp(byte command, long timestamp) {
+    return writeBufferLocked(
+        buffer -> {
+          buffer.put(command);
+          buffer.putLong(timestamp);
+        });
   }
 
   /**
@@ -649,7 +669,7 @@ public class Peer implements Comparable<Peer> {
    * nulls them while holding it. A peer that is no longer connected has nothing queued by
    * definition.
    */
-  boolean hasQueuedOutboundBytes() {
+  public boolean hasQueuedOutboundBytes() {
     writeBufferLock.lock();
     try {
       ByteBuffer buffer = writeBuffer;

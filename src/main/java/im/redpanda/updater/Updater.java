@@ -1,5 +1,7 @@
-package im.redpanda.core;
+package im.redpanda.updater;
 
+import im.redpanda.core.LocalSettings;
+import im.redpanda.core.NodeId;
 import im.redpanda.crypt.AddressFormatException;
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
