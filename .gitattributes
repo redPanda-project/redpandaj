@@ -1,0 +1,4 @@
+# The wire registry is generated with LF line endings and compared byte-for-byte by
+# WireRegistryTest. Pin it so a checkout with core.autocrlf=true cannot turn it into CRLF
+# and fail the build for reasons that have nothing to do with the protocol.
+src/main/resources/wire-registry.md text eol=lf
