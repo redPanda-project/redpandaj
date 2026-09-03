@@ -546,17 +546,42 @@ class UpdateHardeningTest {
       Peer peer = newPeer(8813);
       ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
 
-      ByteBuffer in = ByteBuffer.allocate(8);
-      in.putLong(installedAt - TimeUnit.HOURS.toMillis(1));
-      in.flip();
-      proc.parseCommand(Command.UPDATE_ANSWER_TIMESTAMP, in, peer);
+      proc.parseCommand(
+          Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
 
-      // requestUpdateContent would queue UPDATE_REQUEST_CONTENT; give the pool a moment either way
-      Thread.sleep(500);
-      assertEquals(0, out.position(), "we must not ask a peer for an older jar");
+      // "nothing was queued" is only meaningful over a window, and only if the same window
+      // reliably catches a request that IS made - which the positive control below establishes.
+      assertStaysEmpty(out, TimeUnit.SECONDS.toMillis(5));
+
+      // Positive control: an offer above the floor does reach requestUpdateContent through this
+      // very harness, so the assertion above is not vacuously true.
+      proc.parseCommand(
+          Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt + TimeUnit.HOURS.toMillis(1)), peer);
+      awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
     } finally {
       Settings.loadUpdates = false;
     }
+  }
+
+  /** An UPDATE_ANSWER_TIMESTAMP payload announcing {@code timestamp}. */
+  private static ByteBuffer offer(long timestamp) {
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(timestamp);
+    in.flip();
+    return in;
+  }
+
+  /**
+   * Fails as soon as anything is queued on {@code buffer}, polling for {@code windowMillis}. A
+   * single check after a fixed sleep would pass whenever the queueing is merely late (CI load).
+   */
+  private static void assertStaysEmpty(ByteBuffer buffer, long windowMillis) {
+    long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(windowMillis);
+    while (System.nanoTime() < deadlineNanos) {
+      assertEquals(0, buffer.position(), "we must not ask a peer for an older jar");
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+    }
+    assertEquals(0, buffer.position(), "we must not ask a peer for an older jar");
   }
 
   /**
