@@ -1,4 +1,4 @@
-package im.redpanda.kademlia.nodeinfo;
+package im.redpanda.dht.nodeinfo;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

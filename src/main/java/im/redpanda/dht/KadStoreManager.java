@@ -1,4 +1,4 @@
-package im.redpanda.kademlia;
+package im.redpanda.dht;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Log;
@@ -9,7 +9,6 @@ import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.crypt.Utils;
 import im.redpanda.jobs.JobScheduler;
-import im.redpanda.jobs.KademliaInsertJob;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.security.Security;

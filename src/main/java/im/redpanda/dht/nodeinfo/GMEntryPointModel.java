@@ -1,4 +1,4 @@
-package im.redpanda.kademlia.nodeinfo;
+package im.redpanda.dht.nodeinfo;
 
 import im.redpanda.core.NodeId;
 import lombok.Getter;

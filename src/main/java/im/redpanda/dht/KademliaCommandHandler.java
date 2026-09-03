@@ -1,4 +1,4 @@
-package im.redpanda.kademlia;
+package im.redpanda.dht;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
@@ -8,9 +8,6 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaInsertJob;
-import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
 import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaGetAnswer;

@@ -3,8 +3,8 @@ package im.redpanda.core;
 import static com.google.protobuf.ByteString.copyFrom;
 import static org.junit.jupiter.api.Assertions.*;
 
-import im.redpanda.jobs.KademliaInsertJob;
-import im.redpanda.kademlia.KadContent;
+import im.redpanda.dht.KadContent;
+import im.redpanda.dht.KademliaInsertJob;
 import im.redpanda.proto.*;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.AfterEach;

@@ -1,6 +1,6 @@
 package im.redpanda.core;
 
-import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.dht.KadStoreManager;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.store.NodeStore;

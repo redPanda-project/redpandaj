@@ -1,4 +1,4 @@
-package im.redpanda.kademlia;
+package im.redpanda.dht;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;

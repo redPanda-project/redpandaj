@@ -1,7 +1,7 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import im.redpanda.core.ServerContext;
-import im.redpanda.kademlia.KadStoreManager;
+import im.redpanda.jobs.Job;
 
 public class KadRefreshJob extends Job {
 

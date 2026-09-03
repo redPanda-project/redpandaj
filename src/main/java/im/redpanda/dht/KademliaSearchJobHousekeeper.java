@@ -1,6 +1,7 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.Job;
 import org.apache.logging.log4j.LogManager;
 
 public class KademliaSearchJobHousekeeper extends Job {
