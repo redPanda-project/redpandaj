@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.locks.Lock;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -28,23 +27,15 @@ public class Saver {
   /**
    * Snapshots the peer list under its read lock and persists the snapshot.
    *
-   * <p>The callers used to hand {@link PeerList#getPeerArrayList()} — the live list — straight to
-   * {@link #savePeers(List)}, which iterates it. Network threads add and remove peers concurrently,
-   * so the iteration could throw a {@code ConcurrentModificationException} and the save was lost
-   * (the same class of bug as redpandaj#260 and REDPANDAJ-2DZ; every other iteration site takes the
-   * lock). Only the snapshot is taken under the lock, the serialization and the file I/O run
-   * without it.
+   * <p>The callers used to hand the live list — {@code PeerList.getPeerArrayList()}, removed in
+   * T115 — straight to {@link #savePeers(List)}, which iterates it. Network threads add and remove
+   * peers concurrently, so the iteration could throw a {@code ConcurrentModificationException} and
+   * the save was lost (the same class of bug as redpandaj#260 and REDPANDAJ-2DZ; every other
+   * iteration site takes the lock). Only the snapshot is taken under the lock, the serialization
+   * and the file I/O run without it.
    */
   public static void savePeers(PeerList peerList) {
-    ArrayList<Peer> snapshot;
-    Lock readLock = peerList.getReadWriteLock().readLock();
-    readLock.lock();
-    try {
-      snapshot = new ArrayList<>(peerList.getPeerArrayList());
-    } finally {
-      readLock.unlock();
-    }
-    savePeers(snapshot);
+    savePeers(peerList.snapshot());
   }
 
   /**

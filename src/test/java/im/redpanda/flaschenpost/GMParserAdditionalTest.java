@@ -24,7 +24,6 @@ import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
@@ -106,14 +105,6 @@ class GMParserAdditionalTest {
     @Override
     public void success() {
       successCalled = true;
-    }
-  }
-
-  private static class NullPeerList extends PeerList {
-
-    @Override
-    public ArrayList<Peer> getPeerArrayList() {
-      return null;
     }
   }
 
@@ -747,10 +738,17 @@ class GMParserAdditionalTest {
     assertNotNull(parsed);
   }
 
+  /**
+   * Was {@code nullPeerArrayListReturnsGracefully}, which stubbed {@code
+   * PeerList.getPeerArrayList()} to return {@code null} — a value the real class could never
+   * produce, and impossible to express since {@code PeerList.snapshot()} replaced that accessor
+   * (T115). The reachable case is an empty peer list: no candidate to route to, so the parse must
+   * still return the content instead of throwing.
+   */
   @Test
-  void nullPeerArrayListReturnsGracefully() {
+  void emptyPeerListReturnsGracefully() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    serverContext.setPeerList(new NullPeerList());
+    serverContext.setPeerList(new PeerList());
     NodeId destination = NodeId.generateWithSimpleKey();
 
     GMContent parsed =

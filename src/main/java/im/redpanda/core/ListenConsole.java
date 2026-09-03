@@ -11,8 +11,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.List;
 
 public class ListenConsole extends Thread {
   private final PeerList peerList;
@@ -66,14 +65,11 @@ public class ListenConsole extends Thread {
 
         int actCons = 0;
 
-        peerList.getReadWriteLock().writeLock().lock();
-        try {
-
-          ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
-
-          ArrayList<Peer> list = peerArrayList;
-          Collections.sort(list);
-
+        // T115: sort and snapshot each take the list's lock themselves; the table below is
+        // printed without holding it, which also keeps System.out out of the locked section.
+        peerList.sortByPriority();
+        List<Peer> list = peerList.snapshot();
+        {
           System.out.format(
               "%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n",
               "[IP]:PORT",
@@ -156,9 +152,6 @@ public class ListenConsole extends Thread {
 
           System.out.println("NodeStore blacklist: ");
           serverContext.getNodeStore().printBlacklist();
-
-        } finally {
-          peerList.getReadWriteLock().writeLock().unlock();
         }
 
         if (serverContext.getNodeStore() != null) {
@@ -220,13 +213,7 @@ public class ListenConsole extends Thread {
         // ConnectionHandler.setupConnection(). Unreachable today only because systemd gives this
         // thread /dev/null on stdin — which is a reason to fix it, not to keep it. The try/finally
         // matters independently: a throw out of disconnect() used to leak the write lock forever.
-        ArrayList<Peer> peersToDisconnect;
-        peerList.getReadWriteLock().readLock().lock();
-        try {
-          peersToDisconnect = new ArrayList<>(peerList.getPeerArrayList());
-        } finally {
-          peerList.getReadWriteLock().readLock().unlock();
-        }
+        List<Peer> peersToDisconnect = peerList.snapshot();
         for (Peer peer : peersToDisconnect) {
           peer.disconnect("disconnect by user");
         }

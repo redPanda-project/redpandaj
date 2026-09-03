@@ -6,9 +6,7 @@ import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
+import java.util.List;
 
 public class OutboundHandler extends Thread {
 
@@ -95,26 +93,23 @@ public class OutboundHandler extends Thread {
 
     lastAddedKnownNodes = System.currentTimeMillis();
 
-    Lock lock = peerList.getReadWriteLock().writeLock();
-    lock.lock();
-    try {
-      for (String hostport : Settings.knownNodes) {
-        if (hostport.contains("[")) {
-          // todo add port
-          String[] split = hostport.split("]");
-          String ipv6 = split[0].substring(1);
-          peerList.add(new Peer(ipv6, 59558));
-          continue;
-        }
-
-        String[] split = hostport.split(":");
-        String host = split[0];
-        int port = Integer.parseInt(split[1]);
-
-        peerList.add(new Peer(host, port));
+    // No lock around the loop (T115): PeerList.add() takes the write lock itself and is atomic
+    // per peer, which is all this needs — the seeds are independent and a concurrent add of the
+    // same address is handled by add()'s own duplicate check.
+    for (String hostport : Settings.knownNodes) {
+      if (hostport.contains("[")) {
+        // todo add port
+        String[] split = hostport.split("]");
+        String ipv6 = split[0].substring(1);
+        peerList.add(new Peer(ipv6, 59558));
+        continue;
       }
-    } finally {
-      lock.unlock();
+
+      String[] split = hostport.split(":");
+      String host = split[0];
+      int port = Integer.parseInt(split[1]);
+
+      peerList.add(new Peer(host, port));
     }
   }
 
@@ -123,9 +118,6 @@ public class OutboundHandler extends Thread {
 
     final String orgName = getName();
     setName(orgName + " - OutboundThread");
-
-    ReadWriteLock peerListLock = peerList.getReadWriteLock();
-    ArrayList<Peer> peerListArray = peerList.getPeerArrayList();
 
     ArrayList<Peer> peersToRemove = new ArrayList<>();
 
@@ -138,17 +130,16 @@ public class OutboundHandler extends Thread {
       }
 
       try {
-        peerListLock.writeLock().lock();
-        Collections.sort(peerListArray);
+        peerList.sortByPriority();
       } catch (IllegalArgumentException e) {
+        // "Comparison method violates its general contract": a peer's priority depends on mutable
+        // state, so a concurrent change can make TimSort bail out. Skip this round.
         try {
           sleep(200);
         } catch (InterruptedException ex) {
           Log.putCritical(ex);
         }
         continue;
-      } finally {
-        peerListLock.writeLock().unlock();
       }
 
       // T87: snapshot under the read lock, then iterate WITHOUT holding it. The loop below calls
@@ -163,13 +154,7 @@ public class OutboundHandler extends Thread {
       // Same reasoning and same shape as TD026 in PeerJobs.runOnce(): the copy keeps the iteration
       // CME-safe exactly as the held lock did, and nothing in the loop touches the peer list
       // itself, only the Peer objects, which this lock never guarded.
-      ArrayList<Peer> peers;
-      peerListLock.readLock().lock();
-      try {
-        peers = new ArrayList<>(peerListArray);
-      } finally {
-        peerListLock.readLock().unlock();
-      }
+      List<Peer> peers = peerList.snapshot();
 
       int actCons = 0;
       int connectingCons = 0;

@@ -3,7 +3,6 @@ package im.redpanda.jobs;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import java.time.Duration;
-import java.util.concurrent.locks.Lock;
 
 public class NodeConnectionPointsSeenJob extends Job {
 
@@ -19,16 +18,10 @@ public class NodeConnectionPointsSeenJob extends Job {
   @Override
   public void work() {
 
-    Lock lock = serverContext.getPeerList().getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
-        if (peer.isConnected() && peer.getNode() != null) {
-          peer.getNode().seen(peer.getIp(), peer.getPort());
-        }
+    for (Peer peer : serverContext.getPeerList().snapshot()) {
+      if (peer.isConnected() && peer.getNode() != null) {
+        peer.getNode().seen(peer.getIp(), peer.getPort());
       }
-    } finally {
-      lock.unlock();
     }
   }
 }

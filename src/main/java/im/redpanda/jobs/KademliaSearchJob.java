@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class KademliaSearchJob extends Job {
@@ -88,32 +87,19 @@ public class KademliaSearchJob extends Job {
     PeerList peerList = serverContext.getPeerList();
 
     // insert all nodes
-    Lock lock = peerList.getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
+    for (Peer p : peerList.snapshot()) {
 
-      if (peerArrayList == null) {
-        initilized = false;
-        return;
+      // do not add the peer if the peer is not connected or the nodeId is unknown!
+      if (p.getNodeId() == null || !p.isConnected()) {
+        continue;
       }
 
-      for (Peer p : peerArrayList) {
-
-        // do not add the peer if the peer is not connected or the nodeId is unknown!
-        if (p.getNodeId() == null || !p.isConnected()) {
-          continue;
-        }
-
-        // do not ask light clients for kad entries...
-        if (p.isLightClient()) {
-          continue;
-        }
-
-        peers.put(p, NONE);
+      // do not ask light clients for kad entries...
+      if (p.isLightClient()) {
+        continue;
       }
-    } finally {
-      lock.unlock();
+
+      peers.put(p, NONE);
     }
   }
 

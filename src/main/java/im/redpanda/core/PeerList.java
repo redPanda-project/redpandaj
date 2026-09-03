@@ -3,6 +3,7 @@ package im.redpanda.core;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -403,12 +404,65 @@ public class PeerList {
     }
   }
 
-  public ReadWriteLock getReadWriteLock() {
+  /**
+   * The lock guarding the three indices.
+   *
+   * <p>Package-private since T115: production code no longer needs it. Every caller either used it
+   * to take a snapshot — that is {@link #snapshot()} now — or to sort the list, which is {@link
+   * #sortByPriority()}. Tests in this package still use it to assert that a code path really does
+   * take the lock (see {@code ConcurrencyTestSupport}).
+   */
+  ReadWriteLock getReadWriteLock() {
     return readWriteLock;
   }
 
-  public ArrayList<Peer> getPeerArrayList() {
-    return peerArrayList;
+  /**
+   * A copy of the peer list, taken under the read lock.
+   *
+   * <p>This is the only way out of this class for the whole list, and it replaces {@code
+   * getPeerArrayList()}, which handed out the live {@link ArrayList} and left every caller to
+   * implement the locking itself (T115; the DDD review calls this out as the leak that makes {@code
+   * PeerList} an aggregate in name only).
+   *
+   * <p>Copy, not a locked iteration: iterating under the lock is what wedged a public seed node on
+   * 2026-07-29 (T87). The loops around these snapshots connect sockets, disconnect peers and sleep
+   * per peer, and all of that takes a peer's {@code writeBufferLock} — the outermost lock in the
+   * documented order, which the selector thread holds while it waits for this list's write lock.
+   * The copy keeps the iteration {@code ConcurrentModificationException}-safe exactly as the held
+   * lock did; nothing outside this class ever needed the lock for anything else, since it guards
+   * the list structure and never the {@link Peer} objects in it.
+   *
+   * <p>Iteration order is the list's own order, i.e. whatever {@link #sortByPriority()} last
+   * produced — unchanged by this method.
+   */
+  public List<Peer> snapshot() {
+    readWriteLock.readLock().lock();
+    try {
+      return new ArrayList<>(peerArrayList);
+    } finally {
+      readWriteLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * Sorts the peer list so that the good peers are on top ({@link Peer#compareTo(Peer)}).
+   *
+   * <p>Under the write lock: the sort mutates the list in place. Callers used to take {@code
+   * getReadWriteLock().writeLock()} and call {@code Collections.sort()} on the live list
+   * themselves.
+   *
+   * @throws IllegalArgumentException if the comparison contract is violated mid-sort — a peer's
+   *     priority depends on mutable state ({@code connected}, {@code retries}, the node's test
+   *     counters), so a concurrent change can make {@code TimSort} throw. {@code OutboundHandler}
+   *     handles this by skipping the round; it is deliberately not swallowed here.
+   */
+  public void sortByPriority() {
+    readWriteLock.writeLock().lock();
+    try {
+      Collections.sort(peerArrayList);
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
   }
 
   /**

@@ -20,7 +20,6 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.Getter;
@@ -308,14 +307,7 @@ public class NodeStore {
 
       // snapshot under the peer list read lock, the live list is modified by
       // network threads (Sentry REDPANDAJ-2DZ)
-      ArrayList<Peer> peersSnapshot;
-      Lock peerListLock = serverContext.getPeerList().getReadWriteLock().readLock();
-      peerListLock.lock();
-      try {
-        peersSnapshot = new ArrayList<>(serverContext.getPeerList().getPeerArrayList());
-      } finally {
-        peerListLock.unlock();
-      }
+      List<Peer> peersSnapshot = serverContext.getPeerList().snapshot();
 
       for (Peer peer : peersSnapshot) {
         if (!peer.isConnected()

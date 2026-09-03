@@ -6,11 +6,9 @@ import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaStore;
-import java.util.ArrayList;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 
 public class KademliaInsertJob extends Job {
 
@@ -43,26 +41,13 @@ public class KademliaInsertJob extends Job {
     peers = new ConcurrentSkipListMap<>(new PeerComparator(kadContent.getId()));
 
     // insert all nodes
-    Lock lock = peerList.getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
+    for (Peer p : peerList.snapshot()) {
 
-      if (peerArrayList == null) {
-        initilized = false;
-        return;
+      if (p.getNodeId() == null) {
+        continue;
       }
 
-      for (Peer p : peerArrayList) {
-
-        if (p.getNodeId() == null) {
-          continue;
-        }
-
-        peers.put(p, NONE);
-      }
-    } finally {
-      lock.unlock();
+      peers.put(p, NONE);
     }
   }
 

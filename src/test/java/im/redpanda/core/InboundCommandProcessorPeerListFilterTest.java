@@ -279,16 +279,11 @@ class InboundCommandProcessorPeerListFilterTest {
   }
 
   private boolean contains(String ip, int port) {
-    ctx.getPeerList().getReadWriteLock().readLock().lock();
-    try {
-      for (Peer peer : ctx.getPeerList().getPeerArrayList()) {
-        if (ip.equals(peer.getIp()) && peer.getPort() == port) {
-          return true;
-        }
+    for (Peer peer : ctx.getPeerList().snapshot()) {
+      if (ip.equals(peer.getIp()) && peer.getPort() == port) {
+        return true;
       }
-      return false;
-    } finally {
-      ctx.getPeerList().getReadWriteLock().readLock().unlock();
     }
+    return false;
   }
 }

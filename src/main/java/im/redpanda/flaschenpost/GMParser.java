@@ -18,7 +18,6 @@ import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
 import im.redpanda.store.NodeEdge;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.TreeSet;
@@ -302,42 +301,30 @@ public class GMParser {
       // todo use best route for this flaschenpost by network graph
 
       // insert all nodes
-      Lock lock = peerList.getReadWriteLock().readLock();
-      lock.lock();
-      try {
-        ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
+      for (Peer p : peerList.snapshot()) {
 
-        if (peerArrayList == null) {
-          return;
+        // do not add the peer if the peer is not connected or the nodeId is unknown!
+        if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
+          continue;
         }
 
-        for (Peer p : peerArrayList) {
-
-          // do not add the peer if the peer is not connected or the nodeId is unknown!
-          if (p.getNodeId() == null || !p.isConnected() || !p.hasNode()) {
-            continue;
-          }
-
-          // do not send fps to light clients
-          if (p.isLightClient()) {
-            continue;
-          }
-
-          // /**
-          // * do not add peers which are further or equally away from the key than us
-          // */
-          // int peersDistanceToKey =
-          // garlicMessage.getDestination().getDistance(p.getKademliaId());
-          // if (myDistanceToKey <= peersDistanceToKey) {
-          // continue;
-          // }
-          // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
-          // peersDistanceToKey);
-
-          peers.add(p);
+        // do not send fps to light clients
+        if (p.isLightClient()) {
+          continue;
         }
-      } finally {
-        lock.unlock();
+
+        // /**
+        // * do not add peers which are further or equally away from the key than us
+        // */
+        // int peersDistanceToKey =
+        // garlicMessage.getDestination().getDistance(p.getKademliaId());
+        // if (myDistanceToKey <= peersDistanceToKey) {
+        // continue;
+        // }
+        // System.out.println("my distance: " + myDistanceToKey + " theirs distance: " +
+        // peersDistanceToKey);
+
+        peers.add(p);
       }
 
       if (peers.isEmpty()) {
