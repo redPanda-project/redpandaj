@@ -294,6 +294,37 @@ public class PeerList {
     }
   }
 
+  /**
+   * Removes exactly this {@link Peer} object from all three indices, leaving every other peer
+   * alone.
+   *
+   * <p>Needed because {@link #remove(Peer)} removes <em>whoever currently owns the peer's
+   * KademliaId</em>, which is not necessarily the object handed in: the list can hold two {@code
+   * Peer} objects for the same node (an id-less seed/restored entry plus the one built from a
+   * handshake, {@link #addLocked}'s ip+port branch; or a {@link #updateKademliaId} that moved the
+   * id onto a second object). Removing the "duplicate" by id then evicts the registered, live peer
+   * and leaves the duplicate behind — the exact inversion this method avoids (TD142).
+   *
+   * <p>Both map removals are value-checked, so an entry that points at a different peer survives.
+   *
+   * @param peer the object to drop
+   * @return true if this very object was in the list
+   */
+  public boolean removeExact(Peer peer) {
+    readWriteLock.writeLock().lock();
+    try {
+      // ArrayList.remove uses equals(), which Peer does not override -- identity, as intended.
+      boolean removed = peerArrayList.remove(peer);
+      if (peer.getKademliaId() != null) {
+        peerHashMap.remove(peer.getKademliaId(), peer);
+      }
+      removeIpPortMapping(peer);
+      return removed;
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
+  }
+
   private boolean removeByObject(Peer peer) {
     readWriteLock.writeLock().lock();
     try {
