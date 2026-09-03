@@ -66,10 +66,7 @@ public class ApkUpdateHandler {
       logger.warn("rejecting android update timestamp too far in the future: {}", othersTimestamp);
       return 1 + 8;
     }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
-            Updater.MIN_UPDATE_TIMESTAMP_MS);
+    long floor = androidUpdateFloor();
     Log.put(
         "Update found from: "
             + new Date(othersTimestamp)
@@ -105,6 +102,19 @@ public class ApkUpdateHandler {
           reporting("android-update-request-content-download", runnable));
     }
     return 1 + 8;
+  }
+
+  /**
+   * The oldest android update timestamp this node still accepts — the same rollback guard {@code
+   * JarUpdateHandler.updateFloor()} applies to the jar, with the apk we hold standing in for the
+   * jar we run. Without a recorded timestamp ({@code 0} here, the fresh-LocalSettings value) the
+   * mtime of the stored {@code android.apk} takes its place, because a signature timestamp is the
+   * build time of that apk and it cannot have arrived here before it was built.
+   */
+  private long androidUpdateFloor() {
+    long recorded = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
+    long ownFloor = recorded == 0 ? updateApkPath().toFile().lastModified() : recorded;
+    return Math.max(ownFloor, Updater.MIN_UPDATE_TIMESTAMP_MS);
   }
 
   /**
@@ -212,10 +222,7 @@ public class ApkUpdateHandler {
       logger.warn("rejecting android update: timestamp too far in the future: {}", othersTimestamp);
       return consumedBytes;
     }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
-            Updater.MIN_UPDATE_TIMESTAMP_MS);
+    long floor = androidUpdateFloor();
     if (othersTimestamp > floor) {
 
       // Verify signature
