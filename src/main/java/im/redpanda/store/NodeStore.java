@@ -30,6 +30,9 @@ import org.mapdb.HTreeMap;
 
 public class NodeStore {
 
+  /** Name of the node map in every cache tier; "V2" is the T117 format (explicit serializers). */
+  private static final String NODE_MAP = "nodesV2";
+
   public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 24L;
   public static final int MAX_EDGES_IN_GRAPH = 500;
   public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 5;
@@ -63,7 +66,6 @@ public class NodeStore {
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
   }
 
-  @SuppressWarnings("unchecked")
   public static NodeStore buildWithDiskCache(ServerContext serverContext) {
 
     NodeStore nodeStore = new NodeStore(serverContext);
@@ -94,45 +96,41 @@ public class NodeStore {
             .make();
 
     nodeStore.onDisk =
-        (HTreeMap<KademliaId, Node>)
-            nodeStore
-                .dbDisk
-                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-                .expireStoreSize(MAX_SIZE_ONDISK)
-                .expireExecutor(threadPool)
-                // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
-                // not seen in this time
-                .expireAfterGet(60, TimeUnit.DAYS)
-                .createOrOpen();
+        nodeStore
+            .dbDisk
+            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+            .expireStoreSize(MAX_SIZE_ONDISK)
+            .expireExecutor(threadPool)
+            // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
+            // not seen in this time
+            .expireAfterGet(60, TimeUnit.DAYS)
+            .createOrOpen();
 
     nodeStore.offHeap =
-        (HTreeMap<KademliaId, Node>)
-            nodeStore
-                .dboffHeap
-                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-                .expireStoreSize(MAX_SIZE_OFFHEAP)
-                .expireOverflow((Map) nodeStore.onDisk)
-                .expireExecutor(threadPool)
-                .expireAfterCreate()
-                .expireAfterGet(60, TimeUnit.MINUTES)
-                .create();
+        nodeStore
+            .dboffHeap
+            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+            .expireStoreSize(MAX_SIZE_OFFHEAP)
+            .expireOverflow(nodeStore.onDisk)
+            .expireExecutor(threadPool)
+            .expireAfterCreate()
+            .expireAfterGet(60, TimeUnit.MINUTES)
+            .create();
 
     nodeStore.onHeap =
-        (HTreeMap<KademliaId, Node>)
-            nodeStore
-                .dbonHeap
-                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-                .expireStoreSize(MAX_SIZE_ONHEAP)
-                .expireOverflow((Map) nodeStore.offHeap)
-                .expireExecutor(threadPool)
-                .expireAfterCreate()
-                .expireAfterGet(15, TimeUnit.MINUTES)
-                .create();
+        nodeStore
+            .dbonHeap
+            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+            .expireStoreSize(MAX_SIZE_ONHEAP)
+            .expireOverflow(nodeStore.offHeap)
+            .expireExecutor(threadPool)
+            .expireAfterCreate()
+            .expireAfterGet(15, TimeUnit.MINUTES)
+            .create();
 
     return nodeStore;
   }
 
-  @SuppressWarnings("unchecked")
   public static NodeStore buildWithMemoryCacheOnly(ServerContext serverContext) {
     NodeStore nodeStore = new NodeStore(serverContext);
 
@@ -145,15 +143,14 @@ public class NodeStore {
     nodeStore.dbonHeap = DBMaker.heapDB().make();
 
     nodeStore.onHeap =
-        (HTreeMap<KademliaId, Node>)
-            nodeStore
-                .dbonHeap
-                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-                .expireStoreSize(MAX_SIZE_ONHEAP)
-                .expireExecutor(threadPool)
-                .expireAfterCreate()
-                .expireAfterGet(15, TimeUnit.HOURS)
-                .create();
+        nodeStore
+            .dbonHeap
+            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+            .expireStoreSize(MAX_SIZE_ONHEAP)
+            .expireExecutor(threadPool)
+            .expireAfterCreate()
+            .expireAfterGet(15, TimeUnit.HOURS)
+            .create();
 
     return nodeStore;
   }
@@ -175,7 +172,7 @@ public class NodeStore {
 
   public Node get(KademliaId kademliaId) {
     try {
-      return (Node) onHeap.get(kademliaId);
+      return onHeap.get(kademliaId);
     } catch (Exception e) {
       e.printStackTrace();
       onDisk.clear();

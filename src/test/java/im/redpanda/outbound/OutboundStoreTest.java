@@ -303,10 +303,8 @@ class OutboundStoreTest {
             java.nio.charset.StandardCharsets.ISO_8859_1);
 
     assertThat(raw)
-        .as("the handle record must be stored as its own JSON")
-        .contains("ohAuthPublicKey");
-    assertThat(raw)
-        .as("no fully qualified class name may be pinned in the store")
+        .as("the handle record must be stored as its own JSON, with no class name pinned")
+        .contains("ohAuthPublicKey")
         .doesNotContain("im.redpanda.outbound.OutboundHandleStore");
   }
 }

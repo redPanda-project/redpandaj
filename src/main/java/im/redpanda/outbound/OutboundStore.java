@@ -66,6 +66,8 @@ public final class OutboundStore {
 
   private static final Logger logger = LoggerFactory.getLogger(OutboundStore.class);
 
+  private static final String DB_SUFFIX = ".mapdb";
+
   /** {@code null} in in-memory mode. */
   private final DB db;
 
@@ -160,7 +162,7 @@ public final class OutboundStore {
   public static OutboundStore forContext(ServerContext context) {
     int port = context.getPort();
     logStaleLegacyStores(port);
-    return new OutboundStore("data/outbound_v2_" + port + ".mapdb");
+    return new OutboundStore("data/outbound_v2_" + port + DB_SUFFIX);
   }
 
   /** In-memory store without persistence — for tests. */
@@ -313,9 +315,9 @@ public final class OutboundStore {
   private static void logStaleLegacyStores(int port) {
     for (String legacy :
         new String[] {
-          "data/outbound_handles_" + port + ".mapdb",
-          "data/outbound_mailbox_" + port + ".mapdb",
-          "data/outbound_" + port + ".mapdb"
+          "data/outbound_handles_" + port + DB_SUFFIX,
+          "data/outbound_mailbox_" + port + DB_SUFFIX,
+          "data/outbound_" + port + DB_SUFFIX
         }) {
       if (Files.exists(Path.of(legacy))) {
         logger.info(
