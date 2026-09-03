@@ -26,7 +26,7 @@ public class Node implements Serializable {
   private ArrayList<ConnectionPoint> connectionPoints;
   private int gmTestsSuccessful = 0;
   private int gmTestsFailed = 0;
-  private long blacklistedSince = 0;
+  long blacklistedSince = 0;
 
   /**
    * Creates a new Node and adds the Node to the NodeStore.
@@ -40,6 +40,26 @@ public class Node implements Serializable {
     // run the get command afterwards to trigger the eviction timer
     serverContext.getNodeStore().get(nodeId.getKademliaId());
     connectionPoints = new ArrayList<>();
+  }
+
+  /**
+   * Restores a persisted node (T117). Unlike the public constructor this does <b>not</b> touch a
+   * NodeStore: the caller is the storage layer, which is either filling the graph of {@code
+   * LocalSettings} or the node cache itself.
+   */
+  Node(
+      NodeId nodeId,
+      long lastSeen,
+      ArrayList<ConnectionPoint> connectionPoints,
+      int gmTestsSuccessful,
+      int gmTestsFailed,
+      long blacklistedSince) {
+    this.nodeId = nodeId;
+    this.lastSeen = lastSeen;
+    this.connectionPoints = connectionPoints;
+    this.gmTestsSuccessful = gmTestsSuccessful;
+    this.gmTestsFailed = gmTestsFailed;
+    this.blacklistedSince = blacklistedSince;
   }
 
   public static void addNodeIfNotPresent(
@@ -178,10 +198,15 @@ public class Node implements Serializable {
     int retries;
 
     public ConnectionPoint(String ip, int port) {
+      this(ip, port, System.currentTimeMillis(), 0);
+    }
+
+    /** Restores a persisted connection point (T117); see {@link Node#Node}. */
+    ConnectionPoint(String ip, int port, long lastSeen, int retries) {
       this.ip = ip;
       this.port = port;
-      lastSeen = System.currentTimeMillis();
-      retries = 0;
+      this.lastSeen = lastSeen;
+      this.retries = retries;
     }
 
     public long getLastSeen() {

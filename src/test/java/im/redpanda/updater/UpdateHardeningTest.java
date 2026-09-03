@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import im.redpanda.core.ByteBufferPool;
 import im.redpanda.core.Command;
 import im.redpanda.core.InboundCommandProcessor;
+import im.redpanda.core.LocalSettings;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
@@ -87,7 +88,7 @@ class UpdateHardeningTest {
     // thread kill the whole Surefire fork mid-suite.
     UpdateTransfer.restartAction = () -> {};
     UpdateTransfer.installThreadHookForTests = t -> {};
-    new File(Settings.SAVE_DIR + "/localSettings" + TEST_PORT + ".dat").delete();
+    LocalSettings.settingsFile(TEST_PORT).delete();
   }
 
   /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */

@@ -1,7 +1,5 @@
 package im.redpanda.core;
 
-import java.io.Serial;
-import java.io.Serializable;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.SortedSet;
@@ -9,9 +7,7 @@ import java.util.TreeSet;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class SystemUpTimeData implements Serializable {
-
-  @Serial private static final long serialVersionUID = 2028364573881956089L;
+public class SystemUpTimeData {
   private static final int UPTIME_WINDOW_IN_DAYS = 7;
   private static final int MAX_HITS_IN_WINDOW = UPTIME_WINDOW_IN_DAYS * 24;
 
@@ -45,12 +41,14 @@ public class SystemUpTimeData implements Serializable {
   }
 
   /**
-   * Serialization must hold the same lock as the mutators: SaveJobs writes this object from the
-   * jobs pool while UpTimeReporterJob updates {@code upHits} concurrently (REDPANDAJ-2E6).
+   * A copy of the recorded hourly up-hits, for persistence.
+   *
+   * <p>Synchronized for the same reason the removed {@code writeObject} was: SaveJobs persists this
+   * object from the jobs pool while UpTimeReporterJob updates {@code upHits} concurrently
+   * (REDPANDAJ-2E6). A copy, so the caller can serialize it outside the lock.
    */
-  @Serial
-  private synchronized void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-    out.defaultWriteObject();
+  public synchronized SortedSet<Long> snapshotUpHits() {
+    return new TreeSet<>(upHits);
   }
 
   public int getUptimePercentAsInt() {

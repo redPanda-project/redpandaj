@@ -2,8 +2,6 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.time.Duration;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
@@ -36,9 +34,15 @@ class SystemUpTimeDataTest {
     assertThat(systemUpTimeData.getUptimePercent()).isGreaterThan(0d);
   }
 
+  /**
+   * REDPANDAJ-2E6: SaveJobs persists this object from the jobs pool while UpTimeReporterJob mutates
+   * {@code upHits}. Since T117 the persistence reads {@link SystemUpTimeData#snapshotUpHits()}
+   * instead of Java-serializing the object, but the guarantee is the same one: taking the state for
+   * a save must not throw while another thread mutates it.
+   */
   @Test
   @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
-  void serializeWhileMutating_doesNotThrow() throws Exception {
+  void snapshotWhileMutating_doesNotThrow() throws Exception {
     TreeSet<Long> hits = new TreeSet<>();
     long oldBase = System.currentTimeMillis() - Duration.ofDays(30).toMillis();
     for (long i = 0; i < 200_000; i++) {
@@ -50,9 +54,7 @@ class SystemUpTimeDataTest {
     mutator.start();
     try {
       while (mutator.isAlive()) {
-        try (ObjectOutputStream out = new ObjectOutputStream(OutputStream.nullOutputStream())) {
-          out.writeObject(systemUpTimeData);
-        }
+        assertThat(systemUpTimeData.snapshotUpHits()).isNotNull();
       }
     } finally {
       mutator.join();
