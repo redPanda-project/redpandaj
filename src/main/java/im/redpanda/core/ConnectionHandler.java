@@ -1009,6 +1009,14 @@ public class ConnectionHandler extends Thread {
               + " connection to the registered peer and dropping the duplicate",
           peerInHandshake.getIdentity());
       peerList.removeExact(peerOrigin);
+      // If this duplicate object was itself connected on an OLDER socket of its own, that socket
+      // is now unreachable: nothing in the peer list points at the object any more, but the
+      // selector still reads it. Tear it down — this is TD020's orphan requirement, applied to the
+      // connection the duplicate already had rather than to the one that just completed (which
+      // belongs to peerInHandshake and is handed to the registered peer below).
+      if (peerOrigin.isConnected()) {
+        peerOrigin.disconnect("unregistered duplicate peer object replaced by the registered peer");
+      }
       peerInHandshake.setPeer(registered);
       target = registered;
     }

@@ -96,6 +96,52 @@ class ConnectionHandlerReconnectLoopTest {
   }
 
   /**
+   * TD020's orphan requirement, on the object that is dropped: if the duplicate already held a
+   * connection of its own, that socket becomes unreachable the moment the object leaves the peer
+   * list (nothing points at it any more, but the selector still reads it). It must be torn down —
+   * the connection that just completed belongs to the handshake and goes to the registered peer.
+   */
+  @Test
+  void aDuplicateThatHeldItsOwnConnectionIsTornDownWhenItIsDropped() throws Exception {
+    ByteBufferPool.init();
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
+    PeerList peerList = serverContext.getPeerList();
+
+    NodeId identity = NodeId.generateWithSimpleKey();
+    Peer registered = new Peer("10.0.0.2", 59558, identity);
+    peerList.add(registered);
+
+    Peer duplicate = new Peer("10.0.0.2", 59558, identity);
+    forceIntoPeerList(peerList, duplicate);
+
+    try (SocketChannel duplicatesOwnSocket = SocketChannel.open();
+        SocketChannel dialled = SocketChannel.open()) {
+      duplicate.setConnected(true);
+      duplicate.setSocketChannel(duplicatesOwnSocket);
+      duplicate.setSelectionKey(new NoopSelectionKey());
+
+      PeerInHandshake peerInHandshake = new PeerInHandshake("10.0.0.2", duplicate, dialled);
+      peerInHandshake.setLightClient(true);
+      peerInHandshake.setIdentity(identity.getKademliaId());
+      peerInHandshake.setNodeId(identity);
+      peerInHandshake.setPort(59558);
+      peerInHandshake.setKey(new NoopSelectionKey());
+      connectionHandler.addPeerInHandshake(peerInHandshake);
+
+      connectionHandler.setupConnection(duplicate, peerInHandshake);
+
+      assertThat(duplicatesOwnSocket.isOpen())
+          .as("the dropped duplicate must not keep a socket the selector still reads")
+          .isFalse();
+      assertThat(duplicate.isConnected()).isFalse();
+      assertThat(dialled.isOpen()).as("the completed connection is kept").isTrue();
+      assertThat(registered.getSocketChannel()).isSameAs(dialled);
+      assertThat(peerList.snapshot()).containsExactly(registered);
+    }
+  }
+
+  /**
    * The other half of the same defect: {@code PeerList.remove(Peer)} resolves the peer by its
    * KademliaId, so removing a duplicate object evicted the <em>registered</em> peer and left the
    * duplicate as the only entry — turning a transient duplicate into a permanent one. {@link
