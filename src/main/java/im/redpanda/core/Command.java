@@ -1,5 +1,12 @@
 package im.redpanda.core;
 
+/**
+ * Top-level wire command bytes: the first byte of every frame on a peer connection.
+ *
+ * <p>This class holds <b>nothing but command bytes</b> — {@link WireRegistry} reflects over every
+ * {@code public static final byte} here and renders it into the wire registry, so a constant that
+ * is not a command does not belong in this class.
+ */
 public final class Command {
 
   private Command() {}
