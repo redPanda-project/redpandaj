@@ -18,10 +18,32 @@ When this skill is invoked, you act as our Lead Enterprise Java Architect. Whene
 
 ## 2. Architectural Boundaries
 
-- **Core Layer (`im.redpanda.core`):** Handles peer management, command processing, and server lifecycle. Must not depend on higher-level application logic.
-- **Network/Protocol Layer:** Command handlers in `InboundCommandProcessor` must only dispatch — parsing, validation, and business logic belong in dedicated service classes.
-- **Service Layer (`im.redpanda.outbound`, etc.):** Contains business rules and domain logic. Services must be injectable via constructor parameters and must not depend on network-layer specifics.
-- **Data/Store Layer:** Handles all persistence. Store classes (`OutboundHandleStore`, `OutboundMailboxStore`) encapsulate data access and must not leak storage implementation details.
+Since T118 the node is cut by **bounded context**, not by technical layer (DDD review 2026-08-31 §3).
+The map is enforced by `im.redpanda.architecture.BoundedContextArchitectureTest` — change the test
+together with the map, never around it.
+
+| package | context | content |
+|---|---|---|
+| `im.redpanda` | composition root | `App` |
+| `im.redpanda.core` | published language (SK1) + composition-root state | `Command`, `WireRegistry`, `ServerContext`, `Server`, `LocalSettings`, `StateFormat`, `NodeIdCodec` |
+| `im.redpanda.transport` | N-TRANSPORT | handshake session, framing, `Peer`/`PeerList`, `ConnectionHandler`, the wire dispatcher |
+| `im.redpanda.routing` (`.graph`) | N-ROUTING | garlic relay, hop selection, return paths; the node graph and scores as an internal module |
+| `im.redpanda.mailbox` | N-MAILBOX | `OutboundService`, the outbound stores, `OhId`/`OhDht`, deposit/forward/R-ACK policy |
+| `im.redpanda.dht` (`.nodeinfo`) | N-DHT | blind custodian: `KadContent`, `KadStoreManager`, record schemas, Kademlia sagas |
+| `im.redpanda.identity` (`.crypt`) | N-IDENTITY | `NodeId`, `KademliaId`, crypto library. **Leaf: must not depend on any other context** |
+| `im.redpanda.ops` | N-OPS | `Log`, `Settings`, `ListenConsole`, `Job`/`JobScheduler`, operational sagas |
+| `im.redpanda.updater` | N-UPDATER | `Updater`, `HTTPServer`, commands 9–16. Only `Server` and the wire dispatcher may reference it |
+| `im.redpanda.crypt.legacy` | — | frozen serialization tombstone, must stay unreferenced |
+
+- **Jobs are protocol sagas**, not a layer: a job belongs to the context whose protocol it drives.
+  There is no `im.redpanda.jobs` package and there must not be one again.
+- **Per-node state belongs to `ServerContext`,** not to a `static` field: two `ServerContext`s in one
+  JVM must not see each other's peers, jobs or DHT entries (`PerContextStateScopeTest`).
+- **Network/Protocol Layer:** Command handlers reached from `InboundCommandProcessor` must only
+  dispatch — parsing, validation and policy belong in the domain package that owns them.
+- **Data/Store Layer:** Store classes (`OutboundStore`, `NodeStore`, `KadStoreManager`) encapsulate
+  data access and must not leak storage implementation details. Node state is persisted as explicit,
+  hand-mapped JSON — never Java serialization and never reflection over domain classes (T117).
 
 ## 3. Code Quality & Modern Java (21+)
 

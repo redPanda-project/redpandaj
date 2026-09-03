@@ -5,6 +5,7 @@ import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
+import im.redpanda.ops.JobRegistry;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeStore;
 import im.redpanda.transport.ConnectionHandler;
@@ -21,6 +22,13 @@ public class ServerContext {
   private int port;
   private LocalSettings localSettings;
   private final KadStoreManager kadStoreManager = new KadStoreManager(this);
+
+  /**
+   * The jobs running for this node. Instance state since T118: the map used to be a static on
+   * {@code Job}, shared by every {@code ServerContext} in the JVM.
+   */
+  private final JobRegistry jobRegistry = new JobRegistry();
+
   private PeerList peerList = new PeerList();
   private NodeStore nodeStore;
   private Node node;

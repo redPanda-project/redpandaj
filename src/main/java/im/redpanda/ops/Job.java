@@ -2,15 +2,11 @@ package im.redpanda.ops;
 
 import im.redpanda.core.ServerContext;
 import java.security.SecureRandom;
-import java.util.HashMap;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class Job implements Runnable {
 
   // public static final long RERUNTIME = 500L;
-  private static final HashMap<Integer, Job> runningJobs = new HashMap<>(10);
-  private static final ReentrantLock runningJobsLock = new ReentrantLock();
   public static final SecureRandom rand = new SecureRandom();
 
   protected ServerContext serverContext;
@@ -117,7 +113,7 @@ public abstract class Job implements Runnable {
 
     // run delayed recurrent
     future = JobScheduler.insert(this, reRunDelay);
-    runningJobs.put(jobId, this);
+    serverContext.getJobRegistry().register(jobId, this);
 
     // run immediately
     JobScheduler.runNow(this);
@@ -145,37 +141,22 @@ public abstract class Job implements Runnable {
     // REDPANDAJ-2EA). Holding the lock across the whole check-and-remove makes done() idempotent:
     // a second, losing call simply returns. The former debug-only throw is dropped — a
     // double-done is benign cleanup, not a condition worth crashing the job thread over.
-    runningJobsLock.lock();
+    JobRegistry registry = serverContext.getJobRegistry();
+    registry.lock();
     try {
       if (done) {
         return;
       }
       done = true;
 
-      Job removed = runningJobs.remove(jobId);
+      Job removed = registry.removeLocked(jobId);
       if (removed != null && future != null) {
         future.cancel(false);
       }
     } catch (Throwable e) {
       Log.sentry(e);
     } finally {
-      runningJobsLock.unlock();
-    }
-  }
-
-  /**
-   * retrieves a running job with a given jobId, useful if we get an answer by a peer and we want to
-   * obtain the associated job to update the data
-   *
-   * @param jobId
-   * @return
-   */
-  public static Job getRunningJob(int jobId) {
-    runningJobsLock.lock();
-    try {
-      return runningJobs.get(jobId);
-    } finally {
-      runningJobsLock.unlock();
+      registry.unlock();
     }
   }
 

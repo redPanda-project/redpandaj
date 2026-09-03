@@ -6,6 +6,7 @@ package im.redpanda.ops;
 
 import im.redpanda.App;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.crypt.Utils;
 import io.sentry.Sentry;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -28,8 +29,7 @@ public class Log {
   private static AtomicInteger rating;
 
   public static void init(ServerContext serverContext) {
-    //        System.out.println("is testing: " + isJUnitTest());
-    if (isJUnitTest()) {
+    if (Utils.isJUnitTest()) {
       LEVEL = 3000;
       //            LEVEL = 0;
     }
@@ -116,16 +116,5 @@ public class Log {
     } else {
       rating.decrementAndGet();
     }
-  }
-
-  public static boolean isJUnitTest() {
-    StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-    StackTraceElement[] list = stackTrace;
-    for (StackTraceElement element : list) {
-      if (element.getClassName().startsWith("org.junit.")) {
-        return true;
-      }
-    }
-    return false;
   }
 }

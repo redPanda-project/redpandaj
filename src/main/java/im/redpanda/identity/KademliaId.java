@@ -5,7 +5,6 @@
  */
 package im.redpanda.identity;
 
-import im.redpanda.core.ServerContext;
 import im.redpanda.identity.crypt.Base58;
 import im.redpanda.identity.crypt.Utils;
 import java.math.BigInteger;
@@ -18,7 +17,6 @@ public class KademliaId {
   public static final int ID_LENGTH = 160;
   public static final int ID_LENGTH_BYTES = ID_LENGTH / 8;
   private final byte[] keyBytes;
-  private int nodeDistance = -1;
 
   /**
    * Construct the NodeId from some string
@@ -212,21 +210,6 @@ public class KademliaId {
   @Override
   public String toString() {
     return Base58.encode(keyBytes).substring(0, 10);
-  }
-
-  /**
-   * Distance to this node's own id ({@code ServerContext#getOwnNodeId()}), cached after the first
-   * call.
-   *
-   * @return distance to our own node id
-   */
-  public int getDistanceToUs(ServerContext serverContext) {
-    if (nodeDistance != -1) {
-      return nodeDistance;
-    }
-
-    nodeDistance = getDistance(serverContext.getOwnNodeId());
-    return nodeDistance;
   }
 
   public static KademliaId fromBuffer(ByteBuffer buffer) {

@@ -179,7 +179,7 @@ public class GMParser {
         return null;
       }
 
-      Job runningJob = Job.getRunningJob(gmAck.getAckid());
+      Job runningJob = serverContext.getJobRegistry().get(gmAck.getAckid());
 
       if (runningJob instanceof PeerPerformanceTestFlaschenpostJob perfJob) {
         perfJob.success();

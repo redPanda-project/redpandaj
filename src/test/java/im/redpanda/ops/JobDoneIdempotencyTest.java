@@ -40,14 +40,14 @@ class JobDoneIdempotencyTest {
     Job job = noopJob();
     job.start();
     Integer jobId = job.getJobId();
-    assertThat(Job.getRunningJob(jobId)).isSameAs(job);
+    assertThat(serverContext.getJobRegistry().get(jobId)).isSameAs(job);
 
     job.done();
-    assertThat(Job.getRunningJob(jobId)).isNull();
+    assertThat(serverContext.getJobRegistry().get(jobId)).isNull();
 
     // A second done() must be a no-op, not throw "CODE 17dh6".
     job.done();
-    assertThat(Job.getRunningJob(jobId)).isNull();
+    assertThat(serverContext.getJobRegistry().get(jobId)).isNull();
   }
 
   @Test
@@ -82,6 +82,6 @@ class JobDoneIdempotencyTest {
     }
 
     assertThat(escaped.get()).isNull();
-    assertThat(Job.getRunningJob(jobId)).isNull();
+    assertThat(serverContext.getJobRegistry().get(jobId)).isNull();
   }
 }
