@@ -84,4 +84,28 @@ class JobDoneIdempotencyTest {
     assertThat(escaped.get()).isNull();
     assertThat(serverContext.getJobRegistry().get(jobId)).isNull();
   }
+
+  /**
+   * {@code start()} must never replace a job that is already registered: the id used to be a bare
+   * {@code rand.nextInt()} that was {@code put} into the map without checking, so a collision would
+   * have re-routed the older job's ACK and let its {@code done()} deregister the newer job. The
+   * registry draws the id under its lock now; starting many jobs must leave every one of them
+   * retrievable under its own id.
+   */
+  @Test
+  void startNeverOverwritesAnAlreadyRegisteredJob() {
+    List<Job> jobs = new ArrayList<>();
+    for (int i = 0; i < 500; i++) {
+      Job job = noopJob();
+      job.start();
+      jobs.add(job);
+    }
+
+    for (Job job : jobs) {
+      assertThat(serverContext.getJobRegistry().get(job.getJobId())).isSameAs(job);
+    }
+    assertThat(jobs.stream().map(Job::getJobId).distinct()).hasSize(jobs.size());
+
+    jobs.forEach(Job::done);
+  }
 }

@@ -15,7 +15,7 @@ public abstract class Job implements Runnable {
   private boolean permanent = false;
   private boolean skipImminentRun = false;
 
-  private int jobId = -1;
+  int jobId = -1;
   private int runCounter = 0;
   private ScheduledFuture<?> future;
   private boolean done = false;
@@ -108,12 +108,11 @@ public abstract class Job implements Runnable {
 
   public void start() {
 
-    // lets set an jobId
-    this.jobId = rand.nextInt();
+    // the registry draws the id under its own lock, so it cannot collide with a running job
+    serverContext.getJobRegistry().registerWithFreshId(this);
 
     // run delayed recurrent
     future = JobScheduler.insert(this, reRunDelay);
-    serverContext.getJobRegistry().register(jobId, this);
 
     // run immediately
     JobScheduler.runNow(this);

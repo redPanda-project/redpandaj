@@ -23,10 +23,33 @@ public final class JobRegistry {
   private final ReentrantLock lock = new ReentrantLock();
 
   /**
-   * Registers a job under a given id.
+   * Registers {@code job} under a fresh id that is not in use in this registry, and stores that id
+   * on the job.
    *
-   * <p>Public because {@code Job.start()} draws a random id, so tests that need a deterministic one
-   * register the job themselves.
+   * <p>Drawing the id under the lock is what makes it unique: {@code start()} used to pick {@code
+   * rand.nextInt()} and {@code put} it blindly, so a collision (unlikely, but not impossible over a
+   * node's lifetime) silently replaced the older job in the map — its ACK would then have been
+   * routed to the newer one and its {@code done()} would have deregistered a job it does not own.
+   */
+  void registerWithFreshId(Job job) {
+    lock.lock();
+    try {
+      int jobId;
+      do {
+        jobId = Job.rand.nextInt();
+      } while (runningJobs.containsKey(jobId));
+      job.jobId = jobId;
+      runningJobs.put(jobId, job);
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  /**
+   * Registers a job under a given id, replacing whatever was registered under it.
+   *
+   * <p>Public only for tests that need a deterministic job id; production code uses {@link
+   * #registerWithFreshId(Job)}.
    */
   public void register(int jobId, Job job) {
     lock.lock();

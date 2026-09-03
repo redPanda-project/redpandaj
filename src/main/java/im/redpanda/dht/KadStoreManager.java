@@ -270,7 +270,7 @@ public class KadStoreManager {
 
   public void printStatus() {
     lock.lock();
-    int size = 0;
+    int totalBytes = 0;
     try {
       for (KademliaId id : entries.keySet()) {
 
@@ -283,12 +283,12 @@ public class KadStoreManager {
                 + formatDuration(duration)
                 + " "
                 + Base58.encode(entries.get(id).createHash().getBytes()));
-        size += entries.get(id).getContent().length;
+        totalBytes += entries.get(id).getContent().length;
       }
     } finally {
       lock.unlock();
     }
-    System.out.println("size in kb: " + size / 1024.);
+    System.out.println("size in kb: " + totalBytes / 1024.);
   }
 
   public void maintain() {
