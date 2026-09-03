@@ -190,10 +190,9 @@ public class Peer implements Comparable<Peer> {
    * @return the row including its trailing newline
    */
   public String consoleStatusRow() {
+    long lastPongReceivedAt = getLastPongReceived();
     String lastPong =
-        getLastPongReceived() != 0
-            ? "" + (System.currentTimeMillis() - getLastPongReceived())
-            : "-";
+        lastPongReceivedAt != 0 ? "" + (System.currentTimeMillis() - lastPongReceivedAt) : "-";
     String nodeIdText =
         getNodeId() == null ? "-" : getNodeId().getKademliaId().toString().substring(0, 10);
     return String.format(
