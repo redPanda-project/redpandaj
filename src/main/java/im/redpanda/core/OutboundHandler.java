@@ -86,8 +86,8 @@ public class OutboundHandler extends Thread {
   }
 
   /**
-   * Whether another peer object in {@code peers} already holds this candidate's ip+port and is
-   * connected or connecting.
+   * Whether any peer in {@code peers} that carries this candidate's ip+port is connected or
+   * connecting — the candidate itself included, since it is a member of that list.
    *
    * <p>This guard used to test {@code peer.isConnected() || peer.isConnecting} — the <b>candidate's
    * own</b> state, not the other object's — so it could never do what its name says. The candidate

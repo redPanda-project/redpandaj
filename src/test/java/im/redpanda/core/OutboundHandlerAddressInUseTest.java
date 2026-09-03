@@ -28,7 +28,11 @@ class OutboundHandlerAddressInUseTest {
     return new Peer(ip, port);
   }
 
-  /** The case that was broken: a *different* object already holds this address, connected. */
+  /**
+   * The case that was broken: a <em>different</em> object already holds this address, connected.
+   * (The guard looks at every peer carrying the address, the candidate included — see the
+   * self-comparison test below.)
+   */
   @Test
   void reportsInUse_whenAnotherPeerObjectWithTheSameAddressIsConnected() {
     Peer connected = peer("203.0.113.7", 59558);
