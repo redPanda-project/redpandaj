@@ -87,6 +87,22 @@ public final class OhId {
     return new OhId(bytes.clone());
   }
 
+  /**
+   * Wire boundary without the extra array copy of {@link #fromBytes}: the protobuf {@code bytes}
+   * field is materialized exactly once.
+   *
+   * @throws IllegalArgumentException if the length is outside {@link #MIN_BYTES}..{@link
+   *     #MAX_BYTES}
+   */
+  public static OhId fromByteString(ByteString bytes) {
+    OhId ohId = fromByteStringOrNull(bytes);
+    if (ohId == null) {
+      throw new IllegalArgumentException(
+          "invalid oh_id length: " + (bytes == null ? "null" : bytes.size()));
+    }
+    return ohId;
+  }
+
   /** Wire boundary: protobuf {@code bytes} field to {@code OhId}, {@code null} if malformed. */
   public static OhId fromByteStringOrNull(ByteString bytes) {
     if (bytes == null || isInvalidLength(bytes.size())) {

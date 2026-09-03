@@ -74,8 +74,9 @@ public final class MailboxDepositPolicy {
         respondToDeposit(outboundService, peer, putMsg, Status.BAD_REQUEST);
         return;
       }
-      // The garlic length is inside OhId's general range, so this cannot fail.
-      OhId ohId = OhId.fromBytes(ohIdBytes.toByteArray());
+      // Straight from the ByteString: the garlic length is inside OhId's general range, so this
+      // cannot fail, and it keeps the single copy this method is careful about everywhere else.
+      OhId ohId = OhId.fromByteString(ohIdBytes);
       // Pre-check the size limit before any deposit/forward decision: an oversized payload is
       // rejected by every host node anyway, so forwarding it (and answering OK) would only waste
       // hops and mislead the sender. Checked on the ByteString so an oversized payload is never

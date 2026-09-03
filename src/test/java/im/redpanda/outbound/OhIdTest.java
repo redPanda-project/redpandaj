@@ -163,6 +163,12 @@ class OhIdTest {
     assertThat(OhId.fromByteStringOrNull(ohId.toByteString())).isEqualTo(ohId);
     assertThat(ohId.toByteString()).isEqualTo(ByteString.copyFrom(bytes(20)));
     assertThat(OhId.fromByteStringOrNull(ByteString.copyFrom(bytes(5)))).isNull();
+
+    assertThat(OhId.fromByteString(ohId.toByteString())).isEqualTo(ohId);
+    assertThatThrownBy(() -> OhId.fromByteString(ByteString.copyFrom(bytes(5))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> OhId.fromByteString(null))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
