@@ -1,13 +1,13 @@
 package im.redpanda.mailbox;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
 import im.redpanda.routing.GMParser;
 import im.redpanda.routing.OhForwarder;
+import im.redpanda.transport.Peer;
 import lombok.extern.slf4j.Slf4j;
 
 /**

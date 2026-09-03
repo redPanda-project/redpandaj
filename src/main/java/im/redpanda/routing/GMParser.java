@@ -1,8 +1,6 @@
 package im.redpanda.routing;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.KademliaSearchJob;
@@ -15,6 +13,8 @@ import im.redpanda.ops.Job;
 import im.redpanda.ops.Log;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerList;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;

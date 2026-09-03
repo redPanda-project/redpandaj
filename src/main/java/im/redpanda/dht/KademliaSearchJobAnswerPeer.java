@@ -3,10 +3,10 @@ package im.redpanda.dht;
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.proto.KademliaGetAnswer;
+import im.redpanda.transport.Peer;
 import java.util.ArrayList;
 
 public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {

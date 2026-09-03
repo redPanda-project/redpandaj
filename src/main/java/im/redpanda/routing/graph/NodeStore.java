@@ -1,11 +1,11 @@
 package im.redpanda.routing.graph;
 
 import im.redpanda.core.LocalSettings;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.ops.Log;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
+import im.redpanda.transport.Peer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

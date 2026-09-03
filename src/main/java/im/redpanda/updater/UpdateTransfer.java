@@ -1,9 +1,9 @@
 package im.redpanda.updater;
 
-import im.redpanda.core.Peer;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Log;
 import im.redpanda.ops.Settings;
+import im.redpanda.transport.Peer;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.concurrent.Semaphore;

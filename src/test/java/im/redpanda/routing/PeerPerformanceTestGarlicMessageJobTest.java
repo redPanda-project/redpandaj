@@ -4,12 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.core.ConcurrencyTestSupport;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.testutil.ConcurrencyTestSupport;
+import im.redpanda.transport.Peer;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.security.Security;

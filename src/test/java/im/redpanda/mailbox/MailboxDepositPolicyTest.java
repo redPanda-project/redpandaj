@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
@@ -15,6 +13,8 @@ import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
 import im.redpanda.routing.GMType;
 import im.redpanda.routing.OhForwarder;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerTestSupport;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;

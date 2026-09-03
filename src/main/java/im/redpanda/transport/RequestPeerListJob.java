@@ -1,0 +1,29 @@
+package im.redpanda.transport;
+
+import im.redpanda.core.Command;
+import im.redpanda.core.ServerContext;
+import im.redpanda.ops.Job;
+import im.redpanda.ops.Log;
+
+public class RequestPeerListJob extends Job {
+
+  public RequestPeerListJob(ServerContext serverContext) {
+    super(serverContext, 1000L * 30L * 1L, true);
+  }
+
+  @Override
+  public void init() {}
+
+  @Override
+  public void work() {
+
+    // todo request and send peers over garlic messages...
+
+    try {
+      Peer peer = serverContext.getPeerList().getGoodPeer(1.0f);
+      peer.enqueueCommand(Command.REQUEST_PEERLIST);
+    } catch (Exception e) {
+      Log.put("Error requesting peerlist", 100);
+    }
+  }
+}

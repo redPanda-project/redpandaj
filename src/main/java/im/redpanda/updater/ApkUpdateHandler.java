@@ -8,11 +8,11 @@ import static im.redpanda.updater.UpdateTransfer.requestUpdateContent;
 import static im.redpanda.updater.UpdateTransfer.updateApkPath;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.ConnectionReaderThread;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Log;
+import im.redpanda.transport.ConnectionReaderThread;
+import im.redpanda.transport.Peer;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;

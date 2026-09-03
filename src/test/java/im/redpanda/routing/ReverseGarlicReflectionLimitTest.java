@@ -3,8 +3,6 @@ package im.redpanda.routing;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.mailbox.OhId;
@@ -13,6 +11,8 @@ import im.redpanda.mailbox.OutboundMailboxStore;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerTestSupport;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.List;

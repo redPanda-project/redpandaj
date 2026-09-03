@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerTestSupport;
 import im.redpanda.identity.NodeId;
 import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.AckFetchResponse;
@@ -16,6 +14,8 @@ import im.redpanda.outbound.v1.RegisterOhResponse;
 import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerTestSupport;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
