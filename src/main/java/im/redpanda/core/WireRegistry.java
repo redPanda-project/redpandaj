@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -103,7 +104,7 @@ public final class WireRegistry {
           .append("` | ")
           .append(c.value())
           .append(" | `")
-          .append(String.format("0x%02X", c.value()))
+          .append(String.format(Locale.ROOT, "0x%02X", c.value()))
           .append("` |\n");
     }
   }

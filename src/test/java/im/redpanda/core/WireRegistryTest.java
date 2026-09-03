@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -41,17 +42,36 @@ class WireRegistryTest {
             + "and mirror the same content into docs/wire_registry.md (docs repo).\n");
   }
 
-  /** Guards the two facts the registry hard-codes about itself, so a rename cannot go unnoticed. */
+  /**
+   * Pins the garlic layer rows and the garlic carrier command, so a rename or a dropped section
+   * cannot leave the registry (and this test) vacuously satisfied. Matching happens inside the
+   * respective section: the hex values 0x01-0x06 also occur in the top-level table.
+   */
   @Test
-  void registryCoversTheGarlicLayerCommandRange() throws IOException {
+  void registryPinsTheGarlicLayerCommandRows() throws IOException {
     String registry = readCheckedInRegistry();
-    for (int cmd = 0x01; cmd <= 0x06; cmd++) {
-      String hex = String.format("`0x%02X`", cmd);
-      assertTrue(registry.contains(hex), "garlic layer command " + hex + " missing from registry");
+    String garlic = section(registry, "## Garlic layer commands");
+    for (String row :
+        List.of(
+            "| `CMD_FORWARD` | 1 | `0x01` |",
+            "| `CMD_DELIVER` | 2 | `0x02` |",
+            "| `CMD_DELIVER_TAGGED` | 3 | `0x03` |",
+            "| `CMD_DELIVER_ACKED` | 4 | `0x04` |",
+            "| `CMD_RECORD_STORE` | 5 | `0x05` |",
+            "| `CMD_RECORD_LOOKUP` | 6 | `0x06` |")) {
+      assertTrue(garlic.contains(row), "garlic layer row missing from registry: " + row);
     }
     assertTrue(
-        registry.contains("`FLASCHENPOST_V2` | 142"),
+        section(registry, "## Top-level commands").contains("| `FLASCHENPOST_V2` | 142 | `0x8E` |"),
         "top-level command FLASCHENPOST_V2 = 142 missing from registry");
+  }
+
+  /** Returns the text of one {@code ## } section, up to the next one. */
+  private static String section(String registry, String heading) {
+    int start = registry.indexOf(heading);
+    assertTrue(start >= 0, "missing section heading: " + heading);
+    int end = registry.indexOf("\n## ", start + heading.length());
+    return end < 0 ? registry.substring(start) : registry.substring(start, end);
   }
 
   private static String readCheckedInRegistry() throws IOException {
