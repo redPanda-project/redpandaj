@@ -2,14 +2,10 @@ package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GMParser;
 import im.redpanda.flaschenpost.GarlicRouter;
-import im.redpanda.flaschenpost.OhForwarder;
-import im.redpanda.flaschenpost.ReturnPath;
-import im.redpanda.flaschenpost.RoutingAckSender;
+import im.redpanda.flaschenpost.MailboxDepositPolicy;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.KademliaSearchJob;
@@ -1174,168 +1170,16 @@ public class InboundCommandProcessor {
     }
   }
 
+  /**
+   * Parses the FLASCHENPOST_PUT frame and hands it to the mailbox domain.
+   *
+   * <p>The deposit/forward/R-ACK policy that used to live here (incl. the legacy garlic-destination
+   * deposit) is owned by {@link MailboxDepositPolicy} since the DDD review 2026-08-31 — the wire
+   * parser only parses and delegates.
+   */
   private void handleFlaschenpostPut(byte[] payload, Peer peer)
       throws InvalidProtocolBufferException {
-    FlaschenpostPut putMsg = FlaschenpostPut.parseFrom(payload);
-    byte[] content = putMsg.getContent().toByteArray();
-
-    // MS01: Direct OH routing via explicit oh_id field.
-    // MS02b: this path is authoritative — a packet with an explicit oh_id is deposited or
-    // dropped (with an opt-in status response) and never falls through to the legacy garlic
-    // parsing, which would misinterpret raw client payloads as GarlicMessages.
-    ByteString ohIdBytes = putMsg.getOhId();
-    if (!ohIdBytes.isEmpty() && outboundService != null) {
-      // Validate OH id length before converting to a byte array to avoid large allocations
-      if (ohIdBytes.size() != KademliaId.ID_LENGTH_BYTES) {
-        logger.warn(
-            "Received FlaschenpostPut with invalid oh_id length: {}, expected {}",
-            ohIdBytes.size(),
-            KademliaId.ID_LENGTH_BYTES);
-        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-        return;
-      }
-      byte[] ohId = ohIdBytes.toByteArray();
-      // Pre-check the size limit before any deposit/forward decision: an oversized payload is
-      // rejected by every host node anyway, so forwarding it (and answering OK) would only waste
-      // hops and mislead the sender.
-      if (content.length > im.redpanda.outbound.OutboundMailboxStore.MAX_ITEM_BYTES) {
-        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-        return;
-      }
-      // MS05: a reverse-garlic session tag arrives here when the final garlic hop was not the
-      // OH host and forwarded the tagged deliver (OhForwarder). Empty for direct deposits.
-      // Validate the size on the ByteString before materializing the array (cf. oh_id above).
-      ByteString sessionTagBytes = putMsg.getSessionTag();
-      if (sessionTagBytes.size() != 0
-          && sessionTagBytes.size() != OutboundService.SESSION_TAG_BYTES) {
-        respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-        return;
-      }
-      byte[] sessionTag = sessionTagBytes.toByteArray();
-      // MS06: a return-path block arrives here when a CMD_DELIVER_ACKED deliver was forwarded
-      // by a non-host final garlic hop (OhForwarder, like the MS05 session tag). Structurally
-      // invalid blocks reject the deposit like an invalid session tag.
-      ByteString returnPathBytes = putMsg.getReturnPath();
-      ReturnPath returnPath = null;
-      if (!returnPathBytes.isEmpty()) {
-        if (returnPathBytes.size() > ReturnPath.MAX_SERIALIZED_LEN) {
-          respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-          return;
-        }
-        returnPath = ReturnPath.parseExact(returnPathBytes.toByteArray());
-        if (returnPath == null) {
-          respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-          return;
-        }
-      }
-      OutboundService.DepositResult result =
-          outboundService.depositMessage(ohId, content, sessionTag);
-      if (result == OutboundService.DepositResult.NOT_FOUND) {
-        // MS02b: not our OH — forward toward the host node (resolved via the DHT announce),
-        // preserving the oh_id (and MS05 session tag / MS06 return path) on every hop.
-        // Best-effort: OK means "accepted for forwarding".
-        boolean accepted =
-            OhForwarder.forward(
-                serverContext,
-                ohId,
-                content,
-                putMsg.getHopCount(),
-                sessionTag,
-                returnPathBytes.isEmpty() ? null : returnPathBytes.toByteArray());
-        if (!accepted && returnPath != null) {
-          // final station for this packet (hop limit) and the OH is unknown here — tell the
-          // sender the handle could not be resolved instead of leaving it to the timeout
-          RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.STATUS_HANDLE_EXPIRED);
-        }
-        respondToDeposit(
-            peer,
-            putMsg,
-            accepted
-                ? im.redpanda.outbound.v1.Status.OK
-                : im.redpanda.outbound.v1.Status.NOT_FOUND);
-        return;
-      }
-      if (result != OutboundService.DepositResult.DEPOSITED) {
-        logger.debug("FlaschenpostPut deposit not stored: {}", result);
-      }
-      if (returnPath != null) {
-        // MS06: this node made the final deposit decision — send the R-ACK
-        RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));
-      }
-      respondToDeposit(peer, putMsg, OutboundService.depositResultToStatus(result));
-      return;
-    }
-
-    // Legacy: Try to route via GarlicMessage destination header
-    if (tryDepositToLocalOh(content)) {
-      return;
-    }
-
-    // REDPANDAJ-2DR hardening: an empty oh_id falls into legacy garlic parsing, which was
-    // written to only ever see GarlicMessage/GMAck bytes. A raw E2E-encrypted client payload can
-    // collide with a known GMType id (e.g. 0x04 == ACK) and must be rejected explicitly instead
-    // of silently dropped by GMParser.parse's defensive fallback — otherwise the sender never
-    // learns the deposit failed and keeps retrying blindly. Scoped to the empty-oh_id case only:
-    // a non-empty oh_id that fell through here because outboundService is unset must keep its
-    // pre-existing (unconditional) legacy behavior, not be rejected as if it were this case.
-    if (ohIdBytes.isEmpty() && !GMParser.isValidFrame(serverContext, content)) {
-      logger.warn(
-          "Rejecting FlaschenpostPut with empty oh_id whose content is not a valid GM frame,"
-              + " length: {}",
-          content.length);
-      respondToDeposit(peer, putMsg, im.redpanda.outbound.v1.Status.BAD_REQUEST);
-      return;
-    }
-
-    GMParser.parse(serverContext, content);
-  }
-
-  /**
-   * Sends the MS02b deposit status response, but only to directly connected light clients that
-   * asked for it via {@code want_response}. Peers and legacy clients never receive command 158 —
-   * their read loops would desync on an unknown command byte.
-   */
-  private void respondToDeposit(
-      Peer peer, FlaschenpostPut putMsg, im.redpanda.outbound.v1.Status status) {
-    if (putMsg.getWantResponse() && peer.isLightClient() && outboundService != null) {
-      outboundService.sendFlaschenpostPutResponse(peer, status);
-    }
-  }
-
-  /**
-   * Attempts to extract the destination KademliaId from a GarlicMessage-formatted payload and
-   * deposit it into a locally registered Outbound Handle mailbox.
-   *
-   * <p><b>Scheduled for removal (MS02b domain-separation decision):</b> this legacy fallback treats
-   * a 20-byte garlic <em>node</em> destination directly as an {@code oh_id}, so OH ids and node
-   * KademliaIds share one undifferentiated namespace (a registered OH can shadow a node id). It
-   * only exists because the explicit {@code oh_id} field was added after the first prototype; the
-   * frontend has sent an explicit {@code oh_id} since Frontend-MS01. Once no legacy traffic
-   * remains, remove this method and the implicit shared-namespace behavior — new code must never
-   * rely on it.
-   *
-   * @return true if the deposit targeted a locally registered OH (stored or rejected by the MS02b
-   *     hardening — in both cases the packet is handled here)
-   */
-  private boolean tryDepositToLocalOh(byte[] content) {
-    if (outboundService == null) {
-      return false;
-    }
-    // GarlicMessage format: [1 gmType][4 overallLen][20 destinationKademliaId]...
-    int headerLen = 1 + 4 + KademliaId.ID_LENGTH_BYTES;
-    if (content.length < headerLen) {
-      return false;
-    }
-    try {
-      byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-      System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
-      // Anything other than NOT_FOUND targeted a locally registered OH: a rejected deposit
-      // (quota/size) is handled here and must not leak into the legacy forwarding pipeline.
-      return outboundService.depositMessage(ohId, content)
-          != OutboundService.DepositResult.NOT_FOUND;
-    } catch (RuntimeException e) {
-      logger.warn("Failed to extract destination or deposit message to local OH", e);
-      return false;
-    }
+    MailboxDepositPolicy.handlePut(
+        serverContext, outboundService, FlaschenpostPut.parseFrom(payload), peer);
   }
 }

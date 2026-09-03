@@ -111,7 +111,7 @@ public final class OhForwarder {
       byte[] returnPath) {
     if (hopCount >= MAX_HOPS) {
       // Hop-limit drop. This is the ONLY drop point that returns false, i.e. reports the drop
-      // back to the synchronous caller. The caller (InboundCommandProcessor#handleFlaschenpostPut)
+      // back to the synchronous caller. The caller (MailboxDepositPolicy#handlePut)
       // is still able to answer the peer here and sends the HANDLE_EXPIRED R-ACK itself, so we
       // MUST NOT ack here — doing so would double-ack the packet. All drops that happen inside the
       // asynchronous resolve callbacks below (resolve failure, no route) are the opposite case: the
