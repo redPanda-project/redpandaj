@@ -1,14 +1,10 @@
 package im.redpanda.core;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.util.ArrayList;
 
 /**
- * Explicit JSON mapping of the persisted identity/node types (T117): {@link NodeId} and {@link
- * Node} including its connection points.
+ * Explicit JSON mapping of a persisted {@link NodeId} (T117).
  *
  * <p>These fragments carry no {@code format}/{@code version} header of their own — they are always
  * embedded in a document (or a MapDB map) whose name states the version, exactly like the {@code
@@ -16,8 +12,13 @@ import java.util.ArrayList;
  *
  * <p>The mapping is written out field by field on purpose. Reflection-based mapping would couple
  * the file to the Java field names and re-create the very problem T117 removes.
+ *
+ * <p>T118 split this out of {@code NodeStateCodec}: that class also encoded the routing graph's
+ * {@code Node} through its package-private constructor, so it had to follow {@code Node} into
+ * {@code im.redpanda.routing.graph} — while a {@code NodeId} is persisted by callers in three
+ * different contexts (settings, peer list, node cache).
  */
-public final class NodeStateCodec {
+public final class NodeIdCodec {
 
   /** Base64 of the 128-byte private export; present only for the node's own identity. */
   private static final String MEMBER_PRIVATE_KEY = "privateKey";
@@ -25,9 +26,7 @@ public final class NodeStateCodec {
   /** Base64 of the 64-byte public export. */
   private static final String MEMBER_PUBLIC_KEY = "publicKey";
 
-  private static final String MEMBER_LAST_SEEN = "lastSeen";
-
-  private NodeStateCodec() {}
+  private NodeIdCodec() {}
 
   /**
    * Encodes a NodeId with its private keys if it has them, otherwise with the public export only —
@@ -85,60 +84,5 @@ public final class NodeStateCodec {
               + publicExport.length);
     }
     return NodeId.importPublic(publicExport);
-  }
-
-  /** Encodes a node of the DHT/graph state: its identity plus the counters that are persisted. */
-  public static JsonObject nodeToJson(Node node) {
-    JsonObject json = new JsonObject();
-    json.add("nodeId", nodeIdToJson(node.getNodeId()));
-    json.addProperty(MEMBER_LAST_SEEN, node.getLastSeen());
-    json.addProperty("gmTestsSuccessful", node.getGmTestsSuccessful());
-    json.addProperty("gmTestsFailed", node.getGmTestsFailed());
-    json.addProperty("blacklistedSince", node.blacklistedSince());
-
-    JsonArray points = new JsonArray();
-    for (Node.ConnectionPoint point : node.getConnectionPoints()) {
-      JsonObject pointJson = new JsonObject();
-      pointJson.addProperty("ip", point.getIp());
-      pointJson.addProperty("port", point.getPort());
-      pointJson.addProperty(MEMBER_LAST_SEEN, point.getLastSeen());
-      pointJson.addProperty("retries", point.getRetries());
-      points.add(pointJson);
-    }
-    json.add("connectionPoints", points);
-    return json;
-  }
-
-  public static Node nodeFromJson(JsonObject json) throws IOException {
-    NodeId nodeId = nodeIdFromJson(StateFormat.requireObject(json, "nodeId"));
-
-    ArrayList<Node.ConnectionPoint> points = new ArrayList<>();
-    JsonElement pointsElement = json.get("connectionPoints");
-    if (pointsElement != null && pointsElement.isJsonArray()) {
-      for (JsonElement element : pointsElement.getAsJsonArray()) {
-        if (!element.isJsonObject()) {
-          throw new IOException("connectionPoints must hold objects");
-        }
-        JsonObject pointJson = element.getAsJsonObject();
-        JsonElement ip = pointJson.get("ip");
-        if (ip == null || !ip.isJsonPrimitive()) {
-          throw new IOException("connection point without an ip");
-        }
-        points.add(
-            new Node.ConnectionPoint(
-                ip.getAsString(),
-                StateFormat.optInt(pointJson, "port", 0),
-                StateFormat.optLong(pointJson, MEMBER_LAST_SEEN, 0L),
-                StateFormat.optInt(pointJson, "retries", 0)));
-      }
-    }
-
-    return new Node(
-        nodeId,
-        StateFormat.optLong(json, MEMBER_LAST_SEEN, 0L),
-        points,
-        StateFormat.optInt(json, "gmTestsSuccessful", 0),
-        StateFormat.optInt(json, "gmTestsFailed", 0),
-        StateFormat.optLong(json, "blacklistedSince", 0L));
   }
 }

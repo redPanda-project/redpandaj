@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.routing.graph.Node;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;

@@ -1,7 +1,9 @@
-package im.redpanda.core;
+package im.redpanda.routing.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.core.NodeId;
+import im.redpanda.core.ServerContext;
 import java.security.Security;
 import java.util.List;
 import org.junit.jupiter.api.Test;

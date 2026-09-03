@@ -46,7 +46,8 @@ public class GarlicMessage extends Flaschenpost {
 
   /**
    * This is the {@link NodeId} containing the public keys of the target {@link
-   * im.redpanda.core.Peer}/{@link im.redpanda.core.Node} and is only used for the creation process.
+   * im.redpanda.core.Peer}/{@link im.redpanda.routing.graph.Node} and is only used for the creation
+   * process.
    */
   private NodeId targetsNodeId;
 

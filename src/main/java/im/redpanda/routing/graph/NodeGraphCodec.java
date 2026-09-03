@@ -1,10 +1,8 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import im.redpanda.core.Node;
-import im.redpanda.core.NodeStateCodec;
 import im.redpanda.core.StateFormat;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -20,9 +18,9 @@ import org.jgrapht.graph.DefaultDirectedWeightedGraph;
  * index. That is what keeps the shared-instance semantics of the old Java-serialized graph: a node
  * that sits on several edges is one object after loading, not one copy per edge.
  *
- * <p>Lives in {@code store} rather than next to {@link NodeStateCodec} because {@link NodeEdge}'s
- * state is package-private here and must be restored as it was — {@code setLastCheckFailed(true)}
- * would stamp the current time into {@code timeLastCheckFailed}.
+ * <p>Lives in {@code store} rather than next to {@link NodeCodec} because {@link NodeEdge}'s state
+ * is package-private here and must be restored as it was — {@code setLastCheckFailed(true)} would
+ * stamp the current time into {@code timeLastCheckFailed}.
  */
 public final class NodeGraphCodec {
 
@@ -35,7 +33,7 @@ public final class NodeGraphCodec {
     JsonArray verticesJson = new JsonArray();
     for (Node node : vertices) {
       indexOf.put(node, verticesJson.size());
-      verticesJson.add(NodeStateCodec.nodeToJson(node));
+      verticesJson.add(NodeCodec.nodeToJson(node));
     }
 
     JsonArray edgesJson = new JsonArray();
@@ -66,7 +64,7 @@ public final class NodeGraphCodec {
       if (!element.isJsonObject()) {
         throw new IOException("vertices must hold objects");
       }
-      Node node = NodeStateCodec.nodeFromJson(element.getAsJsonObject());
+      Node node = NodeCodec.nodeFromJson(element.getAsJsonObject());
       vertices.add(node);
       graph.addVertex(node);
     }

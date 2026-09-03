@@ -1,11 +1,9 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import im.redpanda.core.KademliaId;
-import im.redpanda.core.Node;
-import im.redpanda.core.NodeStateCodec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.mapdb.DataInput2;
@@ -48,7 +46,7 @@ final class NodeStoreSerializers {
         @Override
         public void serialize(DataOutput2 out, Node value) throws IOException {
           byte[] json =
-              new Gson().toJson(NodeStateCodec.nodeToJson(value)).getBytes(StandardCharsets.UTF_8);
+              new Gson().toJson(NodeCodec.nodeToJson(value)).getBytes(StandardCharsets.UTF_8);
           Serializer.BYTE_ARRAY.serialize(out, json);
         }
 
@@ -62,7 +60,7 @@ final class NodeStoreSerializers {
           } catch (RuntimeException e) {
             throw new IOException("cached node is not a JSON object", e);
           }
-          return NodeStateCodec.nodeFromJson(object);
+          return NodeCodec.nodeFromJson(object);
         }
       };
 

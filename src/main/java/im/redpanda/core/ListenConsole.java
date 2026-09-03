@@ -2,7 +2,8 @@ package im.redpanda.core;
 
 import im.redpanda.dht.KadStoreManager;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
-import im.redpanda.store.helper.GraphAdjacentMatrixPrinter;
+import im.redpanda.routing.graph.GraphAdjacentMatrixPrinter;
+import im.redpanda.routing.graph.Node;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

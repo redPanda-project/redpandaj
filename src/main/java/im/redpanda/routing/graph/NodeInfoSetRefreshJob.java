@@ -1,14 +1,12 @@
-package im.redpanda.jobs;
+package im.redpanda.routing.graph;
 
-import im.redpanda.core.Node;
 import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.KademliaInsertJob;
 import im.redpanda.dht.nodeinfo.GMEntryPointModel;
 import im.redpanda.dht.nodeinfo.NodeInfoModel;
-import im.redpanda.store.NodeEdge;
-import im.redpanda.store.NodeStore;
+import im.redpanda.jobs.Job;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;

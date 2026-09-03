@@ -1,14 +1,14 @@
 package im.redpanda.routing;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
-import im.redpanda.store.NodeEdge;
-import im.redpanda.store.NodeStore;
+import im.redpanda.routing.graph.Node;
+import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.routing.graph.NodeStore;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;

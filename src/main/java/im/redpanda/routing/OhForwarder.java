@@ -1,7 +1,6 @@
 package im.redpanda.routing;
 
 import im.redpanda.core.KademliaId;
-import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
@@ -12,8 +11,9 @@ import im.redpanda.mailbox.OhResolveJob;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.ReturnPath;
 import im.redpanda.mailbox.RoutingAckSender;
-import im.redpanda.store.NodeEdge;
-import im.redpanda.store.NodeStore;
+import im.redpanda.routing.graph.Node;
+import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.routing.graph.NodeStore;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;

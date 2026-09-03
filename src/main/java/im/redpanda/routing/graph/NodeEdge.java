@@ -1,4 +1,4 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import org.jgrapht.graph.DefaultEdge;

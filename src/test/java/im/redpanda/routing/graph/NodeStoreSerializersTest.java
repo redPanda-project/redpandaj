@@ -1,9 +1,8 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.KademliaId;
-import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import java.io.IOException;

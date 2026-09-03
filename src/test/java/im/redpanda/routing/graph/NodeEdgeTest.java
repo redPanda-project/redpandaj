@@ -1,4 +1,4 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

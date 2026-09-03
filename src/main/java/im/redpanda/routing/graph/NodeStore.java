@@ -1,9 +1,8 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.LocalSettings;
 import im.redpanda.core.Log;
-import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
