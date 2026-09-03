@@ -1,7 +1,7 @@
 package im.redpanda.dht;
 
 import im.redpanda.core.ServerContext;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 
 public class KadRefreshJob extends Job {
 

@@ -15,7 +15,7 @@ import im.redpanda.dht.KadContent;
 import im.redpanda.dht.nodeinfo.GMEntryPointModel;
 import im.redpanda.dht.nodeinfo.NodeInfoModel;
 import im.redpanda.identity.NodeId;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
 import java.lang.reflect.Field;

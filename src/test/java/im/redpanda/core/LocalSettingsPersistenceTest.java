@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import im.redpanda.identity.NodeId;
+import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
 import java.io.File;

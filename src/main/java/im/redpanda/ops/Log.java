@@ -2,10 +2,10 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package im.redpanda.core;
+package im.redpanda.ops;
 
 import im.redpanda.App;
-import im.redpanda.jobs.Job;
+import im.redpanda.core.ServerContext;
 import io.sentry.Sentry;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;

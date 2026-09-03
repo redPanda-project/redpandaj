@@ -7,6 +7,8 @@ package im.redpanda.core;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -172,6 +174,40 @@ public class Peer implements Comparable<Peer> {
 
   public long getLastAnswered() {
     return System.currentTimeMillis() - lastPongReceived;
+  }
+
+  /**
+   * One row of the {@code peers} console table, formatted exactly as {@code ListenConsole} used to
+   * format it inline.
+   *
+   * <p>The formatting lives here because the row is built from eight package-private fields ({@code
+   * ip}, {@code port}, {@code writeBufferCrypted}, {@code retries}, {@code ping}, {@code
+   * sendBytes}, {@code receivedBytes}, {@code removedSendMessages}). When the console moved into
+   * the ops context (T118) the alternative would have been to make all eight public again, undoing
+   * T115. Reads are unsynchronised, exactly as they were in the console -- this is a diagnostic
+   * snapshot, not a consistent one.
+   *
+   * @return the row including its trailing newline
+   */
+  public String consoleStatusRow() {
+    String lastPong =
+        getLastPongReceived() != 0
+            ? "" + (System.currentTimeMillis() - getLastPongReceived())
+            : "-";
+    String nodeIdText =
+        getNodeId() == null ? "-" : getNodeId().getKademliaId().toString().substring(0, 10);
+    return String.format(
+        "%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n",
+        "[" + ip + "]:" + port,
+        nodeIdText,
+        lastPong,
+        "" + isConnected() + "/" + (isAuthed() && writeBufferCrypted != null),
+        retries,
+        Math.round(ping * 100) / 100.,
+        "-",
+        sendBytes,
+        receivedBytes,
+        removedSendMessages.size());
   }
 
   public boolean isConnected() {

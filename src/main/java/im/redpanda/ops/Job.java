@@ -1,6 +1,5 @@
-package im.redpanda.jobs;
+package im.redpanda.ops;
 
-import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
 import java.security.SecureRandom;
 import java.util.HashMap;

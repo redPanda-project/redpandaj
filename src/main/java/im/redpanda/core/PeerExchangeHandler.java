@@ -5,6 +5,8 @@ import static com.google.protobuf.ByteString.copyFrom;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.Utils;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;

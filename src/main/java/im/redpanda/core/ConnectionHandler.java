@@ -8,6 +8,8 @@ package im.redpanda.core;
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.Utils;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import java.io.IOException;
 import java.net.InetAddress;

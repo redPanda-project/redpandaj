@@ -1,8 +1,9 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.core.ServerContext;
 import java.io.File;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

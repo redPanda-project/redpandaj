@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import im.redpanda.ops.Log;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;

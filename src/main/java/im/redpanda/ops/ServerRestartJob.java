@@ -1,8 +1,7 @@
-package im.redpanda.jobs;
+package im.redpanda.ops;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
-import im.redpanda.core.Settings;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;

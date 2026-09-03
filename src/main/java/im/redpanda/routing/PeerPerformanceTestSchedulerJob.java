@@ -2,7 +2,7 @@ package im.redpanda.routing;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class PeerPerformanceTestSchedulerJob extends Job {

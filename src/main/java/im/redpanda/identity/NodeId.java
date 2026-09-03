@@ -1,8 +1,8 @@
 package im.redpanda.identity;
 
-import im.redpanda.core.Log;
 import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.identity.crypt.Sha256Hash;
+import im.redpanda.ops.Log;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;

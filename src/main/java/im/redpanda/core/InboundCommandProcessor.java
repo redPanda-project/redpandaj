@@ -3,6 +3,7 @@ package im.redpanda.core;
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.dht.KademliaCommandHandler;
 import im.redpanda.mailbox.OutboundCommandHandler;
+import im.redpanda.ops.Log;
 import im.redpanda.routing.FlaschenpostCommandHandler;
 import im.redpanda.updater.ApkUpdateHandler;
 import im.redpanda.updater.JarUpdateHandler;

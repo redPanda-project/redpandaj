@@ -3,7 +3,7 @@ package im.redpanda.mailbox;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.KademliaInsertJob;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import java.time.Duration;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;

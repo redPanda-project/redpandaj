@@ -1,6 +1,6 @@
 package im.redpanda.routing;
 
-import im.redpanda.core.Log;
+import im.redpanda.ops.Log;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;

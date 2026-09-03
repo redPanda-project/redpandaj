@@ -1,5 +1,10 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
+import im.redpanda.core.ByteBufferPool;
+import im.redpanda.core.Peer;
+import im.redpanda.core.PeerList;
+import im.redpanda.core.Server;
+import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadStoreManager;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.routing.graph.GraphAdjacentMatrixPrinter;
@@ -100,36 +105,7 @@ public class ListenConsole extends Thread {
               actCons++;
             }
 
-            String c;
-            if (peer.getLastPongReceived() != 0) {
-              c = "" + (System.currentTimeMillis() - peer.getLastPongReceived());
-            } else {
-              c = "-";
-            }
-
-            String nodeId;
-
-            if (peer.getNodeId() == null) {
-              nodeId = "-";
-            } else {
-              nodeId = peer.getNodeId().getKademliaId().toString().substring(0, 10);
-            }
-
-            System.out.format(
-                "%40s %18s %12s %12s %7d %8s %10s %10d %10d %10d\n",
-                "[" + peer.ip + "]:" + peer.port,
-                nodeId,
-                c,
-                ""
-                    + peer.isConnected()
-                    + "/"
-                    + (peer.isAuthed() && peer.writeBufferCrypted != null),
-                peer.retries,
-                Math.round(peer.ping * 100) / 100.,
-                "-",
-                peer.sendBytes,
-                peer.receivedBytes,
-                peer.removedSendMessages.size());
+            System.out.print(peer.consoleStatusRow());
           }
 
           // System.out.format("%12s %25s %12s %12s\n", "ID", "Last Seen", "SyncedMsgs",
