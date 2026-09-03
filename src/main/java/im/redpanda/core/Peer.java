@@ -11,50 +11,72 @@ import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import lombok.Getter;
 
 /**
+ * One connection to one remote node — the aggregate root of the transport context (DDD review
+ * §3/§6, N-TRANSPORT).
+ *
+ * <h2>Write path (T115)</h2>
+ *
+ * <p>The write buffers and the lock that owns them are internal to this package. Everything outside
+ * {@code im.redpanda.core} queues bytes through the small frame API — {@link
+ * #enqueueCommand(byte)}, {@link #enqueueFrame(byte, byte[])}, {@link #tryEnqueueFrame(byte,
+ * byte[], long, TimeUnit)}, {@link #enqueueGrowingFrame(ByteBuffer)} and the general {@link
+ * #writeBufferLocked(Consumer)} — all of which take {@link #writeBufferLock} themselves, re-read
+ * and null-check {@code writeBuffer} under it, release it in a {@code finally} and then register
+ * the peer for writing.
+ *
+ * <p>That contract used to be a convention repeated at ~15 call sites in the routing, mailbox, DHT
+ * and updater code ("lock, re-read the field, null-check, unlock in a finally"), and several sites
+ * got a part of it wrong: missing {@code finally} (leaving {@code writeBufferLock} held forever
+ * after an NPE, bug hunt L4), a missing null re-read (TD008/REDPANDAJ-2EJ) or a buffer replacement
+ * done from outside the class ({@code InboundCommandProcessor.appendToWriteBuffer}). The lock
+ * discipline now lives in exactly one place: here.
+ *
  * @author rflohr
  */
 public class Peer implements Comparable<Peer> {
 
   private Node node;
-  public String ip;
-  public int port;
-  public int connectAble = 0;
+  String ip;
+  int port;
+  int connectAble = 0;
 
   private boolean lightClient = false;
-  public int protocolVersion;
+  int protocolVersion;
 
-  public int retries = 0;
+  int retries = 0;
   @Getter private long lastPongReceived = 0;
   int cnt = 0;
-  public long connectedSince = 0;
+  long connectedSince = 0;
   private NodeId nodeId;
   // volatile: readConnection()'s stale-connection guards compare these lock-free against a
   // captured reference while setupConnectionForPeer() swaps them under writeBufferLock — without
   // volatile the JMM permits a stale read, making a guard misfire and tear down the fresh
   // replacement connection (REDPANDAJ-2EF review finding).
   private volatile SocketChannel socketChannel;
-  public ByteBuffer readBuffer;
-  public ByteBuffer writeBuffer;
+  ByteBuffer readBuffer;
+  ByteBuffer writeBuffer;
   volatile SelectionKey selectionKey;
   private boolean connected = false;
-  public boolean isConnecting;
-  public long lastPinged = 0;
-  public double ping = 0;
-  public boolean authed = false;
-  public ByteBuffer writeBufferCrypted;
-  public final ReentrantLock writeBufferLock = new ReentrantLock();
-  public Thread connectingThread;
-  public ArrayList<Integer> removedSendMessages = new ArrayList<>();
-  public byte lastCommand;
+  boolean isConnecting;
+  long lastPinged = 0;
+  double ping = 0;
+  private boolean authed = false;
+  ByteBuffer writeBufferCrypted;
+  final ReentrantLock writeBufferLock = new ReentrantLock();
+  Thread connectingThread;
+  ArrayList<Integer> removedSendMessages = new ArrayList<>();
+  byte lastCommand;
 
-  public long sendBytes = 0;
-  public long receivedBytes = 0;
+  long sendBytes = 0;
+  long receivedBytes = 0;
 
-  public boolean isConnectionInitializedByMe = false;
+  boolean isConnectionInitializedByMe = false;
 
   private boolean isIntegrated = false;
 
@@ -465,12 +487,205 @@ public class Peer implements Comparable<Peer> {
     return authed;
   }
 
-  public ReentrantLock getWriteBufferLock() {
+  /**
+   * Only the handshake ({@link #setupConnectionForPeer(PeerInHandshake)}, {@link
+   * #disconnect(String)}) and tests set this — hence package-private.
+   */
+  void setAuthed(boolean authed) {
+    this.authed = authed;
+  }
+
+  /**
+   * The lock owning {@code writeBuffer}/{@code writeBufferCrypted}/{@code readBuffer}.
+   *
+   * <p>Package-private on purpose (T115): the NIO plumbing in this package ({@code
+   * ConnectionHandler}, {@code ConnectionReaderThread}) shares these buffers with {@code Peer} and
+   * therefore shares the lock. Everyone else queues bytes via the {@code enqueue*} /{@link
+   * #writeBufferLocked(Consumer)} API, which takes the lock itself.
+   */
+  ReentrantLock getWriteBufferLock() {
     return writeBufferLock;
   }
 
-  public ByteBuffer getWriteBuffer() {
+  /**
+   * The live write buffer. Package-private: writers must go through the {@code enqueue*} API so the
+   * locking (and the possible buffer replacement in {@link #enqueueGrowingFrame(ByteBuffer)}) stays
+   * inside this class.
+   */
+  ByteBuffer getWriteBuffer() {
     return writeBuffer;
+  }
+
+  /**
+   * Runs {@code writer} against this peer's write buffer while holding {@link #writeBufferLock},
+   * then registers the peer for writing.
+   *
+   * <p>{@code writer} must not block and must not acquire another lock: the documented lock order
+   * (see {@link PeerList}) puts {@code writeBufferLock} outermost, so anything taken inside it can
+   * only be a lock that is never held while waiting for this one.
+   *
+   * @return {@code true} if the bytes were queued, {@code false} if the peer has no write buffer
+   *     any more — i.e. it disconnected (which nulls the field under this very lock)
+   */
+  public boolean writeBufferLocked(Consumer<ByteBuffer> writer) {
+    writeBufferLock.lock();
+    try {
+      ByteBuffer buffer = writeBuffer;
+      if (buffer == null) {
+        return false;
+      }
+      writer.accept(buffer);
+    } finally {
+      writeBufferLock.unlock();
+    }
+    setWriteBufferFilled();
+    return true;
+  }
+
+  /**
+   * Queues a single command byte (a wire command without a payload, e.g. {@link Command#PONG}).
+   *
+   * @return {@code true} if the byte was queued, {@code false} if the peer is gone
+   */
+  public boolean enqueueCommand(byte command) {
+    return writeBufferLocked(buffer -> buffer.put(command));
+  }
+
+  /**
+   * Queues one length-prefixed frame — {@code [command][length:4][payload]}, the shape every
+   * payload-carrying command on this connection uses.
+   *
+   * @return {@code true} if the frame was queued, {@code false} if the peer is gone
+   */
+  public boolean enqueueFrame(byte command, byte[] payload) {
+    return writeBufferLocked(
+        buffer -> {
+          buffer.put(command);
+          buffer.putInt(payload.length);
+          buffer.put(payload);
+        });
+  }
+
+  /**
+   * Like {@link #enqueueFrame(byte, byte[])}, but gives up if the write buffer stays busy longer
+   * than the caller can afford.
+   *
+   * <p>For the Kademlia jobs: they walk many peers within one job timeout, so a single peer whose
+   * buffer is locked must cost the loop a few milliseconds, not the whole job.
+   *
+   * @return {@code true} if the frame was queued, {@code false} if the lock was not acquired in
+   *     time or the peer is gone
+   */
+  public boolean tryEnqueueFrame(byte command, byte[] payload, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    if (!writeBufferLock.tryLock(timeout, unit)) {
+      return false;
+    }
+    try {
+      ByteBuffer buffer = writeBuffer;
+      if (buffer == null) {
+        return false;
+      }
+      buffer.put(command);
+      buffer.putInt(payload.length);
+      buffer.put(payload);
+    } finally {
+      writeBufferLock.unlock();
+    }
+    setWriteBufferFilled();
+    return true;
+  }
+
+  /**
+   * Appends an already built frame, growing the write buffer if the frame does not fit.
+   *
+   * <p>This is the only path that <em>replaces</em> {@code writeBuffer}. It used to live in {@code
+   * InboundCommandProcessor.appendToWriteBuffer} and assigned the field from outside the class; the
+   * growth policy (grow to old capacity + frame + 10 MiB headroom, copy the pending bytes over) is
+   * unchanged, it is just no longer a foreign write into this aggregate.
+   *
+   * <p>Used for the update/APK upload frames, which are megabytes large and therefore cannot be
+   * sized by the fixed 300 KiB connection buffer.
+   *
+   * @param frame the frame to append, ready to be read (position..limit)
+   * @return {@code true} if the frame was queued, {@code false} if the peer is gone
+   */
+  public boolean enqueueGrowingFrame(ByteBuffer frame) {
+    writeBufferLock.lock();
+    try {
+      ByteBuffer buffer = writeBuffer;
+      if (buffer == null) {
+        return false;
+      }
+      if (buffer.remaining() < frame.remaining()) {
+        ByteBuffer grown =
+            ByteBuffer.allocate(buffer.capacity() + frame.remaining() + 1024 * 1024 * 10);
+        buffer.flip();
+        grown.put(buffer);
+        writeBuffer = grown;
+        buffer = grown;
+      }
+      // put(ByteBuffer), not put(frame.array()): the bulk-array form writes the whole backing
+      // array regardless of position/limit and fails outright on a non-array-backed buffer, so it
+      // does not match the remaining() capacity check above.
+      buffer.put(frame);
+    } finally {
+      writeBufferLock.unlock();
+    }
+    setWriteBufferFilled();
+    return true;
+  }
+
+  /**
+   * Whether this connection still has bytes waiting to go out — plaintext not yet encrypted, or
+   * ciphertext not yet written to the socket.
+   *
+   * <p>Both buffers are re-read under {@link #writeBufferLock} because {@link #disconnect(String)}
+   * nulls them while holding it. A peer that is no longer connected has nothing queued by
+   * definition.
+   */
+  boolean hasQueuedOutboundBytes() {
+    writeBufferLock.lock();
+    try {
+      ByteBuffer buffer = writeBuffer;
+      ByteBuffer crypted = writeBufferCrypted;
+      if (!isConnected() || buffer == null || crypted == null) {
+        return false;
+      }
+      return buffer.position() > 0 || crypted.position() > 0;
+    } finally {
+      writeBufferLock.unlock();
+    }
+  }
+
+  /**
+   * Frees the 2×300 KiB write buffers of a peer that is neither connected nor connecting and has
+   * been silent for longer than twice the ping timeout.
+   *
+   * <p>Called from the chron thread ({@code PeerJobs.runOnce()}), where it used to live and where
+   * it originally ran <em>without</em> this lock — the TD029/REDPANDAJ-2EJ NPE on the selector
+   * thread ({@code writeBufferCrypted} nulled between the selector's own lock acquisition and its
+   * deref). The condition is deliberately re-tested under the lock: {@link
+   * #setupConnectionForPeer(PeerInHandshake)} holds the same lock across the whole connection swap,
+   * so a reaper queued behind it must see the reconnect and keep the fresh buffers instead of
+   * tearing down a live connection.
+   *
+   * <p>The acquisition is an unbounded {@code lock()}, so this can park the chron thread for as
+   * long as a {@code writeBufferLock} section runs — worst case the {@code
+   * PEERLIST_LOCK_TIMEOUT_MS} of {@code ConnectionHandler.setupConnection()}. That is the same
+   * exposure the {@code peer.disconnect("timeout")} branch in the same loop already has, and the
+   * chron thread is the one thread in the system that can afford to wait.
+   */
+  void releaseWriteBuffersIfIdle() {
+    writeBufferLock.lock();
+    try {
+      if (!isConnected() && !isConnecting && getLastAnswered() > Settings.pingTimeout * 2) {
+        writeBuffer = null;
+        writeBufferCrypted = null;
+      }
+    } finally {
+      writeBufferLock.unlock();
+    }
   }
 
   public boolean isIntegrated() {

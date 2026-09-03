@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,9 +25,9 @@ class OutboundIntegrationTest {
     mailboxStore = new OutboundMailboxStore();
     service = new OutboundService(handleStore, mailboxStore);
     peer = new Peer("127.0.0.1", 12345);
-    peer.writeBuffer = java.nio.ByteBuffer.allocate(4096);
-    peer.writeBuffer.flip();
-    peer.writeBuffer.clear();
+    PeerTestSupport.initWriteBuffer(peer, 4096);
+    PeerTestSupport.writeBuffer(peer).flip();
+    PeerTestSupport.writeBuffer(peer).clear();
     peer.setConnected(true);
 
     // Generate valid client identity
@@ -39,12 +40,12 @@ class OutboundIntegrationTest {
     service.handleRegister(peer, req);
 
     // Verify response
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.RegisterOhResponse res =
         im.redpanda.outbound.v1.RegisterOhResponse.parseFrom(payload);
@@ -57,7 +58,7 @@ class OutboundIntegrationTest {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);
-    peer.writeBuffer.clear(); // Clear register response
+    PeerTestSupport.writeBuffer(peer).clear(); // Clear register response
 
     // 2. Add some mail manually to store for testing fetch
     byte[] ohId = clientNode.getKademliaId().getBytes();
@@ -72,12 +73,12 @@ class OutboundIntegrationTest {
     service.handleFetch(peer, fetchReq);
 
     // 4. Verify
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.FetchResponse res =
         im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);
@@ -92,19 +93,19 @@ class OutboundIntegrationTest {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);
-    peer.writeBuffer.clear();
+    PeerTestSupport.writeBuffer(peer).clear();
 
     // 2. Revoke
     im.redpanda.outbound.v1.RevokeOhRequest revokeReq = createSignedRevokeRequest();
     service.handleRevoke(peer, revokeReq);
 
     // 3. Verify Response
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.RevokeOhResponse res =
         im.redpanda.outbound.v1.RevokeOhResponse.parseFrom(payload);
@@ -120,12 +121,12 @@ class OutboundIntegrationTest {
     im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
     service.handleFetch(peer, fetchReq);
 
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.FetchResponse res =
         im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);
@@ -138,12 +139,12 @@ class OutboundIntegrationTest {
     im.redpanda.outbound.v1.RevokeOhRequest revokeReq = createSignedRevokeRequest();
     service.handleRevoke(peer, revokeReq);
 
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_REVOKE_OH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.RevokeOhResponse res =
         im.redpanda.outbound.v1.RevokeOhResponse.parseFrom(payload);
@@ -270,12 +271,12 @@ class OutboundIntegrationTest {
 
     service.handleRegister(peer, tampered);
 
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_REGISTER_OH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.RegisterOhResponse res =
         im.redpanda.outbound.v1.RegisterOhResponse.parseFrom(payload);
@@ -288,7 +289,7 @@ class OutboundIntegrationTest {
     // 1. Register first
     RegisterOhRequest regReq = createSignedRegisterRequest();
     service.handleRegister(peer, regReq);
-    peer.writeBuffer.clear();
+    PeerTestSupport.writeBuffer(peer).clear();
 
     // 2. Fetch with bad signature
     im.redpanda.outbound.v1.FetchRequest fetchReq = createSignedFetchRequest();
@@ -299,12 +300,12 @@ class OutboundIntegrationTest {
 
     service.handleFetch(peer, tampered);
 
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(im.redpanda.core.Command.OUTBOUND_FETCH_RES, cmd);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[len];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     im.redpanda.outbound.v1.FetchResponse res =
         im.redpanda.outbound.v1.FetchResponse.parseFrom(payload);

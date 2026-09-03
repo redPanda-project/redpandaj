@@ -21,13 +21,7 @@ public class RequestPeerListJob extends Job {
 
     try {
       Peer peer = serverContext.getPeerList().getGoodPeer(1.0f);
-      peer.getWriteBufferLock().lock();
-      try {
-        peer.writeBuffer.put(Command.REQUEST_PEERLIST);
-        peer.setWriteBufferFilled();
-      } finally {
-        peer.getWriteBufferLock().unlock();
-      }
+      peer.enqueueCommand(Command.REQUEST_PEERLIST);
     } catch (Exception e) {
       Log.put("Error requesting peerlist", 100);
     }

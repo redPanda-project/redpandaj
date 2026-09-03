@@ -115,7 +115,10 @@ public class ListenConsole extends Thread {
                 "[" + peer.ip + "]:" + peer.port,
                 nodeId,
                 c,
-                "" + peer.isConnected() + "/" + (peer.authed && peer.writeBufferCrypted != null),
+                ""
+                    + peer.isConnected()
+                    + "/"
+                    + (peer.isAuthed() && peer.writeBufferCrypted != null),
                 peer.retries,
                 Math.round(peer.ping * 100) / 100.,
                 "-",

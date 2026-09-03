@@ -11,6 +11,7 @@ import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.PeerPerformanceTestFlaschenpostJob;
@@ -250,15 +251,15 @@ class GMParserAdditionalTest {
     byte[] content = garlicMessageBytes(serverContext, target);
 
     TestPeer peer = new TestPeer("10.0.0.1", 1000, target);
-    peer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(peer, content.length + BUFFER_PADDING);
     peer.setConnected(true);
     serverContext.getPeerList().add(peer);
 
     GMContent parsed = GMParser.parse(serverContext, content);
 
     assertNotNull(parsed);
-    peer.writeBuffer.flip();
-    assertEquals(Command.FLASCHENPOST_PUT, peer.writeBuffer.get());
+    PeerTestSupport.writeBuffer(peer).flip();
+    assertEquals(Command.FLASCHENPOST_PUT, PeerTestSupport.writeBuffer(peer).get());
     assertTrue(peer.setWriteBufferCalled);
   }
 
@@ -292,7 +293,7 @@ class GMParserAdditionalTest {
     byte[] content = garlicMessageBytes(serverContext, destination);
 
     TestPeer reachablePeer = new TestPeer("192.0.2.11", 11, reachablePeerId);
-    reachablePeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(reachablePeer, content.length + BUFFER_PADDING);
     reachablePeer.setConnected(true);
     serverContext.getPeerList().add(reachablePeer);
 
@@ -319,7 +320,7 @@ class GMParserAdditionalTest {
     notAuthed.setNode(new Node(serverContext, notAuthed.getNodeId()));
 
     TestPeer lightClient = new TestPeer("10.0.0.4", 4, NodeId.generateWithSimpleKey());
-    lightClient.authed = true;
+    PeerTestSupport.setAuthed(lightClient, true);
     lightClient.setConnected(true);
     lightClient.setNode(new Node(serverContext, lightClient.getNodeId()));
     lightClient.setLightClient(true);
@@ -360,11 +361,11 @@ class GMParserAdditionalTest {
     serverContext.getKadStoreManager().put(kadContent);
 
     TestPeer goodPeer = new TestPeer("10.0.0.5", 5, NodeId.generateWithSimpleKey());
-    goodPeer.authed = true;
+    PeerTestSupport.setAuthed(goodPeer, true);
     goodPeer.setConnected(true);
     goodPeer.setNode(new Node(serverContext, goodPeer.getNodeId()));
     byte[] content = garlicMessageBytes(serverContext, destination);
-    goodPeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(goodPeer, content.length + BUFFER_PADDING);
     serverContext.getPeerList().add(goodPeer);
 
     // A real route through goodPeer: self -> goodPeer -> destination. Under correct routing the
@@ -385,11 +386,11 @@ class GMParserAdditionalTest {
     new Node(serverContext, destination);
 
     TestPeer peer = new TestPeer("10.0.0.6", 6, NodeId.generateWithSimpleKey());
-    peer.authed = true;
+    PeerTestSupport.setAuthed(peer, true);
     peer.setConnected(true);
     peer.setNode(new Node(serverContext, peer.getNodeId()));
     byte[] content = garlicMessageBytes(serverContext, destination);
-    peer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(peer, content.length + BUFFER_PADDING);
     serverContext.getPeerList().add(peer);
 
     GMParser.parse(serverContext, content);
@@ -432,7 +433,7 @@ class GMParserAdditionalTest {
     byte[] content = garlicMessageBytes(serverContext, destination);
     TestPeer entryPeer = new TestPeer("203.0.113.10", 12345, entryPointId);
     entryPeer.setConnected(true);
-    entryPeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(entryPeer, content.length + BUFFER_PADDING);
     serverContext.getPeerList().add(entryPeer);
 
     GMParser.parse(serverContext, content);
@@ -522,16 +523,16 @@ class GMParserAdditionalTest {
     byte[] content = garlicMessageBytes(serverContext, destination);
 
     TestPeer firstPeer = new TestPeer("10.0.0.7", 7, NodeId.generateWithSimpleKey());
-    firstPeer.authed = true;
+    PeerTestSupport.setAuthed(firstPeer, true);
     firstPeer.setConnected(true);
     firstPeer.setNode(new Node(serverContext, firstPeer.getNodeId()));
-    firstPeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(firstPeer, content.length + BUFFER_PADDING);
 
     TestPeer secondPeer = new TestPeer("10.0.0.8", 8, NodeId.generateWithSimpleKey());
-    secondPeer.authed = true;
+    PeerTestSupport.setAuthed(secondPeer, true);
     secondPeer.setConnected(true);
     secondPeer.setNode(new Node(serverContext, secondPeer.getNodeId()));
-    secondPeer.writeBuffer = ByteBuffer.allocate(content.length + BUFFER_PADDING);
+    PeerTestSupport.initWriteBuffer(secondPeer, content.length + BUFFER_PADDING);
 
     serverContext.getPeerList().add(firstPeer);
     serverContext.getPeerList().add(secondPeer);
@@ -726,7 +727,7 @@ class GMParserAdditionalTest {
    */
   private static TestPeer authedPeerWithNode(ServerContext serverContext, String ip, int port) {
     TestPeer peer = new TestPeer(ip, port, NodeId.generateWithSimpleKey());
-    peer.authed = true;
+    PeerTestSupport.setAuthed(peer, true);
     peer.setConnected(true);
     peer.setNode(new Node(serverContext, peer.getNodeId()));
     return peer;

@@ -9,6 +9,7 @@ import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -83,7 +84,7 @@ class OhForwarderTest {
   private Peer connectPeerForNodeB() {
     Peer peerB = new Peer("127.0.0.1", 9301, nodeB.getNodeId());
     peerB.setConnected(true);
-    peerB.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peerB, 65536);
     nodeA.getPeerList().add(peerB);
     return peerB;
   }
@@ -113,7 +114,7 @@ class OhForwarderTest {
     processorA.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(put.toByteArray()), lightClient);
 
     // Node A must have forwarded a FLASCHENPOST_PUT to peer B with the oh_id preserved
-    ByteBuffer outA = peerB.writeBuffer;
+    ByteBuffer outA = PeerTestSupport.writeBuffer(peerB);
     outA.flip();
     assertThat(outA.hasRemaining()).as("node A must forward to the resolved host node").isTrue();
     assertThat(outA.get()).isEqualTo(Command.FLASCHENPOST_PUT);
@@ -162,8 +163,8 @@ class OhForwarderTest {
 
     processorA.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(put.toByteArray()), sender);
 
-    peerB.writeBuffer.flip();
-    assertThat(peerB.writeBuffer.hasRemaining())
+    PeerTestSupport.writeBuffer(peerB).flip();
+    assertThat(PeerTestSupport.writeBuffer(peerB).hasRemaining())
         .as("a packet at the hop limit must not be forwarded")
         .isFalse();
   }
@@ -369,7 +370,7 @@ class OhForwarderTest {
     // (Peer.getNode() only returns the node once the peer is authed and connected)
     Peer candidate = new Peer("127.0.0.1", 9302, nodeB.getNodeId());
     candidate.setConnected(true);
-    candidate.authed = true;
+    PeerTestSupport.setAuthed(candidate, true);
     candidate.setNode(new im.redpanda.core.Node(nodeA, nodeB.getNodeId()));
     nodeA.getPeerList().add(candidate);
     assertThat(candidate.hasNode()).isTrue();
