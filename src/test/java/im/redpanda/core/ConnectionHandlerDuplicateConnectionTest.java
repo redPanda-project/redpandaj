@@ -15,9 +15,12 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li><b>TD020 (parallel-handshake orphan):</b> when {@code oldPeer != peerOrigin}, two inbound
  *       connections from the same identity raced — both saw {@code peerList.get(identity) == null}
- *       during {@code parseHandshake} and built separate, fully connected {@code Peer} objects, and
- *       only the first got registered. The loser ({@code peerOrigin}) must be <em>disconnected</em>
- *       so no unregistered, still-reading peer object survives; the pre-registered winner stays.
+ *       during {@code parseHandshake} and built separate {@code Peer} objects, and only the first
+ *       got registered. No unregistered, still-reading peer object may survive. Since TD142 that is
+ *       achieved by never letting the loser adopt the socket in the first place: the completed
+ *       connection goes to the registered peer instead (the "newest wins" policy {@code
+ *       Peer.setupConnectionForPeer} has applied since T54), because the far side has already
+ *       committed to it. Dropping it here is what made the two ends of one socket disagree.
  *   <li><b>TD019 (reconnect diagnostic):</b> when {@code oldPeer == peerOrigin} — the sequential
  *       half-open reconnect (T54), where {@code parseHandshake} found the already-registered peer
  *       and the channel/stream swap already happened in {@link Peer#setupConnectionForPeer} (PR
@@ -33,14 +36,18 @@ class ConnectionHandlerDuplicateConnectionTest {
 
   /**
    * TD020: two inbound connections from the same node complete their handshakes in parallel. Both
-   * built distinct, connected {@link Peer} objects because neither saw the other in the PeerList
-   * yet; the first (winner) is already registered. Driving the second (loser) through {@code
-   * setupConnection} must disconnect it — it is otherwise a silent orphan: connected and read by
-   * the selector, but unreachable for outbound because {@code peerList.get(identity)} returns the
-   * winner.
+   * built distinct {@link Peer} objects because neither saw the other in the PeerList yet; the
+   * first (winner) is already registered. Driving the second (loser) through {@code
+   * setupConnection} must leave the loser unregistered and without a socket — it would otherwise be
+   * a silent orphan: connected and read by the selector, but unreachable for outbound because
+   * {@code peerList.get(identity)} returns the winner.
+   *
+   * <p>Since TD142 the loser's <em>connection</em> is not thrown away with it: the winner adopts
+   * it. Closing it here is what let the two ends of one socket keep opposite connections and redial
+   * each other forever (see {@code ConnectionHandlerReconnectLoopTest}).
    */
   @Test
-  void parallelHandshakeLoserIsDisconnectedAndNotRegistered() throws Exception {
+  void parallelHandshakeLoserIsNotRegisteredAndItsConnectionGoesToTheWinner() throws Exception {
     ByteBufferPool.init();
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
@@ -74,14 +81,21 @@ class ConnectionHandlerDuplicateConnectionTest {
           .as("setupConnection must not register the racing duplicate")
           .isNotSameAs(loser);
 
-      // The core of TD020: the loser must be torn down, not left as a connected, still-reading
-      // orphan.
+      // The core of TD020: no connected, still-reading orphan peer object survives.
       assertThat(loser.isConnected())
-          .as("the losing parallel duplicate must be disconnected, not orphaned")
+          .as("the losing parallel duplicate must never own a connection")
           .isFalse();
-      assertThat(channel.isOpen()).as("the losing duplicate's socket must be closed").isFalse();
+      assertThat(loser.getSocketChannel())
+          .as("the loser must not adopt the socket at all")
+          .isNull();
+
+      // TD142: the socket itself survives, on the registered peer.
+      assertThat(channel.isOpen())
+          .as("the far side has already committed to this socket, it must not be closed")
+          .isTrue();
+      assertThat(winner.getSocketChannel()).isSameAs(channel);
       assertThat(winner.isConnected())
-          .as("disconnecting the loser must not touch the winner's connection")
+          .as("the winner keeps the identity and now owns the surviving connection")
           .isTrue();
     }
   }

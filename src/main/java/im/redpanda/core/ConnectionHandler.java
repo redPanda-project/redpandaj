@@ -884,10 +884,16 @@ public class ConnectionHandler extends Thread {
          * We can now safely transfer the open connection from the peerInHandshake to the actual
          * peer
          */
-        Peer peer = peerInHandshake.getPeer();
-        setupConnection(peer, peerInHandshake);
-
-        copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peer);
+        if (setupConnection(peerInHandshake.getPeer(), peerInHandshake)) {
+          // Re-read the peer: setupConnection may have re-targeted the handshake at the registered
+          // peer object when the one we came in with turned out to be an unregistered duplicate
+          // (TD142). The leftover plaintext belongs to the peer that actually owns the socket now.
+          //
+          // Only when the connection was actually kept: on the abort paths the handshake socket is
+          // closed and the peer we would copy into may be a different, still connected peer whose
+          // plaintext stream these bytes would corrupt (Copilot review, PR #339).
+          copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peerInHandshake.getPeer());
+        }
       } else {
         System.out.println("got wrong first command, lets disconnect");
         peerInHandshake.getSocketChannel().close();
@@ -928,102 +934,133 @@ public class ConnectionHandler extends Thread {
   }
 
   /**
-   * Completes a handshake and registers the peer. <b>Runs on the NIO selector thread.</b>
+   * Completes a handshake and hands the finished connection to the {@link Peer} object that owns
+   * this identity. <b>Runs on the NIO selector thread.</b>
    *
-   * <p>It holds {@code peerOrigin.writeBufferLock} across the whole body and takes the peer list
-   * write lock inside it — that is the documented order (see {@link PeerList}, "Lock order"), and
-   * no code may take those two the other way round.
+   * <p><b>Duplicate-connection policy (TD142).</b> Exactly one policy decides which socket survives
+   * when more than one connection to the same node exists: <em>the newest one wins</em>, which is
+   * what {@link Peer#setupConnectionForPeer(PeerInHandshake)} has implemented since T54 (it
+   * disconnects whatever the peer held and adopts the fresh channel). This method used to
+   * contradict that on one path: when {@code peerList.add()} answered with a <em>different</em>,
+   * already-registered peer object, it disconnected the connection that had just completed — i.e.
+   * it kept the oldest.
+   *
+   * <p>Two ends of one socket then made opposite decisions, and that is the node1&lt;-&gt;node2
+   * reconnect loop observed on the testnet on 2026-09-03 (~25 redials/min, symmetric, no direct DHT
+   * path, and {@code ss} showing no TCP connection between the two nodes at all): the accepting
+   * side adopted the new socket and thereby tore down its own working connection, while the
+   * dialling side — which had dialled through an unregistered second {@code Peer} object for the
+   * same node — closed that very socket as a "duplicate parallel connection" a few milliseconds
+   * later. Both ends were left with nothing and redialled, forever.
+   *
+   * <p>So the completed connection is now always handed to the registered peer instead of being
+   * thrown away, and the unregistered duplicate object is dropped from the peer list (via {@link
+   * PeerList#removeExact(Peer)}, not {@code remove()}, which would evict the registered peer
+   * instead) so the outbound thread stops dialling through it. That also keeps TD020's actual
+   * requirement — no unregistered, still-reading orphan peer survives — and satisfies it more
+   * directly than before: the duplicate never adopts the socket in the first place.
+   *
+   * <p>Lock order: the peer list write lock is taken first and released again, then the target
+   * peer's {@code writeBufferLock} — the two are no longer nested at all, so the inversion hazard
+   * documented on {@link PeerList} ("Lock order") cannot arise here.
+   *
+   * @return {@code true} if the connection was kept and is now owned by a peer; {@code false} if it
+   *     was dropped (peer list lock unavailable, or the peer refused to adopt it). Callers must not
+   *     touch the peer's buffers on {@code false} — the socket is gone and the peer the handshake
+   *     points at may be a different, still connected one.
    */
-  public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
+  public boolean setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
 
-    ReentrantLock writeBufferLock = peerOrigin.getWriteBufferLock();
+    removePeerInHandshake(peerInHandshake);
+
+    /**
+     * If this is a new connection not initialized by us this peer might not be in our PeerList,
+     * lets add it by KademliaId. Resolving the owner happens BEFORE any connection state is moved,
+     * so a peer object that turns out to be an unregistered duplicate never adopts the socket.
+     */
+    Peer registered;
+    try {
+      registered = peerList.add(peerOrigin, PEERLIST_LOCK_TIMEOUT_MS);
+    } catch (PeerList.PeerListBusyException e) {
+      // T87 safety net. The selector thread is the single thread that accepts new sockets and
+      // services the reads and writes of every existing connection, so parking it here does not
+      // cost one connection, it takes the node off the network — which is exactly what happened
+      // on 2026-07-29, where the wedged selector left the listen backlog full and the process
+      // alive but unreachable. Whatever holds the peer list lock for this long is a bug of its
+      // own, so make it loud rather than silent, and keep the event loop running.
+      logger.error(
+          "peer list lock unavailable on the selector thread, dropping the connection to {}:{}"
+              + " (KadId: {})",
+          peerOrigin.getIp(),
+          peerOrigin.getPort(),
+          peerInHandshake.getIdentity(),
+          e);
+      Log.sentry(e);
+      dropHandshakeConnection(peerInHandshake);
+      // Only tear the peer down when it has nothing to lose. Since the peer list lock is now taken
+      // BEFORE any connection state is moved, peerOrigin can be the already-registered peer with a
+      // live, unrelated connection — disconnecting it would turn transient lock contention into a
+      // forced disconnect of a healthy socket (Copilot review, PR #339). The disconnect is still
+      // wanted for a peer we were dialling, where it clears isConnecting/authed.
+      if (!peerOrigin.isConnected()) {
+        peerOrigin.disconnect("peer list lock unavailable on the selector thread");
+      }
+      return false;
+    }
+
+    Peer target = peerOrigin;
+    if (registered != null && registered != peerOrigin) {
+      // peerOrigin is a second Peer object for a node we already track: either a racing parallel
+      // handshake that built its own object (TD020), or a duplicate that lives in the peer list
+      // because an id-less seed/restored entry and a handshake-built entry share one address. It
+      // was never registered, so nothing can reach it — but the far side has already committed to
+      // this socket, so hand the socket to the registered peer rather than dropping it (TD142).
+      logger.info(
+          "connection completed on an unregistered duplicate peer object (KadId: {}); handing the"
+              + " connection to the registered peer and dropping the duplicate",
+          peerInHandshake.getIdentity());
+      peerList.removeExact(peerOrigin);
+      // If this duplicate object was itself connected on an OLDER socket of its own, that socket
+      // is now unreachable: nothing in the peer list points at the object any more, but the
+      // selector still reads it. Tear it down — this is TD020's orphan requirement, applied to the
+      // connection the duplicate already had rather than to the one that just completed (which
+      // belongs to peerInHandshake and is handed to the registered peer below).
+      if (peerOrigin.isConnected()) {
+        peerOrigin.disconnect("unregistered duplicate peer object replaced by the registered peer");
+      }
+      peerInHandshake.setPeer(registered);
+      target = registered;
+    }
+
+    ReentrantLock writeBufferLock = target.getWriteBufferLock();
     writeBufferLock.lock();
 
     try {
-      removePeerInHandshake(peerInHandshake);
 
-      peerOrigin.setupConnectionForPeer(peerInHandshake);
+      target.setupConnectionForPeer(peerInHandshake);
+
+      if (!target.isConnected()) {
+        // setupConnectionForPeer bailed out before adopting the channel (it disconnects and
+        // returns early when the write buffers cannot be allocated, REDPANDAJ-TD010). Attaching
+        // the key to a disconnected peer and reporting success would leave a selector key on a
+        // dead peer and leak the handshake socket, which nobody owns at this point (Copilot
+        // review, PR #339).
+        logger.error(
+            "peer did not adopt the completed connection (KadId: {}), dropping it",
+            peerInHandshake.getIdentity());
+        dropHandshakeConnection(peerInHandshake);
+        return false;
+      }
 
       // update the selection key to the actual peer
-      peerInHandshake.getKey().attach(peerOrigin);
+      peerInHandshake.getKey().attach(target);
 
-      /**
-       * If this is a new connection not initialzed by us this peer might not be in our PeerList,
-       * lets add it by KademliaId
-       */
-      Peer oldPeer;
-      try {
-        oldPeer = peerList.add(peerOrigin, PEERLIST_LOCK_TIMEOUT_MS);
-      } catch (PeerList.PeerListBusyException e) {
-        // T87 safety net. The selector thread is the single thread that accepts new sockets and
-        // services the reads and writes of every existing connection, so parking it here does not
-        // cost one connection, it takes the node off the network — which is exactly what happened
-        // on 2026-07-29, where the wedged selector left the listen backlog full and the process
-        // alive but unreachable. Whatever holds the peer list lock for this long is a bug of its
-        // own, so make it loud rather than silent, and keep the event loop running.
-        logger.error(
-            "peer list lock unavailable on the selector thread, dropping the connection to {}:{}"
-                + " (KadId: {})",
-            peerOrigin.getIp(),
-            peerOrigin.getPort(),
-            peerInHandshake.getIdentity(),
-            e);
-        Log.sentry(e);
-        peerOrigin.disconnect("peer list lock unavailable on the selector thread");
-        return;
-      }
-      if (oldPeer != null && oldPeer != peerOrigin) {
-        // TD020: two inbound connections from the same node raced. Both handshakes saw
-        // peerList.get(identity) == null in ConnectionReaderThread.parseHandshake and each built
-        // its own, fully connected Peer object; only the first to reach peerList.add() got
-        // registered. peerOrigin is the loser here — oldPeer (the winner) already holds this
-        // identity, so peerList.add() returned it without registering peerOrigin. peerOrigin is
-        // connected and being read by the selector (setupConnectionForPeer already adopted its
-        // socket/streams and its key is attached above) but is unreachable for outbound, because
-        // peerList.get(identity) returns oldPeer — i.e. a silent, un-healing orphan that keeps a
-        // socket and reader busy forever. Disconnect it so no unregistered, still-reading peer
-        // object survives; the winner keeps its own connection.
-        //
-        // The sequential half-open reconnect (T54) does NOT reach this branch: there parseHandshake
-        // found the already-registered peer and set it as peerOrigin, so peerList.add() returns
-        // that very object (oldPeer == peerOrigin) and the connection swap has already happened
-        // inside Peer.setupConnectionForPeer (PR #271) — that case is handled by the else-if
-        // diagnostic branch below, not here.
-        logger.info(
-            "duplicate parallel connection from the same identity (KadId: {}); disconnecting the "
-                + "unregistered duplicate",
-            peerInHandshake.getIdentity());
-        peerOrigin.disconnect("duplicate parallel inbound connection; identity already registered");
-        return;
-      }
-
-      // Log a clear success message for e2e and operators. Placed after the TD020 duplicate check
-      // so it only fires for a connection we actually keep — not for a losing parallel duplicate
-      // that was just disconnected above (Copilot review, PR #276).
+      // A clear success message for e2e and operators, logged for the connection we actually keep.
       logger.info(
           "Connected successfully to {}:{} (KadId: {})",
-          peerOrigin.getIp(),
-          peerOrigin.getPort(),
+          target.getIp(),
+          target.getPort(),
           peerInHandshake.getIdentity());
-
-      if (oldPeer != null && oldPeer.isConnected()) {
-        // TD019: diagnostics only. Reaching here means oldPeer == peerOrigin (see the TD020 branch
-        // above, which handles a distinct pre-existing winner): peerList.add() returned the very
-        // peer we just re-registered, i.e. a reconnect/half-open swap whose atomic channel/stream
-        // replacement already happened in Peer.setupConnectionForPeer(); nothing here changes that
-        // outcome. The former "same node with same id" branch was removed as dead code (T54
-        // analysis): peerList.add() only ever returns a non-null oldPeer whose NodeId equals
-        // peerOrigin's — either via the KademliaId hashmap hit, or via the ip+port branch that
-        // returns oldPeer only in its equal-NodeId else — so a "different id" case can never reach
-        // this point. Switched from System.out.println to the logger so real duplicate-connection
-        // incidents are traceable. The message names the guaranteed invariant (same node identity /
-        // KademliaId), not "same ip+port": peerList.add() also returns the pre-existing peer on a
-        // KademliaId hashmap hit whose ip+port may differ, so an ip+port claim would mislead
-        // operators (Copilot review, PR #275).
-        logger.info(
-            "already connected to a node with the same identity (KadId: {})",
-            peerInHandshake.getIdentity());
-      }
 
       /** Lets search for the Node object for that peer and load it. */
       if (!peerInHandshake.isLightClient()) {
@@ -1038,11 +1075,29 @@ public class ConnectionHandler extends Thread {
                   + Utils.formatDuration(System.currentTimeMillis() - byKademliaId.getLastSeen()));
         }
         byKademliaId.seen(peerInHandshake.ip, peerInHandshake.getPort());
-        peerOrigin.setNode(byKademliaId);
+        target.setNode(byKademliaId);
       }
+
+      return true;
 
     } finally {
       writeBufferLock.unlock();
+    }
+  }
+
+  /**
+   * Closes a handshake connection nobody took ownership of: cancels its selector key and closes its
+   * channel. Used on {@link #setupConnection}'s abort paths, where the {@link Peer} objects
+   * involved either never adopted the channel or must not be torn down themselves.
+   */
+  private void dropHandshakeConnection(PeerInHandshake peerInHandshake) {
+    if (peerInHandshake.getKey() != null) {
+      peerInHandshake.getKey().cancel();
+    }
+    try {
+      peerInHandshake.getSocketChannel().close();
+    } catch (IOException closeEx) {
+      Log.sentry(closeEx);
     }
   }
 
