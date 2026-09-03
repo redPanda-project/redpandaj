@@ -635,6 +635,8 @@ public class OutboundService {
 
   // Helper to write [cmd][len][payload]. Peer owns the write-buffer locking (T115).
   private void writeResponse(Peer peer, byte command, byte[] payload) {
-    peer.enqueueFrame(command, payload);
+    if (!peer.enqueueFrame(command, payload)) {
+      logger.debug("client {} disconnected before the response could be queued", peer);
+    }
   }
 }

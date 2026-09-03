@@ -157,6 +157,70 @@ class PeerFrameApiTest {
         .isTrue();
   }
 
+  @Test
+  void hasQueuedOutboundBytes_reportsOnlyWhatIsActuallyStillQueued() {
+    Peer peer = peerWithBuffer(64);
+    peer.setConnected(true);
+    PeerTestSupport.initWriteBufferCrypted(peer, 64);
+
+    assertThat(peer.hasQueuedOutboundBytes()).as("nothing written yet").isFalse();
+
+    assertThat(peer.enqueueCommand(Command.PONG)).isTrue();
+    assertThat(peer.hasQueuedOutboundBytes()).as("plaintext waiting to be encrypted").isTrue();
+
+    PeerTestSupport.writeBuffer(peer).clear();
+    PeerTestSupport.writeBufferCrypted(peer).put((byte) 1);
+    assertThat(peer.hasQueuedOutboundBytes()).as("ciphertext waiting for the socket").isTrue();
+
+    peer.setConnected(false);
+    assertThat(peer.hasQueuedOutboundBytes())
+        .as("a peer that is gone has nothing queued, whatever is left in the buffers")
+        .isFalse();
+  }
+
+  /** The buffers of a peer that disconnected are freed only once it has been silent long enough. */
+  @Test
+  void releaseWriteBuffersIfIdle_freesTheBuffersOfALongSilentDisconnectedPeer() {
+    Peer peer = peerWithBuffer(64);
+    PeerTestSupport.initWriteBufferCrypted(peer, 64);
+    peer.setLastPongReceived(System.currentTimeMillis() - Settings.pingTimeout * 2 - 1000);
+
+    peer.releaseWriteBuffersIfIdle();
+
+    assertThat(PeerTestSupport.writeBuffer(peer)).isNull();
+    assertThat(PeerTestSupport.writeBufferCrypted(peer)).isNull();
+  }
+
+  /**
+   * The reap decision is made outside the lock and re-tested inside it: a peer that reconnected in
+   * between must keep the fresh buffers its handshake just allocated (TD029/REDPANDAJ-2EJ).
+   */
+  @Test
+  void releaseWriteBuffersIfIdle_keepsTheBuffersOfAConnectedPeer() {
+    Peer peer = peerWithBuffer(64);
+    PeerTestSupport.initWriteBufferCrypted(peer, 64);
+    peer.setLastPongReceived(System.currentTimeMillis() - Settings.pingTimeout * 2 - 1000);
+    peer.setConnected(true);
+
+    peer.releaseWriteBuffersIfIdle();
+
+    assertThat(PeerTestSupport.writeBuffer(peer)).isNotNull();
+    assertThat(PeerTestSupport.writeBufferCrypted(peer)).isNotNull();
+  }
+
+  /** A peer that answered recently keeps its buffers even while disconnected. */
+  @Test
+  void releaseWriteBuffersIfIdle_keepsTheBuffersOfARecentlyAnsweringPeer() {
+    Peer peer = peerWithBuffer(64);
+    PeerTestSupport.initWriteBufferCrypted(peer, 64);
+    peer.setLastPongReceived(System.currentTimeMillis());
+
+    peer.releaseWriteBuffersIfIdle();
+
+    assertThat(PeerTestSupport.writeBuffer(peer)).isNotNull();
+    assertThat(PeerTestSupport.writeBufferCrypted(peer)).isNotNull();
+  }
+
   /**
    * Concurrent producers are the reason the locking exists: the write buffer is a single shared
    * position, so two unsynchronised {@code put()} sequences would interleave and produce frames

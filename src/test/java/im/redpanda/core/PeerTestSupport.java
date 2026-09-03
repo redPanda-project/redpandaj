@@ -32,6 +32,18 @@ public final class PeerTestSupport {
     return peer.getWriteBuffer();
   }
 
+  /** Gives the peer the ciphertext buffer a real connection setup allocates alongside. */
+  public static ByteBuffer initWriteBufferCrypted(Peer peer, int capacity) {
+    ByteBuffer buffer = ByteBuffer.allocate(capacity);
+    peer.writeBufferCrypted = buffer;
+    return buffer;
+  }
+
+  /** The peer's live ciphertext buffer. */
+  public static ByteBuffer writeBufferCrypted(Peer peer) {
+    return peer.writeBufferCrypted;
+  }
+
   /** Marks the peer as authenticated, which outside of tests only the handshake does. */
   public static void setAuthed(Peer peer, boolean authed) {
     peer.setAuthed(authed);

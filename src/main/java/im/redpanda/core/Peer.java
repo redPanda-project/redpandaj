@@ -25,10 +25,10 @@ import lombok.Getter;
  * <p>The write buffers and the lock that owns them are internal to this package. Everything outside
  * {@code im.redpanda.core} queues bytes through the small frame API — {@link
  * #enqueueCommand(byte)}, {@link #enqueueFrame(byte, byte[])}, {@link #tryEnqueueFrame(byte,
- * byte[], long, TimeUnit)}, {@link #enqueueGrowingFrame(ByteBuffer)} and the general {@link
- * #writeBufferLocked(Consumer)} — all of which take {@link #writeBufferLock} themselves, re-read
- * and null-check {@code writeBuffer} under it, release it in a {@code finally} and then register
- * the peer for writing.
+ * byte[], long, TimeUnit)} and {@link #enqueueGrowingFrame(ByteBuffer)} (plus the package-private
+ * {@link #writeBufferLocked(Consumer)} for the two frames that are not length-prefixed) — all of
+ * which take {@link #writeBufferLock} themselves, re-read and null-check {@code writeBuffer} under
+ * it, release it in a {@code finally} and then register the peer for writing.
  *
  * <p>That contract used to be a convention repeated at ~15 call sites in the routing, mailbox, DHT
  * and updater code ("lock, re-read the field, null-check, unlock in a finally"), and several sites
@@ -520,6 +520,11 @@ public class Peer implements Comparable<Peer> {
    * Runs {@code writer} against this peer's write buffer while holding {@link #writeBufferLock},
    * then registers the peer for writing.
    *
+   * <p>Package-private: this is the raw, unframed escape hatch, and handing it to another package
+   * would allow exactly the thing the {@code enqueue*} methods exist to prevent — bytes written
+   * into the stream without the {@code [cmd][len][payload]} framing, which desyncs the connection.
+   * Its callers are the two update-timestamp handlers, which write {@code [cmd][long]}.
+   *
    * <p>{@code writer} must not block and must not acquire another lock: the documented lock order
    * (see {@link PeerList}) puts {@code writeBufferLock} outermost, so anything taken inside it can
    * only be a lock that is never held while waiting for this one.
@@ -527,7 +532,7 @@ public class Peer implements Comparable<Peer> {
    * @return {@code true} if the bytes were queued, {@code false} if the peer has no write buffer
    *     any more — i.e. it disconnected (which nulls the field under this very lock)
    */
-  public boolean writeBufferLocked(Consumer<ByteBuffer> writer) {
+  boolean writeBufferLocked(Consumer<ByteBuffer> writer) {
     writeBufferLock.lock();
     try {
       ByteBuffer buffer = writeBuffer;
