@@ -4,6 +4,7 @@ import im.redpanda.core.*;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.CryptoUtils;
+import im.redpanda.ops.Log;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;

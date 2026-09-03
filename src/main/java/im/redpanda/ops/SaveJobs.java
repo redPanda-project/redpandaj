@@ -1,4 +1,4 @@
-package im.redpanda.jobs;
+package im.redpanda.ops;
 
 import im.redpanda.core.Saver;
 import im.redpanda.core.ServerContext;

@@ -1,12 +1,12 @@
 package im.redpanda.core;
 
 import static com.google.protobuf.ByteString.copyFrom;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.identity.NodeId;
+import im.redpanda.ops.Settings;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
@@ -144,16 +144,6 @@ class InboundCommandProcessorPeerListFilterTest {
     ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));
 
     assertEquals(List.of("46.224.156.238:59558"), requestPeerListAsSeenBy(PUBLIC_PEER_IP));
-  }
-
-  /** Operator input is trusted and must keep working — the default seed list ships a name. */
-  @Test
-  void configuredSeedsMayStillUseHostNames() {
-    assertArrayEquals(
-        new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
-    assertTrue(
-        List.of(Settings.parseKnownNodes(null)).contains("redpanda.im:59559"),
-        "the default seed list must keep its host name entry");
   }
 
   @Test

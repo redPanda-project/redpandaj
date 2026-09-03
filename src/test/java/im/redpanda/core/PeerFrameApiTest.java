@@ -3,6 +3,7 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import im.redpanda.ops.Settings;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;

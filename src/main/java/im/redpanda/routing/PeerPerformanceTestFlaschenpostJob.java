@@ -6,7 +6,7 @@ import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import im.redpanda.proto.FlaschenpostPut;
 
 public class PeerPerformanceTestFlaschenpostJob extends Job {

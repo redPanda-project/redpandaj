@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
 import java.time.Duration;
 import java.util.Calendar;

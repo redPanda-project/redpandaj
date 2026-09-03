@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -70,5 +70,19 @@ class SettingsKnownNodesTest {
   @Test
   void acceptsBracketedIpv6() {
     assertArrayEquals(new String[] {"[2001:db8::1]"}, Settings.parseKnownNodes("[2001:db8::1]"));
+  }
+
+  /**
+   * Operator input is trusted and must keep working — the default seed list ships a name. Lived in
+   * {@code InboundCommandProcessorPeerListFilterTest} until T118 moved {@code Settings} into the
+   * ops context; it never tested the peer-list filter, only this parser.
+   */
+  @org.junit.jupiter.api.Test
+  void configuredSeedsMayStillUseHostNames() {
+    assertArrayEquals(
+        new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
+    org.assertj.core.api.Assertions.assertThat(Settings.parseKnownNodes(null))
+        .as("the default seed list must keep its host name entry")
+        .contains("redpanda.im:59559");
   }
 }

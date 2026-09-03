@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.App;
+import im.redpanda.ops.Log;
 import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
 import io.sentry.SentryLevel;

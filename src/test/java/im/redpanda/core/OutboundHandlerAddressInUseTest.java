@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.ops.Settings;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

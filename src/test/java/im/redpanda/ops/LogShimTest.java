@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

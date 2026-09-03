@@ -1,13 +1,13 @@
 package im.redpanda.dht;
 
-import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.Base58;
 import im.redpanda.identity.crypt.Sha256Hash;
 import im.redpanda.identity.crypt.Utils;
-import im.redpanda.jobs.JobScheduler;
+import im.redpanda.ops.JobScheduler;
+import im.redpanda.ops.Log;
 import im.redpanda.routing.graph.Node;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;

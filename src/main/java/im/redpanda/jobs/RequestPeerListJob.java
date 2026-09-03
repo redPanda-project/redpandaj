@@ -1,9 +1,10 @@
 package im.redpanda.jobs;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Log;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
+import im.redpanda.ops.Job;
+import im.redpanda.ops.Log;
 
 public class RequestPeerListJob extends Job {
 

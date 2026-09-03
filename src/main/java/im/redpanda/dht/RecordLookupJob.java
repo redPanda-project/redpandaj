@@ -4,9 +4,9 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
-import im.redpanda.jobs.Job;
 import im.redpanda.mailbox.OhResolveJob;
 import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.ops.Job;
 import im.redpanda.proto.KademliaStore;
 import im.redpanda.routing.ReverseGarlic;
 import java.nio.ByteBuffer;

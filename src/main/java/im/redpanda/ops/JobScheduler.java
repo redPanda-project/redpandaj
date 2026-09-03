@@ -1,4 +1,4 @@
-package im.redpanda.jobs;
+package im.redpanda.ops;
 
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;

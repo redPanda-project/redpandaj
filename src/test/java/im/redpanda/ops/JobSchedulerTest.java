@@ -1,4 +1,4 @@
-package im.redpanda.jobs;
+package im.redpanda.ops;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 

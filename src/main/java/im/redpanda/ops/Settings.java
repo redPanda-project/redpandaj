@@ -1,5 +1,6 @@
-package im.redpanda.core;
+package im.redpanda.ops;
 
+import im.redpanda.core.ServerContext;
 import java.io.File;
 import java.util.Arrays;
 

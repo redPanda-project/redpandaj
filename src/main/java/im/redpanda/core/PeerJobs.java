@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

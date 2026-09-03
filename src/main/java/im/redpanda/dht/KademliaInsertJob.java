@@ -3,7 +3,7 @@ package im.redpanda.dht;
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.*;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import im.redpanda.proto.KademliaStore;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;

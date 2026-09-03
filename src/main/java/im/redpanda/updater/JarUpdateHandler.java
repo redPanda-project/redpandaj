@@ -11,12 +11,12 @@ import static im.redpanda.updater.UpdateTransfer.updateJarPath;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.ConnectionReaderThread;
-import im.redpanda.core.Log;
 import im.redpanda.core.Peer;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
-import im.redpanda.core.Settings;
 import im.redpanda.identity.NodeId;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;

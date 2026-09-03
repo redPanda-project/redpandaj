@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import java.io.IOException;
 import java.net.InetSocketAddress;

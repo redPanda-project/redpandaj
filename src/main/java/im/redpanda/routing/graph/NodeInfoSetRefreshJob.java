@@ -6,7 +6,7 @@ import im.redpanda.dht.KademliaInsertJob;
 import im.redpanda.dht.nodeinfo.GMEntryPointModel;
 import im.redpanda.dht.nodeinfo.NodeInfoModel;
 import im.redpanda.identity.crypt.Utils;
-import im.redpanda.jobs.Job;
+import im.redpanda.ops.Job;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;

@@ -2,6 +2,8 @@ package im.redpanda.core;
 
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
