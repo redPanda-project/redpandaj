@@ -884,12 +884,16 @@ public class ConnectionHandler extends Thread {
          * We can now safely transfer the open connection from the peerInHandshake to the actual
          * peer
          */
-        setupConnection(peerInHandshake.getPeer(), peerInHandshake);
-
-        // Re-read the peer: setupConnection may have re-targeted the handshake at the registered
-        // peer object when the one we came in with turned out to be an unregistered duplicate
-        // (TD142). The leftover plaintext belongs to the peer that actually owns the socket now.
-        copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peerInHandshake.getPeer());
+        if (setupConnection(peerInHandshake.getPeer(), peerInHandshake)) {
+          // Re-read the peer: setupConnection may have re-targeted the handshake at the registered
+          // peer object when the one we came in with turned out to be an unregistered duplicate
+          // (TD142). The leftover plaintext belongs to the peer that actually owns the socket now.
+          //
+          // Only when the connection was actually kept: on the abort paths the handshake socket is
+          // closed and the peer we would copy into may be a different, still connected peer whose
+          // plaintext stream these bytes would corrupt (Copilot review, PR #339).
+          copyRemainingReadBytesToPeerBuffer(tempHandshakeReadBuffer, peerInHandshake.getPeer());
+        }
       } else {
         System.out.println("got wrong first command, lets disconnect");
         peerInHandshake.getSocketChannel().close();
@@ -959,8 +963,13 @@ public class ConnectionHandler extends Thread {
    * <p>Lock order: the peer list write lock is taken first and released again, then the target
    * peer's {@code writeBufferLock} — the two are no longer nested at all, so the inversion hazard
    * documented on {@link PeerList} ("Lock order") cannot arise here.
+   *
+   * @return {@code true} if the connection was kept and is now owned by a peer; {@code false} if it
+   *     was dropped (peer list lock unavailable, or the peer refused to adopt it). Callers must not
+   *     touch the peer's buffers on {@code false} — the socket is gone and the peer the handshake
+   *     points at may be a different, still connected one.
    */
-  public void setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
+  public boolean setupConnection(Peer peerOrigin, PeerInHandshake peerInHandshake) {
 
     removePeerInHandshake(peerInHandshake);
 
@@ -987,14 +996,16 @@ public class ConnectionHandler extends Thread {
           peerInHandshake.getIdentity(),
           e);
       Log.sentry(e);
-      peerInHandshake.getKey().cancel();
-      try {
-        peerInHandshake.getSocketChannel().close();
-      } catch (IOException closeEx) {
-        Log.sentry(closeEx);
+      dropHandshakeConnection(peerInHandshake);
+      // Only tear the peer down when it has nothing to lose. Since the peer list lock is now taken
+      // BEFORE any connection state is moved, peerOrigin can be the already-registered peer with a
+      // live, unrelated connection — disconnecting it would turn transient lock contention into a
+      // forced disconnect of a healthy socket (Copilot review, PR #339). The disconnect is still
+      // wanted for a peer we were dialling, where it clears isConnecting/authed.
+      if (!peerOrigin.isConnected()) {
+        peerOrigin.disconnect("peer list lock unavailable on the selector thread");
       }
-      peerOrigin.disconnect("peer list lock unavailable on the selector thread");
-      return;
+      return false;
     }
 
     Peer target = peerOrigin;
@@ -1028,6 +1039,19 @@ public class ConnectionHandler extends Thread {
 
       target.setupConnectionForPeer(peerInHandshake);
 
+      if (!target.isConnected()) {
+        // setupConnectionForPeer bailed out before adopting the channel (it disconnects and
+        // returns early when the write buffers cannot be allocated, REDPANDAJ-TD010). Attaching
+        // the key to a disconnected peer and reporting success would leave a selector key on a
+        // dead peer and leak the handshake socket, which nobody owns at this point (Copilot
+        // review, PR #339).
+        logger.error(
+            "peer did not adopt the completed connection (KadId: {}), dropping it",
+            peerInHandshake.getIdentity());
+        dropHandshakeConnection(peerInHandshake);
+        return false;
+      }
+
       // update the selection key to the actual peer
       peerInHandshake.getKey().attach(target);
 
@@ -1054,8 +1078,26 @@ public class ConnectionHandler extends Thread {
         target.setNode(byKademliaId);
       }
 
+      return true;
+
     } finally {
       writeBufferLock.unlock();
+    }
+  }
+
+  /**
+   * Closes a handshake connection nobody took ownership of: cancels its selector key and closes its
+   * channel. Used on {@link #setupConnection}'s abort paths, where the {@link Peer} objects
+   * involved either never adopted the channel or must not be torn down themselves.
+   */
+  private void dropHandshakeConnection(PeerInHandshake peerInHandshake) {
+    if (peerInHandshake.getKey() != null) {
+      peerInHandshake.getKey().cancel();
+    }
+    try {
+      peerInHandshake.getSocketChannel().close();
+    } catch (IOException closeEx) {
+      Log.sentry(closeEx);
     }
   }
 

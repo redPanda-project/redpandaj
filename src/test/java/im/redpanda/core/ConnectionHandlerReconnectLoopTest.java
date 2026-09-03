@@ -174,6 +174,69 @@ class ConnectionHandlerReconnectLoopTest {
   }
 
   /**
+   * The peer list write lock is now taken <em>before</em> any connection state is moved, so {@code
+   * peerOrigin} on the {@code PeerListBusyException} path can be the already-registered peer with a
+   * live connection of its own. That connection must survive; only the handshake socket is dropped
+   * (Copilot review, PR #339).
+   */
+  @Test
+  void peerListLockContentionDropsOnlyTheHandshakeConnection() throws Exception {
+    ByteBufferPool.init();
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    ConnectionHandler connectionHandler = new ConnectionHandler(serverContext, false);
+    PeerList peerList = serverContext.getPeerList();
+
+    NodeId identity = NodeId.generateWithSimpleKey();
+    Peer registered = new Peer("10.0.0.2", 59558, identity);
+    peerList.add(registered);
+
+    try (SocketChannel liveSocket = SocketChannel.open();
+        SocketChannel dialled = SocketChannel.open()) {
+      registered.setConnected(true);
+      registered.setSocketChannel(liveSocket);
+      registered.setSelectionKey(new NoopSelectionKey());
+
+      PeerInHandshake peerInHandshake = new PeerInHandshake("10.0.0.2", registered, dialled);
+      peerInHandshake.setLightClient(true);
+      peerInHandshake.setIdentity(identity.getKademliaId());
+      peerInHandshake.setNodeId(identity);
+      peerInHandshake.setPort(59558);
+      peerInHandshake.setKey(new NoopSelectionKey());
+      connectionHandler.addPeerInHandshake(peerInHandshake);
+
+      // Hold the peer list write lock for longer than ConnectionHandler's budget.
+      Thread hog =
+          new Thread(
+              () -> {
+                peerList.getReadWriteLock().writeLock().lock();
+                try {
+                  Thread.sleep(ConnectionHandler.PEERLIST_LOCK_TIMEOUT_MS + 1500);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                } finally {
+                  peerList.getReadWriteLock().writeLock().unlock();
+                }
+              });
+      hog.setDaemon(true);
+      hog.start();
+      Thread.sleep(200);
+
+      assertThat(connectionHandler.setupConnection(registered, peerInHandshake))
+          .as("the connection could not be set up")
+          .isFalse();
+
+      assertThat(dialled.isOpen()).as("the handshake socket is dropped").isFalse();
+      assertThat(registered.isConnected())
+          .as("lock contention must not tear down an unrelated, live connection")
+          .isTrue();
+      assertThat(liveSocket.isOpen()).isTrue();
+
+      hog.interrupt();
+      hog.join(5000);
+    }
+  }
+
+  /**
    * Puts a second {@link Peer} for an identity that is already registered into the array list, the
    * way {@code PeerList.addLocked}'s ip+port branch and {@code updateKademliaId} can. {@code add()}
    * itself short-circuits on the identity, so the state has to be built through the same list the
