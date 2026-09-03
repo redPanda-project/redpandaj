@@ -25,6 +25,8 @@ public final class NodeStateCodec {
   /** Base64 of the 64-byte public export. */
   private static final String MEMBER_PUBLIC_KEY = "publicKey";
 
+  private static final String MEMBER_LAST_SEEN = "lastSeen";
+
   private NodeStateCodec() {}
 
   /**
@@ -47,24 +49,49 @@ public final class NodeStateCodec {
     return json;
   }
 
+  /**
+   * The export lengths are checked here, right against the constants, rather than through a generic
+   * helper: {@link NodeId#importWithPrivate} and {@link NodeId#importPublic} reject a wrong length
+   * with an {@code IllegalArgumentException}, and reading a state file must report a bad file as an
+   * {@link IOException} (the caller regenerates), never as an unchecked exception.
+   */
   public static NodeId nodeIdFromJson(JsonObject json) throws IOException {
-    try {
-      if (json.has(MEMBER_PRIVATE_KEY)) {
-        return NodeId.importWithPrivate(
-            StateFormat.requireBase64(json, MEMBER_PRIVATE_KEY, NodeId.PRIVATE_KEYLEN));
+    byte[] privateExport = StateFormat.optBase64(json, MEMBER_PRIVATE_KEY);
+    if (privateExport != null) {
+      if (privateExport.length != NodeId.PRIVATE_KEYLEN) {
+        throw new IOException(
+            "private NodeId export must be "
+                + NodeId.PRIVATE_KEYLEN
+                + " bytes but was "
+                + privateExport.length);
       }
-      return NodeId.importPublic(
-          StateFormat.requireBase64(json, MEMBER_PUBLIC_KEY, NodeId.PUBLIC_KEYLEN));
-    } catch (IllegalArgumentException e) {
-      throw new IOException("could not read NodeId", e);
+      try {
+        return NodeId.importWithPrivate(privateExport);
+      } catch (IllegalArgumentException e) {
+        // right length, but the public halves do not match the private ones
+        throw new IOException("could not read NodeId", e);
+      }
     }
+
+    byte[] publicExport = StateFormat.optBase64(json, MEMBER_PUBLIC_KEY);
+    if (publicExport == null) {
+      throw new IOException("NodeId holds neither a private nor a public key");
+    }
+    if (publicExport.length != NodeId.PUBLIC_KEYLEN) {
+      throw new IOException(
+          "public NodeId export must be "
+              + NodeId.PUBLIC_KEYLEN
+              + " bytes but was "
+              + publicExport.length);
+    }
+    return NodeId.importPublic(publicExport);
   }
 
   /** Encodes a node of the DHT/graph state: its identity plus the counters that are persisted. */
   public static JsonObject nodeToJson(Node node) {
     JsonObject json = new JsonObject();
     json.add("nodeId", nodeIdToJson(node.getNodeId()));
-    json.addProperty("lastSeen", node.getLastSeen());
+    json.addProperty(MEMBER_LAST_SEEN, node.getLastSeen());
     json.addProperty("gmTestsSuccessful", node.getGmTestsSuccessful());
     json.addProperty("gmTestsFailed", node.getGmTestsFailed());
     json.addProperty("blacklistedSince", node.blacklistedSince());
@@ -74,7 +101,7 @@ public final class NodeStateCodec {
       JsonObject pointJson = new JsonObject();
       pointJson.addProperty("ip", point.getIp());
       pointJson.addProperty("port", point.getPort());
-      pointJson.addProperty("lastSeen", point.getLastSeen());
+      pointJson.addProperty(MEMBER_LAST_SEEN, point.getLastSeen());
       pointJson.addProperty("retries", point.getRetries());
       points.add(pointJson);
     }
@@ -101,14 +128,14 @@ public final class NodeStateCodec {
             new Node.ConnectionPoint(
                 ip.getAsString(),
                 StateFormat.optInt(pointJson, "port", 0),
-                StateFormat.optLong(pointJson, "lastSeen", 0L),
+                StateFormat.optLong(pointJson, MEMBER_LAST_SEEN, 0L),
                 StateFormat.optInt(pointJson, "retries", 0)));
       }
     }
 
     return new Node(
         nodeId,
-        StateFormat.optLong(json, "lastSeen", 0L),
+        StateFormat.optLong(json, MEMBER_LAST_SEEN, 0L),
         points,
         StateFormat.optInt(json, "gmTestsSuccessful", 0),
         StateFormat.optInt(json, "gmTestsFailed", 0),

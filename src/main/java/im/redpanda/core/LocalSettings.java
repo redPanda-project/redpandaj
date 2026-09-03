@@ -41,6 +41,8 @@ public class LocalSettings {
   /** Header {@code version} of the settings file. */
   static final int VERSION = 1;
 
+  private static final String FILE_PREFIX = "/localSettings";
+
   private NodeId myIdentity;
 
   private long updateTimestamp;
@@ -233,16 +235,16 @@ public class LocalSettings {
 
   /** The settings file of {@code port} in the explicit JSON format (T117). */
   public static File settingsFile(int port) {
-    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".json");
+    return new File(Settings.SAVE_DIR + FILE_PREFIX + port + ".json");
   }
 
   public static File tmpSettingsFile(int port) {
-    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".json.tmp");
+    return new File(Settings.SAVE_DIR + FILE_PREFIX + port + ".json.tmp");
   }
 
   /** The pre-T117 Java-serialized settings file. Never read, never deleted — only reported. */
   public static File legacySettingsFile(int port) {
-    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
+    return new File(Settings.SAVE_DIR + FILE_PREFIX + port + ".dat");
   }
 
   public long getUpdateTimestamp() {

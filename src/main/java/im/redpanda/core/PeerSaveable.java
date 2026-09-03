@@ -4,12 +4,14 @@
  */
 package im.redpanda.core;
 
-import java.io.Serializable;
-
 /**
+ * The persisted form of a dialable {@link Peer}: address plus identity. Written by {@link Saver} as
+ * explicit JSON since T117 — not {@code Serializable} any more, so a package move cannot make the
+ * peer list unreadable.
+ *
  * @author robin
  */
-public class PeerSaveable implements Serializable {
+public class PeerSaveable {
 
   String ip;
   int port;

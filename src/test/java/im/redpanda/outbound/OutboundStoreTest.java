@@ -258,4 +258,77 @@ class OutboundStoreTest {
       reopened.close();
     }
   }
+
+  // --- T117 / TD111: the handle records are explicit JSON, not Serializer.JAVA ---
+
+  /**
+   * The lease fields have to survive a restart exactly: an auth key that comes back wrong rejects
+   * every fetch of that mailbox, an expiry that comes back wrong silently changes the lease.
+   */
+  @Test
+  void handleRecordFieldsSurviveARestart() throws Exception {
+    String path = dbPath();
+    byte[] authKey = new byte[65];
+    for (int i = 0; i < authKey.length; i++) {
+      authKey[i] = (byte) (i + 1);
+    }
+
+    OutboundStore store = OutboundStore.fileBacked(path);
+    store.handles().put(OH_A, new HandleRecord(authKey, 1_700_000_000_000L, 1_700_000_060_000L));
+    store.close();
+
+    OutboundStore reopened = OutboundStore.fileBacked(path);
+    try {
+      HandleRecord loaded = reopened.handles().get(OH_A);
+      assertThat(loaded).isNotNull();
+      assertThat(loaded.getOhAuthPublicKey()).isEqualTo(authKey);
+      assertThat(loaded.getCreatedAtMs()).isEqualTo(1_700_000_000_000L);
+      assertThat(loaded.getExpiresAtMs()).isEqualTo(1_700_000_060_000L);
+    } finally {
+      reopened.close();
+    }
+  }
+
+  /** No node state may be Java-serialized any more (DDD review §5, T117/TD111). */
+  @Test
+  void handleStorePinsNoClassName() throws Exception {
+    String path = dbPath();
+    OutboundStore store = OutboundStore.fileBacked(path);
+    store.handles().put(OH_A, handle(System.currentTimeMillis(), 60_000));
+    store.close();
+
+    String raw =
+        new String(
+            java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path)),
+            java.nio.charset.StandardCharsets.ISO_8859_1);
+
+    assertThat(raw)
+        .as("the handle record must be stored as its own JSON, with no class name pinned")
+        .contains("ohAuthPublicKey")
+        .doesNotContain("im.redpanda.outbound.OutboundHandleStore");
+  }
+
+  /**
+   * Copilot review of #338: a handle record missing a field must be an unreadable record, not a
+   * lease with a null auth key (which NPEs in OutboundAuth.verifySignature) or defaulted
+   * timestamps.
+   */
+  @Test
+  void handleRecordWithoutItsFieldsIsRejected() {
+    assertThatThrownBy(
+            () ->
+                HandleRecord.fromJsonBytes(
+                    "{\"createdAtMs\":1,\"expiresAtMs\":2}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("ohAuthPublicKey");
+
+    assertThatThrownBy(
+            () ->
+                HandleRecord.fromJsonBytes(
+                    "{\"ohAuthPublicKey\":\"AAA=\"}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("timestamps");
+  }
 }

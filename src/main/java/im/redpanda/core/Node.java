@@ -2,8 +2,6 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Utils;
 import im.redpanda.store.NodeStore;
-import java.io.Serial;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -11,7 +9,12 @@ import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class Node implements Serializable {
+/**
+ * A node of the DHT/graph as this node knows it. Persisted as explicit JSON (see {@code
+ * NodeStateCodec}) — not {@code Serializable} since T117, so moving this class cannot make the node
+ * graph or the node cache unreadable.
+ */
+public class Node {
 
   static final int MAX_SCORE_VALUE = 50;
 
@@ -20,7 +23,6 @@ public class Node implements Serializable {
 
   private static final Logger logger = LogManager.getLogger();
 
-  @Serial private static final long serialVersionUID = 43L;
   private final NodeId nodeId;
   private long lastSeen;
   private ArrayList<ConnectionPoint> connectionPoints;
@@ -199,7 +201,7 @@ public class Node implements Serializable {
     blacklistedSince = 0;
   }
 
-  public static class ConnectionPoint implements Serializable {
+  public static class ConnectionPoint {
     String ip;
     int port;
     long lastSeen;

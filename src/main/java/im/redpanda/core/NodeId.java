@@ -2,10 +2,6 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.CryptoUtils;
 import im.redpanda.crypt.Sha256Hash;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -36,11 +32,7 @@ import org.bouncycastle.crypto.signers.Ed25519Signer;
  * private (128 bytes): [32 signingKey][32 verifyKey][32 encryptionKey][32 encryptionPubKey]
  * </pre>
  */
-public class NodeId implements Serializable {
-
-  // Pinned to the value computed before the 2026-08 dead-code removal (T99): instances are
-  // Java-serialized to disk (localSettings.dat, node store), so the UID must stay stable.
-  private static final long serialVersionUID = 2928261161442787061L;
+public class NodeId {
 
   /** Public export length: 32-byte Ed25519 verify key + 32-byte X25519 encryption key. */
   public static final int PUBLIC_KEYLEN = 64;
@@ -59,10 +51,10 @@ public class NodeId implements Serializable {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
-  private transient Ed25519PrivateKeyParameters signingKey;
-  private transient Ed25519PublicKeyParameters verifyKey;
-  private transient X25519PrivateKeyParameters encryptionKey;
-  private transient X25519PublicKeyParameters encryptionPubKey;
+  private Ed25519PrivateKeyParameters signingKey;
+  private Ed25519PublicKeyParameters verifyKey;
+  private X25519PrivateKeyParameters encryptionKey;
+  private X25519PublicKeyParameters encryptionPubKey;
 
   KademliaId kademliaId;
 
@@ -188,11 +180,19 @@ public class NodeId implements Serializable {
     return new NodeId(null, verify, null, encryption);
   }
 
-  /** Imports a 128-byte private export. */
+  /**
+   * Imports a 128-byte private export.
+   *
+   * <p>The length guard is the contract of this method, not a defect: every caller that reads
+   * untrusted bytes (the settings/peer files via {@code NodeStateCodec}, the updater key file)
+   * checks the length itself and converts the exception. Sonar's dataflow engine started flagging
+   * the {@code throw} as reachable once T117 removed {@code readObject()}, the only in-class caller
+   * whose argument length it could constrain — hence the NOSONAR.
+   */
   public static NodeId importWithPrivate(byte[] bytes) {
     if (bytes == null || bytes.length != PRIVATE_KEYLEN) {
-      throw new IllegalArgumentException(
-          "private NodeId export must be exactly " + PRIVATE_KEYLEN + " bytes");
+      String message = "private NodeId export must be exactly " + PRIVATE_KEYLEN + " bytes";
+      throw new IllegalArgumentException(message); // NOSONAR (javabugs:S6416): see the javadoc
     }
     Ed25519PrivateKeyParameters signing = new Ed25519PrivateKeyParameters(bytes, 0);
     X25519PrivateKeyParameters encryption =
@@ -293,29 +293,5 @@ public class NodeId implements Serializable {
   @Override
   public String toString() {
     return getKademliaId().toString();
-  }
-
-  private void readObject(ObjectInputStream aInputStream) throws IOException {
-    boolean hasPrivate = aInputStream.readBoolean();
-    byte[] bytes = new byte[hasPrivate ? PRIVATE_KEYLEN : PUBLIC_KEYLEN];
-    aInputStream.readFully(bytes);
-    try {
-      NodeId nodeId = hasPrivate ? importWithPrivate(bytes) : importPublic(bytes);
-      this.signingKey = nodeId.signingKey;
-      this.verifyKey = nodeId.verifyKey;
-      this.encryptionKey = nodeId.encryptionKey;
-      this.encryptionPubKey = nodeId.encryptionPubKey;
-    } catch (IllegalArgumentException e) {
-      throw new IOException("could not deserialize NodeId", e);
-    }
-  }
-
-  private void writeObject(ObjectOutputStream aOutputStream) throws IOException {
-    aOutputStream.writeBoolean(hasPrivate());
-    if (hasPrivate()) {
-      aOutputStream.write(exportWithPrivate());
-    } else {
-      aOutputStream.write(exportPublic());
-    }
   }
 }

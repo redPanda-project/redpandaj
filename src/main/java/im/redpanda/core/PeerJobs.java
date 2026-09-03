@@ -150,7 +150,7 @@ public class PeerJobs extends Thread {
    * weight from the moment it disconnects. Nothing ever removed those again: the only eviction
    * path, {@code OutboundHandler}, skips undialable peers <em>before</em> it reaches its
    * retry-based removal, so their {@code retries} counter never moves. They then get written to
-   * {@code peers.dat}, restored on the next start and gossiped on to every other node. Measured on
+   * {@code peers.json}, restored on the next start and gossiped on to every other node. Measured on
    * a node bootstrapped from the testnet seeds: 273 of 278 entries had port 0, each with a distinct
    * identity — one per mobile app instance, per re-install and per e2e run.
    *

@@ -84,7 +84,10 @@ public final class StateFormat {
     return bytes == null ? null : Base64.getEncoder().encodeToString(bytes);
   }
 
-  /** Reads a Base64 member, {@code null} if absent or JSON null. */
+  /**
+   * Reads a Base64 member; {@code null} if the member is absent or JSON null. Deliberately not an
+   * empty array — "no signature stored" and "an empty signature" are different states here.
+   */
   public static byte[] optBase64(JsonObject object, String member) throws IOException {
     JsonElement element = object.get(member);
     if (element == null || element.isJsonNull()) {
@@ -95,20 +98,6 @@ public final class StateFormat {
     } catch (IllegalArgumentException | UnsupportedOperationException | IllegalStateException e) {
       throw new IOException("member '" + member + "' is not valid Base64", e);
     }
-  }
-
-  /** Reads a required Base64 member of exactly {@code expectedLength} bytes. */
-  public static byte[] requireBase64(JsonObject object, String member, int expectedLength)
-      throws IOException {
-    byte[] bytes = optBase64(object, member);
-    if (bytes == null) {
-      throw new IOException("missing member '" + member + "'");
-    }
-    if (bytes.length != expectedLength) {
-      throw new IOException(
-          "member '" + member + "' must be " + expectedLength + " bytes but was " + bytes.length);
-    }
-    return bytes;
   }
 
   /** Reads a required object member. */
@@ -203,8 +192,10 @@ public final class StateFormat {
           StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE);
     } finally {
-      if (tmpFile.exists() && !tmpFile.delete()) {
-        Log.put("could not delete temporary state file " + tmpFile, 20);
+      try {
+        Files.deleteIfExists(tmpFile.toPath());
+      } catch (IOException e) {
+        Log.put("could not delete temporary state file " + tmpFile + ": " + e, 20);
       }
     }
   }

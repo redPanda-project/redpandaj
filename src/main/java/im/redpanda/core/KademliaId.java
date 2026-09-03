@@ -7,20 +7,15 @@ package im.redpanda.core;
 
 import im.redpanda.crypt.Base58;
 import im.redpanda.crypt.Utils;
-import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;
 
-public class KademliaId implements Serializable {
+public class KademliaId {
 
-  // Pinned to the value computed before the 2026-08 dead-code removal (T99): instances are
-  // Java-serialized to disk (localSettings.dat, node store), so the UID must stay stable.
-  private static final long serialVersionUID = 4978904080119646082L;
-
-  public static final transient int ID_LENGTH = 160;
-  public static final transient int ID_LENGTH_BYTES = ID_LENGTH / 8;
+  public static final int ID_LENGTH = 160;
+  public static final int ID_LENGTH_BYTES = ID_LENGTH / 8;
   private final byte[] keyBytes;
   private int nodeDistance = -1;
 
@@ -102,7 +97,7 @@ public class KademliaId implements Serializable {
    *
    * <p>{@link #hashCode()} is deliberately left unchanged: equal ids still produce equal hashes, so
    * the equals/hashCode contract holds, and no hash-based container (including the persisted MapDB
-   * {@code nodeids*.mapdb} and the serialized node graph) changes its bucket layout — colliding
+   * {@code nodecache*.mapdb} and the persisted node graph) changes its bucket layout — colliding
    * entries simply stop being merged.
    *
    * @param o The KademliaId to compare to this KademliaId

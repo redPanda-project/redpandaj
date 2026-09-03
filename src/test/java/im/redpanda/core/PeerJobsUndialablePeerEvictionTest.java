@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
  * sender's listening port, which is 0 for a light client, so those entries are undialable — and
  * nothing ever removed them again, because {@code OutboundHandler} skips undialable peers before it
  * reaches its retry-based eviction. On the affected node that produced 273 undialable entries out
- * of 278, one per mobile app instance, per re-install and per e2e run, persisted to {@code
- * peers.dat} and gossiped on.
+ * of 278, one per mobile app instance, per re-install and per e2e run, persisted to the {@code
+ * peers.json} file and gossiped on.
  */
 class PeerJobsUndialablePeerEvictionTest {
 
