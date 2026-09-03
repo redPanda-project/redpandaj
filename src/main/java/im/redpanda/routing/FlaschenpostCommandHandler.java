@@ -1,11 +1,11 @@
 package im.redpanda.routing;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.mailbox.MailboxDepositPolicy;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.transport.Peer;
 
 /**
  * The mailbox/garlic inbound wire commands: 141 (FLASCHENPOST_PUT) and 142 (FLASCHENPOST_V2).

@@ -5,6 +5,8 @@ import static com.google.protobuf.ByteString.copyFrom;
 import im.redpanda.core.*;
 import im.redpanda.ops.Job;
 import im.redpanda.proto.KademliaStore;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerList;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;

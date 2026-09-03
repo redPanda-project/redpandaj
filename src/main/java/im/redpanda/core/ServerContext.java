@@ -7,6 +7,8 @@ import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeStore;
+import im.redpanda.transport.ConnectionHandler;
+import im.redpanda.transport.PeerList;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;

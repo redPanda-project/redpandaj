@@ -1,0 +1,209 @@
+package im.redpanda.transport;
+
+import static com.google.protobuf.ByteString.copyFrom;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import im.redpanda.core.Command;
+import im.redpanda.core.ServerContext;
+import im.redpanda.dht.KadContent;
+import im.redpanda.identity.NodeId;
+import im.redpanda.proto.*;
+import im.redpanda.updater.UpdateTransfer;
+import java.io.File;
+import java.nio.ByteBuffer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class InboundCommandProcessorMoreCoverageTest {
+
+  private ServerContext ctx;
+  private InboundCommandProcessor proc;
+
+  @BeforeEach
+  void setup() {
+    ctx = ServerContext.buildDefaultServerContext();
+    proc = new InboundCommandProcessor(ctx);
+  }
+
+  @AfterEach
+  void cleanup() {
+    // Ensure android.apk from tests is removed
+    File f = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
+    if (f.exists()) {
+      // ignore deletion result
+      f.delete();
+    }
+    // Remove tmp_redpanda.jar if created
+    File f2 = new File("tmp_redpanda.jar");
+    if (f2.exists()) {
+      f2.delete();
+    }
+  }
+
+  @Test
+  void kademliaGet_servesFromStore() {
+    Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
+    peer.setConnected(true);
+    ctx.getPeerList().add(peer);
+    peer.writeBuffer = ByteBuffer.allocate(4096);
+
+    // Create content and put to store
+    NodeId author = NodeId.generateWithSimpleKey();
+    byte[] content = "hello-store".getBytes();
+    long ts = System.currentTimeMillis();
+    KadContent stored = new KadContent(ts, author.exportPublic(), content);
+    stored.signWith(author);
+    ctx.getKadStoreManager().put(stored);
+
+    int jobId = 101;
+    KademliaGet getMsg =
+        KademliaGet.newBuilder()
+            .setJobId(jobId)
+            .setSearchedId(
+                KademliaIdProto.newBuilder()
+                    .setKeyBytes(copyFrom(stored.getId().getBytes()))
+                    .build())
+            .build();
+    byte[] getData = getMsg.toByteArray();
+
+    ByteBuffer in = ByteBuffer.allocate(4 + getData.length);
+    in.putInt(getData.length);
+    in.put(getData);
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.KADEMLIA_GET, in, peer);
+    assertEquals(1 + 4 + getData.length, consumed);
+
+    peer.writeBuffer.flip();
+    assertEquals(Command.KADEMLIA_GET_ANSWER, peer.writeBuffer.get());
+
+    int len = peer.writeBuffer.getInt();
+    byte[] answerBytes = new byte[len];
+    peer.writeBuffer.get(answerBytes);
+
+    Assertions.assertDoesNotThrow(
+        () -> {
+          KademliaGetAnswer answer = KademliaGetAnswer.parseFrom(answerBytes);
+          assertEquals(jobId, answer.getAckId());
+          assertEquals(ts, answer.getTimestamp());
+          assertArrayEquals(author.exportPublic(), answer.getPublicKey().toByteArray());
+          assertEquals(content.length, answer.getContent().size());
+        });
+  }
+
+  @Test
+  void updateAnswerTimestamp_consumesBytes() {
+    Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
+    peer.setConnected(true);
+    ctx.getPeerList().add(peer);
+
+    long ts = ctx.getLocalSettings().getUpdateTimestamp();
+    ByteBuffer in = ByteBuffer.allocate(8);
+    in.putLong(ts);
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_TIMESTAMP, in, peer);
+    assertEquals(1 + 8, consumed);
+    assertFalse(in.hasRemaining());
+  }
+
+  @Test
+  void androidUpdateRequestTimestamp_behavesDependingOnFilePresence() throws Exception {
+    Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
+    // Avoid NPE in setWriteBufferFilled by marking as not connected (still writes
+    // to buffer)
+    peer.setConnected(false);
+    ctx.getPeerList().add(peer);
+    peer.writeBuffer = ByteBuffer.allocate(32);
+
+    // Ensure apk does not exist
+    File f = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
+    if (f.exists()) f.delete();
+
+    int consumedNoFile =
+        proc.parseCommand(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), peer);
+    assertEquals(1, consumedNoFile);
+
+    // Create an empty android.apk so branch writes answer
+    assertTrue(f.createNewFile());
+    long before = ctx.getLocalSettings().getUpdateAndroidTimestamp();
+    int consumed =
+        proc.parseCommand(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), peer);
+    assertEquals(1, consumed);
+
+    peer.writeBuffer.flip();
+    assertEquals(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, peer.writeBuffer.get());
+    long writtenTs = peer.writeBuffer.getLong();
+    assertEquals(before, writtenTs);
+  }
+
+  /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */
+  private static byte[] fakeSignature() {
+    byte[] sig = new byte[NodeId.SIGNATURE_LEN];
+    for (int i = 0; i < sig.length; i++) sig[i] = (byte) i;
+    return sig;
+  }
+
+  @Test
+  void androidUpdateAnswerContent_rejectsInvalidSignature() {
+    Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
+    peer.setConnected(true);
+    ctx.getPeerList().add(peer);
+
+    long newerTs = ctx.getLocalSettings().getUpdateAndroidTimestamp() + 1000;
+    byte[] data = "apk".getBytes();
+    byte[] sig = fakeSignature();
+
+    ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
+    in.putLong(newerTs);
+    in.putInt(data.length);
+    in.put(sig);
+    in.put(data);
+    in.flip();
+
+    // Ensure apk does not exist before test
+    File apk = new File(UpdateTransfer.ANDROID_UPDATE_FILE);
+    if (apk.exists()) {
+      apk.delete();
+    }
+
+    int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_CONTENT, in, peer);
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+
+    // File should NOT exist and settings NOT updated because signature is invalid
+    assertFalse(apk.exists(), "APK should not be created with invalid signature");
+    assertNotEquals(
+        newerTs,
+        ctx.getLocalSettings().getUpdateAndroidTimestamp(),
+        "Timestamp should not update with invalid signature");
+  }
+
+  @Test
+  void updateAnswerContent_consumesWithoutWritingWhenNotNewer() {
+    Peer peer = new Peer("127.0.0.1", 12345, ctx.getNodeId());
+    peer.setConnected(true);
+    ctx.getPeerList().add(peer);
+
+    long notNewerTs = ctx.getLocalSettings().getUpdateTimestamp();
+    byte[] data = new byte[] {1, 2, 3, 4, 5};
+    byte[] sig = fakeSignature();
+
+    ByteBuffer in = ByteBuffer.allocate(8 + 4 + sig.length + data.length);
+    in.putLong(notNewerTs);
+    in.putInt(data.length);
+    in.put(sig);
+    in.put(data);
+    in.flip();
+
+    int consumed = proc.parseCommand(Command.UPDATE_ANSWER_CONTENT, in, peer);
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+    // tmp_redpanda.jar should not be created when not newer
+    assertFalse(new File("tmp_redpanda.jar").exists());
+  }
+}

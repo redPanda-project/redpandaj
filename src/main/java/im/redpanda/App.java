@@ -1,9 +1,6 @@
 package im.redpanda;
 
-import im.redpanda.core.ByteBufferPool;
-import im.redpanda.core.ConnectionHandler;
 import im.redpanda.core.LocalSettings;
-import im.redpanda.core.PeerJobs;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadRefreshJob;
@@ -22,6 +19,9 @@ import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeConnectionPointsSeenJob;
 import im.redpanda.routing.graph.NodeInfoSetRefreshJob;
 import im.redpanda.routing.graph.NodeStore;
+import im.redpanda.transport.ByteBufferPool;
+import im.redpanda.transport.ConnectionHandler;
+import im.redpanda.transport.PeerJobs;
 import io.sentry.Sentry;
 import java.io.BufferedReader;
 import java.io.IOException;

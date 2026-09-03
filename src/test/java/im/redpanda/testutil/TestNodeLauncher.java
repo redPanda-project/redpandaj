@@ -1,14 +1,9 @@
 package im.redpanda.testutil;
 
-import im.redpanda.core.ByteBufferPool;
-import im.redpanda.core.ConnectionHandler;
 import im.redpanda.core.LocalSettings;
-import im.redpanda.core.OutboundHandler;
-import im.redpanda.core.PeerJobs;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadRefreshJob;
-import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.mailbox.OutboundCleanupJob;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
@@ -25,6 +20,11 @@ import im.redpanda.routing.graph.NodeConnectionPointsSeenJob;
 import im.redpanda.routing.graph.NodeInfoSetRefreshJob;
 import im.redpanda.routing.graph.NodeStore;
 import im.redpanda.routing.graph.NodeStoreMaintainJob;
+import im.redpanda.transport.ByteBufferPool;
+import im.redpanda.transport.ConnectionHandler;
+import im.redpanda.transport.OutboundHandler;
+import im.redpanda.transport.PeerJobs;
+import im.redpanda.transport.RequestPeerListJob;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -185,7 +185,7 @@ public final class TestNodeLauncher {
 
   private static void shutdownConnectionReaderPool() {
     try {
-      im.redpanda.core.ConnectionReaderThread.threadPool.shutdownNow();
+      im.redpanda.transport.ConnectionReaderThread.threadPool.shutdownNow();
     } catch (Throwable ignored) {
       // best effort shutdown only used in tests
     }

@@ -1,14 +1,14 @@
 package im.redpanda.ops;
 
-import im.redpanda.core.ByteBufferPool;
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadStoreManager;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.routing.graph.GraphAdjacentMatrixPrinter;
 import im.redpanda.routing.graph.Node;
+import im.redpanda.transport.ByteBufferPool;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerList;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;

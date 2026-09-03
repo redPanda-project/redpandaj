@@ -4,7 +4,6 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.ops.Job;
@@ -12,6 +11,7 @@ import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaGetAnswer;
 import im.redpanda.proto.KademliaStore;
+import im.redpanda.transport.Peer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

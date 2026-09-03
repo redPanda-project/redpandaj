@@ -1,8 +1,8 @@
 package im.redpanda.routing.graph;
 
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.ops.Job;
+import im.redpanda.transport.Peer;
 import java.time.Duration;
 
 public class NodeConnectionPointsSeenJob extends Job {

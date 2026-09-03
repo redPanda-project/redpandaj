@@ -2,7 +2,6 @@ package im.redpanda.mailbox;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
 import im.redpanda.mailbox.OutboundAuth.AuthResult;
 import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.AckFetchRequest;
@@ -19,6 +18,7 @@ import im.redpanda.outbound.v1.RevokeOhResponse;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.outbound.v1.SubscribeRequest;
 import im.redpanda.outbound.v1.SubscribeResponse;
+import im.redpanda.transport.Peer;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;

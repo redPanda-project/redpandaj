@@ -3,11 +3,11 @@ package im.redpanda.routing;
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Job;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.transport.Peer;
 
 public class PeerPerformanceTestFlaschenpostJob extends Job {
 

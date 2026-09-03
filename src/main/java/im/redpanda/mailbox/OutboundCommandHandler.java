@@ -1,12 +1,12 @@
 package im.redpanda.mailbox;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.core.Peer;
 import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.FetchRequest;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.SubscribeRequest;
+import im.redpanda.transport.Peer;
 
 /**
  * Outbound-V1 request frames (commands 150/152/154/156/159): parse the protobuf and hand it to

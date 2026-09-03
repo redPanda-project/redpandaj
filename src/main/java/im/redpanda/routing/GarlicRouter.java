@@ -2,7 +2,6 @@ package im.redpanda.routing;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
-import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.ChannelDht;
 import im.redpanda.dht.KadContent;
@@ -14,6 +13,7 @@ import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.ReturnPath;
 import im.redpanda.mailbox.RoutingAckSender;
 import im.redpanda.proto.KademliaStore;
+import im.redpanda.transport.Peer;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;

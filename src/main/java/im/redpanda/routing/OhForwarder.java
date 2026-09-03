@@ -1,7 +1,5 @@
 package im.redpanda.routing;
 
-import im.redpanda.core.Peer;
-import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.PeerComparator;
 import im.redpanda.identity.KademliaId;
@@ -14,6 +12,8 @@ import im.redpanda.ops.Job;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
 import im.redpanda.routing.graph.NodeStore;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerList;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;

@@ -8,6 +8,7 @@ import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.testutil.ConcurrencyTestSupport;
 import java.io.File;
 import java.nio.file.Files;
 import java.security.Security;

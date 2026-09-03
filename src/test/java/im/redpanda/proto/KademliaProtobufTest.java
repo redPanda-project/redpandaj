@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.*;
-import im.redpanda.core.PeerTestSupport;
 import im.redpanda.dht.KadContent;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
+import im.redpanda.transport.InboundCommandProcessor;
+import im.redpanda.transport.Peer;
+import im.redpanda.transport.PeerTestSupport;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 

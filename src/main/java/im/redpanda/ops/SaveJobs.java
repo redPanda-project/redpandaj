@@ -1,7 +1,7 @@
 package im.redpanda.ops;
 
-import im.redpanda.core.Saver;
 import im.redpanda.core.ServerContext;
+import im.redpanda.transport.Saver;
 
 public class SaveJobs extends Job {
 
