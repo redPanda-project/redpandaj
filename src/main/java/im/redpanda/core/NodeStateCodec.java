@@ -67,7 +67,7 @@ public final class NodeStateCodec {
     json.addProperty("lastSeen", node.getLastSeen());
     json.addProperty("gmTestsSuccessful", node.getGmTestsSuccessful());
     json.addProperty("gmTestsFailed", node.getGmTestsFailed());
-    json.addProperty("blacklistedSince", node.blacklistedSince);
+    json.addProperty("blacklistedSince", node.blacklistedSince());
 
     JsonArray points = new JsonArray();
     for (Node.ConnectionPoint point : node.getConnectionPoints()) {

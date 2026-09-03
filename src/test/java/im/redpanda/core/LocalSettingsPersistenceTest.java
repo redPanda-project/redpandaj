@@ -363,4 +363,19 @@ class LocalSettingsPersistenceTest {
         .as("no fully qualified class name may be pinned in the file")
         .doesNotContain("im.redpanda");
   }
+
+  /**
+   * Copilot review of #337: a header whose {@code version} is not a number must read as "unreadable
+   * file", not as an unchecked exception escaping a method that declares IOException.
+   */
+  @Test
+  void nonNumericFormatVersionRegenerates() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.save(port);
+    String json = Files.readString(settingsFile().toPath());
+    Files.writeString(settingsFile().toPath(), json.replace("\"version\":1", "\"version\":{}"));
+
+    assertThat(LocalSettings.load(port).getMyIdentity().getKademliaId())
+        .isNotEqualTo(ls.getMyIdentity().getKademliaId());
+  }
 }

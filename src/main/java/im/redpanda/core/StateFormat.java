@@ -69,7 +69,10 @@ public final class StateFormat {
     if (!format.equals(actualFormat)) {
       throw new IOException("expected format '" + format + "' but found '" + actualFormat + "'");
     }
-    if (!root.has(VERSION_KEY) || root.get(VERSION_KEY).getAsInt() != version) {
+    // optInt rather than getAsInt: a version member that is JSON null, a string or an object must
+    // read as "unreadable file", not as an unchecked exception escaping a method that declares
+    // IOException.
+    if (optInt(root, VERSION_KEY, -1) != version) {
       throw new IOException(
           "expected " + format + " version " + version + " but found " + root.get(VERSION_KEY));
     }
@@ -130,9 +133,16 @@ public final class StateFormat {
     }
   }
 
-  /** Reads an int member, {@code fallback} if absent or JSON null. */
+  /**
+   * Reads an int member, {@code fallback} if absent or JSON null. A value that does not fit into an
+   * int is an unreadable file, not an {@code ArithmeticException}.
+   */
   public static int optInt(JsonObject object, String member, int fallback) throws IOException {
-    return Math.toIntExact(optLong(object, member, fallback));
+    long value = optLong(object, member, fallback);
+    if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+      throw new IOException("member '" + member + "' does not fit into an int: " + value);
+    }
+    return (int) value;
   }
 
   /** Reads a double member, {@code fallback} if absent or JSON null. */

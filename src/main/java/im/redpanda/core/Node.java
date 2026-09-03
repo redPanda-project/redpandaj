@@ -26,7 +26,7 @@ public class Node implements Serializable {
   private ArrayList<ConnectionPoint> connectionPoints;
   private int gmTestsSuccessful = 0;
   private int gmTestsFailed = 0;
-  long blacklistedSince = 0;
+  private long blacklistedSince = 0;
 
   /**
    * Creates a new Node and adds the Node to the NodeStore.
@@ -43,9 +43,9 @@ public class Node implements Serializable {
   }
 
   /**
-   * Restores a persisted node (T117). Unlike the public constructor this does <b>not</b> touch a
-   * NodeStore: the caller is the storage layer, which is either filling the graph of {@code
-   * LocalSettings} or the node cache itself.
+   * Restores a persisted node (T117). Unlike {@code Node(ServerContext, NodeId)} this does
+   * <b>not</b> touch a NodeStore: the caller is the storage layer, which is either filling the
+   * graph of {@code LocalSettings} or the node cache itself.
    */
   Node(
       NodeId nodeId,
@@ -187,6 +187,14 @@ public class Node implements Serializable {
     return 0;
   }
 
+  /**
+   * The blacklist timestamp, for the storage layer only. A getter rather than a widened field, so
+   * persistence does not enlarge the mutation surface of Node.
+   */
+  long blacklistedSince() {
+    return blacklistedSince;
+  }
+
   public void resetBlacklisted() {
     blacklistedSince = 0;
   }
@@ -201,7 +209,7 @@ public class Node implements Serializable {
       this(ip, port, System.currentTimeMillis(), 0);
     }
 
-    /** Restores a persisted connection point (T117); see {@link Node#Node}. */
+    /** Restores a persisted connection point (T117); see the restoring Node constructor. */
     ConnectionPoint(String ip, int port, long lastSeen, int retries) {
       this.ip = ip;
       this.port = port;
