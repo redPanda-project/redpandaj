@@ -67,7 +67,15 @@ public class ListenConsole extends Thread {
 
         // T115: sort and snapshot each take the list's lock themselves; the table below is
         // printed without holding it, which also keeps System.out out of the locked section.
-        peerList.sortByPriority();
+        try {
+          peerList.sortByPriority();
+        } catch (IllegalArgumentException e) {
+          // "Comparison method violates its general contract": Peer.getPriority() reads mutable
+          // state, so a concurrent change can make TimSort bail out. OutboundHandler skips its
+          // round on this; here the table is simply printed in whatever order the list is in --
+          // letting it out would kill the console thread and with it the shutdown command below.
+          System.out.println("could not sort the peer list, printing it unsorted: " + e);
+        }
         List<Peer> list = peerList.snapshot();
         {
           System.out.format(
