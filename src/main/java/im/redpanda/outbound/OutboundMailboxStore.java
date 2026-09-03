@@ -62,7 +62,11 @@ public class OutboundMailboxStore {
    * the client still learns that messages may be missing.
    *
    * <p>Deliberately not a projection of the stored state: it describes what happened since the last
-   * fetch, so it is neither persisted nor restored by {@link #rebuildProjections()}.
+   * fetch, so it is neither persisted nor restored by {@link #rebuildProjections()} — including
+   * after a rollback, where a flag cleared by the failed transaction stays cleared (the client
+   * loses one "deposits were rejected" hint, nothing that is stored). For the same reason {@link
+   * #checkAndClearOverflow(byte[])} does not take the store lock: the set is thread-safe on its own
+   * and is not part of the transactional state.
    */
   private final Set<String> overflowFlags = ConcurrentHashMap.newKeySet();
 
@@ -245,12 +249,16 @@ public class OutboundMailboxStore {
           NavigableMap<String, byte[]> toDelete = mailboxItems.subMap(fromKey, true, toKey, true);
           Iterator<Map.Entry<String, byte[]>> it = toDelete.entrySet().iterator();
           long freedBytes = 0;
+          boolean changed = false;
           while (it.hasNext()) {
             freedBytes += it.next().getValue().length;
             it.remove();
+            changed = true;
           }
-          if (freedBytes > 0) {
-            subtractBytes(ohKey, freedBytes);
+          subtractBytes(ohKey, freedBytes);
+          if (changed) {
+            // Explicitly "an item was removed", not "freedBytes > 0": the removal must be committed
+            // even if the items happened to serialize to zero bytes.
             owner.markDirty();
           }
         });

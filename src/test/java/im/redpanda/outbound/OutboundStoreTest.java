@@ -8,6 +8,11 @@ import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -173,6 +178,51 @@ class OutboundStoreTest {
       assertThat(reopened.mailbox().lastAssignedSeq(OH_A)).isZero();
     } finally {
       reopened.close();
+    }
+  }
+
+  // --- the deposit path must not race a revoke into an orphaned mailbox ---
+
+  @Test
+  void concurrentDepositAndRevoke_neverLeaveAnItemWithoutItsHandle() throws Exception {
+    OutboundStore store = OutboundStore.inMemory();
+    OutboundService service = new OutboundService(store);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      for (int round = 0; round < 200; round++) {
+        byte[] ohId = Hex.decode(String.format("%08x", round));
+        store.handles().put(ohId, handle(System.currentTimeMillis(), 60_000));
+        CyclicBarrier start = new CyclicBarrier(2);
+        Future<?> deposit =
+            pool.submit(
+                () -> {
+                  start.await();
+                  service.depositMessage(
+                      ohId, "payload".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                  return null;
+                });
+        Future<?> revoke =
+            pool.submit(
+                () -> {
+                  start.await();
+                  store.removeHandle(ohId);
+                  return null;
+                });
+        deposit.get(10, TimeUnit.SECONDS);
+        revoke.get(10, TimeUnit.SECONDS);
+
+        // Whichever order the two transactions ran in, the handle is gone afterwards and its
+        // mailbox must be gone with it: either the deposit committed first and the revoke removed
+        // both, or the revoke committed first and the deposit found no handle (NOT_FOUND). A
+        // deposit that checked the handle before the revoke and wrote the item after it would
+        // leave an item nothing can ever reach or clean up.
+        assertThat(store.handles().get(ohId)).isNull();
+        assertThat(store.mailbox().fetchMessages(ohId, 10, 0))
+            .as("orphaned mailbox items for round %d", round)
+            .isEmpty();
+      }
+    } finally {
+      pool.shutdownNow();
     }
   }
 
