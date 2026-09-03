@@ -85,6 +85,37 @@ public class OutboundHandler extends Thread {
     return false;
   }
 
+  /**
+   * Whether any peer in {@code peers} that carries this candidate's ip+port is connected or
+   * connecting — the candidate itself included, since it is a member of that list.
+   *
+   * <p>This guard used to test {@code peer.isConnected() || peer.isConnecting} — the <b>candidate's
+   * own</b> state, not the other object's — so it could never do what its name says. The candidate
+   * is already known not to be connected two checks earlier, which reduced the whole loop to "is
+   * the candidate itself connecting", and a second {@code Peer} object for an address we are
+   * already connected to went straight to {@code connectTo()}.
+   *
+   * <p>That is one half of the node1&lt;-&gt;node2 reconnect storm observed on the testnet on
+   * 2026-09-03 18:32-18:39 UTC (~25 redials/min, symmetric). {@link Settings#MIN_CONNECTIONS} is
+   * 20, so on a 4-node network {@code actCons} never reaches it and {@code run()} never takes its
+   * early {@code break}: it offers every dialable peer to the dial logic on every pass, and these
+   * duplicate guards are the only thing standing between that and a permanent redial loop. Each
+   * redundant dial completes a handshake and then <em>replaces</em> the live connection through the
+   * T54 half-open swap in {@link Peer#setupConnectionForPeer(PeerInHandshake)}, which makes the far
+   * side redial in turn.
+   *
+   * <p>Self-comparison is intentional and preserved: {@code peer} is in {@code peers}, so a
+   * candidate that is itself already connecting still returns {@code true} exactly as before.
+   */
+  static boolean isAddressAlreadyInUse(List<Peer> peers, Peer candidate) {
+    for (Peer other : peers) {
+      if (candidate.equalsIpAndPort(other) && (other.isConnected() || other.isConnecting)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private void reseed() {
 
     if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
@@ -215,15 +246,7 @@ public class OutboundHandler extends Thread {
           continue;
         }
 
-        boolean alreadyConnectedToSameIpandPort = false;
-        for (Peer p2 : peers) {
-          if (peer.equalsIpAndPort(p2) && (peer.isConnected() || peer.isConnecting)) {
-            alreadyConnectedToSameIpandPort = true;
-            break;
-          }
-        }
-
-        if (alreadyConnectedToSameIpandPort) {
+        if (isAddressAlreadyInUse(peers, peer)) {
           continue;
         }
 
