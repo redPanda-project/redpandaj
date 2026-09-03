@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.outbound.v1.Status;
@@ -65,15 +66,16 @@ public final class MailboxDepositPolicy {
     ByteString ohIdBytes = putMsg.getOhId();
     if (!ohIdBytes.isEmpty() && outboundService != null) {
       // Validate OH id length before converting to a byte array to avoid large allocations
-      if (ohIdBytes.size() != KademliaId.ID_LENGTH_BYTES) {
+      if (ohIdBytes.size() != OhId.GARLIC_BYTES) {
         log.warn(
             "Received FlaschenpostPut with invalid oh_id length: {}, expected {}",
             ohIdBytes.size(),
-            KademliaId.ID_LENGTH_BYTES);
+            OhId.GARLIC_BYTES);
         respondToDeposit(outboundService, peer, putMsg, Status.BAD_REQUEST);
         return;
       }
-      byte[] ohId = ohIdBytes.toByteArray();
+      // The garlic length is inside OhId's general range, so this cannot fail.
+      OhId ohId = OhId.fromBytes(ohIdBytes.toByteArray());
       // Pre-check the size limit before any deposit/forward decision: an oversized payload is
       // rejected by every host node anyway, so forwarding it (and answering OK) would only waste
       // hops and mislead the sender. Checked on the ByteString so an oversized payload is never
@@ -210,8 +212,9 @@ public final class MailboxDepositPolicy {
       return false;
     }
     try {
-      byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-      System.arraycopy(content, 1 + 4, ohId, 0, KademliaId.ID_LENGTH_BYTES);
+      byte[] destination = new byte[OhId.GARLIC_BYTES];
+      System.arraycopy(content, 1 + 4, destination, 0, OhId.GARLIC_BYTES);
+      OhId ohId = OhId.fromBytes(destination);
       // Anything other than NOT_FOUND targeted a locally registered OH: a rejected deposit
       // (quota/size) is handled here and must not leak into the legacy forwarding pipeline.
       return outboundService.depositMessage(ohId, content)

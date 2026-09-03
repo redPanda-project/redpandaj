@@ -3,7 +3,6 @@ package im.redpanda.outbound;
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.Peer;
-import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.OutboundAuth.AuthResult;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.AckFetchRequest;
@@ -69,15 +68,13 @@ public class OutboundService {
    * MS02b: invoked with the oh_id after every successful register, so the host node can announce
    * the OH → node mapping to the DHT promptly (wired up in App, no-op by default and in tests).
    */
-  private volatile java.util.function.Consumer<byte[]> ohRegisteredListener = ohId -> {};
+  private volatile java.util.function.Consumer<OhId> ohRegisteredListener = ohId -> {};
 
   // Configuration (could be in LocalSettings)
   private static final long MAX_TTL_MS = 7L * 24 * 60 * 60 * 1000; // 7 days
   private static final long MIN_TTL_MS = 10L * 60 * 1000; // 10 minutes
 
   // Input validation bounds (defense-in-depth against oversized fields)
-  private static final int MIN_OH_ID_BYTES = 16;
-  private static final int MAX_OH_ID_BYTES = 64;
   private static final int MIN_NONCE_BYTES = 8;
   private static final int MAX_NONCE_BYTES = 64;
 
@@ -94,7 +91,7 @@ public class OutboundService {
       Collections.synchronizedMap(new WeakHashMap<>());
 
   /**
-   * Connection-Notify (T38) subscription registry: oh_id (hex) → the peer connection that proved
+   * Connection-Notify (T38) subscription registry: oh_id → the peer connection that proved
    * ownership via a signed {@link SubscribeRequest}. The value is a {@link WeakReference} so a
    * disconnected peer's binding vanishes with the {@code Peer} object (same self-cleaning rationale
    * as {@link #registerHistory}) — no persisted subscription state, no dead-peer leak. The deposit
@@ -103,7 +100,7 @@ public class OutboundService {
    * multiple OHs may map to the same peer, and an oh_id is bound to at most one connection
    * (last-writer-wins — the OH owner controls this via its signing key).
    */
-  private final ConcurrentHashMap<String, WeakReference<Peer>> subscriptions =
+  private final ConcurrentHashMap<OhId, WeakReference<Peer>> subscriptions =
       new ConcurrentHashMap<>();
 
   /**
@@ -120,14 +117,13 @@ public class OutboundService {
   public void handleRegister(Peer peer, RegisterOhRequest req) {
     long now = System.currentTimeMillis();
 
-    byte[] ohId = req.getOhId().toByteArray();
+    OhId ohId = OhId.fromByteStringOrNull(req.getOhId());
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
     long requestedExpires = req.getRequestedExpiresAt();
 
-    // Input validation: reject oversized or empty fields
-    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
-        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+    // Input validation: reject oversized or empty fields (oh_id length rules live in OhId)
+    if (ohId == null || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendRegisterResponse(peer, Status.BAD_REQUEST, 0);
       return;
     }
@@ -139,9 +135,9 @@ public class OutboundService {
     }
 
     // Reconstruct signing bytes (unversioned body — OutboundAuth applies the MS03 version byte)
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length() + 8 + 8 + nonce.length);
     signBuf.put(Command.OUTBOUND_REGISTER_OH_REQ);
-    signBuf.put(ohId);
+    ohId.writeTo(signBuf);
     signBuf.putLong(requestedExpires);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
@@ -180,19 +176,18 @@ public class OutboundService {
   }
 
   /** Sets the MS02b post-register hook (DHT announce trigger). */
-  public void setOhRegisteredListener(java.util.function.Consumer<byte[]> listener) {
+  public void setOhRegisteredListener(java.util.function.Consumer<OhId> listener) {
     this.ohRegisteredListener = listener != null ? listener : ohId -> {};
   }
 
   public void handleFetch(Peer peer, FetchRequest req) {
     long now = System.currentTimeMillis();
-    byte[] ohId = req.getOhId().toByteArray();
+    OhId ohId = OhId.fromByteStringOrNull(req.getOhId());
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
     // Input validation
-    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
-        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+    if (ohId == null || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendFetchResponse(peer, Status.BAD_REQUEST, 0, List.of(), false);
       return;
     }
@@ -210,9 +205,9 @@ public class OutboundService {
     }
 
     // 2. Client signs: commandId + ohId + timestamp + nonce + limit + cursor
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length + 4 + 8);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length() + 8 + nonce.length + 4 + 8);
     signBuf.put(Command.OUTBOUND_FETCH_REQ);
-    signBuf.put(ohId);
+    ohId.writeTo(signBuf);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
     // limit is int32, cursor is int64 (used as afterSequence)
@@ -257,13 +252,12 @@ public class OutboundService {
   }
 
   public void handleRevoke(Peer peer, RevokeOhRequest req) {
-    byte[] ohId = req.getOhId().toByteArray();
+    OhId ohId = OhId.fromByteStringOrNull(req.getOhId());
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
     // Input validation
-    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
-        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+    if (ohId == null || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendRevokeResponse(peer, Status.BAD_REQUEST);
       return;
     }
@@ -274,9 +268,9 @@ public class OutboundService {
       return;
     }
 
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length() + 8 + nonce.length);
     signBuf.put(Command.OUTBOUND_REVOKE_OH_REQ);
-    signBuf.put(ohId);
+    ohId.writeTo(signBuf);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
 
@@ -312,13 +306,12 @@ public class OutboundService {
    */
   public void handleSubscribe(Peer peer, SubscribeRequest req) {
     long now = System.currentTimeMillis();
-    byte[] ohId = req.getOhId().toByteArray();
+    OhId ohId = OhId.fromByteStringOrNull(req.getOhId());
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
     // Input validation
-    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
-        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+    if (ohId == null || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendSubscribeResponse(peer, Status.BAD_REQUEST);
       return;
     }
@@ -329,9 +322,9 @@ public class OutboundService {
       return;
     }
 
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + nonce.length);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length() + 8 + nonce.length);
     signBuf.put(Command.OUTBOUND_SUBSCRIBE_REQ);
-    signBuf.put(ohId);
+    ohId.writeTo(signBuf);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
 
@@ -350,7 +343,7 @@ public class OutboundService {
     }
 
     // Bind oh_id → this connection (idempotent overwrite; last-writer-wins across connections).
-    subscriptions.put(Utils.bytesToHexString(ohId), new WeakReference<>(peer));
+    subscriptions.put(ohId, new WeakReference<>(peer));
     sendSubscribeResponse(peer, Status.OK);
   }
 
@@ -362,10 +355,9 @@ public class OutboundService {
    * failure is swallowed — a deposit must never be affected by notification delivery. Prunes the
    * binding if its peer has been garbage-collected or is no longer connected.
    */
-  private void notifySubscriber(byte[] ohId) {
+  private void notifySubscriber(OhId ohId) {
     try {
-      String key = Utils.bytesToHexString(ohId);
-      WeakReference<Peer> ref = subscriptions.get(key);
+      WeakReference<Peer> ref = subscriptions.get(ohId);
       if (ref == null) {
         return;
       }
@@ -373,10 +365,10 @@ public class OutboundService {
       if (peer == null || !peer.isConnected()) {
         // Conditional remove: only drop the exact stale entry we inspected, so a concurrent
         // re-subscribe that already replaced the binding for this oh_id is not clobbered (ABA).
-        subscriptions.remove(key, ref);
+        subscriptions.remove(ohId, ref);
         return;
       }
-      Notify notify = Notify.newBuilder().setOhId(ByteString.copyFrom(ohId)).build();
+      Notify notify = Notify.newBuilder().setOhId(ohId.toByteString()).build();
       writeResponse(peer, Command.OUTBOUND_NOTIFY, notify.toByteArray());
     } catch (RuntimeException e) {
       logger.warn("Connection-Notify: failed to notify subscriber", e);
@@ -392,13 +384,12 @@ public class OutboundService {
    */
   public void handleAckFetch(Peer peer, AckFetchRequest req) {
     long now = System.currentTimeMillis();
-    byte[] ohId = req.getOhId().toByteArray();
+    OhId ohId = OhId.fromByteStringOrNull(req.getOhId());
     byte[] nonce = req.getNonce().toByteArray();
     long timestamp = req.getTimestampMs();
 
     // Input validation
-    if (outOfRange(ohId.length, MIN_OH_ID_BYTES, MAX_OH_ID_BYTES)
-        || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
+    if (ohId == null || outOfRange(nonce.length, MIN_NONCE_BYTES, MAX_NONCE_BYTES)) {
       sendAckFetchResponse(peer, Status.BAD_REQUEST);
       return;
     }
@@ -416,9 +407,9 @@ public class OutboundService {
 
     // Signing bytes: CMD_BYTE | oh_id | acked_sequence_id(8) | timestamp(8) | nonce
     long ackedSeqId = req.getAckedSequenceId();
-    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length + 8 + 8 + nonce.length);
+    ByteBuffer signBuf = ByteBuffer.allocate(1 + ohId.length() + 8 + 8 + nonce.length);
     signBuf.put(Command.OUTBOUND_ACK_FETCH_REQ);
-    signBuf.put(ohId);
+    ohId.writeTo(signBuf);
     signBuf.putLong(ackedSeqId);
     signBuf.putLong(timestamp);
     signBuf.put(nonce);
@@ -456,19 +447,19 @@ public class OutboundService {
    * @return {@link DepositResult#DEPOSITED} on success, {@link DepositResult#NOT_FOUND} if the OH
    *     is not registered here or expired, or the MS02b rejection reason
    */
-  public DepositResult depositMessage(byte[] ohId, byte[] payload) {
+  public DepositResult depositMessage(OhId ohId, byte[] payload) {
     return depositMessage(ohId, payload, EMPTY_SESSION_TAG);
   }
 
   /**
-   * Deposits a message with an MS05 reverse-garlic session tag (see {@link #depositMessage(byte[],
+   * Deposits a message with an MS05 reverse-garlic session tag (see {@link #depositMessage(OhId,
    * byte[])} for the deposit semantics). The tag is stored on the {@code MailItem} and returned to
    * the fetching client, which uses it to correlate the reply with a conversation.
    *
    * @param sessionTag 16-byte session tag, or empty/{@code null} for untagged messages; any other
    *     length is rejected with {@link DepositResult#BAD_REQUEST}
    */
-  public DepositResult depositMessage(byte[] ohId, byte[] payload, byte[] sessionTag) {
+  public DepositResult depositMessage(OhId ohId, byte[] payload, byte[] sessionTag) {
     if (sessionTag == null) {
       sessionTag = EMPTY_SESSION_TAG;
     }

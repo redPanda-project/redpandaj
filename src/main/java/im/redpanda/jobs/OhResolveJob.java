@@ -4,6 +4,7 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.OhDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,14 +28,14 @@ public class OhResolveJob extends KademliaSearchJob {
   /** Upper bound for the randomized delay before the DHT search is issued. */
   static final long LOOKUP_DELAY_JITTER_MS = Duration.ofMillis(1500).toMillis();
 
-  private final byte[] ohId;
+  private final OhId ohId;
   private final Consumer<OhNodeRecord> onResolved;
   private final Runnable onFailed;
   private boolean callbackFired = false;
 
   OhResolveJob(
       ServerContext serverContext,
-      byte[] ohId,
+      OhId ohId,
       Consumer<OhNodeRecord> onResolved,
       Runnable onFailed) {
     super(serverContext, OhDht.announceKademliaId(ohId, System.currentTimeMillis()));
@@ -49,7 +50,7 @@ public class OhResolveJob extends KademliaSearchJob {
    */
   public static void resolve(
       ServerContext serverContext,
-      byte[] ohId,
+      OhId ohId,
       Consumer<OhNodeRecord> onResolved,
       Runnable onFailed) {
     long now = System.currentTimeMillis();
@@ -101,13 +102,13 @@ public class OhResolveJob extends KademliaSearchJob {
   /** One-shot job adding the randomized anti-profiling delay before the actual DHT search. */
   static class DelayedSearchJob extends Job {
 
-    private final byte[] ohId;
+    private final OhId ohId;
     private final Consumer<OhNodeRecord> onResolved;
     private final Runnable onFailed;
 
     DelayedSearchJob(
         ServerContext serverContext,
-        byte[] ohId,
+        OhId ohId,
         Consumer<OhNodeRecord> onResolved,
         Runnable onFailed) {
       // delay sampled uniformly from [0, LOOKUP_DELAY_JITTER_MS]

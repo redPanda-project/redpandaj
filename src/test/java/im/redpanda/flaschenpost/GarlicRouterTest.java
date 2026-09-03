@@ -9,6 +9,7 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -40,7 +41,7 @@ class GarlicRouterTest {
   private InboundCommandProcessor processor3;
   private OutboundMailboxStore mailbox3;
 
-  private byte[] ohId;
+  private OhId ohId;
 
   @BeforeEach
   void setUp() {
@@ -59,8 +60,9 @@ class GarlicRouterTest {
     node3.setOutboundService(new OutboundService(store3));
     processor3 = new InboundCommandProcessor(node3);
 
-    ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ohId);
+    byte[] ohIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ohIdBytes);
+    ohId = OhId.fromBytes(ohIdBytes);
 
     // OH registered on node 3 only
     long now = System.currentTimeMillis();
@@ -115,7 +117,7 @@ class GarlicRouterTest {
     ServerContext last = hops[hops.length - 1];
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER);
-    deliver.put(ohId);
+    ohId.writeTo(deliver);
     deliver.putInt(payload.length);
     deliver.put(payload);
     byte[] body =
@@ -231,8 +233,9 @@ class GarlicRouterTest {
   void deliverForRemoteOh_fallsBackToMs02bForwarding() throws Exception {
     // the final garlic hop (node 1) does not host the OH; it knows the announce record
     // pointing to node 2 and must forward a FlaschenpostPut with the oh_id preserved
-    byte[] remoteOhId = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(remoteOhId);
+    byte[] remoteOhIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(remoteOhIdBytes);
+    OhId remoteOhId = OhId.fromBytes(remoteOhIdBytes);
     node1
         .getKadStoreManager()
         .put(
@@ -243,7 +246,7 @@ class GarlicRouterTest {
     byte[] payload = "deliver elsewhere".getBytes(StandardCharsets.UTF_8);
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER);
-    deliver.put(remoteOhId);
+    remoteOhId.writeTo(deliver);
     deliver.putInt(payload.length);
     deliver.put(payload);
     byte[] body =
@@ -260,7 +263,7 @@ class GarlicRouterTest {
     byte[] forwardedBytes = new byte[out.getInt()];
     out.get(forwardedBytes);
     FlaschenpostPut forwarded = FlaschenpostPut.parseFrom(forwardedBytes);
-    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(remoteOhId);
+    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(remoteOhId.toBytes());
     assertThat(forwarded.getContent().toByteArray()).isEqualTo(payload);
   }
 }

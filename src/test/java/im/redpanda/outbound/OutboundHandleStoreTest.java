@@ -10,14 +10,14 @@ class OutboundHandleStoreTest {
 
   private OutboundStore outboundStore;
   private OutboundHandleStore store;
-  private byte[] ohId;
+  private OhId ohId;
   private byte[] authKey;
 
   @BeforeEach
   void setUp() {
     outboundStore = OutboundStore.inMemory();
     store = outboundStore.handles();
-    ohId = Hex.decode("123456");
+    ohId = OhId.fromHex("12".repeat(OhId.GARLIC_BYTES));
     authKey = Hex.decode("ABCDEF");
   }
 

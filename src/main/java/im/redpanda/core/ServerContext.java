@@ -29,6 +29,13 @@ public class ServerContext {
    * not a per-message random value. The rename is code-level only; nothing on the wire or in
    * persisted node state carries the name (the handshake sends the raw 20 bytes, and {@code
    * LocalSettings} persists the identity as {@code NodeId}, not as this field).
+   *
+   * <p><b>Redundant on purpose (for now):</b> this duplicates {@code nodeId.getKademliaId()}, and
+   * the generated {@code setNodeId} does <i>not</i> keep it in sync. Both are written together
+   * exactly once per node -- at startup, in {@link #buildDefaultServerContext()} and in {@code
+   * App#main} -- and never again, so the two cannot drift today. Deriving it from {@code nodeId}
+   * instead of storing it would be a behavioural change (every later {@code setNodeId} would start
+   * to take effect) and belongs to the identity context of T118, not to this rename.
    */
   private KademliaId ownNodeId;
 

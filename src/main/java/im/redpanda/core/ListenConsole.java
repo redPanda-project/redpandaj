@@ -83,7 +83,7 @@ public class ListenConsole extends Thread {
               "[IP]:PORT",
               "node id",
               "last answer",
-              "conntected",
+              "connected",
               "retries",
               "ping",
               "loaded Msg",

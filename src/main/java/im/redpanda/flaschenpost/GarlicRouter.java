@@ -9,6 +9,7 @@ import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.jobs.RecordLookupJob;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.ChannelDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
@@ -174,8 +175,7 @@ public final class GarlicRouter {
     }
     ByteBuffer buffer = ByteBuffer.wrap(plaintext);
     buffer.get(); // command byte
-    byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-    buffer.get(ohId);
+    OhId ohId = OhId.readGarlicSlot(buffer);
     byte[] sessionTag = new byte[tagLen];
     buffer.get(sessionTag);
     int payloadLen = buffer.getInt();
@@ -220,8 +220,7 @@ public final class GarlicRouter {
     }
     ByteBuffer buffer = ByteBuffer.wrap(plaintext);
     buffer.get(); // command byte
-    byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-    buffer.get(ohId);
+    OhId ohId = OhId.readGarlicSlot(buffer);
     int tagLen = buffer.get() & 0xFF;
     if (tagLen != 0 && tagLen != FlaschenpostV2.SESSION_TAG_LEN) {
       log.debug("flaschenpost v2 acked deliver tag length invalid, dropping");
