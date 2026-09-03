@@ -11,7 +11,6 @@ import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
 import im.redpanda.store.NodeStore;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -326,22 +325,12 @@ public final class OhForwarder {
         new TreeSet<>(
             new PeerComparator(targetNodeId)
                 .thenComparing(peer -> peer.getKademliaId().getBytes(), Arrays::compareUnsigned));
-    Lock lock = peerList.getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      ArrayList<Peer> peerArrayList = peerList.getPeerArrayList();
-      if (peerArrayList == null) {
-        return null;
+    for (Peer p : peerList.snapshot()) {
+      // same candidate filter as garlic routing: connected full nodes with known node id
+      if (p.getNodeId() == null || !p.isConnected() || !p.hasNode() || p.isLightClient()) {
+        continue;
       }
-      for (Peer p : peerArrayList) {
-        // same candidate filter as garlic routing: connected full nodes with known node id
-        if (p.getNodeId() == null || !p.isConnected() || !p.hasNode() || p.isLightClient()) {
-          continue;
-        }
-        candidates.add(p);
-      }
-    } finally {
-      lock.unlock();
+      candidates.add(p);
     }
 
     if (candidates.isEmpty()) {

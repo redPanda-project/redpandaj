@@ -2,7 +2,7 @@ package im.redpanda.core;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.concurrent.locks.Lock;
+import java.util.List;
 
 public class PeerJobs extends Thread {
 
@@ -74,14 +74,7 @@ public class PeerJobs extends Thread {
     //
     // The copy keeps the iteration CME-safe exactly as the held lock did; nothing in the loop
     // touches the peer list itself, only the Peer objects, which the peer list lock never guarded.
-    ArrayList<Peer> peers;
-    Lock lock = peerList.getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      peers = new ArrayList<>(peerList.getPeerArrayList());
-    } finally {
-      lock.unlock();
-    }
+    List<Peer> peers = peerList.snapshot();
 
     evictUndialableDisconnectedPeers(peers);
 
@@ -165,7 +158,7 @@ public class PeerJobs extends Thread {
    * the one thing such an entry is good for. The entry is recreated by the next handshake, which is
    * how it came about in the first place.
    */
-  private void evictUndialableDisconnectedPeers(ArrayList<Peer> peers) {
+  private void evictUndialableDisconnectedPeers(List<Peer> peers) {
     for (Peer peer : peers) {
       if (peer.isDialable() || peer.isConnected() || peer.isConnecting) {
         continue;

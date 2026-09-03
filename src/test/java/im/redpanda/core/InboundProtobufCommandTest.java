@@ -48,7 +48,7 @@ class InboundProtobufCommandTest {
     // This is expected to fail or throw exception currently
     processor.parseCommand(buffer.get(), buffer, me);
 
-    assertThat(serverContext.getPeerList().getPeerArrayList())
+    assertThat(serverContext.getPeerList().snapshot())
         .filteredOn(p -> p.ip.equals("1.2.3.4"))
         .isNotEmpty();
   }

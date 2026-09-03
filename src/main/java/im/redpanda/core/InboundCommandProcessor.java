@@ -27,9 +27,8 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.concurrent.locks.Lock;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -496,8 +495,8 @@ public class InboundCommandProcessor {
   }
 
   private int handleRequestPeerList(Peer peer) {
-    // T87: snapshot under the peer list read lock, then release it — the response is built and
-    // written WITHOUT it. Holding it across peer.getWriteBufferLock() inverted the lock order
+    // T87: PeerList.snapshot() takes the read lock and releases it — the response is built and
+    // written WITHOUT it. Holding it across the peer's writeBufferLock inverted the lock order
     // documented on PeerList: ConnectionHandler.setupConnection() holds a peer's writeBufferLock
     // and then takes the peer list WRITE lock, on the NIO selector thread. Reader thread and
     // selector thread could therefore each hold one of the two and wait for the other, and because
@@ -508,14 +507,7 @@ public class InboundCommandProcessor {
     // Snapshotting is also the pattern every other iteration site uses (NodeStore.addServerEdges,
     // PeerJobs.runOnce, Saver.savePeers, OhForwarder.selectNextPeer); the peers themselves were
     // never guarded by this lock, only the list structure, so nothing weakens by copying first.
-    ArrayList<Peer> snapshot;
-    Lock peerListLock = serverContext.getPeerList().getReadWriteLock().readLock();
-    peerListLock.lock();
-    try {
-      snapshot = new ArrayList<>(serverContext.getPeerList().getPeerArrayList());
-    } finally {
-      peerListLock.unlock();
-    }
+    List<Peer> snapshot = serverContext.getPeerList().snapshot();
 
     var builder = SendPeerList.newBuilder();
     for (Peer peerToCheck : snapshot) {

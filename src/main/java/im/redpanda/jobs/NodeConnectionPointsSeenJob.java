@@ -1,9 +1,9 @@
 package im.redpanda.jobs;
 
+import im.redpanda.core.Node;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import java.time.Duration;
-import java.util.concurrent.locks.Lock;
 
 public class NodeConnectionPointsSeenJob extends Job {
 
@@ -19,16 +19,15 @@ public class NodeConnectionPointsSeenJob extends Job {
   @Override
   public void work() {
 
-    Lock lock = serverContext.getPeerList().getReadWriteLock().readLock();
-    lock.lock();
-    try {
-      for (Peer peer : serverContext.getPeerList().getPeerArrayList()) {
-        if (peer.isConnected() && peer.getNode() != null) {
-          peer.getNode().seen(peer.getIp(), peer.getPort());
-        }
+    for (Peer peer : serverContext.getPeerList().snapshot()) {
+      // Resolve the node once: Peer.getNode() returns null as soon as the peer loses `connected`
+      // or `authed`, which a reader thread can do between the check and the call (Copilot review
+      // on this PR). Nothing here ever guarded that -- the peer list lock this loop used to hold
+      // guards the list structure, not the peers in it.
+      Node node = peer.getNode();
+      if (peer.isConnected() && node != null) {
+        node.seen(peer.getIp(), peer.getPort());
       }
-    } finally {
-      lock.unlock();
     }
   }
 }
