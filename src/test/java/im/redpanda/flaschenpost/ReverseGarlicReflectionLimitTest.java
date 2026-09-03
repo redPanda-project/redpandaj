@@ -10,6 +10,7 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.List;
@@ -38,9 +39,10 @@ class ReverseGarlicReflectionLimitTest {
   @BeforeEach
   void setUp() {
     relay = ServerContext.buildDefaultServerContext();
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    relay.setOutboundService(new OutboundService(handleStore, mailboxStore));
+    OutboundStore outboundStore = OutboundStore.inMemory();
+    handleStore = outboundStore.handles();
+    mailboxStore = outboundStore.mailbox();
+    relay.setOutboundService(new OutboundService(outboundStore));
 
     target = ServerContext.buildDefaultServerContext();
 

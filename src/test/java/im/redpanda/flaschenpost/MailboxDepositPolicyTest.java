@@ -12,6 +12,7 @@ import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RoutingAck;
@@ -51,14 +52,14 @@ class MailboxDepositPolicyTest {
   @BeforeEach
   void setUp() {
     node = ServerContext.buildDefaultServerContext();
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    outboundService = new OutboundService(handleStore, mailboxStore);
+    OutboundStore outboundStore = OutboundStore.inMemory();
+    handleStore = outboundStore.handles();
+    mailboxStore = outboundStore.mailbox();
+    outboundService = new OutboundService(outboundStore);
     node.setOutboundService(outboundService);
 
     hostNode = ServerContext.buildDefaultServerContext();
-    hostNode.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    hostNode.setOutboundService(new OutboundService(OutboundStore.inMemory()));
 
     ohId = randomBytes(KademliaId.ID_LENGTH_BYTES);
   }

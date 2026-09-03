@@ -9,6 +9,7 @@ import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
@@ -38,9 +39,10 @@ class InboundCommandProcessorFlaschenpostPutTest {
   @BeforeEach
   void setup() {
     ctx = ServerContext.buildDefaultServerContext();
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    OutboundService outboundService = new OutboundService(handleStore, mailboxStore);
+    OutboundStore outboundStore = OutboundStore.inMemory();
+    handleStore = outboundStore.handles();
+    mailboxStore = outboundStore.mailbox();
+    OutboundService outboundService = new OutboundService(outboundStore);
     ctx.setOutboundService(outboundService);
     proc = new InboundCommandProcessor(ctx);
   }

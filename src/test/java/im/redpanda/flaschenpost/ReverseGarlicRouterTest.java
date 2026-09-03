@@ -12,6 +12,7 @@ import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
@@ -53,19 +54,18 @@ class ReverseGarlicRouterTest {
   @BeforeEach
   void setUp() {
     hop1 = ServerContext.buildDefaultServerContext();
-    hop1.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    hop1.setOutboundService(new OutboundService(OutboundStore.inMemory()));
     processor1 = new InboundCommandProcessor(hop1);
 
     hop2 = ServerContext.buildDefaultServerContext();
-    hop2.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    hop2.setOutboundService(new OutboundService(OutboundStore.inMemory()));
     processor2 = new InboundCommandProcessor(hop2);
 
     hop3 = ServerContext.buildDefaultServerContext();
-    OutboundHandleStore handleStore3 = new OutboundHandleStore();
-    aliceMailbox = new OutboundMailboxStore();
-    hop3.setOutboundService(new OutboundService(handleStore3, aliceMailbox));
+    OutboundStore store3 = OutboundStore.inMemory();
+    OutboundHandleStore handleStore3 = store3.handles();
+    aliceMailbox = store3.mailbox();
+    hop3.setOutboundService(new OutboundService(store3));
     processor3 = new InboundCommandProcessor(hop3);
 
     aliceOhId = new byte[KademliaId.ID_LENGTH_BYTES];

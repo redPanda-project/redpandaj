@@ -11,6 +11,7 @@ import im.redpanda.outbound.ChannelDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
@@ -39,9 +40,10 @@ class RecordDhtRouterTest {
   @BeforeEach
   void setUp() {
     node = ServerContext.buildDefaultServerContext();
-    handles = new OutboundHandleStore();
-    mailbox = new OutboundMailboxStore();
-    node.setOutboundService(new OutboundService(handles, mailbox));
+    OutboundStore outboundStore = OutboundStore.inMemory();
+    handles = outboundStore.handles();
+    mailbox = outboundStore.mailbox();
+    node.setOutboundService(new OutboundService(outboundStore));
 
     ackOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);
     ackSessionTag = randomBytes(FlaschenpostV2.SESSION_TAG_LEN);

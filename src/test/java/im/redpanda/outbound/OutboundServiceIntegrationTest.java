@@ -36,6 +36,7 @@ class OutboundServiceIntegrationTest {
   private static final String MSG3 = "msg3";
 
   private OutboundService service;
+  private OutboundStore store;
   private OutboundHandleStore handleStore;
   private OutboundMailboxStore mailboxStore;
   private Peer peer;
@@ -43,9 +44,10 @@ class OutboundServiceIntegrationTest {
 
   @BeforeEach
   void setUp() {
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    service = new OutboundService(handleStore, mailboxStore);
+    store = OutboundStore.inMemory();
+    handleStore = store.handles();
+    mailboxStore = store.mailbox();
+    service = new OutboundService(store);
 
     peer = new Peer("127.0.0.1", 12345);
     PeerTestSupport.initWriteBuffer(peer, 8192);

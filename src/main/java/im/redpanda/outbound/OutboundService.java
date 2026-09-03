@@ -59,6 +59,7 @@ public class OutboundService {
 
   private static final byte[] EMPTY_SESSION_TAG = new byte[0];
 
+  private final OutboundStore store;
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
   private final OutboundAuth auth;
@@ -105,9 +106,14 @@ public class OutboundService {
   private final ConcurrentHashMap<String, WeakReference<Peer>> subscriptions =
       new ConcurrentHashMap<>();
 
-  public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
-    this.handleStore = handleStore;
-    this.mailboxStore = mailboxStore;
+  /**
+   * @param store T109: the single transactional owner of the handle registry and the mailboxes.
+   *     Both facades come from it, so a revoke removes the handle and its mailbox in one commit.
+   */
+  public OutboundService(OutboundStore store) {
+    this.store = store;
+    this.handleStore = store.handles();
+    this.mailboxStore = store.mailbox();
     this.auth = new OutboundAuth();
   }
 
@@ -288,8 +294,8 @@ public class OutboundService {
       return;
     }
 
-    handleStore.remove(ohId);
-    mailboxStore.deleteAll(ohId);
+    // T109: one transaction — handle and mailbox are removed together or not at all.
+    store.removeHandle(ohId);
 
     sendRevokeResponse(peer, Status.OK);
   }
@@ -469,28 +475,31 @@ public class OutboundService {
     if (sessionTag.length != 0 && sessionTag.length != SESSION_TAG_BYTES) {
       return DepositResult.BAD_REQUEST;
     }
-    HandleRecord handle = handleStore.get(ohId);
-    if (handle == null) {
-      return DepositResult.NOT_FOUND;
-    }
     long now = System.currentTimeMillis();
-    if (handle.getExpiresAtMs() < now) {
-      return DepositResult.NOT_FOUND;
-    }
-    byte[] messageId = newMessageId();
     MailItem item =
         MailItem.newBuilder()
-            .setMessageId(ByteString.copyFrom(messageId))
+            .setMessageId(ByteString.copyFrom(newMessageId()))
             .setReceivedAtMs(now)
             .setPayload(ByteString.copyFrom(payload))
             .setSessionTag(ByteString.copyFrom(sessionTag))
             .build();
+    // T109: the handle check and the item write are ONE transaction. Split into two (as before
+    // T109), a revoke or expiry cleanup landing between them would commit the removal and let this
+    // deposit write an item into a mailbox whose handle is already gone — an orphan that no cleanup
+    // path can ever find again, because they all iterate the handles.
     DepositResult result =
-        switch (mailboxStore.addMessage(ohId, item)) {
-          case ADDED -> DepositResult.DEPOSITED;
-          case REJECTED_ITEM_TOO_LARGE -> DepositResult.BAD_REQUEST;
-          case REJECTED_MAILBOX_FULL, REJECTED_BYTE_QUOTA -> DepositResult.QUOTA_EXCEEDED;
-        };
+        store.tx(
+            () -> {
+              HandleRecord handle = handleStore.get(ohId);
+              if (handle == null || handle.getExpiresAtMs() < now) {
+                return DepositResult.NOT_FOUND;
+              }
+              return switch (mailboxStore.addMessage(ohId, item)) {
+                case ADDED -> DepositResult.DEPOSITED;
+                case REJECTED_ITEM_TOO_LARGE -> DepositResult.BAD_REQUEST;
+                case REJECTED_MAILBOX_FULL, REJECTED_BYTE_QUOTA -> DepositResult.QUOTA_EXCEEDED;
+              };
+            });
     // Connection-Notify (T38): signal the subscribed connection (if any) that new mail arrived.
     // Only on an actual deposit — a rejected deposit stores nothing, so there is nothing to fetch.
     if (result == DepositResult.DEPOSITED) {

@@ -21,9 +21,10 @@ class OutboundIntegrationTest {
 
   @BeforeEach
   void setUp() {
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    service = new OutboundService(handleStore, mailboxStore);
+    OutboundStore store = OutboundStore.inMemory();
+    handleStore = store.handles();
+    mailboxStore = store.mailbox();
+    service = new OutboundService(store);
     peer = new Peer("127.0.0.1", 12345);
     PeerTestSupport.initWriteBuffer(peer, 4096);
     PeerTestSupport.writeBuffer(peer).flip();

@@ -12,6 +12,7 @@ import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
@@ -44,19 +45,18 @@ class GarlicRouterTest {
   @BeforeEach
   void setUp() {
     node1 = ServerContext.buildDefaultServerContext();
-    node1.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    node1.setOutboundService(new OutboundService(OutboundStore.inMemory()));
     processor1 = new InboundCommandProcessor(node1);
 
     node2 = ServerContext.buildDefaultServerContext();
-    node2.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    node2.setOutboundService(new OutboundService(OutboundStore.inMemory()));
     processor2 = new InboundCommandProcessor(node2);
 
     node3 = ServerContext.buildDefaultServerContext();
-    OutboundHandleStore handleStore3 = new OutboundHandleStore();
-    mailbox3 = new OutboundMailboxStore();
-    node3.setOutboundService(new OutboundService(handleStore3, mailbox3));
+    OutboundStore store3 = OutboundStore.inMemory();
+    OutboundHandleStore handleStore3 = store3.handles();
+    mailbox3 = store3.mailbox();
+    node3.setOutboundService(new OutboundService(store3));
     processor3 = new InboundCommandProcessor(node3);
 
     ohId = new byte[KademliaId.ID_LENGTH_BYTES];
