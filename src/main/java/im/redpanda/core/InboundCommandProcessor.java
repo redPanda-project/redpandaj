@@ -60,13 +60,34 @@ public class InboundCommandProcessor {
   private final OutboundCommandHandler outboundHandler;
 
   public InboundCommandProcessor(ServerContext serverContext) {
-    this.peerExchangeHandler = new PeerExchangeHandler(serverContext);
-    this.jarUpdateHandler = new JarUpdateHandler(serverContext);
-    this.apkUpdateHandler = new ApkUpdateHandler(serverContext);
-    this.kademliaHandler = new KademliaCommandHandler(serverContext);
-    this.flaschenpostHandler =
-        new FlaschenpostCommandHandler(serverContext, serverContext.getOutboundService());
-    this.outboundHandler = new OutboundCommandHandler(serverContext.getOutboundService());
+    this(
+        new PeerExchangeHandler(serverContext),
+        new JarUpdateHandler(serverContext),
+        new ApkUpdateHandler(serverContext),
+        new KademliaCommandHandler(serverContext),
+        new FlaschenpostCommandHandler(serverContext, serverContext.getOutboundService()),
+        new OutboundCommandHandler(serverContext.getOutboundService()));
+  }
+
+  /**
+   * Seam for {@code InboundCommandProcessorRoutingTest}: lets a test hand in recording handlers and
+   * assert that every command byte reaches the handler method it is supposed to reach. Without it,
+   * a transposed wiring line (say {@code handleFetch} registered under {@code
+   * OUTBOUND_REVOKE_OH_REQ}) compiles and passes every other test.
+   */
+  InboundCommandProcessor(
+      PeerExchangeHandler peerExchangeHandler,
+      JarUpdateHandler jarUpdateHandler,
+      ApkUpdateHandler apkUpdateHandler,
+      KademliaCommandHandler kademliaHandler,
+      FlaschenpostCommandHandler flaschenpostHandler,
+      OutboundCommandHandler outboundHandler) {
+    this.peerExchangeHandler = peerExchangeHandler;
+    this.jarUpdateHandler = jarUpdateHandler;
+    this.apkUpdateHandler = apkUpdateHandler;
+    this.kademliaHandler = kademliaHandler;
+    this.flaschenpostHandler = flaschenpostHandler;
+    this.outboundHandler = outboundHandler;
     initializeHandlers();
   }
 
