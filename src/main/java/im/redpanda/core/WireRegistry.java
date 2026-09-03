@@ -48,6 +48,8 @@ public final class WireRegistry {
 
   /**
    * Matches a top-level {@code message}/{@code enum}/{@code service} declaration in a .proto file.
+   * Anchored at column 0 on purpose: nested declarations are indented and are deliberately not
+   * listed, so the registry stays a list of the top-level types the wire actually names.
    */
   private static final Pattern PROTO_DEFINITION =
       Pattern.compile("^(message|enum|service)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)");
@@ -153,7 +155,12 @@ public final class WireRegistry {
    * Reflects the {@code public static final byte} constants of a class, ordered by value (the field
    * order the JVM reports is not specified, the byte values are stable).
    *
-   * @param namePrefix only fields whose name starts with this prefix are collected ("" = all)
+   * <p>Throws when two constants share a byte value - that is a protocol bug the registry must not
+   * paper over by rendering two innocuous-looking rows.
+   *
+   * @param namePrefix only fields whose name starts with this prefix are collected. {@link Command}
+   *     is passed "" because it holds nothing but command bytes (see its class comment); {@link
+   *     FlaschenpostV2} needs "CMD_" because it also carries {@code VERSION} and size constants.
    */
   private static List<ByteConstant> byteConstants(Class<?> owner, String namePrefix) {
     List<ByteConstant> constants = new ArrayList<>();
@@ -174,6 +181,21 @@ public final class WireRegistry {
       }
     }
     constants.sort(Comparator.comparingInt(ByteConstant::value).thenComparing(ByteConstant::name));
+    for (int i = 1; i < constants.size(); i++) {
+      ByteConstant previous = constants.get(i - 1);
+      ByteConstant current = constants.get(i);
+      if (previous.value() == current.value()) {
+        throw new IllegalStateException(
+            "duplicate command byte "
+                + current.value()
+                + " in "
+                + owner.getName()
+                + ": "
+                + previous.name()
+                + " and "
+                + current.name());
+      }
+    }
     return constants;
   }
 
