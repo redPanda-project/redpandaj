@@ -84,8 +84,10 @@ public class NodeStore {
             // .closeOnJvmShutdown()
             .make();
 
+    logStaleLegacyCache(serverContext.getPort());
+
     nodeStore.dbDisk =
-        DBMaker.fileDB("data/nodeids" + serverContext.getPort() + ".mapdb")
+        DBMaker.fileDB(nodeCachePath(serverContext.getPort()))
             .fileMmapEnableIfSupported()
             // .closeOnJvmShutdown()
             .checksumHeaderBypass()
@@ -95,7 +97,7 @@ public class NodeStore {
         (HTreeMap<KademliaId, Node>)
             nodeStore
                 .dbDisk
-                .hashMap("nodeidsOnDisk")
+                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
                 .expireStoreSize(MAX_SIZE_ONDISK)
                 .expireExecutor(threadPool)
                 // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
@@ -107,7 +109,7 @@ public class NodeStore {
         (HTreeMap<KademliaId, Node>)
             nodeStore
                 .dboffHeap
-                .hashMap("nodeidsOffHeap")
+                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
                 .expireStoreSize(MAX_SIZE_OFFHEAP)
                 .expireOverflow((Map) nodeStore.onDisk)
                 .expireExecutor(threadPool)
@@ -119,7 +121,7 @@ public class NodeStore {
         (HTreeMap<KademliaId, Node>)
             nodeStore
                 .dbonHeap
-                .hashMap("nodeidsOnHeap")
+                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
                 .expireStoreSize(MAX_SIZE_ONHEAP)
                 .expireOverflow((Map) nodeStore.offHeap)
                 .expireExecutor(threadPool)
@@ -146,7 +148,7 @@ public class NodeStore {
         (HTreeMap<KademliaId, Node>)
             nodeStore
                 .dbonHeap
-                .hashMap("nodeidsOnHeap")
+                .hashMap("nodesV2", NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
                 .expireStoreSize(MAX_SIZE_ONHEAP)
                 .expireExecutor(threadPool)
                 .expireAfterCreate()
@@ -195,7 +197,7 @@ public class NodeStore {
       System.out.println("NodeStore may be broken here we have to close and reopen the store...");
 
       close();
-      Path path = Path.of(String.format("data/nodeids%s.mapdb", serverContext.getPort()));
+      Path path = Path.of(nodeCachePath(serverContext.getPort()));
       try {
         Files.delete(path);
       } catch (IOException ex) {
@@ -471,6 +473,27 @@ public class NodeStore {
   public void clearGraph() {
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     nodeGraph.addVertex(serverContext.getNode());
+  }
+
+  /** The node cache file of {@code port} (T117: explicit values, hence the new name). */
+  static String nodeCachePath(int port) {
+    return "data/nodecache" + port + ".mapdb";
+  }
+
+  /**
+   * The pre-T117 node cache held Elsa-serialized {@code Node} objects, i.e. fully qualified class
+   * names. It is not read and not migrated — the cache is rebuilt from the network (user decision
+   * 2026-09-01). Reported once per start so the file can be deleted by hand.
+   */
+  private static void logStaleLegacyCache(int port) {
+    Path legacy = Path.of("data/nodeids" + port + ".mapdb");
+    if (Files.exists(legacy)) {
+      Log.put(
+          "ignoring the pre-T117 node cache "
+              + legacy
+              + ": it is no longer read and can be deleted",
+          20);
+    }
   }
 
   public void clearNodeBlacklist() {

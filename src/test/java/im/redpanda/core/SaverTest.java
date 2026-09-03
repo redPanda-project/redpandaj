@@ -20,14 +20,16 @@ import org.junit.jupiter.api.Timeout;
 class SaverTest {
 
   private static final String TEST_SAVE_DIR = "data";
-  private static final String TEST_FILE = TEST_SAVE_DIR + "/peers.dat";
+  private static final String TEST_FILE = TEST_SAVE_DIR + "/peers.json";
   private static final String TEST_TMP_FILE = TEST_FILE + ".tmp";
+  private static final String LEGACY_FILE = TEST_SAVE_DIR + "/peers.dat";
 
   @BeforeEach
   @AfterEach
   void cleanUp() throws IOException {
     Files.deleteIfExists(Path.of(TEST_FILE));
     Files.deleteIfExists(Path.of(TEST_TMP_FILE));
+    Files.deleteIfExists(Path.of(LEGACY_FILE));
   }
 
   @Test
@@ -170,7 +172,7 @@ class SaverTest {
     new File(TEST_SAVE_DIR).mkdirs();
 
     // Write garbage content
-    Files.writeString(Path.of(TEST_FILE), "This is not a serialized object stream");
+    Files.writeString(Path.of(TEST_FILE), "This is not a state document");
 
     // Load peers
     Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
@@ -178,5 +180,66 @@ class SaverTest {
     // Verify fallback to empty map
     assertNotNull(loadedPeers);
     assertTrue(loadedPeers.isEmpty());
+  }
+
+  /**
+   * T117 / user decision 2026-09-01: no migration path. A node that only finds the pre-T117
+   * Java-serialized peer list starts empty (it bootstraps from the known nodes) and keeps the file.
+   */
+  @Test
+  void legacyPeersDatIsNotReadAndNotDeleted() throws Exception {
+    new File(TEST_SAVE_DIR).mkdirs();
+    Files.write(Path.of(LEGACY_FILE), new byte[] {(byte) 0xac, (byte) 0xed, 0, 5});
+
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+
+    assertTrue(loadedPeers.isEmpty());
+    assertTrue(new File(LEGACY_FILE).exists(), "the legacy file must be kept, not deleted");
+  }
+
+  /** A peers file of a future schema version is treated like a corrupt one. */
+  @Test
+  void unknownFormatVersionLoadsEmpty() throws Exception {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peers.add(peer);
+    Saver.savePeers(peers);
+
+    String json = Files.readString(Path.of(TEST_FILE));
+    Files.writeString(Path.of(TEST_FILE), json.replace("\"version\":1", "\"version\":42"));
+
+    assertTrue(Saver.loadPeers().isEmpty());
+  }
+
+  /** No node state may be Java-serialized any more (DDD review §5, T117). */
+  @Test
+  void peersFileIsJsonNotAJavaObjectStream() throws Exception {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peers.add(peer);
+
+    Saver.savePeers(peers);
+
+    String written = Files.readString(Path.of(TEST_FILE));
+    assertTrue(written.startsWith("{\"format\":\"redpanda-peers\",\"version\":1"), written);
+    assertFalse(written.contains("im.redpanda"), "no fully qualified class name may be pinned");
+  }
+
+  /** The retry counter is part of the peer state and has to survive the roundtrip. */
+  @Test
+  void roundtripKeepsRetries() {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peer.retries = 3;
+    peers.add(peer);
+
+    Saver.savePeers(peers);
+
+    Peer loaded = Saver.loadPeers().get(peer.getKademliaId());
+    assertNotNull(loaded);
+    assertEquals(3, loaded.retries);
   }
 }

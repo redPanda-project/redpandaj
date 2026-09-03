@@ -1,7 +1,11 @@
 package im.redpanda.outbound;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import im.redpanda.core.StateFormat;
 import im.redpanda.crypt.Utils;
-import java.io.Serializable;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,11 +26,19 @@ public class OutboundHandleStore {
   private final OutboundStore owner;
   private final Map<String, HandleRecord> handles;
 
-  public static class HandleRecord implements Serializable {
-    private static final long serialVersionUID = 1L;
-    private byte[] ohAuthPublicKey;
-    private long createdAtMs;
-    private long expiresAtMs;
+  /**
+   * The lease a client holds on a mailbox of this node.
+   *
+   * <p>T117 (TD111): persisted as explicit JSON, not with MapDB's {@code Serializer.JAVA}. That
+   * serializer pinned this class's fully qualified name into {@code data/outbound_*.mapdb}, so the
+   * package moves of T118 would have left every node unable to read its own handle registry (DDD
+   * review §5). The map holding these records is named {@code handlesV2}, which is where the format
+   * version lives — the records themselves carry no header.
+   */
+  public static class HandleRecord {
+    private final byte[] ohAuthPublicKey;
+    private final long createdAtMs;
+    private final long expiresAtMs;
 
     public HandleRecord(byte[] ohAuthPublicKey, long createdAtMs, long expiresAtMs) {
       this.ohAuthPublicKey = ohAuthPublicKey;
@@ -44,6 +56,29 @@ public class OutboundHandleStore {
 
     public long getExpiresAtMs() {
       return expiresAtMs;
+    }
+
+    byte[] toJsonBytes() {
+      JsonObject json = new JsonObject();
+      json.addProperty("ohAuthPublicKey", StateFormat.base64(ohAuthPublicKey));
+      json.addProperty("createdAtMs", createdAtMs);
+      json.addProperty("expiresAtMs", expiresAtMs);
+      return new Gson().toJson(json).getBytes(StandardCharsets.UTF_8);
+    }
+
+    static HandleRecord fromJsonBytes(byte[] bytes) throws IOException {
+      JsonObject json;
+      try {
+        json =
+            com.google.gson.JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8))
+                .getAsJsonObject();
+      } catch (RuntimeException e) {
+        throw new IOException("handle record is not a JSON object", e);
+      }
+      return new HandleRecord(
+          StateFormat.optBase64(json, "ohAuthPublicKey"),
+          StateFormat.optLong(json, "createdAtMs", 0L),
+          StateFormat.optLong(json, "expiresAtMs", 0L));
     }
   }
 

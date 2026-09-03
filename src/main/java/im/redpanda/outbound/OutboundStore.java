@@ -4,6 +4,7 @@ import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +16,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
+import org.mapdb.DataInput2;
+import org.mapdb.DataOutput2;
 import org.mapdb.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,11 +51,14 @@ import org.slf4j.LoggerFactory;
  *       deliberately transient (they mean "deposits were rejected since the last fetch").
  * </ol>
  *
- * <p><b>Storage format:</b> the database file is {@code data/outbound_<port>.mapdb}. The pre-T109
- * files ({@code outbound_handles_<port>.mapdb}, {@code outbound_mailbox_<port>.mapdb}) are not read
- * and not migrated (user decision 2026-09-01: no users yet, so persisted node state may be dropped
- * — same rule as T117). A node that finds them logs a hint and starts with an empty registry;
- * clients heal via NOT_FOUND → re-register.
+ * <p><b>Storage format:</b> the database file is {@code data/outbound_v2_<port>.mapdb}; every value
+ * in it is explicit bytes (T117: the handle records are JSON in the {@code handlesV2} map, the
+ * mailbox items already were). Older files ({@code outbound_<port>.mapdb} of T109, and its two
+ * pre-T109 ancestors) are not read and not migrated (user decision 2026-09-01: no users yet, so
+ * persisted node state may be dropped). A node that finds them logs a hint and starts with an empty
+ * registry; clients heal via NOT_FOUND → re-register. The file name is bumped rather than only the
+ * map name, because keeping the mailbox items of a file whose handles are unreadable would break
+ * invariant 1 below.
  *
  * <p><b>In-memory mode</b> ({@link #inMemory()}, tests only) uses plain Java maps. It has the same
  * locking and the same projection rebuild, but no rollback — there is no database to roll back.
@@ -130,17 +136,32 @@ public final class OutboundStore {
     this.mailboxStore = new OutboundMailboxStore(this, itemMap, seqWatermarkMap);
   }
 
-  @SuppressWarnings("unchecked")
+  /**
+   * Explicit MapDB serializer for the handle records (T117/TD111): the record is stored as its own
+   * JSON bytes instead of a Java object stream, so no fully qualified class name reaches the disk.
+   */
+  private static final Serializer<HandleRecord> HANDLE_RECORD_SERIALIZER =
+      new Serializer<>() {
+        @Override
+        public void serialize(DataOutput2 out, HandleRecord value) throws IOException {
+          Serializer.BYTE_ARRAY.serialize(out, value.toJsonBytes());
+        }
+
+        @Override
+        public HandleRecord deserialize(DataInput2 in, int available) throws IOException {
+          return HandleRecord.fromJsonBytes(Serializer.BYTE_ARRAY.deserialize(in, available));
+        }
+      };
+
   private static Map<String, HandleRecord> openHandles(DB db) {
-    return (Map<String, HandleRecord>)
-        db.hashMap("handles", Serializer.STRING, Serializer.JAVA).createOrOpen();
+    return db.hashMap("handlesV2", Serializer.STRING, HANDLE_RECORD_SERIALIZER).createOrOpen();
   }
 
   /** Opens (or creates) the outbound store of this node under {@code data/}. */
   public static OutboundStore forContext(ServerContext context) {
     int port = context.getPort();
     logStaleLegacyStores(port);
-    return new OutboundStore("data/outbound_" + port + ".mapdb");
+    return new OutboundStore("data/outbound_v2_" + port + ".mapdb");
   }
 
   /** In-memory store without persistence — for tests. */
@@ -297,12 +318,13 @@ public final class OutboundStore {
   private static void logStaleLegacyStores(int port) {
     for (String legacy :
         new String[] {
-          "data/outbound_handles_" + port + ".mapdb", "data/outbound_mailbox_" + port + ".mapdb"
+          "data/outbound_handles_" + port + ".mapdb",
+          "data/outbound_mailbox_" + port + ".mapdb",
+          "data/outbound_" + port + ".mapdb"
         }) {
       if (Files.exists(Path.of(legacy))) {
         logger.info(
-            "ignoring stale pre-T109 outbound store {}: it is no longer read and can be deleted",
-            legacy);
+            "ignoring stale outbound store {}: it is no longer read and can be deleted", legacy);
       }
     }
   }
