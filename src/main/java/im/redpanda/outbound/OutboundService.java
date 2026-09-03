@@ -59,6 +59,7 @@ public class OutboundService {
 
   private static final byte[] EMPTY_SESSION_TAG = new byte[0];
 
+  private final OutboundStore store;
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
   private final OutboundAuth auth;
@@ -105,9 +106,14 @@ public class OutboundService {
   private final ConcurrentHashMap<String, WeakReference<Peer>> subscriptions =
       new ConcurrentHashMap<>();
 
-  public OutboundService(OutboundHandleStore handleStore, OutboundMailboxStore mailboxStore) {
-    this.handleStore = handleStore;
-    this.mailboxStore = mailboxStore;
+  /**
+   * @param store T109: the single transactional owner of the handle registry and the mailboxes.
+   *     Both facades come from it, so a revoke removes the handle and its mailbox in one commit.
+   */
+  public OutboundService(OutboundStore store) {
+    this.store = store;
+    this.handleStore = store.handles();
+    this.mailboxStore = store.mailbox();
     this.auth = new OutboundAuth();
   }
 
@@ -288,8 +294,8 @@ public class OutboundService {
       return;
     }
 
-    handleStore.remove(ohId);
-    mailboxStore.deleteAll(ohId);
+    // T109: one transaction — handle and mailbox are removed together or not at all.
+    store.removeHandle(ohId);
 
     sendRevokeResponse(peer, Status.OK);
   }

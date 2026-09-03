@@ -1,54 +1,55 @@
 package im.redpanda.outbound;
 
-import im.redpanda.core.Log;
-import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.v1.MailItem;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import org.mapdb.DB;
-import org.mapdb.DBMaker;
-import org.mapdb.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Mailbox facade of the mailbox context: the stored items of every locally hosted OH.
+ *
+ * <p>T109: this class no longer owns a database. It is one of the two facades over the single
+ * {@link OutboundStore} database; every write runs inside the owner's transaction, so an item write
+ * and the matching handle write of the same operation commit together (or not at all).
+ */
 public class OutboundMailboxStore {
 
   private static final Logger logger = LoggerFactory.getLogger(OutboundMailboxStore.class);
 
-  private DB db;
+  private final OutboundStore owner;
 
   /**
    * Composite-key mailbox: key = hex(ohId) + ":" + zero-padded-19-digit-seqId, value =
    * MailItem.toByteArray(). BTreeMap gives lexicographic sort enabling efficient prefix range
    * queries per OH.
    */
-  private NavigableMap<String, byte[]> mailboxItems;
-
-  /** In-memory sequence counters: ohId_hex → next sequence id (1-based). */
-  private final ConcurrentHashMap<String, AtomicLong> seqCounters = new ConcurrentHashMap<>();
+  private final NavigableMap<String, byte[]> mailboxItems;
 
   /**
    * Persisted last-assigned sequence id per mailbox: ohId_hex → last assigned sequence id (T40).
    * Written through on every assignment so the sequence keeps climbing across a node restart even
    * after all items of a mailbox have been acked and deleted. Without it the counter would restart
    * at 1 and any light client holding a higher persisted cursor would never see later deposits.
-   * {@code null} in the in-memory-only (test) mode where {@code db == null}.
    */
-  private Map<String, Long> seqCountersPersisted;
+  private final Map<String, Long> seqCountersPersisted;
+
+  /**
+   * In-memory sequence counters: ohId_hex → next sequence id (1-based). Projection of {@link
+   * #seqCountersPersisted} and the surviving items, see {@link #rebuildProjections()}.
+   */
+  private final ConcurrentHashMap<String, AtomicLong> seqCounters = new ConcurrentHashMap<>();
 
   /**
    * In-memory byte usage per mailbox: ohId_hex → total stored bytes (serialized MailItem sizes).
-   * Rebuilt from the persisted map on startup, updated on every add/delete.
+   * Projection of the stored items, see {@link #rebuildProjections()}.
    */
   private final ConcurrentHashMap<String, AtomicLong> byteCounters = new ConcurrentHashMap<>();
 
@@ -59,10 +60,11 @@ public class OutboundMailboxStore {
    * <p>MS02b note: before MS02b this flag meant "oldest items were evicted (FIFO)". With reject-new
    * eviction nothing stored is ever displaced; the flag now signals "deposits were rejected", so
    * the client still learns that messages may be missing.
+   *
+   * <p>Deliberately not a projection of the stored state: it describes what happened since the last
+   * fetch, so it is neither persisted nor restored by {@link #rebuildProjections()}.
    */
   private final Set<String> overflowFlags = ConcurrentHashMap.newKeySet();
-
-  private final String dbPath;
 
   static final int MAX_ITEMS_PER_MAILBOX = 500;
 
@@ -89,66 +91,47 @@ public class OutboundMailboxStore {
 
   private static final String SEQ_FMT = "%019d";
 
-  /** Constructor for testing (in-memory only). */
-  public OutboundMailboxStore() {
-    this.dbPath = null;
-    this.mailboxItems = new TreeMap<>();
+  OutboundMailboxStore(
+      OutboundStore owner,
+      NavigableMap<String, byte[]> mailboxItems,
+      Map<String, Long> seqCountersPersisted) {
+    this.owner = owner;
+    this.mailboxItems = mailboxItems;
+    this.seqCountersPersisted = seqCountersPersisted;
+    rebuildProjections();
   }
 
-  public OutboundMailboxStore(ServerContext context) {
-    this.dbPath = "data/outbound_mailbox_" + context.getPort() + ".mapdb";
-    init();
-  }
-
-  /** Test constructor: file-backed store at an explicit path (restart/persistence tests). */
-  OutboundMailboxStore(String dbPath) {
-    this.dbPath = dbPath;
-    init();
-  }
-
-  @SuppressWarnings("unchecked")
-  private void init() {
-    if (dbPath == null) return;
-    try {
-      Path parent = Path.of(dbPath).getParent();
-      if (parent != null) {
-        Files.createDirectories(parent);
-      }
-      db = DBMaker.fileDB(dbPath).transactionEnable().make();
-      mailboxItems =
-          db.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY).createOrOpen();
-      seqCountersPersisted =
-          db.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG).createOrOpen();
-      // Restore in-memory sequence and byte counters from persisted entries
-      for (Map.Entry<String, byte[]> entry : mailboxItems.entrySet()) {
-        String key = entry.getKey();
-        int sep = key.lastIndexOf(':');
-        if (sep > 0) {
-          String ohKey = key.substring(0, sep);
-          long seqId = Long.parseLong(key.substring(sep + 1));
-          seqCounters
-              .computeIfAbsent(ohKey, k -> new AtomicLong(1L))
-              .updateAndGet(current -> Math.max(current, seqId + 1));
-          byteCounters
-              .computeIfAbsent(ohKey, k -> new AtomicLong(0L))
-              .addAndGet(entry.getValue().length);
-        }
-      }
-      // T40: restore the sequence counter from the persisted last-assigned id as well. This is the
-      // second, authoritative input: max(persistedLastAssigned + 1, maxSurvivingItemSeq + 1). A
-      // fully-acked mailbox has no surviving items, so only the persisted value keeps the sequence
-      // from restarting at 1 after a restart.
-      for (Map.Entry<String, Long> entry : seqCountersPersisted.entrySet()) {
-        String ohKey = entry.getKey();
-        long lastAssigned = entry.getValue();
+  /**
+   * (Re-)derives the in-memory counters from the persisted maps. Called on open and after a
+   * rollback — the two moments where the projections may not match the stored state.
+   *
+   * <p>The sequence counter has two inputs: {@code max(persistedLastAssigned + 1,
+   * maxSurvivingItemSeq + 1)} (T40). A fully-acked mailbox has no surviving items, so only the
+   * persisted value keeps the sequence from restarting at 1 after a restart.
+   */
+  void rebuildProjections() {
+    seqCounters.clear();
+    byteCounters.clear();
+    for (Map.Entry<String, byte[]> entry : mailboxItems.entrySet()) {
+      String key = entry.getKey();
+      int sep = key.lastIndexOf(':');
+      if (sep > 0) {
+        String ohKey = key.substring(0, sep);
+        long seqId = Long.parseLong(key.substring(sep + 1));
         seqCounters
             .computeIfAbsent(ohKey, k -> new AtomicLong(1L))
-            .updateAndGet(current -> Math.max(current, lastAssigned + 1));
+            .updateAndGet(current -> Math.max(current, seqId + 1));
+        byteCounters
+            .computeIfAbsent(ohKey, k -> new AtomicLong(0L))
+            .addAndGet(entry.getValue().length);
       }
-    } catch (Exception e) {
-      Log.sentry(e);
-      logger.error("Failed to initialize OutboundMailboxStore DB", e);
-      mailboxItems = new TreeMap<>();
+    }
+    for (Map.Entry<String, Long> entry : seqCountersPersisted.entrySet()) {
+      String ohKey = entry.getKey();
+      long lastAssigned = entry.getValue();
+      seqCounters
+          .computeIfAbsent(ohKey, k -> new AtomicLong(1L))
+          .updateAndGet(current -> Math.max(current, lastAssigned + 1));
     }
   }
 
@@ -168,10 +151,6 @@ public class OutboundMailboxStore {
     return ohKey + ";";
   }
 
-  private long nextSeqId(String ohKey) {
-    return seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).getAndIncrement();
-  }
-
   private long countItems(String ohKey) {
     return mailboxItems.subMap(ohPrefix(ohKey), ohCeiling(ohKey)).size();
   }
@@ -185,39 +164,39 @@ public class OutboundMailboxStore {
    *
    * @return {@link AddResult#ADDED} or the rejection reason
    */
-  public synchronized AddResult addMessage(byte[] ohId, MailItem item) {
+  public AddResult addMessage(byte[] ohId, MailItem item) {
     String ohKey = Utils.bytesToHexString(ohId);
+    return owner.tx(
+        () -> {
+          long seqId = seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).get();
+          byte[] serialized = item.toBuilder().setSequenceId(seqId).build().toByteArray();
 
-    long seqId = seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).get();
-    byte[] serialized = item.toBuilder().setSequenceId(seqId).build().toByteArray();
+          if (serialized.length > MAX_ITEM_BYTES) {
+            return AddResult.REJECTED_ITEM_TOO_LARGE;
+          }
+          if (countItems(ohKey) >= MAX_ITEMS_PER_MAILBOX) {
+            overflowFlags.add(ohKey);
+            return AddResult.REJECTED_MAILBOX_FULL;
+          }
+          AtomicLong usedBytes = byteCounters.computeIfAbsent(ohKey, k -> new AtomicLong(0L));
+          if (usedBytes.get() + serialized.length > MAX_MAILBOX_BYTES) {
+            overflowFlags.add(ohKey);
+            return AddResult.REJECTED_BYTE_QUOTA;
+          }
 
-    if (serialized.length > MAX_ITEM_BYTES) {
-      return AddResult.REJECTED_ITEM_TOO_LARGE;
-    }
-    if (countItems(ohKey) >= MAX_ITEMS_PER_MAILBOX) {
-      overflowFlags.add(ohKey);
-      return AddResult.REJECTED_MAILBOX_FULL;
-    }
-    AtomicLong usedBytes = byteCounters.computeIfAbsent(ohKey, k -> new AtomicLong(0L));
-    if (usedBytes.get() + serialized.length > MAX_MAILBOX_BYTES) {
-      overflowFlags.add(ohKey);
-      return AddResult.REJECTED_BYTE_QUOTA;
-    }
+          nextSeqId(ohKey);
+          mailboxItems.put(itemKey(ohKey, seqId), serialized);
+          usedBytes.addAndGet(serialized.length);
+          // T40: persist the just-assigned sequence id so the counter survives a restart even after
+          // the item is later acked and deleted. Rides the same commit as the item write.
+          seqCountersPersisted.put(ohKey, seqId);
+          owner.markDirty();
+          return AddResult.ADDED;
+        });
+  }
 
-    nextSeqId(ohKey);
-    mailboxItems.put(itemKey(ohKey, seqId), serialized);
-    usedBytes.addAndGet(serialized.length);
-    if (db != null) {
-      // T40: persist the just-assigned sequence id so the counter survives a restart even after
-      // the item is later acked and deleted. Rides the same commit as the item write. The null
-      // check covers a partially failed init() (db opened, map creation failed) — the store then
-      // degrades to the pre-T40 in-memory counter behavior instead of throwing.
-      if (seqCountersPersisted != null) {
-        seqCountersPersisted.put(ohKey, seqId);
-      }
-      db.commit();
-    }
-    return AddResult.ADDED;
+  private long nextSeqId(String ohKey) {
+    return seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).getAndIncrement();
   }
 
   /**
@@ -226,21 +205,25 @@ public class OutboundMailboxStore {
    *
    * @param afterSequence 0 = from start; otherwise the last acknowledged sequence_id
    */
-  public synchronized List<MailItem> fetchMessages(byte[] ohId, int limit, long afterSequence) {
+  public List<MailItem> fetchMessages(byte[] ohId, int limit, long afterSequence) {
     String ohKey = Utils.bytesToHexString(ohId);
-    String fromKey = itemKey(ohKey, afterSequence + 1);
-    NavigableMap<String, byte[]> sub = mailboxItems.subMap(fromKey, true, ohCeiling(ohKey), false);
+    return owner.read(
+        () -> {
+          String fromKey = itemKey(ohKey, afterSequence + 1);
+          NavigableMap<String, byte[]> sub =
+              mailboxItems.subMap(fromKey, true, ohCeiling(ohKey), false);
 
-    List<MailItem> result = new ArrayList<>();
-    for (byte[] bytes : sub.values()) {
-      if (result.size() >= limit) break;
-      try {
-        result.add(MailItem.parseFrom(bytes));
-      } catch (Exception e) {
-        logger.error("Failed to parse MailItem", e);
-      }
-    }
-    return result;
+          List<MailItem> result = new ArrayList<>();
+          for (byte[] bytes : sub.values()) {
+            if (result.size() >= limit) break;
+            try {
+              result.add(MailItem.parseFrom(bytes));
+            } catch (Exception e) {
+              logger.error("Failed to parse MailItem", e);
+            }
+          }
+          return result;
+        });
   }
 
   /** Legacy overload — fetches from start (afterSequence = 0). */
@@ -249,52 +232,60 @@ public class OutboundMailboxStore {
   }
 
   /**
-   * Deletes all items with {@code sequence_id <= sequenceId} for the given OH and commits.
+   * Deletes all items with {@code sequence_id <= sequenceId} for the given OH.
    *
    * <p>Used by AckFetch to implement delete-after-acknowledge.
    */
-  public synchronized void deleteUpTo(byte[] ohId, long sequenceId) {
+  public void deleteUpTo(byte[] ohId, long sequenceId) {
     String ohKey = Utils.bytesToHexString(ohId);
-    String fromKey = ohPrefix(ohKey);
-    String toKey = itemKey(ohKey, sequenceId);
-    NavigableMap<String, byte[]> toDelete = mailboxItems.subMap(fromKey, true, toKey, true);
-    Iterator<Map.Entry<String, byte[]>> it = toDelete.entrySet().iterator();
-    boolean changed = false;
-    long freedBytes = 0;
-    while (it.hasNext()) {
-      freedBytes += it.next().getValue().length;
-      it.remove();
-      changed = true;
-    }
-    subtractBytes(ohKey, freedBytes);
-    if (db != null && changed) db.commit();
+    owner.tx(
+        () -> {
+          String fromKey = ohPrefix(ohKey);
+          String toKey = itemKey(ohKey, sequenceId);
+          NavigableMap<String, byte[]> toDelete = mailboxItems.subMap(fromKey, true, toKey, true);
+          Iterator<Map.Entry<String, byte[]>> it = toDelete.entrySet().iterator();
+          long freedBytes = 0;
+          while (it.hasNext()) {
+            freedBytes += it.next().getValue().length;
+            it.remove();
+          }
+          if (freedBytes > 0) {
+            subtractBytes(ohKey, freedBytes);
+            owner.markDirty();
+          }
+        });
   }
 
   /**
-   * Deletes all items for the given OH identified by its hex key. Used during expiry cleanup where
-   * the hex key is already available, avoiding redundant re-encoding.
+   * Deletes all items for the given OH identified by its hex key. Package-private: dropping a whole
+   * mailbox is only correct together with its handle, which is what {@link
+   * OutboundStore#removeHandle(byte[])} does in one transaction.
    */
-  public synchronized void deleteAllByHexKey(String ohIdHex) {
-    NavigableMap<String, byte[]> sub =
-        mailboxItems.subMap(ohPrefix(ohIdHex), true, ohCeiling(ohIdHex), false);
-    Iterator<String> it = sub.keySet().iterator();
-    boolean changed = false;
-    while (it.hasNext()) {
-      it.next();
-      it.remove();
-      changed = true;
-    }
-    overflowFlags.remove(ohIdHex);
-    byteCounters.remove(ohIdHex);
-    // T40: this is the handle-expiry path — the whole mailbox is gone and the client is forced
-    // through NOT_FOUND, which resets its cursor to 0 on re-register. Drop the sequence counter so
-    // a re-registered mailbox starts fresh at 1. Only removed here, never anywhere else.
-    seqCounters.remove(ohIdHex);
-    boolean counterRemoved = false;
-    if (seqCountersPersisted != null) {
-      counterRemoved = seqCountersPersisted.remove(ohIdHex) != null;
-    }
-    if (db != null && (changed || counterRemoved)) db.commit();
+  void deleteAllByHexKey(String ohIdHex) {
+    owner.tx(
+        () -> {
+          NavigableMap<String, byte[]> sub =
+              mailboxItems.subMap(ohPrefix(ohIdHex), true, ohCeiling(ohIdHex), false);
+          Iterator<String> it = sub.keySet().iterator();
+          boolean changed = false;
+          while (it.hasNext()) {
+            it.next();
+            it.remove();
+            changed = true;
+          }
+          overflowFlags.remove(ohIdHex);
+          byteCounters.remove(ohIdHex);
+          // T40: this is the handle-removal path — the whole mailbox is gone and the client is
+          // forced through NOT_FOUND, which resets its cursor to 0 on re-register. Drop the
+          // sequence counter so a re-registered mailbox starts fresh at 1. Only removed here.
+          seqCounters.remove(ohIdHex);
+          // Separate statement on purpose: inside the || the removal would be short-circuited away
+          // whenever items were deleted, leaving the persisted watermark behind.
+          boolean counterRemoved = seqCountersPersisted.remove(ohIdHex) != null;
+          if (changed || counterRemoved) {
+            owner.markDirty();
+          }
+        });
   }
 
   /**
@@ -302,11 +293,14 @@ public class OutboundMailboxStore {
    * detect a stale client cursor that is higher than anything ever stored — a symptom of a
    * pre-persistence node restart — and heal it by resetting to 0.
    */
-  public synchronized long lastAssignedSeq(byte[] ohId) {
+  public long lastAssignedSeq(byte[] ohId) {
     String ohKey = Utils.bytesToHexString(ohId);
-    AtomicLong counter = seqCounters.get(ohKey);
-    // seqCounters holds the next (1-based) id to assign, so last assigned = next - 1.
-    return counter == null ? 0L : counter.get() - 1;
+    return owner.read(
+        () -> {
+          AtomicLong counter = seqCounters.get(ohKey);
+          // seqCounters holds the next (1-based) id to assign, so last assigned = next - 1.
+          return counter == null ? 0L : counter.get() - 1;
+        });
   }
 
   /** Reduces the in-memory byte counter for an OH, never going below zero. */
@@ -320,9 +314,14 @@ public class OutboundMailboxStore {
     }
   }
 
-  /** Deletes all items for the given OH. */
-  public void deleteAll(byte[] ohId) {
-    deleteAllByHexKey(Utils.bytesToHexString(ohId));
+  /** Bytes currently accounted for this OH — the in-memory projection, for tests. */
+  long usedBytes(byte[] ohId) {
+    String ohKey = Utils.bytesToHexString(ohId);
+    return owner.read(
+        () -> {
+          AtomicLong counter = byteCounters.get(ohKey);
+          return counter == null ? 0L : counter.get();
+        });
   }
 
   /**
@@ -332,11 +331,5 @@ public class OutboundMailboxStore {
    */
   public boolean checkAndClearOverflow(byte[] ohId) {
     return overflowFlags.remove(Utils.bytesToHexString(ohId));
-  }
-
-  public void close() {
-    if (db != null && !db.isClosed()) {
-      db.close();
-    }
   }
 }

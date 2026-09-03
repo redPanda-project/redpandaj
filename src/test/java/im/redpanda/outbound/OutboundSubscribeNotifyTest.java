@@ -32,9 +32,10 @@ class OutboundSubscribeNotifyTest {
 
   @BeforeEach
   void setUp() {
-    handleStore = new OutboundHandleStore();
-    mailboxStore = new OutboundMailboxStore();
-    service = new OutboundService(handleStore, mailboxStore);
+    OutboundStore store = OutboundStore.inMemory();
+    handleStore = store.handles();
+    mailboxStore = store.mailbox();
+    service = new OutboundService(store);
 
     peer = newConnectedPeer(12345);
     clientNode = NodeId.generateWithSimpleKey();

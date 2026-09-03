@@ -11,6 +11,7 @@ import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RoutingAck;
 import java.nio.ByteBuffer;
@@ -58,20 +59,21 @@ class RoutingAckRouterTest {
   @BeforeEach
   void setUp() {
     bobHost = ServerContext.buildDefaultServerContext();
-    bobHandles = new OutboundHandleStore();
-    bobMailbox = new OutboundMailboxStore();
-    bobHost.setOutboundService(new OutboundService(bobHandles, bobMailbox));
+    OutboundStore bobStore = OutboundStore.inMemory();
+    bobHandles = bobStore.handles();
+    bobMailbox = bobStore.mailbox();
+    bobHost.setOutboundService(new OutboundService(bobStore));
     bobProcessor = new InboundCommandProcessor(bobHost);
 
     relay = ServerContext.buildDefaultServerContext();
-    relay.setOutboundService(
-        new OutboundService(new OutboundHandleStore(), new OutboundMailboxStore()));
+    relay.setOutboundService(new OutboundService(OutboundStore.inMemory()));
     relayProcessor = new InboundCommandProcessor(relay);
 
     aliceHost = ServerContext.buildDefaultServerContext();
-    OutboundHandleStore aliceHandles = new OutboundHandleStore();
-    aliceMailbox = new OutboundMailboxStore();
-    aliceHost.setOutboundService(new OutboundService(aliceHandles, aliceMailbox));
+    OutboundStore aliceStore = OutboundStore.inMemory();
+    OutboundHandleStore aliceHandles = aliceStore.handles();
+    aliceMailbox = aliceStore.mailbox();
+    aliceHost.setOutboundService(new OutboundService(aliceStore));
     aliceProcessor = new InboundCommandProcessor(aliceHost);
 
     bobOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);

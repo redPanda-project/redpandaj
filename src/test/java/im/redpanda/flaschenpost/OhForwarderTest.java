@@ -14,6 +14,7 @@ import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;
@@ -51,15 +52,17 @@ class OhForwarderTest {
   @BeforeEach
   void setUp() {
     nodeA = ServerContext.buildDefaultServerContext();
-    handleStoreA = new OutboundHandleStore();
-    mailboxA = new OutboundMailboxStore();
-    nodeA.setOutboundService(new OutboundService(handleStoreA, mailboxA));
+    OutboundStore storeA = OutboundStore.inMemory();
+    handleStoreA = storeA.handles();
+    mailboxA = storeA.mailbox();
+    nodeA.setOutboundService(new OutboundService(storeA));
     processorA = new InboundCommandProcessor(nodeA);
 
     nodeB = ServerContext.buildDefaultServerContext();
-    handleStoreB = new OutboundHandleStore();
-    mailboxB = new OutboundMailboxStore();
-    nodeB.setOutboundService(new OutboundService(handleStoreB, mailboxB));
+    OutboundStore storeB = OutboundStore.inMemory();
+    handleStoreB = storeB.handles();
+    mailboxB = storeB.mailbox();
+    nodeB.setOutboundService(new OutboundService(storeB));
     processorB = new InboundCommandProcessor(nodeB);
 
     ohId = new byte[KademliaId.ID_LENGTH_BYTES];

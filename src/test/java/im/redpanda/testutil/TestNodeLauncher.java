@@ -22,9 +22,8 @@ import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.jobs.SaveJobs;
 import im.redpanda.jobs.ServerRestartJob;
 import im.redpanda.jobs.UpTimeReporterJob;
-import im.redpanda.outbound.OutboundHandleStore;
-import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
+import im.redpanda.outbound.OutboundStore;
 import im.redpanda.store.NodeStore;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -68,12 +67,9 @@ public final class TestNodeLauncher {
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
 
     // Outbound Service V1 Init
-    OutboundHandleStore ohStore = new OutboundHandleStore(serverContext);
-    OutboundMailboxStore mbStore = new OutboundMailboxStore(serverContext);
-    OutboundService outService = new OutboundService(ohStore, mbStore);
-    serverContext.setOutboundHandleStore(ohStore);
-    serverContext.setOutboundMailboxStore(mbStore);
-    serverContext.setOutboundService(outService);
+    OutboundStore outboundStore = OutboundStore.forContext(serverContext);
+    serverContext.setOutboundStore(outboundStore);
+    serverContext.setOutboundService(new OutboundService(outboundStore));
 
     Runtime.getRuntime()
         .addShutdownHook(new Thread(() -> shutdown(serverContext, connectionHandler)));

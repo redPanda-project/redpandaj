@@ -21,7 +21,7 @@ public class OutboundMailboxStoreTest {
 
   @BeforeEach
   void setUp() {
-    store = new OutboundMailboxStore(); // Uses in-memory
+    store = OutboundStore.inMemory().mailbox();
     ohId = Hex.decode("123456");
   }
 
@@ -148,7 +148,7 @@ public class OutboundMailboxStoreTest {
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
     store.addMessage(ohId2, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("b")).build());
 
-    store.deleteAll(ohId);
+    store.deleteAllByHexKey(Hex.toHexString(ohId));
 
     assertThat(store.fetchMessages(ohId, 10, 0)).isEmpty();
     assertThat(store.fetchMessages(ohId2, 10, 0)).hasSize(1);
@@ -264,8 +264,9 @@ public class OutboundMailboxStoreTest {
     String path =
         new File(newFolder(tempFolder, "junit"), "outbound_mailbox.mapdb").getAbsolutePath();
 
-    OutboundMailboxStore first = new OutboundMailboxStore(path);
+    OutboundStore firstStore = OutboundStore.fileBacked(path);
     try {
+      OutboundMailboxStore first = firstStore.mailbox();
       first.addMessage(ohId, msg("m1"));
       List<MailItem> stored = first.fetchMessages(ohId, 10, 0);
       assertThat(stored).hasSize(1);
@@ -275,18 +276,19 @@ public class OutboundMailboxStoreTest {
       first.deleteUpTo(ohId, 1);
       assertThat(first.fetchMessages(ohId, 10, 0)).isEmpty();
     } finally {
-      first.close();
+      firstStore.close();
     }
 
     // Reopen on the same path: the counter must resume at 2, not restart at 1
-    OutboundMailboxStore reopened = new OutboundMailboxStore(path);
+    OutboundStore reopenedStore = OutboundStore.fileBacked(path);
     try {
+      OutboundMailboxStore reopened = reopenedStore.mailbox();
       reopened.addMessage(ohId, msg("m2"));
       List<MailItem> stored = reopened.fetchMessages(ohId, 10, 0);
       assertThat(stored).hasSize(1);
       assertThat(stored.get(0).getSequenceId()).isEqualTo(2L);
     } finally {
-      reopened.close();
+      reopenedStore.close();
     }
   }
 
@@ -297,8 +299,9 @@ public class OutboundMailboxStoreTest {
     String path =
         new File(newFolder(tempFolder, "junit"), "outbound_mailbox.mapdb").getAbsolutePath();
 
-    OutboundMailboxStore first = new OutboundMailboxStore(path);
+    OutboundStore firstStore = OutboundStore.fileBacked(path);
     try {
+      OutboundMailboxStore first = firstStore.mailbox();
       first.addMessage(ohId, msg("m1"));
       first.addMessage(ohId, msg("m2"));
       assertThat(first.lastAssignedSeq(ohId)).isEqualTo(2L);
@@ -307,18 +310,19 @@ public class OutboundMailboxStoreTest {
       first.deleteAllByHexKey(Hex.toHexString(ohId));
       assertThat(first.lastAssignedSeq(ohId)).isZero();
     } finally {
-      first.close();
+      firstStore.close();
     }
 
     // A fresh store on the same path assigns seq 1 again for that OH
-    OutboundMailboxStore reopened = new OutboundMailboxStore(path);
+    OutboundStore reopenedStore = OutboundStore.fileBacked(path);
     try {
+      OutboundMailboxStore reopened = reopenedStore.mailbox();
       reopened.addMessage(ohId, msg("m3"));
       List<MailItem> stored = reopened.fetchMessages(ohId, 10, 0);
       assertThat(stored).hasSize(1);
       assertThat(stored.get(0).getSequenceId()).isEqualTo(1L);
     } finally {
-      reopened.close();
+      reopenedStore.close();
     }
   }
 

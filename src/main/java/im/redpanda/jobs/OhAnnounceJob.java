@@ -3,7 +3,7 @@ package im.redpanda.jobs;
 import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.OhDht;
-import im.redpanda.outbound.OutboundHandleStore;
+import im.redpanda.outbound.OutboundStore;
 import java.time.Duration;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
@@ -63,11 +63,11 @@ public class OhAnnounceJob extends Job {
     // symmetric jitter: 30 min ± 5 min
     setReRunDelay(BASE_PERIOD_MS - PERIOD_JITTER_MS + rand.nextLong(2 * PERIOD_JITTER_MS + 1));
 
-    OutboundHandleStore handleStore = serverContext.getOutboundHandleStore();
-    if (handleStore == null) {
+    OutboundStore outboundStore = serverContext.getOutboundStore();
+    if (outboundStore == null) {
       return;
     }
-    List<byte[]> ohIds = handleStore.listActiveOhIds(System.currentTimeMillis());
+    List<byte[]> ohIds = outboundStore.handles().listActiveOhIds(System.currentTimeMillis());
     for (byte[] ohId : ohIds) {
       announceSoon(serverContext, ohId);
     }
