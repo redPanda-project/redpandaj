@@ -174,7 +174,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   void flaschenpostPut_withoutOhId_usesLegacyPathWithoutError() {
     // Build GMAck payload with no oh_id field – mimics pre-MS01 behavior
     ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
-    ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
+    ack.put(im.redpanda.routing.GMType.ACK.getId());
     ack.putInt(4);
     ack.putInt(55);
     ack.flip();
@@ -275,7 +275,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     byte[] extraData = "legacy-payload-body".getBytes(StandardCharsets.UTF_8);
     int overallLen = 4 + KademliaId.ID_LENGTH_BYTES + extraData.length;
     ByteBuffer gm = ByteBuffer.allocate(1 + 4 + KademliaId.ID_LENGTH_BYTES + extraData.length);
-    gm.put(im.redpanda.flaschenpost.GMType.GARLIC_MESSAGE.getId());
+    gm.put(im.redpanda.routing.GMType.GARLIC_MESSAGE.getId());
     gm.putInt(overallLen);
     ohId.writeTo(gm);
     gm.put(extraData);
@@ -426,7 +426,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   @Test
   void flaschenpostPut_emptyOhIdWithEncryptedAckLikePayload_isDroppedWithoutThrowing() {
     byte[] encryptedPayload = new byte[48];
-    encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
+    encryptedPayload[0] = im.redpanda.routing.GMType.ACK.getId(); // 0x04
     for (int i = 1; i < encryptedPayload.length; i++) {
       encryptedPayload[i] = (byte) (0x40 + i);
     }
@@ -455,7 +455,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   @Test
   void flaschenpostPut_emptyOhIdWithInvalidContent_lightClientWantResponse_getsBadRequest() {
     byte[] encryptedPayload = new byte[48];
-    encryptedPayload[0] = im.redpanda.flaschenpost.GMType.ACK.getId(); // 0x04
+    encryptedPayload[0] = im.redpanda.routing.GMType.ACK.getId(); // 0x04
     for (int i = 1; i < encryptedPayload.length; i++) {
       encryptedPayload[i] = (byte) (0x40 + i);
     }
@@ -572,7 +572,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
             .setContent(copyFrom(new byte[32]))
             .setOhId(ohId.toByteString())
             .setWantResponse(true)
-            .setHopCount(im.redpanda.flaschenpost.OhForwarder.MAX_HOPS)
+            .setHopCount(im.redpanda.routing.OhForwarder.MAX_HOPS)
             .build();
     byte[] putData = putMsg.toByteArray();
 
@@ -660,7 +660,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   /** Builds a minimal GMAck payload: [1 type][4 len][4 ackId]. */
   private static byte[] buildAckPayload(int ackId) {
     ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
-    ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
+    ack.put(im.redpanda.routing.GMType.ACK.getId());
     ack.putInt(4);
     ack.putInt(ackId);
     ack.flip();

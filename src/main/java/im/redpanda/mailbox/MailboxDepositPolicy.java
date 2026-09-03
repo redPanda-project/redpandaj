@@ -4,10 +4,10 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.GMParser;
-import im.redpanda.flaschenpost.OhForwarder;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.routing.GMParser;
+import im.redpanda.routing.OhForwarder;
 import lombok.extern.slf4j.Slf4j;
 
 /**

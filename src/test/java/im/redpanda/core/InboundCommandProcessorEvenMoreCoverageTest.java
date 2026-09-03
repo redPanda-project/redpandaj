@@ -186,7 +186,7 @@ class InboundCommandProcessorEvenMoreCoverageTest {
 
     // Build a minimal, valid GMAck payload: [ACK][len=4][ackId]
     ByteBuffer ack = ByteBuffer.allocate(1 + 4 + 4);
-    ack.put(im.redpanda.flaschenpost.GMType.ACK.getId());
+    ack.put(im.redpanda.routing.GMType.ACK.getId());
     ack.putInt(4);
     ack.putInt(42);
     ack.flip();

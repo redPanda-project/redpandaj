@@ -40,7 +40,7 @@ public final class Command {
 
   /**
    * MS04: fixed-size (2048 byte) multi-hop garlic packet, see {@link
-   * im.redpanda.flaschenpost.FlaschenpostV2}. Framed like every payload command: {@code
+   * im.redpanda.routing.FlaschenpostV2}. Framed like every payload command: {@code
    * [cmd][len:4][packet]}.
    */
   public static final byte FLASCHENPOST_V2 = (byte) 142;
