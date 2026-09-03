@@ -63,9 +63,7 @@ public class JarUpdateHandler {
       logger.warn("rejecting update timestamp too far in the future: {}", othersTimestamp);
       return 1 + 8;
     }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
+    long floor = updateFloor();
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
       System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
     }
@@ -90,6 +88,42 @@ public class JarUpdateHandler {
       Server.threadPool.submit(reporting("update-request-content-download", runnable));
     }
     return 1 + 8;
+  }
+
+  /**
+   * The oldest update timestamp this node still accepts. Both the offer (command 10) and the
+   * delivery (command 12) check against it, so an unsolicited push is rejected just like a pull.
+   *
+   * <p>Normally that is the timestamp of the update we are running, floored by the build-time
+   * constant {@link Updater#MIN_UPDATE_TIMESTAMP_MS}. <b>Without a recorded timestamp</b> ({@code
+   * -1}) the mtime of the jar we are actually running takes its place — that is the fix for the
+   * T117 deploy of 2026-09-03: the new storage format deliberately does not read the pre-T117
+   * settings file, so every node came up with {@code updateTimestamp == -1} and the floor collapsed
+   * to the 2026-07-11 constant. Both Hetzner nodes then accepted, within one second of starting, a
+   * correctly signed but 75 minutes OLDER update from a peer still running the previous jar and
+   * downgraded themselves.
+   *
+   * <p>The mtime works because a signature timestamp is the build time of that jar, and a jar
+   * cannot have been installed here before it was built: {@code signature timestamp <= install
+   * time}. So every update that is older than the jar in this directory is a rollback. The
+   * deliberate trade-off is a node that installs a jar long after it was signed and then loses its
+   * settings: it would also reject a genuinely newer update that was signed before that late
+   * install. That costs one more signed release, whereas the case this guards against silently
+   * downgrades the whole network.
+   */
+  private long updateFloor() {
+    long recorded = serverContext.getLocalSettings().getUpdateTimestamp();
+    long ownFloor = recorded == -1 ? installedJarTimestamp() : recorded;
+    return Math.max(ownFloor, Updater.MIN_UPDATE_TIMESTAMP_MS);
+  }
+
+  /**
+   * Last-modified time of the jar this node runs and serves, or {@code 0} if there is none (a
+   * client layout without a local {@code redpanda.jar}, a test) — in which case the floor falls
+   * back to {@link Updater#MIN_UPDATE_TIMESTAMP_MS} as before.
+   */
+  private static long installedJarTimestamp() {
+    return updateJarPath().toFile().lastModified();
   }
 
   /** Command 11: a peer asks for our signed jar; upload it off the reader thread. */
@@ -175,9 +209,7 @@ public class JarUpdateHandler {
       logger.warn("rejecting update: timestamp too far in the future: {}", othersTimestamp);
       return consumedBytes;
     }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
+    long floor = updateFloor();
     if (othersTimestamp > floor) {
 
       // Verify signature before writing anything

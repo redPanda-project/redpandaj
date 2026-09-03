@@ -13,6 +13,7 @@ import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.LocalSettings;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.core.Settings;
 import java.io.File;
@@ -46,6 +47,7 @@ class UpdateHardeningTest {
 
   private static final String INSTALL_PATH_PROPERTY = "redpanda.update.install.path";
   private static final String APK_PATH_PROPERTY = "redpanda.update.apk.path";
+  private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
 
   @TempDir File tempDir;
 
@@ -58,6 +60,13 @@ class UpdateHardeningTest {
   /** Redirected apk destination ({@link UpdateTransfer#ANDROID_UPDATE_FILE} in prod). */
   private File apkFile;
 
+  /**
+   * Redirected "the jar this node runs and serves" ({@code redpanda.jar} in the CWD in prod). Left
+   * non-existent by default, which is exactly the pre-T117 situation for the update floor (mtime
+   * 0), so the tests that predate it are unaffected.
+   */
+  private File runningJarFile;
+
   private ServerContext ctx;
   private InboundCommandProcessor proc;
 
@@ -66,8 +75,10 @@ class UpdateHardeningTest {
     updateFile = new File(tempDir, "update");
     tmpJarFile = new File(tempDir, "tmp_redpanda.jar");
     apkFile = new File(tempDir, "android.apk");
+    runningJarFile = new File(tempDir, "redpanda.jar");
     System.setProperty(INSTALL_PATH_PROPERTY, updateFile.getAbsolutePath());
     System.setProperty(APK_PATH_PROPERTY, apkFile.getAbsolutePath());
+    System.setProperty(JAR_PATH_PROPERTY, runningJarFile.getAbsolutePath());
 
     ctx = ServerContext.buildDefaultServerContext();
     ctx.setPort(TEST_PORT);
@@ -81,6 +92,7 @@ class UpdateHardeningTest {
   void cleanup() {
     System.clearProperty(INSTALL_PATH_PROPERTY);
     System.clearProperty(APK_PATH_PROPERTY);
+    System.clearProperty(JAR_PATH_PROPERTY);
     Updater.resetPublicUpdaterKeyForTests();
     // Deliberately a no-op, NOT the production default System.exit(0): the positive-path tests
     // wait for their delayed restart trigger, but if such a test fails/times out before the
@@ -436,5 +448,141 @@ class UpdateHardeningTest {
       LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
     }
     fail("Condition not met within " + timeoutMillis + "ms");
+  }
+
+  // --- T117 follow-up: the update floor of a node whose settings were regenerated ---
+
+  /**
+   * Writes the file that stands in for the jar this node is running, with {@code lastModified} set
+   * to {@code installedAt} — the moment the running jar was installed here.
+   */
+  private void installedJarWithMtime(long installedAt) throws Exception {
+    Files.write(runningJarFile.toPath(), new byte[] {9, 9, 9});
+    assertTrue(runningJarFile.setLastModified(installedAt), "could not set the jar mtime");
+  }
+
+  /**
+   * The regression of the T117 deploy on 2026-09-03. The new storage format deliberately does not
+   * read the pre-T117 settings file, so both Hetzner nodes came up with {@code updateTimestamp ==
+   * -1}; the floor collapsed to the 2026-07-11 build constant and they accepted, within a second of
+   * starting, a correctly signed but 75 minutes OLDER jar from a peer that still ran the previous
+   * release — and downgraded themselves.
+   *
+   * <p>With no recorded timestamp the mtime of the jar we are running is the floor, so an update
+   * that predates our own installation is a rollback and is refused.
+   */
+  @Test
+  void downgrade_rejected_onFreshSettings_whenOlderThanTheInstalledJar() throws Exception {
+    assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp(), "fresh settings");
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    byte[] data = new byte[] {5, 6, 7, 8};
+    // correctly signed and well above the build-time constant, but older than our own jar
+    long othersTs = installedAt - TimeUnit.HOURS.toMillis(1);
+    assertTrue(othersTs > Updater.MIN_UPDATE_TIMESTAMP_MS, "this must not pass on the old floor");
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    // The install runs on a thread pool, so "nothing happened" needs a window, not an instant
+    // assertion - without that window this test stays green even with the floor removed.
+    CountDownLatch restarted = new CountDownLatch(1);
+    UpdateTransfer.restartAction = restarted::countDown;
+
+    int consumed =
+        proc.parseCommand(
+            Command.UPDATE_ANSWER_CONTENT,
+            buildUpdateAnswerContent(othersTs, sig, data),
+            newPeer(8811));
+
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+    assertFalse(
+        restarted.await(5, TimeUnit.SECONDS), "a rollback must not trigger the restart/install");
+    assertFalse(updateFile.exists(), "a rollback must not be installed");
+    assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp());
+  }
+
+  /** The other side of the guard: a genuinely newer update is still installed on fresh settings. */
+  @Test
+  void update_accepted_onFreshSettings_whenNewerThanTheInstalledJar() throws Exception {
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    byte[] data = new byte[] {1, 2, 3, 4};
+    long othersTs = installedAt + TimeUnit.HOURS.toMillis(1);
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    CountDownLatch restarted = new CountDownLatch(1);
+    UpdateTransfer.restartAction = restarted::countDown;
+
+    proc.parseCommand(
+        Command.UPDATE_ANSWER_CONTENT,
+        buildUpdateAnswerContent(othersTs, sig, data),
+        newPeer(8812));
+
+    assertTrue(restarted.await(30, TimeUnit.SECONDS), "the update must be installed");
+    assertTrue(updateFile.exists());
+    assertEquals(othersTs, ctx.getLocalSettings().getUpdateTimestamp());
+  }
+
+  /** The same floor must also stop us from even asking for the older jar (command 10). */
+  @Test
+  void olderOffer_onFreshSettings_doesNotRequestContent() throws Exception {
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+    Settings.loadUpdates = true;
+    try {
+      Peer peer = newPeer(8813);
+      ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+
+      ByteBuffer in = ByteBuffer.allocate(8);
+      in.putLong(installedAt - TimeUnit.HOURS.toMillis(1));
+      in.flip();
+      proc.parseCommand(Command.UPDATE_ANSWER_TIMESTAMP, in, peer);
+
+      // requestUpdateContent would queue UPDATE_REQUEST_CONTENT; give the pool a moment either way
+      Thread.sleep(500);
+      assertEquals(0, out.position(), "we must not ask a peer for an older jar");
+    } finally {
+      Settings.loadUpdates = false;
+    }
+  }
+
+  /**
+   * Befund 2 of the 2026-09-03 deploy: peers running the previous release kept logging "peer has
+   * outdated redPandaj version" about the updated nodes. What a node answers to command 9 must be
+   * exactly what its settings file says — not the in-memory default of a LocalSettings that was
+   * constructed before the file was read.
+   */
+  @Test
+  void timestampAnswer_isTheValueFromTheSettingsFile() {
+    long persisted = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(45);
+    LocalSettings written = LocalSettings.load(TEST_PORT);
+    written.setUpdateTimestamp(persisted);
+    written.setUpdateSignature(fakeSignature());
+    written.save(TEST_PORT);
+
+    ctx.setLocalSettings(LocalSettings.load(TEST_PORT));
+    assertEquals(persisted, ctx.getLocalSettings().getUpdateTimestamp(), "loaded from the file");
+
+    Peer peer = newPeer(8814);
+    ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 64);
+
+    proc.parseCommand(Command.UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), peer);
+
+    out.flip();
+    assertEquals(Command.UPDATE_ANSWER_TIMESTAMP, out.get(), "command byte");
+    assertEquals(persisted, out.getLong(), "the answered timestamp must be the persisted one");
   }
 }
