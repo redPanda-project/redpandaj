@@ -27,7 +27,7 @@ class SecureKeyGenerator {
     System.out.println("New private key written to: " + privateKeyPath.toAbsolutePath());
 
     // 3. Update Updater.java with new Public Key
-    Path updaterPath = Path.of("src/main/java/im/redpanda/core/Updater.java");
+    Path updaterPath = Path.of("src/main/java/im/redpanda/updater/Updater.java");
     if (Files.exists(updaterPath)) {
       String content = new String(Files.readAllBytes(updaterPath), StandardCharsets.UTF_8);
 

@@ -3,6 +3,7 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import im.redpanda.updater.UpdateTransfer;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,9 @@ import org.junit.jupiter.api.Test;
  * raised an unchecked NPE inside a {@code Runnable} whose {@code Future} nobody observes — no log,
  * no Sentry. Two of the sites additionally did {@code lock(); put(); unlock();} without a {@code
  * finally}, so the NPE left {@code writeBufferLock} locked forever.
+ *
+ * <p>The helpers moved to {@link UpdateTransfer} with the updater package (T116); this test stays
+ * in {@code im.redpanda.core} because it asserts on {@code Peer}'s package-private buffer fields.
  */
 class InboundCommandProcessorUpdateDisconnectTest {
 
@@ -21,8 +25,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = null; // what disconnect() leaves behind
 
-    assertThat(InboundCommandProcessor.requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT))
-        .isFalse();
+    assertThat(UpdateTransfer.requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)).isFalse();
     assertThat(peer.writeBufferLock.isLocked())
         .as("the write buffer lock must not be left held")
         .isFalse();
@@ -33,8 +36,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
     Peer peer = new Peer("127.0.0.1", 1234);
     peer.writeBuffer = ByteBuffer.allocate(64);
 
-    assertThat(InboundCommandProcessor.requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT))
-        .isTrue();
+    assertThat(UpdateTransfer.requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)).isTrue();
 
     peer.writeBuffer.flip();
     assertThat(peer.writeBuffer.get()).isEqualTo(Command.UPDATE_REQUEST_CONTENT);
@@ -50,7 +52,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
     frame.putLong(42L);
     frame.flip();
 
-    assertThat(InboundCommandProcessor.appendToWriteBuffer(peer, frame)).isFalse();
+    assertThat(UpdateTransfer.appendToWriteBuffer(peer, frame)).isFalse();
     assertThat(peer.writeBufferLock.isLocked()).isFalse();
   }
 
@@ -63,7 +65,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
     payload[0] = 7;
     ByteBuffer frame = ByteBuffer.wrap(payload);
 
-    assertThat(InboundCommandProcessor.appendToWriteBuffer(peer, frame)).isTrue();
+    assertThat(UpdateTransfer.appendToWriteBuffer(peer, frame)).isTrue();
     assertThat(peer.writeBuffer.capacity()).isGreaterThan(payload.length);
     assertThat(peer.writeBuffer.position()).isEqualTo(payload.length);
     assertThat(peer.writeBuffer.get(0)).isEqualTo((byte) 7);
@@ -73,7 +75,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
   @Test
   void reporting_absorbsAndReportsUncheckedExceptions() {
     Runnable wrapped =
-        InboundCommandProcessor.reporting(
+        UpdateTransfer.reporting(
             "unit-test",
             () -> {
               throw new NullPointerException("peer disconnected mid-upload");
@@ -86,7 +88,7 @@ class InboundCommandProcessorUpdateDisconnectTest {
   @Test
   void reporting_rethrowsErrors() {
     Runnable wrapped =
-        InboundCommandProcessor.reporting(
+        UpdateTransfer.reporting(
             "unit-test",
             () -> {
               throw new StackOverflowError("boom");

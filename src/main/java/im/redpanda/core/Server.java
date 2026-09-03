@@ -3,6 +3,7 @@ package im.redpanda.core;
 import im.redpanda.jobs.NodeStoreMaintainJob;
 import im.redpanda.jobs.PeerPerformanceTestSchedulerJob;
 import im.redpanda.jobs.RequestPeerListJob;
+import im.redpanda.updater.HTTPServer;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.Map;

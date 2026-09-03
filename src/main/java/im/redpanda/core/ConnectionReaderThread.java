@@ -17,7 +17,6 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -27,18 +26,10 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class ConnectionReaderThread implements Runnable {
 
-  public static final String ANDROID_UPDATE_FILE =
-      System.getProperty("redpanda.android.update.file", "android.apk");
-
   public static final int STD_TIMEOUT = 10;
   private static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
   public static final ReentrantLock threadLock = new ReentrantLock(false);
   public static final ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
-
-  /** Here we can set the max simultaneously uploads. */
-  static final Semaphore updateUploadLock = new Semaphore(1);
-
-  static final ReentrantLock updateDownloadLock = new ReentrantLock();
 
   /**
    * The retired v22 protocol version (brainpool/AES-CTR). The code path was removed in sdd02 phase

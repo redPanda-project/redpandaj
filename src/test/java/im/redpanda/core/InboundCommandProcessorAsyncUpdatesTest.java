@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import im.redpanda.updater.UpdateTransfer;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -41,7 +42,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
     // Remove files created by tests
     System.clearProperty(JAR_PATH_PROPERTY);
     new File("tmp_redpanda.jar").delete();
-    new File(ConnectionReaderThread.ANDROID_UPDATE_FILE).delete();
+    new File(UpdateTransfer.ANDROID_UPDATE_FILE).delete();
   }
 
   /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */
@@ -102,7 +103,7 @@ public class InboundCommandProcessorAsyncUpdatesTest {
   void androidUpdateRequestContent_doesNotSend_whenSignatureInvalid() throws Exception {
     // Prepare android.apk data
     byte[] data = "apk".getBytes();
-    try (FileOutputStream fos = new FileOutputStream(ConnectionReaderThread.ANDROID_UPDATE_FILE)) {
+    try (FileOutputStream fos = new FileOutputStream(UpdateTransfer.ANDROID_UPDATE_FILE)) {
       fos.write(data);
     }
 

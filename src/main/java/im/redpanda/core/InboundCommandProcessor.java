@@ -19,197 +19,26 @@ import im.redpanda.outbound.v1.RevokeOhRequest;
 import im.redpanda.outbound.v1.SubscribeRequest;
 import im.redpanda.proto.*;
 import im.redpanda.proto.FlaschenpostPut;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import im.redpanda.updater.ApkUpdateHandler;
+import im.redpanda.updater.JarUpdateHandler;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.Date;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Parses and processes inbound commands for a peer connection. Extracted from
- * ConnectionReaderThread to improve SRP and testability.
+ * Dispatches inbound commands of a peer connection: it owns the framing (command byte, optional
+ * {@code [len:4][payload]} prefix, consumed-byte accounting, protocol-desync disconnect) and
+ * nothing else — every command's meaning belongs to a domain handler.
+ *
+ * <p>T116 (DDD review 2026-08-31, P2 step 2/3) moved the handler bodies out; the wire behaviour is
+ * unchanged. Domain map: peer list/liveness → this class (commands 1-4, the {@code core} context),
+ * software distribution → {@link JarUpdateHandler}/{@link ApkUpdateHandler} (9-16), DHT → {@code
+ * im.redpanda.kademlia} (120-123), mailbox → {@code OutboundService}/{@code MailboxDepositPolicy}
+ * (141/142, 150-161), garlic routing → {@code GarlicRouter} (142).
  */
 public class InboundCommandProcessor {
   private static final Logger logger = LogManager.getLogger();
-
-  /** Ed25519 signatures are fixed-size (64 bytes, no DER framing). */
-  public static final int SIGNATURE_LEN = NodeId.SIGNATURE_LEN;
-
-  /** Reject update timestamps further in the future than this (clock-skew / spoofing guard). */
-  private static final long MAX_FUTURE_SKEW_MS = 24L * 60 * 60 * 1000;
-
-  /**
-   * Invoked to apply an installed update. Default restarts the JVM; tests replace this with a
-   * counter so the positive-path test never actually exits the test JVM.
-   */
-  static Runnable restartAction = () -> System.exit(0);
-
-  /**
-   * Test-only hook invoked with the thread that performs the update install disk I/O ({@link
-   * #installJarUpdate} / {@link #installApkUpdate}); lets tests assert the write actually runs off
-   * the calling (ConnectionReaderThread, in production) thread (REDPANDAJ-2DQ). No-op in
-   * production.
-   */
-  static java.util.function.Consumer<Thread> installThreadHookForTests = t -> {};
-
-  /**
-   * Wraps an update-distribution task so unchecked failures are reported instead of vanishing.
-   *
-   * <p>These tasks go to {@code ExecutorService.submit()} and nobody ever looks at the returned
-   * {@code Future}, so any {@code RuntimeException} was swallowed without a log line or a Sentry
-   * event. The upload runnables dereference {@code peer.writeBuffer} / {@code
-   * peer.writeBufferCrypted} after sleeping up to 60 s, and {@link Peer#disconnect(String)} nulls
-   * exactly those fields — a peer disconnecting inside that window produced a silent NPE.
-   *
-   * <p>This wrapper only makes such a failure visible; it does not make the task bodies safe. Each
-   * body is responsible for its own cleanup, and two of them were not: {@code
-   * handleUpdateAnswerTimestamp} and {@code handleAndroidUpdateAnswerTimestamp} did {@code lock();
-   * put(); unlock();} with no {@code finally}, so the NPE left {@code writeBufferLock} held
-   * forever. That is fixed at the source — see {@link #requestUpdateContent(Peer, byte)} and {@link
-   * #appendToWriteBuffer(Peer, ByteBuffer)}, which hold the lock in a {@code try/finally} and abort
-   * cleanly when the peer is gone.
-   *
-   * <p>{@link Error}s are reported and rethrown; only unchecked exceptions are absorbed.
-   */
-  static Runnable reporting(String taskName, Runnable task) {
-    return () -> {
-      try {
-        task.run();
-      } catch (RuntimeException e) {
-        logger.warn("update task '{}' failed", taskName, e);
-        Log.sentry(e);
-      } catch (Error e) {
-        logger.error("update task '{}' failed fatally", taskName, e);
-        Log.sentry(e);
-        throw e;
-      }
-    };
-  }
-
-  /**
-   * Writes a single update-request command byte into the peer's write buffer.
-   *
-   * <p>{@link Peer#disconnect(String)} nulls {@code writeBuffer} while holding {@code
-   * writeBufferLock}, so the field is re-read and checked under that lock — which is what {@link
-   * Peer#enqueueCommand(byte)} does (T115: the locking used to be spelled out here, and the version
-   * before that did {@code lock(); put(); unlock();} with no {@code finally}, so a disconnect in
-   * that window did not only NPE, it left the lock permanently held).
-   *
-   * @return {@code true} if the command was queued, {@code false} if the peer is gone
-   */
-  static boolean requestUpdateContent(Peer peer, byte command) {
-    if (!peer.enqueueCommand(command)) {
-      logger.info("peer disconnected before the update could be requested, aborting");
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Appends a fully built update frame to the peer's write buffer, growing the buffer if needed.
-   *
-   * <p>Same re-read-under-the-lock contract as {@link #requestUpdateContent(Peer, byte)}: the frame
-   * is built after a {@code Thread.sleep} and a multi-megabyte disk read, so the peer may well be
-   * gone by the time we get here. Dereferencing the nulled {@code writeBuffer} raised an NPE inside
-   * a {@code Runnable} whose {@code Future} nobody observes — no log, no Sentry. The growth policy
-   * itself is {@link Peer#enqueueGrowingFrame(ByteBuffer)}'s (T115).
-   *
-   * @return {@code true} if the frame was queued, {@code false} if the peer is gone
-   */
-  static boolean appendToWriteBuffer(Peer peer, ByteBuffer frame) {
-    if (!peer.enqueueGrowingFrame(frame)) {
-      logger.info("peer disconnected before the update could be uploaded, aborting");
-      return false;
-    }
-    return true;
-  }
-
-  /** System property overriding {@link #updateJarPath()}; used by tests to avoid CWD sharing. */
-  private static final String JAR_PATH_PROPERTY = "redpanda.update.jar.path";
-
-  /** System property overriding {@link #updateApkPath()}; used by tests to avoid CWD sharing. */
-  private static final String APK_PATH_PROPERTY = "redpanda.update.apk.path";
-
-  /**
-   * System property overriding {@link #updateInstallPath()}; used by tests to avoid CWD sharing.
-   */
-  private static final String INSTALL_PATH_PROPERTY = "redpanda.update.install.path";
-
-  /**
-   * Path of the local redpanda.jar that gets uploaded to peers requesting it. Defaults to the usual
-   * seed-node vs. client layout, overridable via {@value #JAR_PATH_PROPERTY} (tests only, so
-   * Surefire forks sharing the working directory don't collide).
-   */
-  static Path updateJarPath() {
-    Path override = pathOverride(JAR_PATH_PROPERTY);
-    if (override != null) {
-      return override;
-    }
-    return Settings.isSeedNode() ? Path.of("target/redpanda.jar") : Path.of("redpanda.jar");
-  }
-
-  /**
-   * Path of the local android.apk that gets uploaded to peers requesting it / that a received
-   * update is written to. Defaults to {@link ConnectionReaderThread#ANDROID_UPDATE_FILE},
-   * overridable via {@value #APK_PATH_PROPERTY} (tests only).
-   */
-  static Path updateApkPath() {
-    Path override = pathOverride(APK_PATH_PROPERTY);
-    if (override != null) {
-      return override;
-    }
-    return Path.of(ConnectionReaderThread.ANDROID_UPDATE_FILE);
-  }
-
-  /**
-   * Destination a received-and-verified jar update is installed to (the {@code update} file the
-   * restart shell script picks up). Defaults to the CWD-relative {@code update} file, overridable
-   * via {@value #INSTALL_PATH_PROPERTY} (tests only, so Surefire forks sharing the working
-   * directory don't collide).
-   */
-  static Path updateInstallPath() {
-    Path override = pathOverride(INSTALL_PATH_PROPERTY);
-    if (override != null) {
-      return override;
-    }
-    return Path.of("update");
-  }
-
-  /**
-   * Staging file a jar update is written to before being moved to the given install destination.
-   * Derived as a sibling of that destination so the {@code Files.move} never crosses a filesystem
-   * boundary (and so a test override relocates both files together). Takes the already-resolved
-   * install path instead of re-reading the system property, so a property change mid-install (e.g.
-   * a test cleaning up after a timeout) cannot make the tmp file and the move destination diverge.
-   */
-  static Path updateInstallTmpPath(Path installPath) {
-    return installPath.resolveSibling("tmp_redpanda.jar");
-  }
-
-  /**
-   * Reads a path-override system property, ignoring it (falling back to the caller's default) when
-   * it is blank or not a valid path, so a misconfigured test property can't crash the update
-   * handlers with an unchecked {@link java.nio.file.InvalidPathException}.
-   */
-  private static Path pathOverride(String property) {
-    String value = System.getProperty(property);
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    try {
-      return Path.of(value);
-    } catch (java.nio.file.InvalidPathException e) {
-      logger.warn("ignoring invalid {} override: {}", property, value);
-      return null;
-    }
-  }
 
   private final ServerContext serverContext;
 
@@ -223,9 +52,14 @@ public class InboundCommandProcessor {
 
   private final OutboundService outboundService;
 
+  private final JarUpdateHandler jarUpdateHandler;
+  private final ApkUpdateHandler apkUpdateHandler;
+
   public InboundCommandProcessor(ServerContext serverContext) {
     this.serverContext = serverContext;
     this.outboundService = serverContext.getOutboundService(); // Ensure ServerContext has this!
+    this.jarUpdateHandler = new JarUpdateHandler(serverContext);
+    this.apkUpdateHandler = new ApkUpdateHandler(serverContext);
     initializeHandlers();
   }
 
@@ -278,29 +112,32 @@ public class InboundCommandProcessor {
     commandHandlers.put(
         Command.SEND_PEERLIST,
         (peer, buf, payload) -> handleSendPeerList(payload, peer) + 4 + payload.length);
+    // N-UPDATER (T116): software distribution is its own bounded context; the dispatcher only
+    // routes commands 9-16 into it.
     commandHandlers.put(
         Command.UPDATE_REQUEST_TIMESTAMP,
-        (peer, buf, payload) -> handleUpdateRequestTimestamp(peer));
+        (peer, buf, payload) -> jarUpdateHandler.handleRequestTimestamp(peer));
     commandHandlers.put(
         Command.UPDATE_ANSWER_TIMESTAMP,
-        (peer, buf, payload) -> handleUpdateAnswerTimestamp(buf, peer));
+        (peer, buf, payload) -> jarUpdateHandler.handleAnswerTimestamp(buf, peer));
     commandHandlers.put(
-        Command.UPDATE_REQUEST_CONTENT, (peer, buf, payload) -> handleUpdateRequestContent(peer));
+        Command.UPDATE_REQUEST_CONTENT,
+        (peer, buf, payload) -> jarUpdateHandler.handleRequestContent(peer));
     commandHandlers.put(
         Command.UPDATE_ANSWER_CONTENT,
-        (peer, buf, payload) -> handleUpdateAnswerContent(buf, peer));
+        (peer, buf, payload) -> jarUpdateHandler.handleAnswerContent(buf, peer));
     commandHandlers.put(
         Command.ANDROID_UPDATE_REQUEST_TIMESTAMP,
-        (peer, buf, payload) -> handleAndroidUpdateRequestTimestamp(peer));
+        (peer, buf, payload) -> apkUpdateHandler.handleRequestTimestamp(peer));
     commandHandlers.put(
         Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
-        (peer, buf, payload) -> handleAndroidUpdateAnswerTimestamp(buf, peer));
+        (peer, buf, payload) -> apkUpdateHandler.handleAnswerTimestamp(buf, peer));
     commandHandlers.put(
         Command.ANDROID_UPDATE_REQUEST_CONTENT,
-        (peer, buf, payload) -> handleAndroidUpdateRequestContent(peer));
+        (peer, buf, payload) -> apkUpdateHandler.handleRequestContent(peer));
     commandHandlers.put(
         Command.ANDROID_UPDATE_ANSWER_CONTENT,
-        (peer, buf, payload) -> handleAndroidUpdateAnswerContent(buf, peer));
+        (peer, buf, payload) -> apkUpdateHandler.handleAnswerContent(buf, peer));
 
     commandHandlers.put(
         Command.JOB_ACK,
@@ -587,441 +424,6 @@ public class InboundCommandProcessor {
       }
     }
     return 1; // Base command length, payload length added by caller
-  }
-
-  private int handleUpdateRequestTimestamp(Peer peer) {
-    long timestamp = serverContext.getLocalSettings().getUpdateTimestamp();
-    peer.writeBufferLocked(
-        writeBuffer -> {
-          writeBuffer.put(Command.UPDATE_ANSWER_TIMESTAMP);
-          writeBuffer.putLong(timestamp);
-        });
-    return 1;
-  }
-
-  private int handleUpdateAnswerTimestamp(ByteBuffer readBuffer, Peer peer) {
-    if (8 > readBuffer.remaining()) {
-      return 0;
-    }
-    long othersTimestamp = readBuffer.getLong();
-    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
-      logger.warn("rejecting update timestamp too far in the future: {}", othersTimestamp);
-      return 1 + 8;
-    }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
-    if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
-      System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
-    }
-    if (othersTimestamp > floor && Settings.isLoadUpdates()) {
-      Runnable runnable =
-          () -> {
-            ConnectionReaderThread.updateDownloadLock.lock();
-            try {
-              System.out.println("our version is outdated, we try to download it from this peer!");
-              if (!requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)) {
-                return;
-              }
-              try {
-                Thread.sleep(60000);
-              } catch (InterruptedException ignored) {
-              }
-            } finally {
-              System.out.println("we can now download it from another peer...");
-              ConnectionReaderThread.updateDownloadLock.unlock();
-            }
-          };
-      Server.threadPool.submit(reporting("update-request-content-download", runnable));
-    }
-    return 1 + 8;
-  }
-
-  private int handleUpdateRequestContent(Peer peer) {
-    if (serverContext.getLocalSettings().getUpdateTimestamp() == -1) {
-      return 1;
-    }
-    if (serverContext.getLocalSettings().getUpdateSignature() == null) {
-      System.out.println(
-          "we dont have an official signature to upload that update to other peers!");
-      return 1;
-    }
-    Runnable runnable =
-        () -> {
-          ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
-          try {
-            try {
-              Thread.sleep(200);
-            } catch (InterruptedException ignored) {
-            }
-            Path path = updateJarPath();
-            try {
-              System.out.println("we send the update to a peer!");
-              byte[] data = Files.readAllBytes(path);
-              ByteBuffer a =
-                  ByteBuffer.allocate(
-                      1
-                          + 8
-                          + 4
-                          + serverContext.getLocalSettings().getUpdateSignature().length
-                          + data.length);
-              a.put(Command.UPDATE_ANSWER_CONTENT);
-              a.putLong(serverContext.getLocalSettings().getUpdateTimestamp());
-              a.putInt(data.length);
-              a.put(serverContext.getLocalSettings().getUpdateSignature());
-              a.put(data);
-              a.flip();
-              if (!appendToWriteBuffer(peer, a)) {
-                return;
-              }
-            } catch (FileNotFoundException e) {
-              Log.sentry(e);
-              e.printStackTrace();
-            } catch (IOException e) {
-              Log.sentry(e);
-              Log.sentry(e);
-            }
-          } finally {
-            ConnectionReaderThread.updateUploadLock.release();
-          }
-        };
-    ConnectionReaderThread.threadPool.submit(reporting("update-answer-content-upload", runnable));
-    return 1;
-  }
-
-  private int handleUpdateAnswerContent(ByteBuffer readBuffer, Peer peer) {
-    if (8 + 4 + SIGNATURE_LEN > readBuffer.remaining()) {
-      return 0;
-    }
-    long othersTimestamp = readBuffer.getLong();
-    int toReadBytes = readBuffer.getInt();
-    byte[] signatureBytes = new byte[SIGNATURE_LEN];
-    readBuffer.get(signatureBytes);
-    int lenOfSignature = signatureBytes.length;
-    if (toReadBytes < 0) {
-      // Network-controlled length: a negative value is a protocol violation and would
-      // throw NegativeArraySizeException below (reader thread DoS).
-      logger.warn("negative update content length from peer, disconnecting: {}", toReadBytes);
-      peer.disconnect("negative update content length");
-      return 0;
-    }
-    if (toReadBytes > readBuffer.remaining()) {
-      return 0;
-    }
-    byte[] data = new byte[toReadBytes];
-    readBuffer.get(data);
-    int consumedBytes = 1 + 8 + 4 + lenOfSignature + data.length;
-    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
-      logger.warn("rejecting update: timestamp too far in the future: {}", othersTimestamp);
-      return consumedBytes;
-    }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateTimestamp(), Updater.MIN_UPDATE_TIMESTAMP_MS);
-    if (othersTimestamp > floor) {
-
-      // Verify signature before writing anything
-      NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
-      if (publicUpdaterKey == null) {
-        System.out.println("No public updater key available, cannot verify update.");
-        return consumedBytes;
-      }
-
-      ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
-      toHash.putLong(othersTimestamp);
-      toHash.put(data);
-
-      if (!publicUpdaterKey.verify(toHash.array(), signatureBytes)) {
-        System.out.println("Update verification failed! Signature invalid.");
-        return consumedBytes;
-      }
-
-      // Writing the (potentially tens-of-MB) jar to disk, moving it into place and persisting
-      // settings are blocking disk I/O; offload it to the thread pool so the ConnectionReaderThread
-      // is not stalled while it happens (REDPANDAJ-2DQ), matching the request-side handlers (see
-      // handleUpdateRequestContent above). Everything the reader thread would otherwise need to
-      // read from the connection buffer has already been captured above (othersTimestamp,
-      // signatureBytes, data), so nothing here races the reader moving on to the next command.
-      ConnectionReaderThread.threadPool.submit(
-          reporting(
-              "install-jar-update", () -> installJarUpdate(othersTimestamp, signatureBytes, data)));
-    }
-    return consumedBytes;
-  }
-
-  /**
-   * Writes a verified jar update to disk, installs it and triggers the restart. Runs on {@link
-   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ) — keep the
-   * write, move, settings save and restart trigger together and in this order so the process never
-   * restarts (or persists a timestamp/signature) before the jar is actually in place.
-   */
-  private void installJarUpdate(long othersTimestamp, byte[] signatureBytes, byte[] data) {
-    installThreadHookForTests.accept(Thread.currentThread());
-    // Resolve the install path exactly once and derive the tmp path from it, so both stay
-    // consistent even if the overriding system property changes while the install is running.
-    Path installPath = updateInstallPath();
-    Path tmpPath = updateInstallTmpPath(installPath);
-    try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {
-      fos.write(data);
-    } catch (IOException e) {
-      Log.sentry(e);
-      return;
-    }
-
-    try {
-      // Install the update
-      // Save to 'update' file so the shell script can pick it up and restart
-      Files.move(tmpPath, installPath, StandardCopyOption.REPLACE_EXISTING);
-
-      // Update local settings
-      serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
-      serverContext.getLocalSettings().setUpdateSignature(signatureBytes);
-      serverContext.getLocalSettings().save(serverContext.getPort());
-
-      System.out.println(
-          "Update successfully verified and saved to '"
-              + installPath
-              + "'. New timestamp: "
-              + othersTimestamp);
-      System.out.println("Stopping server to apply update...");
-
-      // Exit asynchronously to allow current method to return and log to be written
-      Thread.ofVirtual()
-          .start(
-              () -> {
-                try {
-                  Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                  // Preserve the interrupt status and skip the restart instead of silently
-                  // continuing as if the delay had completed normally (e.g. on shutdown).
-                  Thread.currentThread().interrupt();
-                  return;
-                }
-                restartAction.run();
-              });
-
-    } catch (IOException e) {
-      Log.sentry(e);
-      System.out.println("Failed to install update: " + e.getMessage());
-    }
-  }
-
-  private int handleAndroidUpdateRequestTimestamp(Peer peer) {
-    File file = updateApkPath().toFile();
-    if (!file.exists()) {
-      return 1;
-    }
-    long timestamp = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
-    peer.writeBufferLocked(
-        writeBuffer -> {
-          writeBuffer.put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
-          writeBuffer.putLong(timestamp);
-        });
-    return 1;
-  }
-
-  private int handleAndroidUpdateAnswerTimestamp(ByteBuffer readBuffer, Peer peer) {
-    if (8 > readBuffer.remaining()) {
-      return 0;
-    }
-    long othersTimestamp = readBuffer.getLong();
-    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
-      logger.warn("rejecting android update timestamp too far in the future: {}", othersTimestamp);
-      return 1 + 8;
-    }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
-            Updater.MIN_UPDATE_TIMESTAMP_MS);
-    Log.put(
-        "Update found from: "
-            + new Date(othersTimestamp)
-            + " our version is from: "
-            + new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()),
-        70);
-    if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
-      System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
-    }
-    if (othersTimestamp > floor) {
-      Runnable runnable =
-          () -> {
-            ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
-            try {
-              if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
-                return;
-              }
-              System.out.println(
-                  "our android.apk version is outdated, we try to download it from this peer!");
-              if (!requestUpdateContent(peer, Command.ANDROID_UPDATE_REQUEST_CONTENT)) {
-                return;
-              }
-              try {
-                Thread.sleep(60000);
-              } catch (InterruptedException ignored) {
-              }
-            } finally {
-              System.out.println("we can now download it from another peer...");
-              ConnectionReaderThread.updateUploadLock.release();
-            }
-          };
-      InboundCommandProcessor.this.serverContext.getNodeStore();
-      ConnectionReaderThread.threadPool.submit(
-          reporting("android-update-request-content-download", runnable));
-    }
-    return 1 + 8;
-  }
-
-  private int handleAndroidUpdateRequestContent(Peer peer) {
-    if (serverContext.getLocalSettings().getUpdateAndroidSignature() == null) {
-      System.out.println(
-          "we dont have an official signature to upload that android.apk update to other peers!");
-      return 1;
-    }
-    Runnable runnable =
-        () -> {
-          ConnectionReaderThread.updateUploadLock.acquireUninterruptibly();
-          try {
-            try {
-              Thread.sleep(200);
-            } catch (InterruptedException ignored) {
-            }
-            Path path = updateApkPath();
-            try {
-              NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
-              if (publicUpdaterKey == null) {
-                System.out.println("No public updater key available, cannot verify update.");
-                return;
-              }
-              byte[] data = Files.readAllBytes(path);
-              ByteBuffer bytesToHash = ByteBuffer.allocate(8 + data.length);
-              bytesToHash.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-              bytesToHash.put(data);
-              boolean verify =
-                  publicUpdaterKey.verify(
-                      bytesToHash.array(),
-                      serverContext.getLocalSettings().getUpdateAndroidSignature());
-              if (!verify) {
-                System.out.println(
-                    "################################ update not verified "
-                        + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-                return;
-              }
-              System.out.println("we send the android.apk update to a peer!");
-              byte[] androidSignature =
-                  serverContext.getLocalSettings().getUpdateAndroidSignature();
-              ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
-              a.put(Command.ANDROID_UPDATE_ANSWER_CONTENT);
-              a.putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-              a.putInt(data.length);
-              a.put(androidSignature);
-              a.put(data);
-              a.flip();
-              if (!appendToWriteBuffer(peer, a)) {
-                return;
-              }
-              int cnt = 0;
-              while (cnt < 6) {
-                cnt++;
-                try {
-                  Thread.sleep(10000);
-                } catch (InterruptedException ignored) {
-                }
-                // hasQueuedOutboundBytes() re-reads both buffers under writeBufferLock:
-                // disconnect() nulls them while holding it.
-                if (!peer.hasQueuedOutboundBytes()) {
-                  break;
-                }
-                System.out.println("peer still downloading...");
-              }
-            } catch (IOException e) {
-              e.printStackTrace();
-            }
-          } finally {
-            ConnectionReaderThread.updateUploadLock.release();
-          }
-        };
-    ConnectionReaderThread.threadPool.submit(
-        reporting("android-update-answer-content-upload", runnable));
-    return 1;
-  }
-
-  private int handleAndroidUpdateAnswerContent(ByteBuffer readBuffer, Peer peer) {
-    if (8 + 4 + SIGNATURE_LEN > readBuffer.remaining()) {
-      return 0;
-    }
-    long othersTimestamp = readBuffer.getLong();
-    int toReadBytes = readBuffer.getInt();
-    byte[] signature = new byte[SIGNATURE_LEN];
-    readBuffer.get(signature);
-    int signatureLen = signature.length;
-    if (toReadBytes < 0) {
-      // Network-controlled length: a negative value is a protocol violation and would
-      // throw NegativeArraySizeException below (reader thread DoS).
-      logger.warn(
-          "negative android update content length from peer, disconnecting: {}", toReadBytes);
-      peer.disconnect("negative android update content length");
-      return 0;
-    }
-    if (toReadBytes > readBuffer.remaining()) {
-      return 0;
-    }
-    byte[] data = new byte[toReadBytes];
-    readBuffer.get(data);
-    int consumedBytes = 1 + 8 + 4 + signatureLen + data.length;
-    if (othersTimestamp > System.currentTimeMillis() + MAX_FUTURE_SKEW_MS) {
-      logger.warn("rejecting android update: timestamp too far in the future: {}", othersTimestamp);
-      return consumedBytes;
-    }
-    long floor =
-        Math.max(
-            serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
-            Updater.MIN_UPDATE_TIMESTAMP_MS);
-    if (othersTimestamp > floor) {
-
-      // Verify signature
-      NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
-      if (publicUpdaterKey == null) {
-        System.out.println("No public updater key available, cannot verify android update.");
-        return consumedBytes;
-      }
-
-      ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
-      toHash.putLong(othersTimestamp);
-      toHash.put(data);
-
-      if (!publicUpdaterKey.verify(toHash.array(), signature)) {
-        System.out.println("Android update verification failed! Signature invalid.");
-        return consumedBytes;
-      }
-
-      // Writing the apk to disk and persisting settings is blocking disk I/O; offload it to the
-      // thread pool so the ConnectionReaderThread is not stalled while it happens (REDPANDAJ-2DQ),
-      // matching the request-side handlers. othersTimestamp/signature/data are already captured
-      // above so nothing here races the reader moving on to the next command.
-      ConnectionReaderThread.threadPool.submit(
-          reporting(
-              "install-apk-update", () -> installApkUpdate(othersTimestamp, signature, data)));
-    }
-    return consumedBytes;
-  }
-
-  /**
-   * Writes a verified apk update to disk and persists the new timestamp/signature. Runs on {@link
-   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ).
-   */
-  private void installApkUpdate(long othersTimestamp, byte[] signature, byte[] data) {
-    installThreadHookForTests.accept(Thread.currentThread());
-    try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
-      fos.write(data);
-    } catch (IOException e) {
-      // Do not persist the new timestamp/signature if the apk was not actually written: that
-      // would make LocalSettings claim an update is installed while the file is missing/corrupt.
-      e.printStackTrace();
-      return;
-    }
-    serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
-    serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
-    serverContext.getLocalSettings().save(serverContext.getPort());
   }
 
   private void handleJobAck(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
