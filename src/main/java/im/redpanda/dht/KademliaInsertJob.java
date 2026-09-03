@@ -1,10 +1,9 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.*;
-import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.jobs.Job;
 import im.redpanda.proto.KademliaStore;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;

@@ -1,4 +1,4 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -96,7 +96,7 @@ class KademliaSearchJobHousekeeperTest {
             .haveFullyQualifiedName("im.redpanda.App")
             .should()
             .dependOnClassesThat()
-            .haveFullyQualifiedName("im.redpanda.jobs.KademliaSearchJobHousekeeper")
+            .haveFullyQualifiedName("im.redpanda.dht.KademliaSearchJobHousekeeper")
             .because(
                 "the KademliaSearchJob blacklist is only bounded if the housekeeper is started");
 

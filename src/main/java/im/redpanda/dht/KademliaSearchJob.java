@@ -1,4 +1,4 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
@@ -7,8 +7,7 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
-import im.redpanda.kademlia.KadContent;
-import im.redpanda.kademlia.PeerComparator;
+import im.redpanda.jobs.Job;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaIdProto;
 import java.util.ArrayList;

@@ -2,9 +2,9 @@ package im.redpanda.mailbox;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.dht.KadContent;
+import im.redpanda.dht.KademliaSearchJob;
 import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.time.Duration;
 import java.util.ArrayList;

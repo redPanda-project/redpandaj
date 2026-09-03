@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.kademlia.KadContent;
+import im.redpanda.dht.KadContent;
 import im.redpanda.proto.*;
 import im.redpanda.updater.UpdateTransfer;
 import java.io.File;

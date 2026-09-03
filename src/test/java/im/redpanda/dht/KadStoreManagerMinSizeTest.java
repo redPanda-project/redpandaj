@@ -1,4 +1,4 @@
-package im.redpanda.kademlia;
+package im.redpanda.dht;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

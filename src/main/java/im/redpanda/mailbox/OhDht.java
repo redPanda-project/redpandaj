@@ -5,7 +5,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.kademlia.KadContent;
+import im.redpanda.dht.KadContent;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

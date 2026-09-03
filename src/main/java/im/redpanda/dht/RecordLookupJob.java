@@ -1,14 +1,13 @@
-package im.redpanda.jobs;
+package im.redpanda.dht;
 
 import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.flaschenpost.ReverseGarlic;
-import im.redpanda.kademlia.KadContent;
+import im.redpanda.jobs.Job;
 import im.redpanda.mailbox.OhResolveJob;
 import im.redpanda.mailbox.ReturnPath;
-import im.redpanda.outbound.ChannelDht;
 import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
 import java.time.Duration;

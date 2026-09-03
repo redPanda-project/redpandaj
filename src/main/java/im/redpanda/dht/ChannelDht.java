@@ -1,9 +1,8 @@
-package im.redpanda.outbound;
+package im.redpanda.dht;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.kademlia.KadContent;
 import im.redpanda.mailbox.OhDht;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -91,7 +90,7 @@ public final class ChannelDht {
   /**
    * Tolerated clock skew for records dated ahead of now. Records further in the future are rejected
    * so a clock-skewed (or malicious) peer cannot make a future-dated record win the newest-wins
-   * selection. Mirrors {@link im.redpanda.kademlia.KadStoreManager}'s 15-minute future bound.
+   * selection. Mirrors {@link im.redpanda.dht.KadStoreManager}'s 15-minute future bound.
    */
   public static final long MAX_FUTURE_SKEW_MS = 1000L * 60 * 15; // 15 min
 
