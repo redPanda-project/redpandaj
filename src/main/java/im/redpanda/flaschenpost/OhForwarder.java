@@ -8,7 +8,6 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.Job;
 import im.redpanda.jobs.OhResolveJob;
 import im.redpanda.kademlia.PeerComparator;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundService;
 import im.redpanda.store.NodeEdge;
 import im.redpanda.store.NodeStore;
@@ -56,7 +55,7 @@ public final class OhForwarder {
    * whether a drop can R-ACK (both may be {@code null}).
    */
   record PendingDeposit(
-      OhId ohId,
+      byte[] ohId,
       byte[] content,
       int hopCount,
       byte[] sessionTag,
@@ -74,7 +73,7 @@ public final class OhForwarder {
    *     packet was dropped at the hop limit
    */
   public static boolean forward(
-      ServerContext serverContext, OhId ohId, byte[] content, int hopCount) {
+      ServerContext serverContext, byte[] ohId, byte[] content, int hopCount) {
     return forward(serverContext, ohId, content, hopCount, null);
   }
 
@@ -88,14 +87,14 @@ public final class OhForwarder {
    *     packet was dropped at the hop limit
    */
   public static boolean forward(
-      ServerContext serverContext, OhId ohId, byte[] content, int hopCount, byte[] sessionTag) {
+      ServerContext serverContext, byte[] ohId, byte[] content, int hopCount, byte[] sessionTag) {
     return forward(serverContext, ohId, content, hopCount, sessionTag, null);
   }
 
   /**
    * Forwards a deposit for a non-local OH toward its host node, additionally preserving an MS06
    * return-path block (or {@code null}/empty when no R-ACK was requested) so the host node can send
-   * the {@code RoutingAck} after its deposit decision. See {@link #forward(ServerContext, OhId,
+   * the {@code RoutingAck} after its deposit decision. See {@link #forward(ServerContext, byte[],
    * byte[], int, byte[])} for the forwarding semantics.
    *
    * @param hopCount the hop count the packet arrived with
@@ -104,7 +103,7 @@ public final class OhForwarder {
    */
   public static boolean forward(
       ServerContext serverContext,
-      OhId ohId,
+      byte[] ohId,
       byte[] content,
       int hopCount,
       byte[] sessionTag,

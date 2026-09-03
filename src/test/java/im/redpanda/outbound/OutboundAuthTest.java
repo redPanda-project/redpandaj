@@ -36,7 +36,7 @@ class OutboundAuthTest {
   @Test
   void verifyValid() {
     long timestamp = System.currentTimeMillis();
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonce1".getBytes();
 
@@ -53,7 +53,7 @@ class OutboundAuthTest {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonce2".getBytes();
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
 
     byte[] signature = signV2(payload);
 
@@ -76,7 +76,7 @@ class OutboundAuthTest {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceNoVersion".getBytes();
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
 
     byte[] unversionedSignature = clientNode.sign(payload);
 
@@ -96,7 +96,7 @@ class OutboundAuthTest {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceLegacy".getBytes();
-    OhId ohId = OhId.fromHex("ee".repeat(OhId.GARLIC_BYTES));
+    byte[] ohId = "legacyOhId".getBytes();
 
     byte[] legacy65ByteKey = new byte[65];
     legacy65ByteKey[0] = 0x04; // uncompressed-point marker of the old export format
@@ -115,7 +115,7 @@ class OutboundAuthTest {
 
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonce3".getBytes();
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
     byte[] signature = signV2(payload); // Sig is valid, but timestamp logic is separate check
 
     OutboundAuth.AuthResult result =
@@ -129,7 +129,7 @@ class OutboundAuthTest {
     long timestamp = System.currentTimeMillis();
     byte[] payload = "testPayload".getBytes();
     byte[] nonce = "nonceReplay".getBytes();
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
     byte[] signature = signV2(payload);
 
     // First call -> OK
@@ -155,7 +155,7 @@ class OutboundAuthTest {
     byte[] payload = "testPayload".getBytes();
 
     // Source B first: one accepted command that must survive the flood
-    OhId ohIdB = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohIdB = clientNode.getKademliaId().getBytes();
     byte[] nonceB = "nonceB".getBytes();
     byte[] signatureB = signV2(payload);
     assertEquals(
@@ -164,7 +164,7 @@ class OutboundAuthTest {
 
     // Source A floods up to the cap — every command accepted
     NodeId attacker = NodeId.generateWithSimpleKey();
-    OhId ohIdA = OhId.fromBytes(attacker.getKademliaId().getBytes());
+    byte[] ohIdA = attacker.getKademliaId().getBytes();
     byte[] signatureA = signV2(attacker, payload);
     for (int i = 0; i < OutboundAuth.MAX_ENTRIES_PER_SOURCE; i++) {
       assertEquals(
@@ -211,7 +211,7 @@ class OutboundAuthTest {
 
     // Cap source A with aging entries
     NodeId sourceA = NodeId.generateWithSimpleKey();
-    OhId ohIdA = OhId.fromBytes(sourceA.getKademliaId().getBytes());
+    byte[] ohIdA = sourceA.getKademliaId().getBytes();
     byte[] signatureA = signV2(sourceA, payload);
     for (int i = 0; i < OutboundAuth.MAX_ENTRIES_PER_SOURCE; i++) {
       assertEquals(
@@ -236,7 +236,7 @@ class OutboundAuthTest {
         "source A must be capped before cleanup");
 
     // One fresh entry from source B that must survive the cleanup
-    OhId ohIdB = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohIdB = clientNode.getKademliaId().getBytes();
     byte[] nonceB = "freshNonceB".getBytes();
     byte[] signatureB = signV2(payload);
     assertEquals(

@@ -3,7 +3,6 @@ package im.redpanda.jobs;
 import im.redpanda.core.ServerContext;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.OhDht;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundStore;
 import java.time.Duration;
 import java.util.List;
@@ -68,8 +67,8 @@ public class OhAnnounceJob extends Job {
     if (outboundStore == null) {
       return;
     }
-    List<OhId> ohIds = outboundStore.handles().listActiveOhIds(System.currentTimeMillis());
-    for (OhId ohId : ohIds) {
+    List<byte[]> ohIds = outboundStore.handles().listActiveOhIds(System.currentTimeMillis());
+    for (byte[] ohId : ohIds) {
       announceSoon(serverContext, ohId);
     }
     if (!ohIds.isEmpty()) {
@@ -83,7 +82,7 @@ public class OhAnnounceJob extends Job {
    * use {@link #announceNewRegistration(ServerContext, byte[])} instead so the first deposits are
    * not lost while the announce is still staggered.
    */
-  public static void announceSoon(ServerContext serverContext, OhId ohId) {
+  public static void announceSoon(ServerContext serverContext, byte[] ohId) {
     new SingleAnnounceJob(serverContext, ohId, ANNOUNCE_STAGGER_MS).start();
   }
 
@@ -94,25 +93,25 @@ public class OhAnnounceJob extends Job {
    * #NEW_REGISTRATION_STAGGER_MS} for why the short stagger is safe here while the periodic
    * re-announce must keep the full one.
    */
-  public static void announceNewRegistration(ServerContext serverContext, OhId ohId) {
+  public static void announceNewRegistration(ServerContext serverContext, byte[] ohId) {
     new SingleAnnounceJob(serverContext, ohId, NEW_REGISTRATION_STAGGER_MS).start();
   }
 
   /** One-shot job that builds and inserts the announce record after its randomized delay. */
   static class SingleAnnounceJob extends Job {
 
-    private final OhId ohId;
+    private final byte[] ohId;
     private final long maxStaggerMs;
     private final long delayMs;
 
-    SingleAnnounceJob(ServerContext serverContext, OhId ohId, long maxStaggerMs) {
+    SingleAnnounceJob(ServerContext serverContext, byte[] ohId, long maxStaggerMs) {
       // sample the randomized delay first, then hand it to the primary constructor (super(...)
       // must be the first statement, so the sampling cannot live inline below)
       this(serverContext, ohId, maxStaggerMs, rand.nextLong(maxStaggerMs + 1));
     }
 
     /** Visible for testing: constructs the job with an explicit (already sampled) delay. */
-    SingleAnnounceJob(ServerContext serverContext, OhId ohId, long maxStaggerMs, long delayMs) {
+    SingleAnnounceJob(ServerContext serverContext, byte[] ohId, long maxStaggerMs, long delayMs) {
       // skipImminentRun=true → the single work() run happens after the randomized delay,
       // sampled uniformly from [0, maxStaggerMs]
       super(serverContext, delayMs, false, true);

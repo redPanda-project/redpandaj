@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.OutboundMailboxStore;
@@ -58,16 +57,16 @@ class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /** Returns a 20-byte oh_id suitable for registration and deposit tests. */
-  private static OhId sampleOhId() {
+  private static byte[] sampleOhId() {
     byte[] id = new byte[KademliaId.ID_LENGTH_BYTES];
     for (int i = 0; i < id.length; i++) {
       id[i] = (byte) (i + 1);
     }
-    return OhId.fromBytes(id);
+    return id;
   }
 
   /** Registers an OH handle with a future expiry in the in-memory handle store. */
-  private void registerOh(OhId ohId) {
+  private void registerOh(byte[] ohId) {
     long now = System.currentTimeMillis();
     HandleRecord record =
         new HandleRecord(new byte[HANDLE_KEY_LENGTH], now, now + HANDLE_EXPIRY_MILLIS);
@@ -80,14 +79,14 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_withValidRegisteredOhId_depositsToMailbox() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     byte[] content = "direct-oh-payload".getBytes(StandardCharsets.UTF_8);
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(content))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .build();
     byte[] putData = putMsg.toByteArray();
 
@@ -112,7 +111,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_withOhIdButNoRegisteredOh_isDroppedWithoutLegacyFallthrough() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     // Intentionally skip registerOh() so depositMessage returns NOT_FOUND
 
     // A raw (non-garlic) payload like the mobile client sends; legacy parsing would throw on it
@@ -122,7 +121,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(rawPayload))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .build();
     byte[] putData = putMsg.toByteArray();
 
@@ -203,13 +202,13 @@ class InboundCommandProcessorFlaschenpostPutTest {
     ServerContext noServiceCtx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor noServiceProc = new InboundCommandProcessor(noServiceCtx);
 
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     byte[] ackBytes = buildAckPayload(42);
 
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(ackBytes))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .build();
     byte[] putData = putMsg.toByteArray();
 
@@ -234,7 +233,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     ServerContext noServiceCtx = ServerContext.buildDefaultServerContext();
     InboundCommandProcessor noServiceProc = new InboundCommandProcessor(noServiceCtx);
 
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     // Content that is not a valid GM frame at all (unknown type byte) — would trip the new
     // isValidFrame pre-check if it were wrongly applied here.
     byte[] invalidContent = new byte[] {(byte) 0x2a, 1, 2, 3};
@@ -242,7 +241,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(invalidContent))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .setWantResponse(true)
             .build();
     byte[] putData = putMsg.toByteArray();
@@ -268,7 +267,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_legacyPathDepositsViaGarlicMessageDestination() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     // Build a GarlicMessage-formatted payload: [1 gmType][4 overallLen][20 destinationId][data]
@@ -277,7 +276,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     ByteBuffer gm = ByteBuffer.allocate(1 + 4 + KademliaId.ID_LENGTH_BYTES + extraData.length);
     gm.put(im.redpanda.flaschenpost.GMType.GARLIC_MESSAGE.getId());
     gm.putInt(overallLen);
-    ohId.writeTo(gm);
+    gm.put(ohId);
     gm.put(extraData);
     gm.flip();
     byte[] gmBytes = new byte[gm.remaining()];
@@ -329,7 +328,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_withExpiredOhHandle_isDropped() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     // Register with an already-expired handle
     long now = System.currentTimeMillis();
     HandleRecord expiredRecord = new HandleRecord(new byte[HANDLE_KEY_LENGTH], now - 2000, now - 1);
@@ -339,7 +338,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(ackBytes))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .build();
     byte[] putData = putMsg.toByteArray();
 
@@ -362,7 +361,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_multipleDepositsToSameOh_allStored() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     Peer peer = new Peer("127.0.0.1", 9009, ctx.getNodeId());
@@ -379,7 +378,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
       FlaschenpostPut putMsg =
           FlaschenpostPut.newBuilder()
               .setContent(copyFrom(payload))
-              .setOhId(ohId.toByteString())
+              .setOhId(ByteString.copyFrom(ohId))
               .build();
       byte[] putData = putMsg.toByteArray();
       proc.parseCommand(Command.FLASCHENPOST_PUT, buildFrame(putData), peer);
@@ -527,7 +526,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   /** Light client with want_response gets an OK FlaschenpostPutResponse on successful deposit. */
   @Test
   void flaschenpostPut_lightClientWantResponse_receivesOkStatus() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     im.redpanda.outbound.v1.FlaschenpostPutResponse res =
@@ -541,7 +540,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_lightClientWantResponse_unknownOhAcceptedForForwarding() {
-    OhId ohId = sampleOhId(); // not registered
+    byte[] ohId = sampleOhId(); // not registered
 
     im.redpanda.outbound.v1.FlaschenpostPutResponse res =
         depositAndReadResponse(ohId, new byte[32], true, true);
@@ -554,7 +553,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
    */
   @Test
   void flaschenpostPut_oversizedPayloadToUnknownOh_isRejectedNotForwarded() {
-    OhId ohId = sampleOhId(); // not registered
+    byte[] ohId = sampleOhId(); // not registered
     byte[] oversized = new byte[OutboundMailboxStore.MAX_ITEM_BYTES + 1];
 
     im.redpanda.outbound.v1.FlaschenpostPutResponse res =
@@ -565,12 +564,12 @@ class InboundCommandProcessorFlaschenpostPutTest {
   /** At the hop limit an unknown OH is NOT forwarded again — the client sees NOT_FOUND. */
   @Test
   void flaschenpostPut_lightClientWantResponse_unknownOhAtHopLimitIsNotFound() {
-    OhId ohId = sampleOhId(); // not registered
+    byte[] ohId = sampleOhId(); // not registered
 
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(new byte[32]))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .setWantResponse(true)
             .setHopCount(im.redpanda.flaschenpost.OhForwarder.MAX_HOPS)
             .build();
@@ -601,7 +600,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   /** Full nodes never receive command 158, even if they set want_response. */
   @Test
   void flaschenpostPut_fullNodeWantResponse_receivesNoResponse() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     Peer peer = depositWithPeer(ohId, new byte[16], true, false);
@@ -612,7 +611,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
   /** Light clients that do not set want_response keep the fire-and-forget behavior. */
   @Test
   void flaschenpostPut_lightClientWithoutWantResponse_receivesNoResponse() {
-    OhId ohId = sampleOhId();
+    byte[] ohId = sampleOhId();
     registerOh(ohId);
 
     Peer peer = depositWithPeer(ohId, new byte[16], false, true);
@@ -621,11 +620,11 @@ class InboundCommandProcessorFlaschenpostPutTest {
 
   /** Sends a FlaschenpostPut and returns the peer for write-buffer inspection. */
   private Peer depositWithPeer(
-      OhId ohId, byte[] content, boolean wantResponse, boolean lightClient) {
+      byte[] ohId, byte[] content, boolean wantResponse, boolean lightClient) {
     FlaschenpostPut putMsg =
         FlaschenpostPut.newBuilder()
             .setContent(copyFrom(content))
-            .setOhId(ohId.toByteString())
+            .setOhId(ByteString.copyFrom(ohId))
             .setWantResponse(wantResponse)
             .build();
     byte[] putData = putMsg.toByteArray();
@@ -642,7 +641,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
 
   /** Deposits and parses the FlaschenpostPutResponse (command 158) from the peer write buffer. */
   private im.redpanda.outbound.v1.FlaschenpostPutResponse depositAndReadResponse(
-      OhId ohId, byte[] content, boolean wantResponse, boolean lightClient) {
+      byte[] ohId, byte[] content, boolean wantResponse, boolean lightClient) {
     Peer peer = depositWithPeer(ohId, content, wantResponse, lightClient);
     ByteBuffer buf = peer.writeBuffer;
     buf.flip();

@@ -121,7 +121,7 @@ public final class ReverseGarlic {
         ByteBuffer.allocate(
             1 + KademliaId.ID_LENGTH_BYTES + FlaschenpostV2.SESSION_TAG_LEN + 4 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER_TAGGED);
-    returnPath.ackOhId().writeTo(deliver);
+    deliver.put(returnPath.ackOhId());
     deliver.put(returnPath.ackSessionTag());
     deliver.putInt(payload.length);
     deliver.put(payload);

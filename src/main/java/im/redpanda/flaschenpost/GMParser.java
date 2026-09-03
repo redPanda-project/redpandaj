@@ -15,7 +15,6 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
 import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
-import im.redpanda.outbound.OhId;
 import im.redpanda.store.NodeEdge;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -391,7 +390,7 @@ public class GMParser {
     sendFpToPeer(peerToSendFP, content, null, 0, null);
   }
 
-  public static void sendFpToPeer(Peer peerToSendFP, byte[] content, OhId ohId, int hopCount) {
+  public static void sendFpToPeer(Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount) {
     sendFpToPeer(peerToSendFP, content, ohId, hopCount, null);
   }
 
@@ -404,7 +403,7 @@ public class GMParser {
    * null}/empty for untagged deposits.
    */
   public static void sendFpToPeer(
-      Peer peerToSendFP, byte[] content, OhId ohId, int hopCount, byte[] sessionTag) {
+      Peer peerToSendFP, byte[] content, byte[] ohId, int hopCount, byte[] sessionTag) {
     sendFpToPeer(peerToSendFP, content, ohId, hopCount, sessionTag, null);
   }
 
@@ -416,7 +415,7 @@ public class GMParser {
   public static void sendFpToPeer(
       Peer peerToSendFP,
       byte[] content,
-      OhId ohId,
+      byte[] ohId,
       int hopCount,
       byte[] sessionTag,
       byte[] returnPath) {
@@ -424,7 +423,7 @@ public class GMParser {
         im.redpanda.proto.FlaschenpostPut.newBuilder()
             .setContent(com.google.protobuf.ByteString.copyFrom(content));
     if (ohId != null) {
-      builder.setOhId(ohId.toByteString());
+      builder.setOhId(com.google.protobuf.ByteString.copyFrom(ohId));
     }
     if (hopCount > 0) {
       builder.setHopCount(hopCount);

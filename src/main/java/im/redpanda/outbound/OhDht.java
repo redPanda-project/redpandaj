@@ -57,10 +57,9 @@ public final class OhDht {
    * Derives the deterministic announce NodeId for an oh_id: {@code seed = SHA256(tag || oh_id)} →
    * {@link NodeId#fromSeed}. Same oh_id → same keypair on every node.
    */
-  public static NodeId deriveAnnounceNodeId(OhId ohId) {
-    ByteBuffer seedInput = ByteBuffer.allocate(DOMAIN_TAG.length + ohId.length());
-    seedInput.put(DOMAIN_TAG);
-    ohId.writeTo(seedInput);
+  public static NodeId deriveAnnounceNodeId(byte[] ohId) {
+    ByteBuffer seedInput = ByteBuffer.allocate(DOMAIN_TAG.length + ohId.length);
+    seedInput.put(DOMAIN_TAG).put(ohId);
     byte[] seed = Sha256Hash.create(seedInput.array()).getBytes();
 
     return NodeId.fromSeed(seed);
@@ -70,7 +69,7 @@ public final class OhDht {
    * The Kademlia key the announce record for this oh_id lives under at {@code timestampMs} (the key
    * rotates with the UTC date, like all KadContent ids).
    */
-  public static KademliaId announceKademliaId(OhId ohId, long timestampMs) {
+  public static KademliaId announceKademliaId(byte[] ohId, long timestampMs) {
     return KadContent.createKademliaId(timestampMs, deriveAnnounceNodeId(ohId).exportPublic());
   }
 
@@ -79,10 +78,10 @@ public final class OhDht {
    * Only the node id is stored (no endpoint): a sender resolves the host node's connection points
    * via the regular NodeInfo lookup, so a single record reveals as little as possible.
    */
-  public static KadContent buildAnnounceContent(OhId ohId, KademliaId hostNodeId, long nowMs) {
+  public static KadContent buildAnnounceContent(byte[] ohId, KademliaId hostNodeId, long nowMs) {
     OhNodeRecord.Builder record =
         OhNodeRecord.newBuilder()
-            .setOhIdHash(ByteString.copyFrom(Sha256Hash.create(ohId.toBytes()).getBytes()))
+            .setOhIdHash(ByteString.copyFrom(Sha256Hash.create(ohId).getBytes()))
             .setNodeId(ByteString.copyFrom(hostNodeId.getBytes()))
             .setAnnouncedAtMs(nowMs);
 
@@ -124,12 +123,13 @@ public final class OhDht {
    *
    * @return the parsed record, or {@code null} if none qualifies
    */
-  public static OhNodeRecord extractValidRecord(List<KadContent> contents, OhId ohId, long nowMs) {
+  public static OhNodeRecord extractValidRecord(
+      List<KadContent> contents, byte[] ohId, long nowMs) {
     if (contents == null || contents.isEmpty()) {
       return null;
     }
     byte[] announcePubkey = deriveAnnounceNodeId(ohId).exportPublic();
-    byte[] expectedHash = Sha256Hash.create(ohId.toBytes()).getBytes();
+    byte[] expectedHash = Sha256Hash.create(ohId).getBytes();
 
     OhNodeRecord best = null;
     long bestTimestamp = Long.MIN_VALUE;

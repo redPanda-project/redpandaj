@@ -62,7 +62,7 @@ class OutboundIntegrationTest {
     PeerTestSupport.writeBuffer(peer).clear(); // Clear register response
 
     // 2. Add some mail manually to store for testing fetch
-    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
+    byte[] ohId = clientNode.getKademliaId().getBytes();
     mailboxStore.addMessage(
         ohId,
         im.redpanda.outbound.v1.MailItem.newBuilder()
@@ -114,7 +114,7 @@ class OutboundIntegrationTest {
     assertEquals(im.redpanda.outbound.v1.Status.OK, res.getStatus());
 
     // 4. Verify store is empty
-    assertNull(handleStore.get(OhId.fromBytes(clientNode.getKademliaId().getBytes())));
+    assertNull(handleStore.get(clientNode.getKademliaId().getBytes()));
   }
 
   @Test

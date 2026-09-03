@@ -9,7 +9,6 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -47,7 +46,7 @@ class ReverseGarlicRouterTest {
   private OutboundMailboxStore aliceMailbox;
 
   /** Alice's OH, registered on hop3 (the final station of the return path). */
-  private OhId aliceOhId;
+  private byte[] aliceOhId;
 
   /** The session tag Alice chose for this conversation's reply path. */
   private byte[] sessionTag;
@@ -69,9 +68,8 @@ class ReverseGarlicRouterTest {
     hop3.setOutboundService(new OutboundService(store3));
     processor3 = new InboundCommandProcessor(hop3);
 
-    byte[] aliceOhIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(aliceOhIdBytes);
-    aliceOhId = OhId.fromBytes(aliceOhIdBytes);
+    aliceOhId = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(aliceOhId);
     sessionTag = new byte[FlaschenpostV2.SESSION_TAG_LEN];
     RANDOM.nextBytes(sessionTag);
 
@@ -121,11 +119,11 @@ class ReverseGarlicRouterTest {
   }
 
   /** Builds the innermost CMD_DELIVER_TAGGED plaintext (oh_id + session_tag + payload). */
-  private byte[] buildTaggedDeliverPlaintext(OhId ohId, byte[] tag, byte[] payload) {
+  private byte[] buildTaggedDeliverPlaintext(byte[] ohId, byte[] tag, byte[] payload) {
     ByteBuffer deliver =
         ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + tag.length + 4 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER_TAGGED);
-    ohId.writeTo(deliver);
+    deliver.put(ohId);
     deliver.put(tag);
     deliver.putInt(payload.length);
     deliver.put(payload);
@@ -195,7 +193,7 @@ class ReverseGarlicRouterTest {
     byte[] payload = "plain ms04 deliver".getBytes(StandardCharsets.UTF_8);
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4 + payload.length);
     deliver.put(FlaschenpostV2.CMD_DELIVER);
-    aliceOhId.writeTo(deliver);
+    deliver.put(aliceOhId);
     deliver.putInt(payload.length);
     deliver.put(payload);
     byte[] body =
@@ -233,7 +231,7 @@ class ReverseGarlicRouterTest {
     // the untagged minimum (25) and must be dropped without crash or deposit
     ByteBuffer deliver = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + 4);
     deliver.put(FlaschenpostV2.CMD_DELIVER_TAGGED);
-    aliceOhId.writeTo(deliver);
+    deliver.put(aliceOhId);
     deliver.putInt(0);
     byte[] body =
         FlaschenpostV2.encryptLayer(
@@ -251,7 +249,7 @@ class ReverseGarlicRouterTest {
     ByteBuffer deliver =
         ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + FlaschenpostV2.SESSION_TAG_LEN + 4);
     deliver.put(FlaschenpostV2.CMD_DELIVER_TAGGED);
-    aliceOhId.writeTo(deliver);
+    deliver.put(aliceOhId);
     deliver.put(sessionTag);
     deliver.putInt(500);
     byte[] body =
@@ -268,9 +266,8 @@ class ReverseGarlicRouterTest {
   void taggedDeliverForRemoteOh_fallsBackToMs02b_preservingSessionTag() throws Exception {
     // the final return-path hop (hop1) does not host Alice's OH; it must forward a
     // FlaschenpostPut that carries oh_id, payload AND the session tag toward the host node
-    byte[] remoteOhIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(remoteOhIdBytes);
-    OhId remoteOhId = OhId.fromBytes(remoteOhIdBytes);
+    byte[] remoteOhId = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(remoteOhId);
     hop1.getKadStoreManager()
         .put(
             OhDht.buildAnnounceContent(
@@ -294,7 +291,7 @@ class ReverseGarlicRouterTest {
     byte[] forwardedBytes = new byte[out.getInt()];
     out.get(forwardedBytes);
     FlaschenpostPut forwarded = FlaschenpostPut.parseFrom(forwardedBytes);
-    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(remoteOhId.toBytes());
+    assertThat(forwarded.getOhId().toByteArray()).isEqualTo(remoteOhId);
     assertThat(forwarded.getContent().toByteArray()).isEqualTo(payload);
     assertThat(forwarded.getSessionTag().toByteArray())
         .as("the session tag must survive the MS02b fallback")

@@ -8,7 +8,6 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.jobs.RecordLookupJob;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.outbound.ChannelDht;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -35,7 +34,7 @@ class RecordDhtRouterTest {
   private ServerContext node;
   private OutboundMailboxStore mailbox;
   private OutboundHandleStore handles;
-  private OhId ackOhId;
+  private byte[] ackOhId;
   private byte[] ackSessionTag;
 
   @BeforeEach
@@ -46,7 +45,7 @@ class RecordDhtRouterTest {
     mailbox = outboundStore.mailbox();
     node.setOutboundService(new OutboundService(outboundStore));
 
-    ackOhId = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
+    ackOhId = randomBytes(KademliaId.ID_LENGTH_BYTES);
     ackSessionTag = randomBytes(FlaschenpostV2.SESSION_TAG_LEN);
     long now = System.currentTimeMillis();
     handles.put(ackOhId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
@@ -157,7 +156,7 @@ class RecordDhtRouterTest {
   /**
    * Polls the mailbox until an item arrives (the not-found answer is dispatched asynchronously).
    */
-  private List<MailItem> awaitMailbox(OhId ohId) throws InterruptedException {
+  private List<MailItem> awaitMailbox(byte[] ohId) throws InterruptedException {
     for (int i = 0; i < 120; i++) {
       List<MailItem> items = mailbox.fetchMessages(ohId, 10, 0);
       if (!items.isEmpty()) {

@@ -7,7 +7,6 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -89,9 +88,8 @@ class ReverseGarlicReflectionLimitTest {
         ReverseGarlic.swapReflectionRateLimiterForTest(
             new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));
 
-    byte[] ohIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ohIdBytes);
-    OhId ohId = OhId.fromBytes(ohIdBytes);
+    byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ohId);
     long now = System.currentTimeMillis();
     handleStore.put(ohId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
 
@@ -107,9 +105,8 @@ class ReverseGarlicReflectionLimitTest {
 
   /** A return path whose only hop is {@code hop} — the "reflect at this node" shape. */
   private ReturnPath pathVia(ServerContext hop) {
-    byte[] ohIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ohIdBytes);
-    OhId ohId = OhId.fromBytes(ohIdBytes);
+    byte[] ohId = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ohId);
     return new ReturnPath(
         ohId,
         sessionTag(),

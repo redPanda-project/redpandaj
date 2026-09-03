@@ -2,6 +2,7 @@ package im.redpanda.outbound;
 
 import im.redpanda.core.Log;
 import im.redpanda.core.ServerContext;
+import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -167,11 +168,15 @@ public final class OutboundStore {
    * step of the expiry cleanup). This is the only way to remove a handle: invariant 1 above cannot
    * be violated by a caller, and a crash mid-way leaves either both or neither.
    */
-  public void removeHandle(OhId ohId) {
+  public void removeHandle(byte[] ohId) {
+    removeHandleByHexKey(Utils.bytesToHexString(ohId));
+  }
+
+  private void removeHandleByHexKey(String ohIdHex) {
     tx(
         () -> {
-          handleStore.remove(ohId);
-          mailboxStore.deleteAll(ohId);
+          handleStore.removeByHexKey(ohIdHex);
+          mailboxStore.deleteAllByHexKey(ohIdHex);
         });
   }
 
@@ -189,9 +194,9 @@ public final class OutboundStore {
     return tx(
         () -> {
           // Snapshot first: the removals below mutate the handle map.
-          List<OhId> expired = handleStore.expiredBefore(now);
-          for (OhId ohId : expired) {
-            removeHandle(ohId);
+          List<String> expired = handleStore.hexKeysExpiredBefore(now);
+          for (String ohIdHex : expired) {
+            removeHandleByHexKey(ohIdHex);
           }
           return expired.size();
         });

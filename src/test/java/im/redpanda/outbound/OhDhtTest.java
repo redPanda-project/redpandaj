@@ -20,10 +20,10 @@ class OhDhtTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
-  private static OhId randomOhId() {
-    byte[] ohId = new byte[OhId.GARLIC_BYTES];
+  private static byte[] randomOhId() {
+    byte[] ohId = new byte[20];
     RANDOM.nextBytes(ohId);
-    return OhId.fromBytes(ohId);
+    return ohId;
   }
 
   private static KademliaId randomNodeKadId() {
@@ -36,7 +36,7 @@ class OhDhtTest {
 
   @Test
   void deriveAnnounceNodeId_isDeterministic() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
 
     NodeId first = OhDht.deriveAnnounceNodeId(ohId);
     NodeId second = OhDht.deriveAnnounceNodeId(ohId);
@@ -70,11 +70,11 @@ class OhDhtTest {
 
   @Test
   void announceKademliaId_sameForEveryoneKnowingOhId() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long timestamp = System.currentTimeMillis();
 
     assertThat(OhDht.announceKademliaId(ohId, timestamp))
-        .isEqualTo(OhDht.announceKademliaId(OhId.fromBytes(ohId.toBytes()), timestamp));
+        .isEqualTo(OhDht.announceKademliaId(ohId.clone(), timestamp));
   }
 
   // --- Announce record building (padding) ---
@@ -94,7 +94,7 @@ class OhDhtTest {
 
   @Test
   void buildAnnounceContent_isSignedAndStoredUnderDerivedKey() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     KademliaId hostNode = randomNodeKadId();
     long now = System.currentTimeMillis();
 
@@ -109,7 +109,7 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_returnsRecordWithHostNode() throws Exception {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     KademliaId hostNode = randomNodeKadId();
     long now = System.currentTimeMillis();
 
@@ -118,13 +118,12 @@ class OhDhtTest {
 
     assertThat(record).isNotNull();
     assertThat(record.getNodeId().toByteArray()).isEqualTo(hostNode.getBytes());
-    assertThat(record.getOhIdHash().toByteArray())
-        .isEqualTo(Sha256Hash.create(ohId.toBytes()).getBytes());
+    assertThat(record.getOhIdHash().toByteArray()).isEqualTo(Sha256Hash.create(ohId).getBytes());
   }
 
   @Test
   void extractValidRecord_picksNewestValidRecord() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
     KademliaId oldNode = randomNodeKadId();
     KademliaId newNode = randomNodeKadId();
@@ -142,8 +141,8 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_rejectsRecordSignedByForeignKey() {
-    OhId ohId = randomOhId();
-    OhId otherOhId = randomOhId();
+    byte[] ohId = randomOhId();
+    byte[] otherOhId = randomOhId();
     long now = System.currentTimeMillis();
 
     // Record announced for ANOTHER oh_id (signed by a different derived key)
@@ -154,7 +153,7 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_rejectsTamperedOhIdHash() throws Exception {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
     // Forge a record claiming the right oh_id_hash is something else; even when signed with the
@@ -175,7 +174,7 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_rejectsNonPaddedRecord() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
     // Correctly derived key but content without the fixed-size padding — must be rejected
@@ -183,7 +182,7 @@ class OhDhtTest {
     NodeId announceNodeId = OhDht.deriveAnnounceNodeId(ohId);
     OhNodeRecord unpadded =
         OhNodeRecord.newBuilder()
-            .setOhIdHash(ByteString.copyFrom(Sha256Hash.create(ohId.toBytes()).getBytes()))
+            .setOhIdHash(ByteString.copyFrom(Sha256Hash.create(ohId).getBytes()))
             .setNodeId(ByteString.copyFrom(randomNodeKadId().getBytes()))
             .setAnnouncedAtMs(now)
             .build();
@@ -195,7 +194,7 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_rejectsStaleRecord() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
     KadContent stale =
@@ -206,7 +205,7 @@ class OhDhtTest {
 
   @Test
   void extractValidRecord_emptyOrNullInput_returnsNull() {
-    OhId ohId = randomOhId();
+    byte[] ohId = randomOhId();
     long now = System.currentTimeMillis();
 
     assertThat(OhDht.extractValidRecord(List.of(), ohId, now)).isNull();

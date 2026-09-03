@@ -73,7 +73,7 @@ public class OutboundAuth {
       byte[] signingBytes,
       byte[] signature,
       long timestampMs,
-      OhId ohId,
+      byte[] ohId,
       byte[] nonce) {
 
     // 1. Check Timestamp
@@ -85,7 +85,7 @@ public class OutboundAuth {
 
     // 2. Check Replay — fast path only; the authoritative, race-free check is the putIfAbsent
     // below (two threads passing containsKey concurrently must not both get accepted)
-    String ohIdHex = ohId.toHex();
+    String ohIdHex = Utils.bytesToHexString(ohId);
     String replayKey = ohIdHex + "_" + Utils.bytesToHexString(nonce);
     if (replayCache.containsKey(replayKey)) {
       logger.warn("OutboundAuth: Replay detected for key {}", replayKey);
