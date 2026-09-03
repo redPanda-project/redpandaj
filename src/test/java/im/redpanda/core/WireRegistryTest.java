@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * CI guard for the wire registry (DDD review 2026-08-31, §6 P0): the checked-in {@code
  * src/main/resources/wire-registry.md} must match what {@link WireRegistry} derives from {@link
- * Command}, {@link im.redpanda.flaschenpost.FlaschenpostV2} and {@code src/main/proto}.
+ * Command}, {@link im.redpanda.routing.FlaschenpostV2} and {@code src/main/proto}.
  *
  * <p>The same registry block is mirrored into the {@code docs} repository ({@code
  * docs/wire_registry.md}); this test is what makes redpandaj the source of truth for it.

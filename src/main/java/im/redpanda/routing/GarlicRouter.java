@@ -1,0 +1,445 @@
+package im.redpanda.routing;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+import im.redpanda.core.Command;
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.Peer;
+import im.redpanda.core.ServerContext;
+import im.redpanda.dht.ChannelDht;
+import im.redpanda.dht.KadContent;
+import im.redpanda.dht.KademliaInsertJob;
+import im.redpanda.dht.RecordLookupJob;
+import im.redpanda.mailbox.OhId;
+import im.redpanda.mailbox.OutboundService;
+import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.mailbox.RoutingAckSender;
+import im.redpanda.proto.KademliaStore;
+import java.nio.ByteBuffer;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * MS04 stateless garlic relay: handles inbound {@link Command#FLASCHENPOST_V2} packets.
+ *
+ * <ul>
+ *   <li>Dedup: a {@code packet_id} is processed at most once per node (5-minute window). This stops
+ *       replays and routing loops of the <em>unchanged</em> packet (the Kademlia steps between
+ *       garlic hops keep the packet_id). Peeled {@code CMD_FORWARD} chains rebuild with a fresh
+ *       packet_id, but their length is physically bounded by the layer count: every layer costs 85
+ *       bytes of the fixed 2048-byte packet, so a sender cannot construct unbounded relay loops.
+ *       The packet intentionally carries no hop counter (it would leak the position in the path).
+ *   <li>If {@code next_hop} is not us, the packet is routed unchanged toward {@code next_hop}
+ *       (Kademlia step between garlic hops).
+ *   <li>If it is us, the layer is peeled: {@code CMD_FORWARD} rebuilds a fresh 2048-byte packet
+ *       (new random packet_id, new random padding) and routes it to the inner next hop; {@code
+ *       CMD_DELIVER} deposits the payload into the local OH mailbox (falling back to the MS02b
+ *       {@link OhForwarder} if the OH is hosted on another node).
+ *   <li>Any malformed or unauthenticated packet is dropped silently (best-effort layer, no error
+ *       responses).
+ * </ul>
+ */
+@Slf4j
+public final class GarlicRouter {
+
+  private static final SecureRandom RANDOM = new SecureRandom();
+
+  /**
+   * Global rate limiter for inbound channel-rendezvous record stores (T43). Stores arrive
+   * garlic-wrapped with no attributable source, so a single global cap bounds the DHT-write
+   * amplification a flood can trigger on this node.
+   */
+  private static final RecordStoreRateLimiter RECORD_STORE_RATE_LIMITER =
+      new RecordStoreRateLimiter(
+          RecordStoreRateLimiter.DEFAULT_CAPACITY,
+          RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
+          System.currentTimeMillis());
+
+  /** Minimum interval between two size-mismatch WARN lines (see {@link #logDroppedRecordStore}). */
+  static final long SIZE_MISMATCH_WARN_INTERVAL_MS = 1000L * 60 * 10;
+
+  /**
+   * Timestamp of the last size-mismatch WARN. {@link Long#MIN_VALUE} = never warned yet (kept as an
+   * explicit sentinel so the interval subtraction in {@link #tryAcquireSizeMismatchWarn} cannot
+   * overflow).
+   */
+  private static final AtomicLong lastSizeMismatchWarnMs = new AtomicLong(Long.MIN_VALUE);
+
+  /**
+   * Own bucket for inbound channel-rendezvous record lookups (T46). A lookup triggers a Kademlia
+   * search plus a reverse-garlic answer, so an unbounded flood of lookups is its own DHT-query
+   * amplification vector, independent of the store path above — hence a separate bucket rather than
+   * sharing tokens with {@link #RECORD_STORE_RATE_LIMITER}.
+   */
+  private static volatile RecordStoreRateLimiter recordLookupRateLimiter =
+      new RecordStoreRateLimiter(
+          RecordStoreRateLimiter.DEFAULT_CAPACITY,
+          RecordStoreRateLimiter.DEFAULT_REFILL_INTERVAL_MS,
+          System.currentTimeMillis());
+
+  private GarlicRouter() {}
+
+  /**
+   * Test-only hook (T46): swaps the record-lookup rate limiter for a small, deterministic bucket so
+   * tests can exercise exhaustion without depending on wall-clock timing or draining the
+   * production-sized bucket shared with other tests. Returns the previous instance so the caller
+   * can restore it. {@code volatile} on the field guarantees the swap is visible to connection
+   * threads without extra synchronization.
+   */
+  static RecordStoreRateLimiter swapRecordLookupRateLimiterForTest(RecordStoreRateLimiter limiter) {
+    RecordStoreRateLimiter previous = recordLookupRateLimiter;
+    recordLookupRateLimiter = Objects.requireNonNull(limiter);
+    return previous;
+  }
+
+  /** Entry point for a received FLASCHENPOST_V2 payload (the raw 2048-byte packet). */
+  public static void handle(ServerContext serverContext, byte[] packet) {
+    FlaschenpostV2 fp = FlaschenpostV2.parse(packet);
+    if (fp == null) {
+      log.debug("dropping malformed flaschenpost v2 packet");
+      return;
+    }
+    if (GMStoreManager.putV2(fp.getPacketId())) {
+      log.debug("dropping duplicate flaschenpost v2 packet {}", fp.getPacketId());
+      return;
+    }
+    if (!fp.getNextHop().equals(serverContext.getOwnNodeId())) {
+      routeToNextHop(serverContext, fp.getNextHop(), packet);
+      return;
+    }
+
+    byte[] plaintext;
+    try {
+      plaintext = fp.decryptLayer(serverContext.getNodeId().getEncryptionKey());
+    } catch (GeneralSecurityException e) {
+      // not encrypted to us or tampered with — drop silently, never flood-forward
+      log.debug("flaschenpost v2 layer authentication failed, dropping packet");
+      return;
+    }
+
+    byte cmd = plaintext[0]; // MIN_CIPHERTEXT_LEN guarantees at least one plaintext byte
+    switch (cmd) {
+      case FlaschenpostV2.CMD_FORWARD -> handleForward(serverContext, plaintext);
+      case FlaschenpostV2.CMD_DELIVER -> handleDeliver(serverContext, plaintext, false);
+      case FlaschenpostV2.CMD_DELIVER_TAGGED -> handleDeliver(serverContext, plaintext, true);
+      case FlaschenpostV2.CMD_DELIVER_ACKED -> handleDeliverAcked(serverContext, plaintext);
+      case FlaschenpostV2.CMD_RECORD_STORE -> handleRecordStore(serverContext, plaintext);
+      case FlaschenpostV2.CMD_RECORD_LOOKUP -> handleRecordLookup(serverContext, plaintext);
+      default -> log.debug("unknown flaschenpost v2 layer command {}, dropping", cmd);
+    }
+  }
+
+  /** CMD_FORWARD: [1 cmd][20 next_hop][body = nonce|ephemeral_pub|ct_len|ct]. */
+  private static void handleForward(ServerContext serverContext, byte[] plaintext) {
+    int minLen =
+        1
+            + KademliaId.ID_LENGTH_BYTES
+            + FlaschenpostV2.BODY_HEADER_LEN
+            + FlaschenpostV2.MIN_CIPHERTEXT_LEN;
+    if (plaintext.length < minLen) {
+      log.debug("flaschenpost v2 forward layer too short, dropping");
+      return;
+    }
+    KademliaId innerNextHop =
+        KademliaId.fromBuffer(ByteBuffer.wrap(plaintext, 1, KademliaId.ID_LENGTH_BYTES));
+    byte[] body = Arrays.copyOfRange(plaintext, 1 + KademliaId.ID_LENGTH_BYTES, plaintext.length);
+
+    byte[] rebuilt;
+    try {
+      // fresh random packet_id so the dedup caches on the next hops never collide
+      rebuilt = FlaschenpostV2.buildPacket(RANDOM.nextInt(), innerNextHop, body);
+    } catch (IllegalArgumentException e) {
+      log.debug("flaschenpost v2 inner packet invalid, dropping: {}", e.getMessage());
+      return;
+    }
+    if (FlaschenpostV2.parse(rebuilt) == null) {
+      log.debug("rebuilt flaschenpost v2 packet invalid, dropping");
+      return;
+    }
+    routeToNextHop(serverContext, innerNextHop, rebuilt);
+  }
+
+  /**
+   * CMD_DELIVER: {@code [1 cmd][20 oh_id][4 payload_len][payload][ignored padding]}.
+   *
+   * <p>CMD_DELIVER_TAGGED (MS05, {@code tagged = true}): {@code [1 cmd][20 oh_id][16 session_tag][4
+   * payload_len][payload][ignored padding]} — the session tag is deposited with the payload so the
+   * fetching client can correlate the reverse-garlic reply with a conversation.
+   */
+  private static void handleDeliver(ServerContext serverContext, byte[] plaintext, boolean tagged) {
+    int tagLen = tagged ? FlaschenpostV2.SESSION_TAG_LEN : 0;
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + tagLen + 4) {
+      log.debug("flaschenpost v2 deliver layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    OhId ohId = OhId.readGarlicSlot(buffer);
+    byte[] sessionTag = new byte[tagLen];
+    buffer.get(sessionTag);
+    int payloadLen = buffer.getInt();
+    if (payloadLen < 0 || payloadLen > buffer.remaining()) {
+      log.debug("flaschenpost v2 deliver payload length invalid, dropping");
+      return;
+    }
+    byte[] payload = new byte[payloadLen];
+    buffer.get(payload);
+
+    OutboundService outboundService = serverContext.getOutboundService();
+    if (outboundService == null) {
+      return;
+    }
+    OutboundService.DepositResult result =
+        outboundService.depositMessage(ohId, payload, sessionTag);
+    if (result == OutboundService.DepositResult.NOT_FOUND) {
+      // the final garlic hop does not have to be the OH host — reuse the MS02b forwarding
+      // (the session tag rides along on the FlaschenpostPut, see OhForwarder)
+      OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag);
+    } else if (result != OutboundService.DepositResult.DEPOSITED) {
+      log.debug("flaschenpost v2 deliver not stored: {}", result);
+    }
+  }
+
+  /**
+   * CMD_DELIVER_ACKED (MS06): {@code [1 cmd][20 oh_id][1 tag_len (0|16)][tag_len session_tag]
+   * [return_path][4 payload_len][payload][ignored padding]} — a deliver that requests an R-ACK.
+   *
+   * <p>The deposit semantics match {@link #handleDeliver}; additionally the node that makes the
+   * final deposit decision sends a {@code RoutingAck} back through the return path. If the OH is
+   * hosted elsewhere, the return path rides along on the MS02b {@code FlaschenpostPut} (like the
+   * MS05 session tag) and the host node acks. Malformed layers are dropped silently — the return
+   * path is only structurally validated (lengths, hop bounds), its contents are the sender's
+   * responsibility (an unreachable ack path just means no R-ACK arrives).
+   */
+  private static void handleDeliverAcked(ServerContext serverContext, byte[] plaintext) {
+    // minimum: cmd + oh_id + tag_len byte + empty tag + fixed return path + payload_len
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + 1 + ReturnPath.FIXED_LEN + 4) {
+      log.debug("flaschenpost v2 acked deliver layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    OhId ohId = OhId.readGarlicSlot(buffer);
+    int tagLen = buffer.get() & 0xFF;
+    if (tagLen != 0 && tagLen != FlaschenpostV2.SESSION_TAG_LEN) {
+      log.debug("flaschenpost v2 acked deliver tag length invalid, dropping");
+      return;
+    }
+    if (buffer.remaining() < tagLen) {
+      log.debug("flaschenpost v2 acked deliver layer too short, dropping");
+      return;
+    }
+    byte[] sessionTag = new byte[tagLen];
+    buffer.get(sessionTag);
+    ReturnPath returnPath = ReturnPath.parse(buffer);
+    if (returnPath == null || buffer.remaining() < 4) {
+      log.debug("flaschenpost v2 acked deliver return path invalid, dropping");
+      return;
+    }
+    int payloadLen = buffer.getInt();
+    if (payloadLen < 0 || payloadLen > buffer.remaining()) {
+      log.debug("flaschenpost v2 acked deliver payload length invalid, dropping");
+      return;
+    }
+    byte[] payload = new byte[payloadLen];
+    buffer.get(payload);
+
+    OutboundService outboundService = serverContext.getOutboundService();
+    if (outboundService == null) {
+      return;
+    }
+    OutboundService.DepositResult result =
+        outboundService.depositMessage(ohId, payload, sessionTag);
+    if (result == OutboundService.DepositResult.NOT_FOUND) {
+      // not our OH — the MS02b forward conserves the return path so the host node acks.
+      // The hop budget starts at 0 here, so the forward is always accepted; the hop-limit
+      // handle_expired R-ACK is handled on the FlaschenpostPut path (InboundCommandProcessor).
+      OhForwarder.forward(serverContext, ohId, payload, 0, sessionTag, returnPath.serialize());
+      return;
+    }
+    RoutingAckSender.send(serverContext, returnPath, RoutingAckSender.statusFor(result));
+  }
+
+  /**
+   * CMD_RECORD_STORE (T43): {@code [1 cmd][4 len][KademliaStore proto][ignored padding]}. Stores a
+   * channel-rendezvous record in the DHT on behalf of a DHT-fremd client. The record content is
+   * opaque to us; we only enforce the self-certifying signature, the fixed padded size and the 48 h
+   * TTL ({@link ChannelDht}) plus a global store rate limit. Best-effort, no response — the client
+   * verifies by a later lookup. Malformed layers are dropped silently.
+   *
+   * <p>The rate limit is consumed after the (cheap) protobuf parse but before the Ed25519 signature
+   * is verified (T46): a flood of unparseable garbage would otherwise drain the bucket for nothing,
+   * while a flood of parseable-but-forged records would otherwise force a full signature check per
+   * packet with nothing bounding that cost.
+   */
+  private static void handleRecordStore(ServerContext serverContext, byte[] plaintext) {
+    if (plaintext.length < 1 + 4) {
+      log.debug("flaschenpost v2 record store layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    int len = buffer.getInt();
+    if (len < 0 || len > buffer.remaining()) {
+      log.debug("flaschenpost v2 record store length invalid, dropping");
+      return;
+    }
+    byte[] storeBytes = new byte[len];
+    buffer.get(storeBytes);
+
+    KademliaStore storeMsg;
+    try {
+      storeMsg = KademliaStore.parseFrom(storeBytes);
+    } catch (InvalidProtocolBufferException e) {
+      log.debug("flaschenpost v2 record store payload not parseable, dropping");
+      return;
+    }
+
+    long now = System.currentTimeMillis();
+    if (!RECORD_STORE_RATE_LIMITER.tryAcquire(now)) {
+      log.debug("channel record store rate limit hit, dropping");
+      return;
+    }
+
+    KadContent record =
+        new KadContent(
+            storeMsg.getTimestamp(),
+            storeMsg.getPublicKey().toByteArray(),
+            storeMsg.getContent().toByteArray(),
+            storeMsg.getSignature().toByteArray());
+    ChannelDht.RecordValidation validation = ChannelDht.validateRecord(record, now);
+    if (validation != ChannelDht.RecordValidation.VALID) {
+      logDroppedRecordStore(validation, record, now);
+      return;
+    }
+    // Store locally first so the record is immediately resolvable on this node. Only replicate if
+    // the local put was accepted — KadStoreManager can still reject on its own timestamp bounds,
+    // and replicating a record we ourselves won't keep would be pointless.
+    if (serverContext.getKadStoreManager().put(record)) {
+      new KademliaInsertJob(serverContext, record).start();
+    }
+  }
+
+  /**
+   * Logs a dropped {@code CMD_RECORD_STORE} with the concrete validation reason (TD022 — the old
+   * single "sig/size/ttl" line hid a breaking-protocol size skew behind routine garbage drops).
+   *
+   * <p>{@link ChannelDht.RecordValidation#WRONG_SIZE} means the publishing client uses a different
+   * {@link ChannelDht#RECORD_SIZE_BYTES} bucket — a deployment/version error (the constant is a
+   * breaking protocol change), not routine input validation, so it is lifted to WARN. Because
+   * stores are anonymous and the size check runs before the signature check, anyone can trigger
+   * this branch with cheap garbage — the WARN is therefore throttled to one line per {@link
+   * #SIZE_MISMATCH_WARN_INTERVAL_MS}; suppressed occurrences fall back to DEBUG. All other reasons
+   * (bad signature, expired, future-dated, missing content) are expected garbage from arbitrary
+   * senders and stay at DEBUG to avoid a remote-triggerable log flood.
+   */
+  private static void logDroppedRecordStore(
+      ChannelDht.RecordValidation validation, KadContent droppedRecord, long nowMs) {
+    switch (validation) {
+      case WRONG_SIZE -> {
+        int actualSize =
+            droppedRecord.getContent() == null ? -1 : droppedRecord.getContent().length;
+        if (tryAcquireSizeMismatchWarn(nowMs)) {
+          log.warn(
+              "flaschenpost v2 record store dropped: record size {} != expected {} — client and"
+                  + " node disagree on ChannelDht.RECORD_SIZE_BYTES (protocol version skew, check"
+                  + " deployment order); repeat occurrences logged at debug for the next {} min",
+              actualSize,
+              ChannelDht.RECORD_SIZE_BYTES,
+              SIZE_MISMATCH_WARN_INTERVAL_MS / 60_000);
+        } else {
+          log.debug(
+              "flaschenpost v2 record store record size {} != expected {} (version skew, warn"
+                  + " throttled), dropping",
+              actualSize,
+              ChannelDht.RECORD_SIZE_BYTES);
+        }
+      }
+      case BAD_SIGNATURE ->
+          log.debug("flaschenpost v2 record store record signature invalid, dropping");
+      case EXPIRED -> log.debug("flaschenpost v2 record store record older than ttl, dropping");
+      case FUTURE_DATED ->
+          log.debug("flaschenpost v2 record store record too far in the future, dropping");
+      case MISSING_CONTENT ->
+          log.debug("flaschenpost v2 record store record has no content, dropping");
+      case VALID -> {
+        // not a drop; nothing to log
+      }
+    }
+  }
+
+  /**
+   * Returns {@code true} if a size-mismatch WARN may be emitted now, and claims the slot (at most
+   * one winner per {@link #SIZE_MISMATCH_WARN_INTERVAL_MS}, race-free via CAS). Package-private for
+   * tests.
+   */
+  static boolean tryAcquireSizeMismatchWarn(long nowMs) {
+    while (true) {
+      long last = lastSizeMismatchWarnMs.get();
+      if (last != Long.MIN_VALUE && nowMs - last < SIZE_MISMATCH_WARN_INTERVAL_MS) {
+        return false;
+      }
+      if (lastSizeMismatchWarnMs.compareAndSet(last, nowMs)) {
+        return true;
+      }
+    }
+  }
+
+  /**
+   * CMD_RECORD_LOOKUP (T43): {@code [1 cmd][20 kademlia_key][return_path][ignored padding]}. Looks
+   * the channel-rendezvous record up in the DHT on behalf of a DHT-fremd client and returns it via
+   * the return path (reverse garlic into the client's own OH mailbox, see {@link RecordLookupJob}).
+   * The return path is only structurally validated; malformed layers are dropped silently.
+   *
+   * <p>Rate-limited (T46): each lookup triggers a Kademlia search and a reverse-garlic answer, the
+   * same DHT-query amplification the store path guards against, so it is gated on its own bucket
+   * ({@link #recordLookupRateLimiter}) — consumed only after the structural checks below pass, so
+   * malformed lookups that never start a search can't drain the bucket for valid clients.
+   */
+  private static void handleRecordLookup(ServerContext serverContext, byte[] plaintext) {
+    if (plaintext.length < 1 + KademliaId.ID_LENGTH_BYTES + ReturnPath.FIXED_LEN) {
+      log.debug("flaschenpost v2 record lookup layer too short, dropping");
+      return;
+    }
+    ByteBuffer buffer = ByteBuffer.wrap(plaintext);
+    buffer.get(); // command byte
+    KademliaId searchedKey = KademliaId.fromBuffer(buffer);
+    ReturnPath returnPath = ReturnPath.parse(buffer);
+    if (returnPath == null) {
+      log.debug("flaschenpost v2 record lookup return path invalid, dropping");
+      return;
+    }
+    if (!recordLookupRateLimiter.tryAcquire(System.currentTimeMillis())) {
+      log.debug("channel record lookup rate limit hit, dropping");
+      return;
+    }
+    RecordLookupJob.lookup(serverContext, searchedKey, returnPath);
+  }
+
+  /**
+   * Routes a (raw, still 2048-byte) packet toward {@code nextHop} using the shared next-peer
+   * selection: direct connection, weighted graph route or greedy Kademlia step. Best-effort —
+   * without a route the packet is dropped silently.
+   */
+  static void routeToNextHop(ServerContext serverContext, KademliaId nextHop, byte[] packet) {
+    Peer peer = OhForwarder.selectNextPeer(serverContext, nextHop);
+    if (peer == null) {
+      log.debug("no route toward flaschenpost v2 next hop {}, dropping", nextHop);
+      return;
+    }
+    sendToPeer(peer, packet);
+  }
+
+  /** Writes a FLASCHENPOST_V2 frame ([cmd][len:4][packet]) to the peer. */
+  public static void sendToPeer(Peer peer, byte[] packet) {
+    if (!peer.enqueueFrame(Command.FLASCHENPOST_V2, packet)) {
+      // The peer disconnected between the route selection and this write. Best-effort routing
+      // drops the packet either way; before T115 this was an NPE in a swallowed catch, so log it
+      // rather than let it become invisible.
+      log.debug("peer {} is gone, dropping flaschenpost v2 packet", peer);
+    }
+  }
+}

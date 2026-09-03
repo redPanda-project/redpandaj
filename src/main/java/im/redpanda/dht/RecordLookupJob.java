@@ -4,11 +4,11 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.ReverseGarlic;
 import im.redpanda.jobs.Job;
 import im.redpanda.mailbox.OhResolveJob;
 import im.redpanda.mailbox.ReturnPath;
 import im.redpanda.proto.KademliaStore;
+import im.redpanda.routing.ReverseGarlic;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;

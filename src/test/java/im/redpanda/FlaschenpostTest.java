@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.flaschenpost.GMEchoTest;
-import im.redpanda.flaschenpost.GMType;
-import im.redpanda.flaschenpost.GarlicMessage;
+import im.redpanda.routing.GMEchoTest;
+import im.redpanda.routing.GMType;
+import im.redpanda.routing.GarlicMessage;
 import java.security.Security;
 import org.junit.jupiter.api.Test;
 
