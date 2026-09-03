@@ -91,37 +91,41 @@ public class JarUpdateHandler {
   }
 
   /**
-   * The oldest update timestamp this node still accepts. Both the offer (command 10) and the
-   * delivery (command 12) check against it, so an unsolicited push is rejected just like a pull.
+   * The oldest update timestamp this node still accepts: the highest of what we recorded, when the
+   * jar we are running was put here, and the build-time constant. Both the offer (command 10) and
+   * the delivery (command 12) check against it, so an unsolicited push is rejected just like a
+   * pull.
    *
-   * <p>Normally that is the timestamp of the update we are running, floored by the build-time
-   * constant {@link Updater#MIN_UPDATE_TIMESTAMP_MS}. <b>Without a recorded timestamp</b> ({@code
-   * -1}) the mtime of the jar we are actually running takes its place — that is the fix for the
-   * T117 deploy of 2026-09-03: the new storage format deliberately does not read the pre-T117
-   * settings file, so every node came up with {@code updateTimestamp == -1} and the floor collapsed
-   * to the 2026-07-11 constant. Both Hetzner nodes then accepted, within one second of starting, a
-   * correctly signed but 75 minutes OLDER update from a peer still running the previous jar and
-   * downgraded themselves.
+   * <p><b>Why the jar mtime is always part of it (T117d).</b> T117c used it only when there was no
+   * recorded timestamp, which left the mirror-image hole open: a node whose <i>recorded</i>
+   * timestamp is behind the jar it actually runs still accepted the older jar. Deploy #7 on
+   * 2026-09-03 walked straight into it — node1 came up on the new build carrying {@code
+   * updateTimestamp = 1788466702516} from the previous deploy, accepted {@code 1788471100532} (a
+   * jar older than the one it was running, but newer than that stale record), downgraded itself,
+   * and only recovered because the uploader was still pushing. Three restarts instead of two. The
+   * same shape occurs after a rollback deploy, a deploy race, or a jar copied in by hand.
    *
-   * <p>The mtime works because a signature timestamp is the build time of that jar, and a jar
-   * cannot have been installed here before it was built: {@code signature timestamp <= install
-   * time}. So every update that is older than the jar in this directory is a rollback. The
-   * deliberate trade-off is a node that installs a jar long after it was signed and then loses its
-   * settings: it would also reject a genuinely newer update that was signed before that late
-   * install. That costs one more signed release, whereas the case this guards against silently
-   * downgrades the whole network.
+   * <p>The mtime is sound as a floor because a signature timestamp is the build time of that jar
+   * and a jar cannot have been installed here before it was built: {@code signature timestamp <=
+   * install time}. So every update older than our own installation is a rollback, whatever the
+   * settings happen to say.
+   *
+   * <p>{@link Updater#MIN_UPDATE_TIMESTAMP_MS} stays in the expression on purpose (TD168). It is
+   * the only term that survives a missing jar file (mtime {@code 0} — a client layout, a test) on
+   * fresh settings, and the only one that is immune to a wrong system clock. It costs nothing and
+   * it is the documented knob of the release runbook.
+   *
+   * <p>Deliberate trade-off, unchanged from T117c and now slightly wider: a node that installs a
+   * jar long after it was signed refuses updates signed before that installation. That costs one
+   * more signed release — and every deploy signs a fresh build, so a real release is always newer
+   * than any node's install time. The case it prevents silently downgrades the network.
    */
   private long updateFloor() {
-    long recorded = serverContext.getLocalSettings().getUpdateTimestamp();
-    long ownFloor = recorded == -1 ? installedJarTimestamp() : recorded;
-    return Math.max(ownFloor, Updater.MIN_UPDATE_TIMESTAMP_MS);
+    return Math.max(
+        Math.max(serverContext.getLocalSettings().getUpdateTimestamp(), installedJarTimestamp()),
+        Updater.MIN_UPDATE_TIMESTAMP_MS);
   }
 
-  /**
-   * Last-modified time of the jar this node runs and serves, or {@code 0} if there is none (a
-   * client layout without a local {@code redpanda.jar}, a test) — in which case the floor falls
-   * back to {@link Updater#MIN_UPDATE_TIMESTAMP_MS} as before.
-   */
   private static long installedJarTimestamp() {
     return updateJarPath().toFile().lastModified();
   }

@@ -536,9 +536,17 @@ class UpdateHardeningTest {
     assertEquals(othersTs, ctx.getLocalSettings().getUpdateTimestamp());
   }
 
-  /** The same floor must also stop us from even asking for the older jar (command 10). */
+  /**
+   * The floor must also stop us from even asking for an older jar (command 10) — in both shapes:
+   * with no recorded timestamp at all (T117c) and with a recorded timestamp that lags behind the
+   * jar we run (T117d).
+   *
+   * <p>One test rather than two on purpose: the positive control at the end submits the real
+   * download runnable, which holds the static {@code UpdateTransfer.updateDownloadLock} for 60 s. A
+   * second test doing the same would block on that lock instead of measuring anything.
+   */
   @Test
-  void olderOffer_onFreshSettings_doesNotRequestContent() throws Exception {
+  void olderOffer_neverRequestsContent_withOrWithoutARecordedTimestamp() throws Exception {
     long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
     installedJarWithMtime(installedAt);
     Settings.loadUpdates = true;
@@ -546,15 +554,23 @@ class UpdateHardeningTest {
       Peer peer = newPeer(8813);
       ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
 
+      // (a) fresh settings: the record is -1, only the jar can carry the floor
+      assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp());
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
-
       // "nothing was queued" is only meaningful over a window, and only if the same window
       // reliably catches a request that IS made - which the positive control below establishes.
       assertStaysEmpty(out, TimeUnit.SECONDS.toMillis(5));
 
+      // (b) T117d: a recorded timestamp from the PREVIOUS deploy, behind the jar we run. This is
+      // what deploy #7 hit - the offer passes the record but is still a rollback.
+      ctx.getLocalSettings().setUpdateTimestamp(installedAt - TimeUnit.HOURS.toMillis(2));
+      proc.parseCommand(
+          Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
+      assertStaysEmpty(out, TimeUnit.SECONDS.toMillis(5));
+
       // Positive control: an offer above the floor does reach requestUpdateContent through this
-      // very harness, so the assertion above is not vacuously true.
+      // very harness, so both assertions above are not vacuously true.
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt + TimeUnit.HOURS.toMillis(1)), peer);
       awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
@@ -609,5 +625,82 @@ class UpdateHardeningTest {
     out.flip();
     assertEquals(Command.UPDATE_ANSWER_TIMESTAMP, out.get(), "command byte");
     assertEquals(persisted, out.getLong(), "the answered timestamp must be the persisted one");
+  }
+
+  // --- T117d: a RECORDED timestamp behind the running jar must not re-open the hole ---
+
+  /**
+   * Deploy #7 on 2026-09-03. node1 came up on the new build but still carried {@code
+   * updateTimestamp = 1788466702516} from the previous deploy, i.e. its settings were NOT fresh —
+   * so the T117c floor used that stale record and ignored the jar. It then accepted {@code
+   * 1788471100532}: older than the jar it was actually running, but newer than the record.
+   * Downgrade, third restart, and a good outcome only because the uploader was still pushing.
+   *
+   * <p>Since T117d the jar mtime is always part of the floor, so an offer between the stale record
+   * and our own installation is refused.
+   */
+  @Test
+  void downgrade_rejected_whenRecordedTimestampIsBehindTheInstalledJar() throws Exception {
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+    // the settings are NOT fresh - they hold the timestamp of the deploy before this one
+    long staleRecord = installedAt - TimeUnit.HOURS.toMillis(2);
+    ctx.getLocalSettings().setUpdateTimestamp(staleRecord);
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    byte[] data = new byte[] {7, 7, 7};
+    // strictly between the stale record and our own jar: the T117c floor let exactly this through
+    long othersTs = installedAt - TimeUnit.HOURS.toMillis(1);
+    assertTrue(othersTs > staleRecord, "must pass the recorded-timestamp check");
+    assertTrue(othersTs < installedAt, "must be older than the jar we run");
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    CountDownLatch restarted = new CountDownLatch(1);
+    UpdateTransfer.restartAction = restarted::countDown;
+
+    proc.parseCommand(
+        Command.UPDATE_ANSWER_CONTENT,
+        buildUpdateAnswerContent(othersTs, sig, data),
+        newPeer(8816));
+
+    assertFalse(
+        restarted.await(5, TimeUnit.SECONDS), "a rollback must not trigger the restart/install");
+    assertFalse(updateFile.exists(), "a rollback must not be installed");
+    assertEquals(staleRecord, ctx.getLocalSettings().getUpdateTimestamp());
+  }
+
+  /** The other side: with the same stale record, a jar newer than ours is still installed. */
+  @Test
+  void update_accepted_whenNewerThanTheInstalledJar_despiteAStaleRecord() throws Exception {
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+    ctx.getLocalSettings().setUpdateTimestamp(installedAt - TimeUnit.HOURS.toMillis(2));
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    byte[] data = new byte[] {8, 8, 8};
+    long othersTs = installedAt + TimeUnit.HOURS.toMillis(1);
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(othersTs);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    CountDownLatch restarted = new CountDownLatch(1);
+    UpdateTransfer.restartAction = restarted::countDown;
+
+    proc.parseCommand(
+        Command.UPDATE_ANSWER_CONTENT,
+        buildUpdateAnswerContent(othersTs, sig, data),
+        newPeer(8817));
+
+    assertTrue(restarted.await(30, TimeUnit.SECONDS), "the update must be installed");
+    assertTrue(updateFile.exists());
+    assertEquals(othersTs, ctx.getLocalSettings().getUpdateTimestamp());
   }
 }
