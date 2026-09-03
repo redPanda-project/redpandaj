@@ -159,7 +159,7 @@ class InboundCommandProcessorEvenMoreCoverageTest {
 
     // Random ID not in store
     byte[] randomId = new byte[KademliaId.ID_LENGTH_BYTES];
-    System.arraycopy(ctx.getNonce().getBytes(), 0, randomId, 0, randomId.length);
+    System.arraycopy(ctx.getOwnNodeId().getBytes(), 0, randomId, 0, randomId.length);
     randomId[0] ^= 0x7F; // mutate to be different
 
     KademliaGet getMsg =

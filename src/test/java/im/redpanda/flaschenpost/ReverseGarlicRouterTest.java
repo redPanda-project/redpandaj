@@ -139,19 +139,19 @@ class ReverseGarlicRouterTest {
     byte[] body =
         FlaschenpostV2.encryptLayer(
             last.getNodeId().getEncryptionPubKey(),
-            last.getNonce(),
+            last.getOwnNodeId(),
             buildTaggedDeliverPlaintext(aliceOhId, sessionTag, payload));
 
     for (int i = hops.length - 2; i >= 0; i--) {
       ByteBuffer forward = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + body.length);
       forward.put(FlaschenpostV2.CMD_FORWARD);
-      forward.put(hops[i + 1].getNonce().getBytes());
+      forward.put(hops[i + 1].getOwnNodeId().getBytes());
       forward.put(body);
       body =
           FlaschenpostV2.encryptLayer(
-              hops[i].getNodeId().getEncryptionPubKey(), hops[i].getNonce(), forward.array());
+              hops[i].getNodeId().getEncryptionPubKey(), hops[i].getOwnNodeId(), forward.array());
     }
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), hops[0].getNonce(), body);
+    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), hops[0].getOwnNodeId(), body);
   }
 
   @Test
@@ -168,14 +168,14 @@ class ReverseGarlicRouterTest {
     byte[] toHop2 = readV2Frame(peer1To2);
     assertThat(toHop2).hasSize(FlaschenpostV2.PACKET_SIZE);
     FlaschenpostV2 parsed2 = FlaschenpostV2.parse(toHop2);
-    assertThat(parsed2.getNextHop()).isEqualTo(hop2.getNonce());
+    assertThat(parsed2.getNextHop()).isEqualTo(hop2.getOwnNodeId());
     assertThat(parsed2.getPacketId()).isNotEqualTo(originalPacketId);
 
     // return-path relay 2
     processor2.parseCommand(Command.FLASCHENPOST_V2, buildFrame(toHop2), sender(hop2, 9503));
     byte[] toHop3 = readV2Frame(peer2To3);
     assertThat(toHop3).hasSize(FlaschenpostV2.PACKET_SIZE);
-    assertThat(FlaschenpostV2.parse(toHop3).getNextHop()).isEqualTo(hop3.getNonce());
+    assertThat(FlaschenpostV2.parse(toHop3).getNextHop()).isEqualTo(hop3.getOwnNodeId());
 
     // final station peels CMD_DELIVER_TAGGED and deposits payload + session tag
     processor3.parseCommand(Command.FLASCHENPOST_V2, buildFrame(toHop3), sender(hop3, 9504));
@@ -198,8 +198,8 @@ class ReverseGarlicRouterTest {
     deliver.put(payload);
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            hop3.getNodeId().getEncryptionPubKey(), hop3.getNonce(), deliver.array());
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getNonce(), body);
+            hop3.getNodeId().getEncryptionPubKey(), hop3.getOwnNodeId(), deliver.array());
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getOwnNodeId(), body);
 
     processor3.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop3, 9510));
 
@@ -235,8 +235,8 @@ class ReverseGarlicRouterTest {
     deliver.putInt(0);
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            hop3.getNodeId().getEncryptionPubKey(), hop3.getNonce(), deliver.array());
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getNonce(), body);
+            hop3.getNodeId().getEncryptionPubKey(), hop3.getOwnNodeId(), deliver.array());
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getOwnNodeId(), body);
 
     processor3.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop3, 9530));
 
@@ -254,8 +254,8 @@ class ReverseGarlicRouterTest {
     deliver.putInt(500);
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            hop3.getNodeId().getEncryptionPubKey(), hop3.getNonce(), deliver.array());
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getNonce(), body);
+            hop3.getNodeId().getEncryptionPubKey(), hop3.getOwnNodeId(), deliver.array());
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop3.getOwnNodeId(), body);
 
     processor3.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop3, 9540));
 
@@ -269,16 +269,18 @@ class ReverseGarlicRouterTest {
     byte[] remoteOhId = new byte[KademliaId.ID_LENGTH_BYTES];
     RANDOM.nextBytes(remoteOhId);
     hop1.getKadStoreManager()
-        .put(OhDht.buildAnnounceContent(remoteOhId, hop2.getNonce(), System.currentTimeMillis()));
+        .put(
+            OhDht.buildAnnounceContent(
+                remoteOhId, hop2.getOwnNodeId(), System.currentTimeMillis()));
     Peer peer1To2 = connect(hop1, hop2, 9551);
 
     byte[] payload = "reply for remote oh".getBytes(StandardCharsets.UTF_8);
     byte[] body =
         FlaschenpostV2.encryptLayer(
             hop1.getNodeId().getEncryptionPubKey(),
-            hop1.getNonce(),
+            hop1.getOwnNodeId(),
             buildTaggedDeliverPlaintext(remoteOhId, sessionTag, payload));
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop1.getNonce(), body);
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), hop1.getOwnNodeId(), body);
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop1, 9550));
 

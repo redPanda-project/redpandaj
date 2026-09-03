@@ -238,7 +238,7 @@ public final class OhForwarder {
    */
   static void routeToNode(
       ServerContext serverContext, KademliaId targetNodeId, PendingDeposit deposit) {
-    KademliaId self = serverContext.getNonce();
+    KademliaId self = serverContext.getOwnNodeId();
     if (self != null && targetNodeId.equals(self)) {
       if (!depositLocally(serverContext, deposit) && deposit.ackPath() != null) {
         // announce points at us but the OH is not registered here (expired/revoked) — final drop
@@ -377,7 +377,7 @@ public final class OhForwarder {
     // than we are (forward progress). Loop protection is the caller's job: the hop limit for the
     // MS02b OH forwarding, the packet_id dedup for Flaschenpost v2 routing.
     Peer nearest = candidates.first();
-    int ourDistance = targetNodeId.getDistance(serverContext.getNonce());
+    int ourDistance = targetNodeId.getDistance(serverContext.getOwnNodeId());
     int nearestDistance = targetNodeId.getDistance(nearest.getKademliaId());
     if (nearestDistance < ourDistance) {
       return nearest;

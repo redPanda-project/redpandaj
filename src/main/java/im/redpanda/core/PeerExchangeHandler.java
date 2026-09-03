@@ -126,7 +126,7 @@ class PeerExchangeHandler {
         continue;
       }
       if (nodeId != null) {
-        if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
+        if (nodeId.getKademliaId().equals(serverContext.getOwnNodeId())) {
           Log.put("found ourselves in the peerlist", 80);
           continue;
         }

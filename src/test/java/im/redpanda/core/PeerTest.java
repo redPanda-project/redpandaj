@@ -40,7 +40,7 @@ class PeerTest {
   }
 
   @Test
-  void equalsNonce() {
+  void equalsNodeId() {
 
     Peer peer = new Peer("1.1.1.1", 123);
     Peer peer2 = new Peer("1.1.1.1", 123);
@@ -56,8 +56,8 @@ class PeerTest {
     peer2.setNodeId(new NodeId(id1));
     peer3.setNodeId(new NodeId(id2));
 
-    assertTrue(peer.equalsNonce(peer2));
-    assertFalse(peer.equalsNonce(peer3));
+    assertTrue(peer.equalsNodeId(peer2));
+    assertFalse(peer.equalsNodeId(peer3));
   }
 
   @Test

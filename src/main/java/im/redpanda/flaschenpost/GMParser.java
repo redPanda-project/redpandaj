@@ -356,7 +356,8 @@ public class GMParser {
 
       if (peerWithShortestPath != null) {
         sendFpToPeer(peerWithShortestPath, content);
-        int myDistanceToKey = garlicMessage.getDestination().getDistance(serverContext.getNonce());
+        int myDistanceToKey =
+            garlicMessage.getDestination().getDistance(serverContext.getOwnNodeId());
         KademliaId kademliaId = peerWithShortestPath.getKademliaId();
         int peersDistance = garlicMessage.getDestination().getDistance(kademliaId);
         if (shortestPathWeight > 3) {

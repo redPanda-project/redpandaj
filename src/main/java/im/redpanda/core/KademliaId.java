@@ -219,16 +219,17 @@ public class KademliaId implements Serializable {
   }
 
   /**
-   * get the distance to Test.NONCE with caching
+   * Distance to this node's own id ({@code ServerContext#getOwnNodeId()}), cached after the first
+   * call.
    *
-   * @return distance to Test.NONCE
+   * @return distance to our own node id
    */
   public int getDistanceToUs(ServerContext serverContext) {
     if (nodeDistance != -1) {
       return nodeDistance;
     }
 
-    nodeDistance = getDistance(serverContext.getNonce());
+    nodeDistance = getDistance(serverContext.getOwnNodeId());
     return nodeDistance;
   }
 

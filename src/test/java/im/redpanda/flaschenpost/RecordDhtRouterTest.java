@@ -100,8 +100,8 @@ class RecordDhtRouterTest {
   private byte[] singleLayerPacket(byte[] plaintext, int packetId) throws Exception {
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            node.getNodeId().getEncryptionPubKey(), node.getNonce(), plaintext);
-    return FlaschenpostV2.buildPacket(packetId, node.getNonce(), body);
+            node.getNodeId().getEncryptionPubKey(), node.getOwnNodeId(), plaintext);
+    return FlaschenpostV2.buildPacket(packetId, node.getOwnNodeId(), body);
   }
 
   @Test

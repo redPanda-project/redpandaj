@@ -99,7 +99,7 @@ public class App {
     serverContext.setPort(port);
     serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
-    serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+    serverContext.setOwnNodeId(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
 
     // Outbound Service V1 Init
@@ -109,7 +109,7 @@ public class App {
 
     logger.info(
         "started node with KademliaId: "
-            + serverContext.getNonce().toString()
+            + serverContext.getOwnNodeId().toString()
             + " port: "
             + serverContext.getPort());
 

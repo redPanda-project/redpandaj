@@ -139,7 +139,7 @@ class RoutingAckRouterTest {
     for (int i = 0; i < hops.length; i++) {
       descriptors[i] =
           new ReturnPath.Hop(
-              hops[i].getNonce(), hops[i].getNodeId().getEncryptionPubKey().getEncoded());
+              hops[i].getOwnNodeId(), hops[i].getNodeId().getEncryptionPubKey().getEncoded());
     }
     return new ReturnPath(aliceOhId, ackSessionTag, List.of(descriptors));
   }
@@ -171,8 +171,8 @@ class RoutingAckRouterTest {
       throws Exception {
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            station.getNodeId().getEncryptionPubKey(), station.getNonce(), plaintext);
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), station.getNonce(), body);
+            station.getNodeId().getEncryptionPubKey(), station.getOwnNodeId(), plaintext);
+    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), station.getOwnNodeId(), body);
   }
 
   private RoutingAck fetchSingleRAck() throws Exception {
@@ -341,7 +341,9 @@ class RoutingAckRouterTest {
     // carrying oh_id, payload AND return_path toward the host node, which then acks
     relay
         .getKadStoreManager()
-        .put(OhDht.buildAnnounceContent(bobOhId, bobHost.getNonce(), System.currentTimeMillis()));
+        .put(
+            OhDht.buildAnnounceContent(
+                bobOhId, bobHost.getOwnNodeId(), System.currentTimeMillis()));
     Peer relayToBob = connect(relay, bobHost, 9661);
     Peer bobToAlice = connect(bobHost, aliceHost, 9662);
 
@@ -425,7 +427,7 @@ class RoutingAckRouterTest {
     assertThat(parsed.ackOhId()).isEqualTo(aliceOhId);
     assertThat(parsed.ackSessionTag()).isEqualTo(ackSessionTag);
     assertThat(parsed.hops()).hasSize(2);
-    assertThat(parsed.hops().get(0).kademliaId()).isEqualTo(relay.getNonce());
+    assertThat(parsed.hops().get(0).kademliaId()).isEqualTo(relay.getOwnNodeId());
     assertThat(parsed.hops().get(1).encryptionPub())
         .isEqualTo(aliceHost.getNodeId().getEncryptionPubKey().getEncoded());
   }
@@ -433,7 +435,8 @@ class RoutingAckRouterTest {
   @Test
   void returnPath_constructor_rejectsInvalidComponents() {
     ReturnPath.Hop hop =
-        new ReturnPath.Hop(relay.getNonce(), relay.getNodeId().getEncryptionPubKey().getEncoded());
+        new ReturnPath.Hop(
+            relay.getOwnNodeId(), relay.getNodeId().getEncryptionPubKey().getEncoded());
     org.assertj.core.api.Assertions.assertThatThrownBy(
             () -> new ReturnPath(randomBytes(19), ackSessionTag, List.of(hop)))
         .isInstanceOf(IllegalArgumentException.class);
@@ -448,7 +451,7 @@ class RoutingAckRouterTest {
                 new ReturnPath(
                     aliceOhId,
                     ackSessionTag,
-                    List.of(new ReturnPath.Hop(relay.getNonce(), randomBytes(31)))))
+                    List.of(new ReturnPath.Hop(relay.getOwnNodeId(), randomBytes(31)))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

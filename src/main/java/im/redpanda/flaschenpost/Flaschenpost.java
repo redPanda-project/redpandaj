@@ -50,7 +50,7 @@ public abstract class Flaschenpost extends GMContent {
   }
 
   public boolean isTargetedToUs() {
-    return destination.equals(serverContext.getNonce());
+    return destination.equals(serverContext.getOwnNodeId());
   }
 
   public KademliaId getDestination() {

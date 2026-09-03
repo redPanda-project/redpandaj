@@ -139,7 +139,8 @@ public class OhAnnounceJob extends Job {
     public void work() {
       try {
         KadContent content =
-            OhDht.buildAnnounceContent(ohId, serverContext.getNonce(), System.currentTimeMillis());
+            OhDht.buildAnnounceContent(
+                ohId, serverContext.getOwnNodeId(), System.currentTimeMillis());
         new KademliaInsertJob(serverContext, content).start();
       } finally {
         done();

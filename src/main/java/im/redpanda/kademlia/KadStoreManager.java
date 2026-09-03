@@ -113,7 +113,7 @@ public class KadStoreManager {
 
           for (KadContent c : entries.values()) {
 
-            int distance = serverContext.getNonce().getDistance(c.getId());
+            int distance = serverContext.getOwnNodeId().getDistance(c.getId());
 
             // long keepTime = (long) Math.ceil(MAX_KEEP_TIME * (160 - distance) / 160);
             long keepTime = (long) Math.ceil(1000L * 60L * 60L * 24L * (long) (160 - distance));
@@ -125,8 +125,6 @@ public class KadStoreManager {
 
             // System.out.println("keep time: " +
             // formatDuration(Duration.ofMillis(keepTime)) + " distance: " + distance);
-            // System.out.println("id: " + Server.NONCE);
-            // System.out.println("id: " + c.getId());
 
             if (c.getTimestamp() < currTime - keepTime) {
               kademliaIds.add(c.getId());

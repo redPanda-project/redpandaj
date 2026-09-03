@@ -146,7 +146,7 @@ public class Peer implements Comparable<Peer> {
     }
   }
 
-  public boolean equalsNonce(Object obj) {
+  public boolean equalsNodeId(Object obj) {
 
     if (obj instanceof Peer n2) {
 
@@ -452,7 +452,7 @@ public class Peer implements Comparable<Peer> {
     for (int i = 0; i < KademliaId.ID_LENGTH / 8; i++) {
       int compare =
           Byte.toUnsignedInt(getKademliaId().getBytes()[i])
-              - Byte.toUnsignedInt(serverContext.getNonce().getBytes()[i]);
+              - Byte.toUnsignedInt(serverContext.getOwnNodeId().getBytes()[i]);
       if (compare > 0) {
         return true;
       } else if (compare < 0) {
