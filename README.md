@@ -102,7 +102,7 @@ chmod +x build.sh
 
 ## Data & configuration
 
-- Local state is stored in `./data/` (e.g., `data/localSettings<port>.dat`).
+- Local state is stored in `./data/` (e.g., `data/localSettings<port>.json`). Since T117 it is written as explicit, versioned JSON — never as a Java object stream. Files from before T117 (`localSettings<port>.dat`) are neither read nor migrated: the node logs a warning, generates a fresh identity and re-bootstraps from the known nodes.
 - Default port: **59558** (`Settings.DEFAULT_PORT`); override with the `PORT` environment variable.
 - Bootstrap/known nodes default to the list in `Settings.knownNodes` and can be overridden without a rebuild via the system property `redpanda.knownNodes` or the environment variable `REDPANDA_KNOWN_NODES` (comma-separated `host:port` entries; blank values keep the defaults), e.g. `REDPANDA_KNOWN_NODES="5.75.137.166:59558,46.224.156.238:59558" java -jar redpanda.jar`.
 

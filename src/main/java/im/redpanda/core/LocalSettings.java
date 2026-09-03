@@ -1,34 +1,46 @@
 package im.redpanda.core;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import im.redpanda.store.NodeEdge;
+import im.redpanda.store.NodeGraphCodec;
 import im.redpanda.store.NodeStore;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serial;
-import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.locks.Lock;
 import lombok.extern.slf4j.Slf4j;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 /**
- * @author Robin Braun
+ * The persisted state of this node: its identity keypair, the updater timestamps/signatures it
+ * serves, the uptime window and the node graph.
+ *
+ * <p>T117: written as explicit JSON ({@code data/localSettings<port>.json}), not as a Java object
+ * stream any more. Java serialization pinned the fully qualified class names of {@code NodeId},
+ * {@code Node}, {@code KademliaId} and this class into the file, so the package moves of T118 would
+ * have made every deployed node fail to read its own identity (DDD review §5).
+ *
+ * <p><b>No migration path</b> (user decision 2026-09-01: there are no users yet). A node that finds
+ * only the pre-T117 {@code localSettings<port>.dat} — or a settings file it cannot read — logs a
+ * warning naming the file, generates a fresh identity and bootstraps via {@code
+ * REDPANDA_KNOWN_NODES}. The old file is left on disk, exactly like the stale outbound stores of
+ * T109.
  */
 @Slf4j
-public class LocalSettings implements Serializable {
+public class LocalSettings {
 
-  @Serial private static final long serialVersionUID = 639L;
+  /** Header {@code format} of the settings file. */
+  static final String FORMAT = "redpanda-local-settings";
 
-  // NOTE (v22 removal, sdd02 phase 2): settings files written before 2026-07 additionally
-  // contain a serialized im.redpanda.crypt.legacy.LegacyNodeId in the removed field
-  // `legacyIdentity`. Java deserialization reads and discards such values via the tombstone
-  // stub of that class — see LegacyNodeId and LocalSettingsLegacyFixtureTest.
+  /** Header {@code version} of the settings file. */
+  static final int VERSION = 1;
+
   private NodeId myIdentity;
 
   private long updateTimestamp;
@@ -46,13 +58,12 @@ public class LocalSettings implements Serializable {
    * NodeStore has adopted the graph (standalone uses such as {@code Updater}, and the window
    * between {@link #load(int)} and {@code NodeStore.build...}).
    *
-   * <p>{@code transient} because a {@link Lock} is not serializable and the lock is a property of
-   * the running process, not of the persisted settings. Set by {@link
-   * NodeStore#buildWithDiskCache(ServerContext)} / {@link
+   * <p>The lock is a property of the running process, not of the persisted settings, so it is not
+   * part of the file. Set by {@link NodeStore#buildWithDiskCache(ServerContext)} / {@link
    * NodeStore#buildWithMemoryCacheOnly(ServerContext)} rather than passed to {@link #save(int)}, so
    * that every caller of {@code save()} is protected without having to know about the NodeStore.
    */
-  private transient Lock nodeGraphLock;
+  private Lock nodeGraphLock;
 
   public LocalSettings() {
     myIdentity = new NodeId();
@@ -88,71 +99,49 @@ public class LocalSettings implements Serializable {
   }
 
   /**
-   * Writes the settings to disk atomically: the object graph is serialized into memory first and
-   * the resulting bytes go through a temporary file which only replaces the live file once it is
-   * complete. Serializing straight into the live file truncates it first, so any failure half way
+   * Writes the settings to disk atomically: the JSON document is built in memory first and the
+   * resulting bytes go through a temporary file which only replaces the live file once it is
+   * complete. Writing straight into the live file truncates it first, so any failure half way
    * through (a {@link java.util.ConcurrentModificationException} from a collection mutated by
    * another thread — REDPANDAJ-2E6 —, a full disk, ...) left behind a truncated file that {@link
    * #load(int)} cannot read, and the node silently generated a new identity on the next start.
    *
-   * <p>Serialization runs under the NodeStore read lock ({@link #nodeGraphLock}) because {@link
+   * <p>Encoding runs under the NodeStore read lock ({@link #nodeGraphLock}) because {@link
    * #nodeGraph} is the very graph {@code NodeStore#maintainNodes} mutates under the matching write
    * lock (REDPANDAJ-2DW). Without it the save itself still fails with a {@code
    * ConcurrentModificationException} — harmlessly since #282, but the graph never reaches the disk.
-   * Only the in-memory serialization is covered; the file I/O and the fsync run outside the lock so
-   * that a slow disk cannot stall the node's graph maintenance.
+   * Only the in-memory encoding is covered; the file I/O and the fsync run outside the lock so that
+   * a slow disk cannot stall the node's graph maintenance.
    *
    * <p>Lock order is {@code LocalSettings monitor -> NodeStore read lock}. Nothing may therefore
    * call {@code save()} while holding the NodeStore write lock; today no caller does.
    *
-   * <p>Synchronized because both the {@code SaveJobs} job and the update handling in {@code
-   * InboundCommandProcessor} call this, and two saves running at once would write the same file.
+   * <p>Synchronized because both the {@code SaveJobs} job and the update handling call this, and
+   * two saves running at once would write the same file.
    */
   public synchronized void save(int port) {
     File mkdirs = new File(Settings.SAVE_DIR);
     mkdirs.mkdir();
 
-    File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
-    File tmpFile = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
-
     try {
-      byte[] serialized = serializeUnderGraphLock();
-
-      try (FileOutputStream fileOutputStream = new FileOutputStream(tmpFile)) {
-        fileOutputStream.write(serialized);
-        fileOutputStream.flush();
-        // force the bytes to disk before the rename, otherwise a crash right after the rename
-        // could leave an empty file where a complete old one used to be.
-        fileOutputStream.getFD().sync();
-      }
-
-      Files.move(
-          tmpFile.toPath(),
-          file.toPath(),
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE);
-
-    } catch (IOException ex) {
+      byte[] encoded = encodeUnderGraphLock();
+      StateFormat.writeAtomically(settingsFile(port), tmpSettingsFile(port), encoded);
+    } catch (IOException | RuntimeException ex) {
+      // RuntimeException as well: unlike the removed object stream, which reported a broken object
+      // graph as a NotSerializableException, the encoder throws unchecked (a vertex that is not a
+      // Node, a ConcurrentModificationException, ...). Losing one save must never take the file
+      // that holds the identity with it.
       log.info("error saving local settings", ex);
-    } finally {
-      // on success the temporary file has been renamed away, on failure it is incomplete
-      if (tmpFile.exists() && !tmpFile.delete()) {
-        log.info("could not delete temporary settings file {}", tmpFile);
-      }
     }
   }
 
-  private byte[] serializeUnderGraphLock() throws IOException {
+  private byte[] encodeUnderGraphLock() {
     Lock lock = nodeGraphLock;
     if (lock != null) {
       lock.lock();
     }
     try {
-      ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-      try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(buffer)) {
-        objectOutputStream.writeObject(this);
-      }
-      return buffer.toByteArray();
+      return new Gson().toJson(toJson()).getBytes(StandardCharsets.UTF_8);
     } finally {
       if (lock != null) {
         lock.unlock();
@@ -160,25 +149,100 @@ public class LocalSettings implements Serializable {
     }
   }
 
-  public static LocalSettings load(int port) {
-    try {
-      File file = new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
+  private JsonObject toJson() {
+    JsonObject json = StateFormat.document(FORMAT, VERSION);
+    json.add("identity", NodeStateCodec.nodeIdToJson(myIdentity));
+    json.addProperty("updateTimestamp", updateTimestamp);
+    json.addProperty("updateSignature", StateFormat.base64(updateSignature));
+    json.addProperty("updateAndroidTimestamp", updateAndroidTimestamp);
+    json.addProperty("updateAndroidSignature", StateFormat.base64(updateAndroidSignature));
 
-      try (FileInputStream fileInputStream = new FileInputStream(file)) {
-        try (ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
-          return (LocalSettings) objectInputStream.readObject();
-        }
-      }
-
-    } catch (ClassNotFoundException | ClassCastException | IOException ex) {
-      log.info("error loading local settings", ex);
+    JsonArray upHits = new JsonArray();
+    for (Long hit : getSystemUpTimeData().snapshotUpHits()) {
+      upHits.add(hit);
     }
+    json.add("upHits", upHits);
 
-    log.info("could not load localSettings.dat, generating new LocalSettings");
+    json.add("nodeGraph", NodeGraphCodec.toJson(nodeGraph));
+    return json;
+  }
+
+  /**
+   * Loads the settings of {@code port}, or generates fresh ones.
+   *
+   * <p>Fresh settings mean a new node identity, an empty node graph and no update signatures — the
+   * node re-bootstraps from {@code REDPANDA_KNOWN_NODES} and gets a new KademliaId. That is the
+   * deliberate behaviour for an unreadable, missing or pre-T117 file (user decision 2026-09-01: no
+   * users yet, so no migration path is built). Nothing on disk is deleted.
+   */
+  public static LocalSettings load(int port) {
+    File file = settingsFile(port);
+
+    if (file.exists()) {
+      try {
+        return fromJson(StateFormat.parse(Files.readAllBytes(file.toPath()), FORMAT, VERSION));
+      } catch (IOException | RuntimeException ex) {
+        log.warn(
+            "could not read {} ({}) - generating a NEW node identity and re-bootstrapping;"
+                + " the unreadable file is kept",
+            file,
+            ex.toString());
+      }
+    } else {
+      File legacy = legacySettingsFile(port);
+      if (legacy.exists()) {
+        log.warn(
+            "found only the pre-T117 Java-serialized settings file {}; it is not read and not"
+                + " migrated - generating a NEW node identity and re-bootstrapping. The file is"
+                + " kept and can be deleted",
+            legacy);
+      } else {
+        log.info("no settings file at {}, generating new LocalSettings", file);
+      }
+    }
 
     LocalSettings localSettings = new LocalSettings();
     localSettings.save(port);
     return localSettings;
+  }
+
+  private static LocalSettings fromJson(JsonObject json) throws IOException {
+    LocalSettings settings = new LocalSettings();
+    settings.myIdentity =
+        NodeStateCodec.nodeIdFromJson(StateFormat.requireObject(json, "identity"));
+    if (!settings.myIdentity.hasPrivate()) {
+      throw new IOException("settings file holds no private identity key");
+    }
+    settings.updateTimestamp = StateFormat.optLong(json, "updateTimestamp", -1L);
+    settings.updateSignature = StateFormat.optBase64(json, "updateSignature");
+    settings.updateAndroidTimestamp = StateFormat.optLong(json, "updateAndroidTimestamp", 0L);
+    settings.updateAndroidSignature = StateFormat.optBase64(json, "updateAndroidSignature");
+
+    SortedSet<Long> upHits = new TreeSet<>();
+    JsonElement upHitsJson = json.get("upHits");
+    if (upHitsJson != null && upHitsJson.isJsonArray()) {
+      for (JsonElement hit : upHitsJson.getAsJsonArray()) {
+        upHits.add(hit.getAsLong());
+      }
+    }
+    settings.systemUpTimeData = new SystemUpTimeData(upHits);
+
+    settings.nodeGraph = NodeGraphCodec.fromJson(StateFormat.requireObject(json, "nodeGraph"));
+    return settings;
+  }
+
+  /** The settings file of {@code port} in the explicit JSON format (T117). */
+  public static File settingsFile(int port) {
+    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".json");
+  }
+
+  public static File tmpSettingsFile(int port) {
+    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".json.tmp");
+  }
+
+  /** The pre-T117 Java-serialized settings file. Never read, never deleted — only reported. */
+  public static File legacySettingsFile(int port) {
+    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
   }
 
   public long getUpdateTimestamp() {

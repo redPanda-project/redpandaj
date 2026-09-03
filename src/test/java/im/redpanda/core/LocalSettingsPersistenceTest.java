@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import im.redpanda.store.NodeEdge;
 import java.io.File;
 import java.nio.file.Files;
 import java.security.Security;
@@ -42,14 +43,19 @@ class LocalSettingsPersistenceTest {
     // best effort
     settingsFile().delete();
     tmpSettingsFile().delete();
+    legacySettingsFile().delete();
   }
 
   private File settingsFile() {
-    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat");
+    return LocalSettings.settingsFile(port);
   }
 
   private File tmpSettingsFile() {
-    return new File(Settings.SAVE_DIR + "/localSettings" + port + ".dat.tmp");
+    return LocalSettings.tmpSettingsFile(port);
+  }
+
+  private File legacySettingsFile() {
+    return LocalSettings.legacySettingsFile(port);
   }
 
   @Test
@@ -90,8 +96,9 @@ class LocalSettingsPersistenceTest {
 
     byte[] savedFile = Files.readAllBytes(settingsFile().toPath());
 
-    // a vertex that is not serializable makes writeObject fail in the middle of the object graph,
-    // just like the ConcurrentModificationException did
+    // a vertex that is not a Node makes the encoder fail in the middle of the graph, just like
+    // the ConcurrentModificationException did (T117: unchecked now, hence the RuntimeException
+    // catch in save())
     ((DefaultDirectedWeightedGraph) ls.getNodeGraph()).addVertex(new Object());
     ls.setUpdateTimestamp(999L);
 
@@ -179,5 +186,196 @@ class LocalSettingsPersistenceTest {
 
     assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(1234L);
     assertThat(tmpSettingsFile()).doesNotExist();
+  }
+
+  /**
+   * T117: the identity, the updater timestamps and the node graph must survive a full save/load
+   * cycle in the explicit JSON format — the identity byte for byte, because it is the node's
+   * Kademlia standing.
+   */
+  @Test
+  void roundtripKeepsIdentityGraphAndUptime() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    LocalSettings ls = serverContext.getLocalSettings();
+    ls.setUpdateTimestamp(1783728000001L);
+    ls.getSystemUpTimeData().reportNow();
+
+    // two nodes, one edge - the edge state has to come back as it was, not as "checked just now"
+    Node a = new Node(serverContext, new NodeId());
+    a.seen("10.0.0.1", 59558);
+    a.setGmTestsSuccessful(7);
+    Node b = new Node(serverContext, new NodeId());
+    ls.getNodeGraph().addVertex(a);
+    ls.getNodeGraph().addVertex(b);
+    NodeEdge edge = ls.getNodeGraph().addEdge(a, b);
+    ls.getNodeGraph().setEdgeWeight(edge, 17d);
+    edge.setLastCheckFailed(true);
+    long timeLastCheckFailed = edge.getTimeLastCheckFailed();
+
+    ls.save(port);
+    LocalSettings loaded = LocalSettings.load(port);
+
+    assertArrayEquals(
+        ls.getMyIdentity().exportWithPrivate(), loaded.getMyIdentity().exportWithPrivate());
+    assertThat(loaded.getMyIdentity().getKademliaId())
+        .isEqualTo(ls.getMyIdentity().getKademliaId());
+    assertThat(loaded.getUpdateTimestamp()).isEqualTo(1783728000001L);
+    assertThat(loaded.getSystemUpTimeData().getUptimePercent())
+        .isEqualTo(ls.getSystemUpTimeData().getUptimePercent());
+
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph = loaded.getNodeGraph();
+    assertThat(graph.vertexSet()).hasSize(2);
+    Node loadedA = graph.vertexSet().stream().filter(n -> n.equals(a)).findFirst().orElseThrow();
+    assertThat(loadedA.getGmTestsSuccessful()).isEqualTo(7);
+    assertThat(loadedA.latestSeenConnectionPoint().getIp()).isEqualTo("10.0.0.1");
+    assertThat(loadedA.latestSeenConnectionPoint().getPort()).isEqualTo(59558);
+    assertThat(graph.edgeSet()).hasSize(1);
+    NodeEdge loadedEdge = graph.edgeSet().iterator().next();
+    assertThat(graph.getEdgeWeight(loadedEdge)).isEqualTo(17d);
+    assertThat(loadedEdge.isLastCheckFailed()).isTrue();
+    assertThat(loadedEdge.getTimeLastCheckFailed()).isEqualTo(timeLastCheckFailed);
+  }
+
+  /**
+   * A node that shares an edge with two others must come back as ONE object, not one copy per edge:
+   * the graph is keyed on Node identity/equality and NodeStore mutates the vertices in place.
+   */
+  @Test
+  void roundtripKeepsSharedVertexInstances() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    LocalSettings ls = serverContext.getLocalSettings();
+    Node hub = new Node(serverContext, new NodeId());
+    Node left = new Node(serverContext, new NodeId());
+    Node right = new Node(serverContext, new NodeId());
+    for (Node node : new Node[] {hub, left, right}) {
+      ls.getNodeGraph().addVertex(node);
+    }
+    ls.getNodeGraph().addEdge(left, hub);
+    ls.getNodeGraph().addEdge(hub, right);
+
+    ls.save(port);
+    DefaultDirectedWeightedGraph<Node, NodeEdge> graph = LocalSettings.load(port).getNodeGraph();
+
+    assertThat(graph.vertexSet()).hasSize(3);
+    NodeEdge toHub =
+        graph.edgeSet().stream()
+            .filter(e -> graph.getEdgeTarget(e).equals(hub))
+            .findFirst()
+            .orElseThrow();
+    NodeEdge fromHub =
+        graph.edgeSet().stream()
+            .filter(e -> graph.getEdgeSource(e).equals(hub))
+            .findFirst()
+            .orElseThrow();
+    assertThat(graph.getEdgeTarget(toHub)).isSameAs(graph.getEdgeSource(fromHub));
+  }
+
+  /**
+   * T117 / user decision 2026-09-01: there is no migration path. A node that only finds the
+   * pre-T117 Java-serialized file starts with a FRESH identity, warns naming that file, and leaves
+   * it on disk.
+   */
+  @Test
+  void legacyDatFileIsNotReadAndNotDeleted() throws Exception {
+    new File(Settings.SAVE_DIR).mkdir();
+    Files.write(legacySettingsFile().toPath(), new byte[] {(byte) 0xac, (byte) 0xed, 0, 5});
+
+    LocalSettings loaded = LocalSettings.load(port);
+
+    assertNotNull(loaded.getMyIdentity());
+    assertThat(loaded.getMyIdentity().hasPrivate()).isTrue();
+    assertThat(loaded.getUpdateTimestamp()).isEqualTo(-1L);
+    assertThat(legacySettingsFile()).as("the legacy file must be kept, not deleted").exists();
+    assertThat(settingsFile()).as("fresh settings are written in the new format").exists();
+  }
+
+  /** A corrupt settings file must regenerate the identity instead of throwing, and be kept. */
+  @Test
+  void corruptSettingsFileRegeneratesAndIsKept() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.setUpdateTimestamp(4711L);
+    ls.save(port);
+
+    Files.writeString(settingsFile().toPath(), "{\"format\":\"redpanda-local-settings\",\"ver");
+
+    LocalSettings loaded = LocalSettings.load(port);
+
+    assertThat(loaded.getMyIdentity().hasPrivate()).isTrue();
+    assertThat(loaded.getMyIdentity().getKademliaId())
+        .as("a fresh identity, the old one is unreadable")
+        .isNotEqualTo(ls.getMyIdentity().getKademliaId());
+    assertThat(loaded.getUpdateTimestamp()).isEqualTo(-1L);
+  }
+
+  /** A settings file of a future schema version is treated like a corrupt one. */
+  @Test
+  void unknownFormatVersionRegenerates() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.save(port);
+    String json = Files.readString(settingsFile().toPath());
+    Files.writeString(settingsFile().toPath(), json.replace("\"version\":1", "\"version\":99"));
+
+    assertThat(LocalSettings.load(port).getMyIdentity().getKademliaId())
+        .isNotEqualTo(ls.getMyIdentity().getKademliaId());
+  }
+
+  /**
+   * The deploy path: {@code Updater.insertNewUpdate} loads the settings of port 59558, stamps the
+   * signature and timestamp of the freshly built jar into them and saves. If that roundtrip loses
+   * the signature, the auto-updater serves nothing and the testnet cannot be deployed at all.
+   */
+  @Test
+  void updaterSignatureRoundtrip() {
+    byte[] signature = new byte[NodeId.SIGNATURE_LEN];
+    for (int i = 0; i < signature.length; i++) {
+      signature[i] = (byte) i;
+    }
+    byte[] apkSignature = new byte[NodeId.SIGNATURE_LEN];
+    java.util.Arrays.fill(apkSignature, (byte) 0x5a);
+
+    LocalSettings localSettings = LocalSettings.load(port);
+    localSettings.setUpdateSignature(signature);
+    localSettings.setUpdateTimestamp(1783728000042L);
+    localSettings.setUpdateAndroidSignature(apkSignature);
+    localSettings.setUpdateAndroidTimestamp(1783728000043L);
+    localSettings.save(port);
+
+    LocalSettings reloaded = LocalSettings.load(port);
+    assertArrayEquals(signature, reloaded.getUpdateSignature());
+    assertThat(reloaded.getUpdateTimestamp()).isEqualTo(1783728000042L);
+    assertArrayEquals(apkSignature, reloaded.getUpdateAndroidSignature());
+    assertThat(reloaded.getUpdateAndroidTimestamp()).isEqualTo(1783728000043L);
+    assertThat(reloaded.getMyIdentity().getKademliaId())
+        .as("stamping an update must not rotate the identity")
+        .isEqualTo(localSettings.getMyIdentity().getKademliaId());
+  }
+
+  /** No node state may be Java-serialized any more (DDD review §5, T117). */
+  @Test
+  void settingsFileIsJsonNotAJavaObjectStream() throws Exception {
+    new LocalSettings().save(port);
+
+    byte[] written = Files.readAllBytes(settingsFile().toPath());
+
+    assertThat(written[0]).as("Java object streams start with 0xACED").isNotEqualTo((byte) 0xac);
+    assertThat(new String(written, java.nio.charset.StandardCharsets.UTF_8))
+        .startsWith("{\"format\":\"redpanda-local-settings\",\"version\":1")
+        .as("no fully qualified class name may be pinned in the file")
+        .doesNotContain("im.redpanda");
+  }
+
+  /**
+   * Copilot review of #337: a header whose {@code version} is not a number must read as "unreadable
+   * file", not as an unchecked exception escaping a method that declares IOException.
+   */
+  @Test
+  void nonNumericFormatVersionRegenerates() throws Exception {
+    LocalSettings ls = new LocalSettings();
+    ls.save(port);
+    String json = Files.readString(settingsFile().toPath());
+    Files.writeString(settingsFile().toPath(), json.replace("\"version\":1", "\"version\":{}"));
+
+    assertThat(LocalSettings.load(port).getMyIdentity().getKademliaId())
+        .isNotEqualTo(ls.getMyIdentity().getKademliaId());
   }
 }

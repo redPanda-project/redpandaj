@@ -11,7 +11,13 @@ import java.io.Serializable;
  * field of that era). Deleting this class — or changing its pinned {@code serialVersionUID} — makes
  * those files unreadable, and {@code LocalSettings.load()} then silently falls back to FRESH
  * settings: every deployed node would lose its identity on the next restart. Never delete while any
- * deployed node may still hold such a file. Guarded by {@code LocalSettingsLegacyFixtureTest}.
+ * deployed node may still hold such a file.
+ *
+ * <p><b>T117 (2026-09-03):</b> {@code LocalSettings} no longer reads {@code localSettings*.dat} at
+ * all — the settings are explicit JSON now, and a legacy file makes the node regenerate its
+ * identity by design (user decision 2026-09-01: no users yet, no migration path). This tombstone is
+ * therefore no longer on any live code path; it is kept, with its pinned {@code serialVersionUID},
+ * per the T12/v22-removal plan.
  *
  * <p>The full v22 implementation (brainpool ECDH/ECDSA, AES-CTR handshake support) was removed with
  * protocol-v22 support (sdd02 phase 2); this stub only consumes the serialized bytes and discards
