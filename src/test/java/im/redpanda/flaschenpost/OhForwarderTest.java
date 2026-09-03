@@ -12,6 +12,7 @@ import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
+import im.redpanda.outbound.OhId;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
 import im.redpanda.outbound.OutboundService;
@@ -48,7 +49,7 @@ class OhForwarderTest {
   private OutboundMailboxStore mailboxB;
   private OutboundHandleStore handleStoreB;
 
-  private byte[] ohId;
+  private OhId ohId;
 
   @BeforeEach
   void setUp() {
@@ -66,8 +67,9 @@ class OhForwarderTest {
     nodeB.setOutboundService(new OutboundService(storeB));
     processorB = new InboundCommandProcessor(nodeB);
 
-    ohId = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ohId);
+    byte[] ohIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ohIdBytes);
+    ohId = OhId.fromBytes(ohIdBytes);
 
     // OH registered on node B only
     long now = System.currentTimeMillis();
@@ -108,7 +110,7 @@ class OhForwarderTest {
     FlaschenpostPut put =
         FlaschenpostPut.newBuilder()
             .setContent(ByteString.copyFrom(payload))
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .build();
     Peer lightClient = new Peer("127.0.0.1", 9300, nodeA.getNodeId());
     lightClient.setConnected(true);
@@ -127,7 +129,7 @@ class OhForwarderTest {
     FlaschenpostPut forwarded = FlaschenpostPut.parseFrom(forwardedBytes);
     assertThat(forwarded.getOhId().toByteArray())
         .as("Option A: oh_id must survive the forward hop")
-        .isEqualTo(ohId);
+        .isEqualTo(ohId.toBytes());
     assertThat(forwarded.getContent().toByteArray()).isEqualTo(payload);
     assertThat(forwarded.getHopCount()).isEqualTo(1);
     assertThat(forwarded.getWantResponse())
@@ -157,7 +159,7 @@ class OhForwarderTest {
     FlaschenpostPut put =
         FlaschenpostPut.newBuilder()
             .setContent(ByteString.copyFrom(new byte[16]))
-            .setOhId(ByteString.copyFrom(ohId))
+            .setOhId(ohId.toByteString())
             .setHopCount(OhForwarder.MAX_HOPS)
             .build();
     Peer sender = new Peer("127.0.0.1", 9303, nodeA.getNodeId());
@@ -189,8 +191,9 @@ class OhForwarderTest {
 
   /** Registers an ack-OH mailbox on node A and returns a hop_count=0 return path for it. */
   private ReturnPath registerLocalAckPathA() {
-    byte[] ackOhId = new byte[KademliaId.ID_LENGTH_BYTES];
-    RANDOM.nextBytes(ackOhId);
+    byte[] ackOhIdBytes = new byte[KademliaId.ID_LENGTH_BYTES];
+    RANDOM.nextBytes(ackOhIdBytes);
+    OhId ackOhId = OhId.fromBytes(ackOhIdBytes);
     long now = System.currentTimeMillis();
     handleStoreA.put(
         ackOhId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));

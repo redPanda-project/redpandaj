@@ -67,7 +67,7 @@ class OutboundSubscribeNotifyTest {
     // A deposit into the subscribed mailbox now emits exactly one Notify(oh_id)
     service.depositMessage(ohId(), "hi".getBytes(StandardCharsets.UTF_8));
     Notify notify = readNotify();
-    assertThat(notify.getOhId().toByteArray()).isEqualTo(ohId());
+    assertThat(notify.getOhId().toByteArray()).isEqualTo(ohId().toBytes());
     assertNoMoreData(peer);
   }
 
@@ -123,7 +123,7 @@ class OutboundSubscribeNotifyTest {
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
 
     service.depositMessage(ohId(), "hi".getBytes(StandardCharsets.UTF_8));
-    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(ohId());
+    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(ohId().toBytes());
     assertNoMoreData(peer); // exactly one notify, not two
   }
 
@@ -150,23 +150,23 @@ class OutboundSubscribeNotifyTest {
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
 
     NodeId other = NodeId.generateWithSimpleKey();
-    byte[] otherOhId = other.getKademliaId().getBytes();
+    OhId otherOhId = OhId.fromBytes(other.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest(other));
     drainBuffer(peer);
     service.handleSubscribe(peer, createSignedSubscribeRequest(other));
     assertThat(readSubscribeResponse().getStatus()).isEqualTo(Status.OK);
 
     service.depositMessage(otherOhId, "b".getBytes(StandardCharsets.UTF_8));
-    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(otherOhId);
+    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(otherOhId.toBytes());
 
     service.depositMessage(ohId(), "a".getBytes(StandardCharsets.UTF_8));
-    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(ohId());
+    assertThat(readNotify().getOhId().toByteArray()).isEqualTo(ohId().toBytes());
   }
 
   // --- helpers ---
 
-  private byte[] ohId() {
-    return clientNode.getKademliaId().getBytes();
+  private OhId ohId() {
+    return OhId.fromBytes(clientNode.getKademliaId().getBytes());
   }
 
   private static void drainBuffer(Peer p) {

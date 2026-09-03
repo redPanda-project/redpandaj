@@ -60,7 +60,7 @@ class OutboundServiceIntegrationTest {
   /** Full MS01 lifecycle: register OH → deposit message → fetch message → revoke OH. */
   @Test
   void fullLifecycleRegisterDepositFetchRevoke() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
 
     // 1. Register OH
     RegisterOhRequest regReq = createSignedRegisterRequest();
@@ -100,8 +100,9 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void depositMessageOhNotRegisteredReturnsNotFound() {
-    byte[] unknownOhId = new byte[20];
-    new SecureRandom().nextBytes(unknownOhId);
+    byte[] unknownOhIdBytes = new byte[OhId.GARLIC_BYTES];
+    new SecureRandom().nextBytes(unknownOhIdBytes);
+    OhId unknownOhId = OhId.fromBytes(unknownOhIdBytes);
     OutboundService.DepositResult deposited =
         service.depositMessage(unknownOhId, "test".getBytes(StandardCharsets.UTF_8));
     assertThat(deposited).isEqualTo(OutboundService.DepositResult.NOT_FOUND);
@@ -113,7 +114,7 @@ class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
 
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
 
     // Deposit multiple messages
     service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8));
@@ -137,7 +138,7 @@ class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
 
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     byte[] sessionTag = new byte[OutboundService.SESSION_TAG_BYTES];
     new SecureRandom().nextBytes(sessionTag);
 
@@ -162,7 +163,7 @@ class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse(); // consume
 
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     OutboundService.DepositResult result =
         service.depositMessage(ohId, MSG1.getBytes(StandardCharsets.UTF_8), new byte[7]);
     assertThat(result).isEqualTo(OutboundService.DepositResult.BAD_REQUEST);
@@ -173,7 +174,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void depositAfterRevokeReturnsFalse() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
 
     // Register
     service.handleRegister(peer, createSignedRegisterRequest());
@@ -191,7 +192,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void revokeAlsoDeletesMailboxItems() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
 
     // Register and deposit messages
     service.handleRegister(peer, createSignedRegisterRequest());
@@ -214,7 +215,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void depositMessageIdsAreSetUniqueAnd16Bytes() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -245,7 +246,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void depositMessageIdIsStableAcrossRefetch() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -280,7 +281,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void fetchNextCursorIsHighestSequenceId() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -326,7 +327,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void fetchStaleCursorAboveLastAssignedHealsAndRedelivers() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -363,7 +364,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void fetchNormalCursorNotHealed() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -387,7 +388,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void fetchNegativeCursorClampsToZero() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -407,7 +408,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void ackFetchDeletesAcknowledgedItems() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -445,7 +446,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void fetchMailboxOverflowFlagSetAfterEviction() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -475,7 +476,7 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void depositOversizedItemReturnsBadRequest() throws Exception {
-    byte[] ohId = clientNode.getKademliaId().getBytes();
+    OhId ohId = OhId.fromBytes(clientNode.getKademliaId().getBytes());
     service.handleRegister(peer, createSignedRegisterRequest());
     readRegisterResponse();
 
@@ -492,14 +493,14 @@ class OutboundServiceIntegrationTest {
 
   @Test
   void registerInvokesOhRegisteredListener() throws Exception {
-    java.util.List<byte[]> announced = new java.util.ArrayList<>();
+    java.util.List<OhId> announced = new java.util.ArrayList<>();
     service.setOhRegisteredListener(announced::add);
 
     service.handleRegister(peer, createSignedRegisterRequest());
     assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);
 
     assertThat(announced).hasSize(1);
-    assertThat(announced.get(0)).isEqualTo(clientNode.getKademliaId().getBytes());
+    assertThat(announced.get(0)).isEqualTo(OhId.fromBytes(clientNode.getKademliaId().getBytes()));
 
     // Failed registers (bad signature) must not trigger the announce hook
     RegisterOhRequest valid = createSignedRegisterRequest();
@@ -521,7 +522,7 @@ class OutboundServiceIntegrationTest {
     service.handleRegister(peer, createSignedRegisterRequest());
 
     assertThat(readRegisterResponse().getStatus()).isEqualTo(Status.OK);
-    assertThat(handleStore.get(clientNode.getKademliaId().getBytes())).isNotNull();
+    assertThat(handleStore.get(OhId.fromBytes(clientNode.getKademliaId().getBytes()))).isNotNull();
   }
 
   // --- MS02b AC: register rate limit per connection ---

@@ -13,7 +13,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,8 +25,8 @@ class OutboundStoreTest {
 
   @TempDir public File tempFolder;
 
-  private static final byte[] OH_A = Hex.decode("aaaa");
-  private static final byte[] OH_B = Hex.decode("bbbb");
+  private static final OhId OH_A = OhId.fromHex("aa".repeat(OhId.GARLIC_BYTES));
+  private static final OhId OH_B = OhId.fromHex("bb".repeat(OhId.GARLIC_BYTES));
   private static final byte[] AUTH_KEY = new byte[65];
 
   private static MailItem msg(String payload) {
@@ -190,7 +189,7 @@ class OutboundStoreTest {
     ExecutorService pool = Executors.newFixedThreadPool(2);
     try {
       for (int round = 0; round < 200; round++) {
-        byte[] ohId = Hex.decode(String.format("%08x", round));
+        OhId ohId = OhId.fromHex("00".repeat(OhId.GARLIC_BYTES - 4) + String.format("%08x", round));
         store.handles().put(ohId, handle(System.currentTimeMillis(), 60_000));
         CyclicBarrier start = new CyclicBarrier(2);
         Future<?> deposit =

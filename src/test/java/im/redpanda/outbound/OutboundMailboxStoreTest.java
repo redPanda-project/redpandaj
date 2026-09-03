@@ -7,7 +7,6 @@ import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
-import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,12 +16,12 @@ public class OutboundMailboxStoreTest {
   @TempDir public File tempFolder;
 
   private OutboundMailboxStore store;
-  private byte[] ohId;
+  private OhId ohId;
 
   @BeforeEach
   void setUp() {
     store = OutboundStore.inMemory().mailbox();
-    ohId = Hex.decode("123456");
+    ohId = OhId.fromHex("12".repeat(OhId.GARLIC_BYTES));
   }
 
   private static MailItem msg(String payload) {
@@ -49,7 +48,7 @@ public class OutboundMailboxStoreTest {
 
   @Test
   void addMessage_sequenceIdsAreIndependentPerOh() {
-    byte[] ohId2 = Hex.decode("abcdef");
+    OhId ohId2 = OhId.fromHex("ab".repeat(OhId.GARLIC_BYTES));
 
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
     store.addMessage(ohId2, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("b")).build());
@@ -144,11 +143,11 @@ public class OutboundMailboxStoreTest {
 
   @Test
   void deleteAll_removesAllItemsForOh() {
-    byte[] ohId2 = Hex.decode("abcdef");
+    OhId ohId2 = OhId.fromHex("ab".repeat(OhId.GARLIC_BYTES));
     store.addMessage(ohId, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("a")).build());
     store.addMessage(ohId2, MailItem.newBuilder().setPayload(ByteString.copyFromUtf8("b")).build());
 
-    store.deleteAllByHexKey(Hex.toHexString(ohId));
+    store.deleteAll(ohId);
 
     assertThat(store.fetchMessages(ohId, 10, 0)).isEmpty();
     assertThat(store.fetchMessages(ohId2, 10, 0)).hasSize(1);
@@ -292,10 +291,10 @@ public class OutboundMailboxStoreTest {
     }
   }
 
-  // --- T40 cleanup: deleteAllByHexKey drops the persisted counter, next mailbox life restarts at 1
+  // --- T40 cleanup: deleteAll drops the persisted counter, next mailbox life restarts at 1
 
   @Test
-  void deleteAllByHexKey_resetsPersistedCounter() throws Exception {
+  void deleteAll_resetsPersistedCounter() throws Exception {
     String path =
         new File(newFolder(tempFolder, "junit"), "outbound_mailbox.mapdb").getAbsolutePath();
 
@@ -307,7 +306,7 @@ public class OutboundMailboxStoreTest {
       assertThat(first.lastAssignedSeq(ohId)).isEqualTo(2L);
 
       // Handle-expiry cleanup path: the whole mailbox and its counter are wiped
-      first.deleteAllByHexKey(Hex.toHexString(ohId));
+      first.deleteAll(ohId);
       assertThat(first.lastAssignedSeq(ohId)).isZero();
     } finally {
       firstStore.close();
