@@ -92,7 +92,7 @@ public class Saver {
       JsonObject peerJson = new JsonObject();
       peerJson.addProperty("ip", saveable.ip);
       peerJson.addProperty("port", saveable.port);
-      peerJson.add("nodeId", NodeStateCodec.nodeIdToJson(saveable.nodeId));
+      peerJson.add("nodeId", NodeIdCodec.nodeIdToJson(saveable.nodeId));
       peerJson.addProperty("retries", saveable.retries);
       peersJson.add(peerJson);
     }
@@ -166,7 +166,7 @@ public class Saver {
             new PeerSaveable(
                 ip.getAsString(),
                 port,
-                NodeStateCodec.nodeIdFromJson(StateFormat.requireObject(peerJson, "nodeId")),
+                NodeIdCodec.nodeIdFromJson(StateFormat.requireObject(peerJson, "nodeId")),
                 retries);
         loaded.put(saveable.nodeId.getKademliaId(), saveable.toPeer());
       }

@@ -4,9 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import im.redpanda.store.NodeEdge;
-import im.redpanda.store.NodeGraphCodec;
-import im.redpanda.store.NodeStore;
+import im.redpanda.routing.graph.Node;
+import im.redpanda.routing.graph.NodeEdge;
+import im.redpanda.routing.graph.NodeGraphCodec;
+import im.redpanda.routing.graph.NodeStore;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -153,7 +154,7 @@ public class LocalSettings {
 
   private JsonObject toJson() {
     JsonObject json = StateFormat.document(FORMAT, VERSION);
-    json.add("identity", NodeStateCodec.nodeIdToJson(myIdentity));
+    json.add("identity", NodeIdCodec.nodeIdToJson(myIdentity));
     json.addProperty("updateTimestamp", updateTimestamp);
     json.addProperty("updateSignature", StateFormat.base64(updateSignature));
     json.addProperty("updateAndroidTimestamp", updateAndroidTimestamp);
@@ -210,8 +211,7 @@ public class LocalSettings {
 
   private static LocalSettings fromJson(JsonObject json) throws IOException {
     LocalSettings settings = new LocalSettings();
-    settings.myIdentity =
-        NodeStateCodec.nodeIdFromJson(StateFormat.requireObject(json, "identity"));
+    settings.myIdentity = NodeIdCodec.nodeIdFromJson(StateFormat.requireObject(json, "identity"));
     if (!settings.myIdentity.hasPrivate()) {
       throw new IOException("settings file holds no private identity key");
     }

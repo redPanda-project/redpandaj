@@ -1,8 +1,9 @@
-package im.redpanda.jobs;
+package im.redpanda.routing.graph;
 
 import im.redpanda.core.Log;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.Job;
 
 public class NodeStoreMaintainJob extends Job {
 

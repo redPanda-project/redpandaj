@@ -1,9 +1,8 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;

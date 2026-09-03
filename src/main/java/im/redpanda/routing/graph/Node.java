@@ -1,7 +1,9 @@
-package im.redpanda.core;
+package im.redpanda.routing.graph;
 
+import im.redpanda.core.KademliaId;
+import im.redpanda.core.NodeId;
+import im.redpanda.core.ServerContext;
 import im.redpanda.crypt.Utils;
-import im.redpanda.store.NodeStore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -10,9 +12,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * A node of the DHT/graph as this node knows it. Persisted as explicit JSON (see {@code
- * NodeStateCodec}) — not {@code Serializable} since T117, so moving this class cannot make the node
- * graph or the node cache unreadable.
+ * A node of the DHT/graph as this node knows it. Persisted as explicit JSON (see {@code NodeCodec})
+ * — not {@code Serializable} since T117, so moving this class cannot make the node graph or the
+ * node cache unreadable.
  */
 public class Node {
 

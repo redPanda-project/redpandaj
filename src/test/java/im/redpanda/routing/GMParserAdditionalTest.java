@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Node;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
@@ -17,7 +16,8 @@ import im.redpanda.dht.KadContent;
 import im.redpanda.dht.nodeinfo.GMEntryPointModel;
 import im.redpanda.dht.nodeinfo.NodeInfoModel;
 import im.redpanda.jobs.Job;
-import im.redpanda.store.NodeEdge;
+import im.redpanda.routing.graph.Node;
+import im.redpanda.routing.graph.NodeEdge;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

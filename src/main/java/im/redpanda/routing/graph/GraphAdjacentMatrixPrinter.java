@@ -1,7 +1,5 @@
-package im.redpanda.store.helper;
+package im.redpanda.routing.graph;
 
-import im.redpanda.core.Node;
-import im.redpanda.store.NodeEdge;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;

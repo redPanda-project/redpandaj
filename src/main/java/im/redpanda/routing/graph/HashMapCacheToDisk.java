@@ -1,4 +1,4 @@
-package im.redpanda.store;
+package im.redpanda.routing.graph;
 
 import java.util.HashMap;
 import java.util.Map;

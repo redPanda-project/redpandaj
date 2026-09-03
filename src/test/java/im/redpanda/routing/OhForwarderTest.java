@@ -372,14 +372,14 @@ class OhForwarderTest {
   @Test
   void selectNextPeer_graphRoutingBlocksWhileNodeStoreWriteLockIsHeldElsewhere() throws Exception {
     // graph routing is only attempted once our own Node is wired up
-    nodeA.setNode(new im.redpanda.core.Node(nodeA, nodeA.getNodeId()));
+    nodeA.setNode(new im.redpanda.routing.graph.Node(nodeA, nodeA.getNodeId()));
 
     // one connected full-node candidate, so we get past the (locked) peer-list scan
     // (Peer.getNode() only returns the node once the peer is authed and connected)
     Peer candidate = new Peer("127.0.0.1", 9302, nodeB.getNodeId());
     candidate.setConnected(true);
     PeerTestSupport.setAuthed(candidate, true);
-    candidate.setNode(new im.redpanda.core.Node(nodeA, nodeB.getNodeId()));
+    candidate.setNode(new im.redpanda.routing.graph.Node(nodeA, nodeB.getNodeId()));
     nodeA.getPeerList().add(candidate);
     assertThat(candidate.hasNode()).isTrue();
 

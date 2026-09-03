@@ -7,6 +7,7 @@ package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
 import im.redpanda.crypt.Utils;
+import im.redpanda.routing.graph.Node;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;

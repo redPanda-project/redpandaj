@@ -7,6 +7,7 @@ import im.redpanda.crypt.Utils;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
+import im.redpanda.routing.graph.Node;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
