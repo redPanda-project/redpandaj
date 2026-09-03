@@ -252,7 +252,7 @@ public class OutboundHandler extends Thread {
               continue;
             }
 
-            if (peer.equalsNonce(p2)) {
+            if (peer.equalsNodeId(p2)) {
               alreadyConnectedToSameNodeId = true;
               break;
             }

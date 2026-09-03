@@ -63,7 +63,7 @@ public final class TestNodeLauncher {
     serverContext.setPort(port);
     serverContext.setLocalSettings(LocalSettings.load(port));
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
-    serverContext.setNonce(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
+    serverContext.setOwnNodeId(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
 
     // Outbound Service V1 Init
@@ -84,7 +84,7 @@ public final class TestNodeLauncher {
     Log.init(serverContext);
     startPermanentJobs(serverContext);
 
-    System.out.println("NODE_READY port=" + port + " kad=" + serverContext.getNonce());
+    System.out.println("NODE_READY port=" + port + " kad=" + serverContext.getOwnNodeId());
 
     waitForStopSignal();
     shutdown(serverContext, connectionHandler);
@@ -170,7 +170,7 @@ public final class TestNodeLauncher {
       t.printStackTrace();
     }
     System.out.println(
-        "NODE_STOPPED kad=" + Objects.requireNonNullElse(serverContext.getNonce(), "unknown"));
+        "NODE_STOPPED kad=" + Objects.requireNonNullElse(serverContext.getOwnNodeId(), "unknown"));
   }
 
   private static void shutdownJobScheduler() {

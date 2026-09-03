@@ -130,10 +130,10 @@ public class ConnectionReaderThread implements Runnable {
       return false;
     }
 
-    byte[] nonceBytes = new byte[KademliaId.ID_LENGTH / 8];
-    buffer.get(nonceBytes);
+    byte[] identityBytes = new byte[KademliaId.ID_LENGTH / 8];
+    buffer.get(identityBytes);
 
-    KademliaId identity = new KademliaId(nonceBytes);
+    KademliaId identity = new KademliaId(identityBytes);
 
     int port = buffer.getInt();
 
@@ -161,7 +161,7 @@ public class ConnectionReaderThread implements Runnable {
 
     buffer.compact();
 
-    if (identity.equals(serverContext.getNonce())) {
+    if (identity.equals(serverContext.getOwnNodeId())) {
       /** We connected to ourselves, disconnect */
       System.out.println("connected to ourselves, disconnecting...");
       peerInHandshake.setStatus(2); // set disconnect code
@@ -506,7 +506,7 @@ public class ConnectionReaderThread implements Runnable {
       writeBuffer.put(Server.MAGIC.getBytes());
       writeBuffer.put((byte) Server.VERSION);
       writeBuffer.put((byte) 0); // we are no light client
-      writeBuffer.put(serverContext.getNonce().getBytes());
+      writeBuffer.put(serverContext.getOwnNodeId().getBytes());
       writeBuffer.putInt(serverContext.getPort());
     } catch (BufferOverflowException e) {
       Log.sentry("bufferoverflow in put magic, buffer before: " + bufferBeforeWriting);

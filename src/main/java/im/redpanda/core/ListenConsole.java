@@ -59,8 +59,8 @@ public class ListenConsole extends Thread {
         System.out.println(
             "Status listenPort: "
                 + serverContext.getPort()
-                + " NONCE: "
-                + serverContext.getNonce()
+                + " node id: "
+                + serverContext.getOwnNodeId()
                 + "\n");
 
         int actCons = 0;
@@ -81,9 +81,9 @@ public class ListenConsole extends Thread {
           System.out.format(
               "%40s %18s %12s %12s %7s %8s %10s %10s %10s %8s %10s %10s %10s\n",
               "[IP]:PORT",
-              "nonce",
+              "node id",
               "last answer",
-              "conntected",
+              "connected",
               "retries",
               "ping",
               "loaded Msg",

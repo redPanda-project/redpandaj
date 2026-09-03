@@ -120,18 +120,18 @@ class GarlicRouterTest {
     deliver.put(payload);
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            last.getNodeId().getEncryptionPubKey(), last.getNonce(), deliver.array());
+            last.getNodeId().getEncryptionPubKey(), last.getOwnNodeId(), deliver.array());
 
     for (int i = hops.length - 2; i >= 0; i--) {
       ByteBuffer forward = ByteBuffer.allocate(1 + KademliaId.ID_LENGTH_BYTES + body.length);
       forward.put(FlaschenpostV2.CMD_FORWARD);
-      forward.put(hops[i + 1].getNonce().getBytes());
+      forward.put(hops[i + 1].getOwnNodeId().getBytes());
       forward.put(body);
       body =
           FlaschenpostV2.encryptLayer(
-              hops[i].getNodeId().getEncryptionPubKey(), hops[i].getNonce(), forward.array());
+              hops[i].getNodeId().getEncryptionPubKey(), hops[i].getOwnNodeId(), forward.array());
     }
-    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), hops[0].getNonce(), body);
+    return FlaschenpostV2.buildPacket(RANDOM.nextInt(), hops[0].getOwnNodeId(), body);
   }
 
   @Test
@@ -148,7 +148,7 @@ class GarlicRouterTest {
     byte[] toNode2 = readV2Frame(peer1To2);
     assertThat(toNode2).hasSize(FlaschenpostV2.PACKET_SIZE);
     FlaschenpostV2 parsed2 = FlaschenpostV2.parse(toNode2);
-    assertThat(parsed2.getNextHop()).isEqualTo(node2.getNonce());
+    assertThat(parsed2.getNextHop()).isEqualTo(node2.getOwnNodeId());
     assertThat(parsed2.getPacketId())
         .as("relays must assign a fresh packet_id")
         .isNotEqualTo(originalPacketId);
@@ -157,7 +157,7 @@ class GarlicRouterTest {
     processor2.parseCommand(Command.FLASCHENPOST_V2, buildFrame(toNode2), sender(node2, 9403));
     byte[] toNode3 = readV2Frame(peer2To3);
     assertThat(toNode3).hasSize(FlaschenpostV2.PACKET_SIZE);
-    assertThat(FlaschenpostV2.parse(toNode3).getNextHop()).isEqualTo(node3.getNonce());
+    assertThat(FlaschenpostV2.parse(toNode3).getNextHop()).isEqualTo(node3.getOwnNodeId());
 
     // relay 3 peels the CMD_DELIVER layer and deposits into the OH mailbox
     processor3.parseCommand(Command.FLASCHENPOST_V2, buildFrame(toNode3), sender(node3, 9404));
@@ -192,8 +192,8 @@ class GarlicRouterTest {
     byte[] deliver = ByteBuffer.allocate(1 + 20 + 4).put(FlaschenpostV2.CMD_DELIVER).array();
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            node2.getNodeId().getEncryptionPubKey(), node2.getNonce(), deliver);
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), node1.getNonce(), body);
+            node2.getNodeId().getEncryptionPubKey(), node2.getOwnNodeId(), deliver);
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), node1.getOwnNodeId(), body);
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(node1, 9420));
 
@@ -235,7 +235,9 @@ class GarlicRouterTest {
     RANDOM.nextBytes(remoteOhId);
     node1
         .getKadStoreManager()
-        .put(OhDht.buildAnnounceContent(remoteOhId, node2.getNonce(), System.currentTimeMillis()));
+        .put(
+            OhDht.buildAnnounceContent(
+                remoteOhId, node2.getOwnNodeId(), System.currentTimeMillis()));
     Peer peer1To2 = connect(node1, node2, 9451);
 
     byte[] payload = "deliver elsewhere".getBytes(StandardCharsets.UTF_8);
@@ -246,8 +248,8 @@ class GarlicRouterTest {
     deliver.put(payload);
     byte[] body =
         FlaschenpostV2.encryptLayer(
-            node1.getNodeId().getEncryptionPubKey(), node1.getNonce(), deliver.array());
-    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), node1.getNonce(), body);
+            node1.getNodeId().getEncryptionPubKey(), node1.getOwnNodeId(), deliver.array());
+    byte[] packet = FlaschenpostV2.buildPacket(RANDOM.nextInt(), node1.getOwnNodeId(), body);
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(node1, 9450));
 

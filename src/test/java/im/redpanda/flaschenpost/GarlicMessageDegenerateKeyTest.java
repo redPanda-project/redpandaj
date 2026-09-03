@@ -30,7 +30,8 @@ class GarlicMessageDegenerateKeyTest {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     GarlicMessage message =
-        new GarlicMessage(serverContext, buildPacketWithZeroEphemeralKey(serverContext.getNonce()));
+        new GarlicMessage(
+            serverContext, buildPacketWithZeroEphemeralKey(serverContext.getOwnNodeId()));
 
     assertThat(message.isTargetedToUs()).isTrue();
     assertThatCode(message::parseContent).doesNotThrowAnyException();
@@ -42,7 +43,8 @@ class GarlicMessageDegenerateKeyTest {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     GarlicMessage message =
-        new GarlicMessage(serverContext, buildPacketWithZeroEphemeralKey(serverContext.getNonce()));
+        new GarlicMessage(
+            serverContext, buildPacketWithZeroEphemeralKey(serverContext.getOwnNodeId()));
 
     assertThatThrownBy(message::decryptPayload).isInstanceOf(InvalidKeyException.class);
   }
@@ -63,7 +65,7 @@ class GarlicMessageDegenerateKeyTest {
     body.put(ciphertext);
 
     byte[] packet =
-        FlaschenpostV2.buildPacket(RANDOM.nextInt(), serverContext.getNonce(), body.array());
+        FlaschenpostV2.buildPacket(RANDOM.nextInt(), serverContext.getOwnNodeId(), body.array());
 
     assertThatCode(() -> GarlicRouter.handle(serverContext, packet)).doesNotThrowAnyException();
   }

@@ -112,7 +112,7 @@ class ReverseGarlicReflectionLimitTest {
         sessionTag(),
         List.of(
             new ReturnPath.Hop(
-                hop.getNonce(), hop.getNodeId().getEncryptionPubKey().getEncoded())));
+                hop.getOwnNodeId(), hop.getNodeId().getEncryptionPubKey().getEncoded())));
   }
 
   private static byte[] sessionTag() {

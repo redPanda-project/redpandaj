@@ -202,8 +202,8 @@ public class PeerInHandshake {
     return identity;
   }
 
-  public void setIdentity(KademliaId nonce) {
-    this.identity = nonce;
+  public void setIdentity(KademliaId identity) {
+    this.identity = identity;
   }
 
   public Peer getPeer() {

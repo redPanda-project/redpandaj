@@ -313,7 +313,7 @@ class OhForwarderTest {
     long now = System.currentTimeMillis();
     handleStoreA.put(ohId, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
 
-    OhForwarder.routeToNode(nodeA, nodeA.getNonce(), deposit(payload, ackPath));
+    OhForwarder.routeToNode(nodeA, nodeA.getOwnNodeId(), deposit(payload, ackPath));
 
     List<MailItem> items = mailboxA.fetchMessages(ohId, 10, 0);
     assertThat(items).hasSize(1);
@@ -327,7 +327,7 @@ class OhForwarderTest {
     // announce points at us but the OH is not registered here (expired/revoked) — final drop
     ReturnPath ackPath = registerLocalAckPathA();
 
-    OhForwarder.routeToNode(nodeA, nodeA.getNonce(), deposit(new byte[8], ackPath));
+    OhForwarder.routeToNode(nodeA, nodeA.getOwnNodeId(), deposit(new byte[8], ackPath));
 
     assertThat(mailboxA.fetchMessages(ohId, 10, 0)).isEmpty();
     im.redpanda.outbound.v1.RoutingAck rAck = fetchSingleAckA(ackPath);

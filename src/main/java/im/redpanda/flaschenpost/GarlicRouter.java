@@ -103,7 +103,7 @@ public final class GarlicRouter {
       log.debug("dropping duplicate flaschenpost v2 packet {}", fp.getPacketId());
       return;
     }
-    if (!fp.getNextHop().equals(serverContext.getNonce())) {
+    if (!fp.getNextHop().equals(serverContext.getOwnNodeId())) {
       routeToNextHop(serverContext, fp.getNextHop(), packet);
       return;
     }

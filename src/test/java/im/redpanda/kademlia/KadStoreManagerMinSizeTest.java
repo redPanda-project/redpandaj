@@ -130,7 +130,7 @@ class KadStoreManagerMinSizeTest {
    * the distance-based keepTime (clamped to the 61-minute floor).
    */
   private KademliaId idAtMaxDistanceFromUs() {
-    byte[] bytes = serverContext.getNonce().getBytes().clone();
+    byte[] bytes = serverContext.getOwnNodeId().getBytes().clone();
     bytes[0] ^= (byte) 0x80;
     return new KademliaId(bytes);
   }
