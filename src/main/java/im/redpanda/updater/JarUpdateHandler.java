@@ -134,8 +134,11 @@ public class JarUpdateHandler {
               Log.sentry(e);
               e.printStackTrace();
             } catch (IOException e) {
+              // Copilot on #332: the moved code reported the same exception to Sentry twice
+              // (a copy-paste in the original). Report once, and keep the stack trace like the
+              // FileNotFoundException branch above.
               Log.sentry(e);
-              Log.sentry(e);
+              e.printStackTrace();
             }
           } finally {
             UpdateTransfer.updateUploadLock.release();
