@@ -1,46 +1,41 @@
 package im.redpanda.core;
 
-import static com.google.protobuf.ByteString.copyFrom;
-
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.crypt.Utils;
-import im.redpanda.flaschenpost.GarlicRouter;
-import im.redpanda.flaschenpost.MailboxDepositPolicy;
-import im.redpanda.jobs.Job;
-import im.redpanda.jobs.KademliaInsertJob;
-import im.redpanda.jobs.KademliaSearchJob;
-import im.redpanda.jobs.KademliaSearchJobAnswerPeer;
-import im.redpanda.kademlia.KadContent;
-import im.redpanda.outbound.OutboundService;
-import im.redpanda.outbound.v1.AckFetchRequest;
-import im.redpanda.outbound.v1.FetchRequest;
-import im.redpanda.outbound.v1.RegisterOhRequest;
-import im.redpanda.outbound.v1.RevokeOhRequest;
-import im.redpanda.outbound.v1.SubscribeRequest;
-import im.redpanda.proto.*;
-import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.flaschenpost.FlaschenpostCommandHandler;
+import im.redpanda.kademlia.KademliaCommandHandler;
+import im.redpanda.outbound.OutboundCommandHandler;
 import im.redpanda.updater.ApkUpdateHandler;
 import im.redpanda.updater.JarUpdateHandler;
 import java.nio.ByteBuffer;
-import java.util.List;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Dispatches inbound commands of a peer connection: it owns the framing (command byte, optional
- * {@code [len:4][payload]} prefix, consumed-byte accounting, protocol-desync disconnect) and
- * nothing else — every command's meaning belongs to a domain handler.
+ * Dispatches inbound commands of a peer connection.
  *
- * <p>T116 (DDD review 2026-08-31, P2 step 2/3) moved the handler bodies out; the wire behaviour is
- * unchanged. Domain map: peer list/liveness → this class (commands 1-4, the {@code core} context),
- * software distribution → {@link JarUpdateHandler}/{@link ApkUpdateHandler} (9-16), DHT → {@code
- * im.redpanda.kademlia} (120-123), mailbox → {@code OutboundService}/{@code MailboxDepositPolicy}
- * (141/142, 150-161), garlic routing → {@code GarlicRouter} (142).
+ * <p>After T116 (DDD review 2026-08-31, §6 P2 step 2) this class owns the <em>framing</em> and
+ * nothing else: read the command byte, pre-read the {@code [len:4][payload]} prefix for the framed
+ * commands, route to a domain handler, account the consumed bytes, and disconnect on a protocol
+ * desync. What a command <em>means</em> belongs to its bounded context:
+ *
+ * <table>
+ *   <caption>command → domain</caption>
+ *   <tr><td>5–8</td><td>{@link PeerExchangeHandler} (peer list / liveness, this package)</td></tr>
+ *   <tr><td>9–16</td><td>{@link JarUpdateHandler} / {@link ApkUpdateHandler} (N-UPDATER)</td></tr>
+ *   <tr><td>120–122, 130</td><td>{@link KademliaCommandHandler} (DHT)</td></tr>
+ *   <tr><td>141, 142</td><td>{@link FlaschenpostCommandHandler} (mailbox / garlic routing)</td></tr>
+ *   <tr><td>150–159 (requests)</td><td>{@link OutboundCommandHandler} (mailbox)</td></tr>
+ * </table>
+ *
+ * <p>Commands 1–3 (public-key exchange, encryption activation) never reach this class — they are
+ * consumed by the handshake in {@code ConnectionReaderThread}.
  */
 public class InboundCommandProcessor {
   private static final Logger logger = LogManager.getLogger();
-
-  private final ServerContext serverContext;
 
   @FunctionalInterface
   private interface CommandHandler {
@@ -48,134 +43,132 @@ public class InboundCommandProcessor {
         throws InvalidProtocolBufferException;
   }
 
-  private final java.util.Map<Byte, CommandHandler> commandHandlers = new java.util.HashMap<>();
+  private final Map<Byte, CommandHandler> commandHandlers = new HashMap<>();
 
-  private final OutboundService outboundService;
+  /**
+   * The commands whose payload is length-prefixed on the wire. Derived from the registrations below
+   * instead of a second hand-maintained list, so a command can no longer be registered with one
+   * framing and parsed with the other.
+   */
+  private final Set<Byte> framedCommands = new HashSet<>();
 
+  private final PeerExchangeHandler peerExchangeHandler;
   private final JarUpdateHandler jarUpdateHandler;
   private final ApkUpdateHandler apkUpdateHandler;
+  private final KademliaCommandHandler kademliaHandler;
+  private final FlaschenpostCommandHandler flaschenpostHandler;
+  private final OutboundCommandHandler outboundHandler;
 
   public InboundCommandProcessor(ServerContext serverContext) {
-    this.serverContext = serverContext;
-    this.outboundService = serverContext.getOutboundService(); // Ensure ServerContext has this!
-    this.jarUpdateHandler = new JarUpdateHandler(serverContext);
-    this.apkUpdateHandler = new ApkUpdateHandler(serverContext);
+    this(
+        new PeerExchangeHandler(serverContext),
+        new JarUpdateHandler(serverContext),
+        new ApkUpdateHandler(serverContext),
+        new KademliaCommandHandler(serverContext),
+        new FlaschenpostCommandHandler(serverContext, serverContext.getOutboundService()),
+        new OutboundCommandHandler(serverContext.getOutboundService()));
+  }
+
+  /**
+   * Seam for {@code InboundCommandProcessorRoutingTest}: lets a test hand in recording handlers and
+   * assert that every command byte reaches the handler method it is supposed to reach. Without it,
+   * a transposed wiring line (say {@code handleFetch} registered under {@code
+   * OUTBOUND_REVOKE_OH_REQ}) compiles and passes every other test.
+   */
+  InboundCommandProcessor(
+      PeerExchangeHandler peerExchangeHandler,
+      JarUpdateHandler jarUpdateHandler,
+      ApkUpdateHandler apkUpdateHandler,
+      KademliaCommandHandler kademliaHandler,
+      FlaschenpostCommandHandler flaschenpostHandler,
+      OutboundCommandHandler outboundHandler) {
+    this.peerExchangeHandler = peerExchangeHandler;
+    this.jarUpdateHandler = jarUpdateHandler;
+    this.apkUpdateHandler = apkUpdateHandler;
+    this.kademliaHandler = kademliaHandler;
+    this.flaschenpostHandler = flaschenpostHandler;
+    this.outboundHandler = outboundHandler;
     initializeHandlers();
   }
 
+  /** Registers a bare command: one byte on the wire, no payload. */
+  private void bare(byte command, CommandHandler handler) {
+    commandHandlers.put(command, handler);
+  }
+
+  /**
+   * Registers a length-prefixed command: {@code [cmd][len:4][payload]}. The payload is read by
+   * {@link #parseCommand(byte, ByteBuffer, Peer)} before the handler runs, and the handler's
+   * declared consumption is the payload only — the {@code 1 + 4} framing bytes are added here,
+   * once, instead of in every registration.
+   */
+  private void framed(byte command, FramedHandler handler) {
+    framedCommands.add(command);
+    commandHandlers.put(
+        command,
+        (peer, buf, payload) -> {
+          handler.handle(peer, payload);
+          return 1 + 4 + payload.length;
+        });
+  }
+
+  @FunctionalInterface
+  private interface FramedHandler {
+    void handle(Peer peer, byte[] payload) throws InvalidProtocolBufferException;
+  }
+
   private void initializeHandlers() {
-    commandHandlers.put(Command.PING, (peer, buf, payload) -> handlePing(peer));
-    commandHandlers.put(Command.PONG, (peer, buf, payload) -> handlePong(peer));
-    commandHandlers.put(
-        Command.REQUEST_PEERLIST, (peer, buf, payload) -> handleRequestPeerList(peer));
+    // Peer list / liveness (this package)
+    bare(Command.PING, (peer, buf, payload) -> peerExchangeHandler.handlePing(peer));
+    bare(Command.PONG, (peer, buf, payload) -> peerExchangeHandler.handlePong(peer));
+    bare(
+        Command.REQUEST_PEERLIST,
+        (peer, buf, payload) -> peerExchangeHandler.handleRequestPeerList(peer));
+    framed(Command.SEND_PEERLIST, peerExchangeHandler::handleSendPeerList);
 
-    // Outbound V1
-    commandHandlers.put(
-        Command.OUTBOUND_REGISTER_OH_REQ,
-        (peer, buf, payload) -> {
-          int len = (payload != null) ? payload.length : 0;
-          outboundService.handleRegister(peer, RegisterOhRequest.parseFrom(payload));
-          return 1 + 4 + len;
-        });
-    commandHandlers.put(
-        Command.OUTBOUND_FETCH_REQ,
-        (peer, buf, payload) -> {
-          int len = (payload != null) ? payload.length : 0;
-          outboundService.handleFetch(peer, FetchRequest.parseFrom(payload));
-          return 1 + 4 + len;
-        });
-    commandHandlers.put(
-        Command.OUTBOUND_REVOKE_OH_REQ,
-        (peer, buf, payload) -> {
-          int len = (payload != null) ? payload.length : 0;
-          outboundService.handleRevoke(peer, RevokeOhRequest.parseFrom(payload));
-          return 1 + 4 + len;
-        });
-    commandHandlers.put(
-        Command.OUTBOUND_ACK_FETCH_REQ,
-        (peer, buf, payload) -> {
-          int len = (payload != null) ? payload.length : 0;
-          outboundService.handleAckFetch(peer, AckFetchRequest.parseFrom(payload));
-          return 1 + 4 + len;
-        });
-    // Connection-Notify (T38): opt-in subscribe. OUTBOUND_SUBSCRIBE_RES/OUTBOUND_NOTIFY are only
-    // ever written back to the client, never parsed here.
-    commandHandlers.put(
-        Command.OUTBOUND_SUBSCRIBE_REQ,
-        (peer, buf, payload) -> {
-          int len = (payload != null) ? payload.length : 0;
-          outboundService.handleSubscribe(peer, SubscribeRequest.parseFrom(payload));
-          return 1 + 4 + len;
-        });
-
-    // Payload commands
-    commandHandlers.put(
-        Command.SEND_PEERLIST,
-        (peer, buf, payload) -> handleSendPeerList(payload, peer) + 4 + payload.length);
-    // N-UPDATER (T116): software distribution is its own bounded context; the dispatcher only
-    // routes commands 9-16 into it.
-    commandHandlers.put(
+    // N-UPDATER: software distribution is its own bounded context (im.redpanda.updater).
+    bare(
         Command.UPDATE_REQUEST_TIMESTAMP,
         (peer, buf, payload) -> jarUpdateHandler.handleRequestTimestamp(peer));
-    commandHandlers.put(
+    bare(
         Command.UPDATE_ANSWER_TIMESTAMP,
         (peer, buf, payload) -> jarUpdateHandler.handleAnswerTimestamp(buf, peer));
-    commandHandlers.put(
+    bare(
         Command.UPDATE_REQUEST_CONTENT,
         (peer, buf, payload) -> jarUpdateHandler.handleRequestContent(peer));
-    commandHandlers.put(
+    bare(
         Command.UPDATE_ANSWER_CONTENT,
         (peer, buf, payload) -> jarUpdateHandler.handleAnswerContent(buf, peer));
-    commandHandlers.put(
+    bare(
         Command.ANDROID_UPDATE_REQUEST_TIMESTAMP,
         (peer, buf, payload) -> apkUpdateHandler.handleRequestTimestamp(peer));
-    commandHandlers.put(
+    bare(
         Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
         (peer, buf, payload) -> apkUpdateHandler.handleAnswerTimestamp(buf, peer));
-    commandHandlers.put(
+    bare(
         Command.ANDROID_UPDATE_REQUEST_CONTENT,
         (peer, buf, payload) -> apkUpdateHandler.handleRequestContent(peer));
-    commandHandlers.put(
+    bare(
         Command.ANDROID_UPDATE_ANSWER_CONTENT,
         (peer, buf, payload) -> apkUpdateHandler.handleAnswerContent(buf, peer));
 
-    commandHandlers.put(
-        Command.JOB_ACK,
-        (peer, buf, payload) -> {
-          handleJobAck(payload, peer);
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.KADEMLIA_GET,
-        (peer, buf, payload) -> {
-          handleKademliaGet(payload, peer);
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.KADEMLIA_STORE,
-        (peer, buf, payload) -> {
-          handleKademliaStore(payload, peer);
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.KADEMLIA_GET_ANSWER,
-        (peer, buf, payload) -> {
-          handleKademliaGetAnswer(payload, peer);
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.FLASCHENPOST_PUT,
-        (peer, buf, payload) -> {
-          handleFlaschenpostPut(payload, peer);
-          return 1 + 4 + payload.length;
-        });
-    commandHandlers.put(
-        Command.FLASCHENPOST_V2,
-        (peer, buf, payload) -> {
-          // MS04 multi-hop garlic relay: dedup, peel own layer or route toward next_hop
-          GarlicRouter.handle(serverContext, payload);
-          return 1 + 4 + payload.length;
-        });
+    // DHT (im.redpanda.kademlia)
+    framed(Command.JOB_ACK, kademliaHandler::handleJobAck);
+    framed(Command.KADEMLIA_GET, kademliaHandler::handleKademliaGet);
+    framed(Command.KADEMLIA_STORE, kademliaHandler::handleKademliaStore);
+    framed(Command.KADEMLIA_GET_ANSWER, kademliaHandler::handleKademliaGetAnswer);
+
+    // Mailbox / garlic routing (im.redpanda.flaschenpost)
+    framed(Command.FLASCHENPOST_PUT, flaschenpostHandler::handlePut);
+    framed(Command.FLASCHENPOST_V2, (peer, payload) -> flaschenpostHandler.handleV2(payload));
+
+    // Outbound V1 (im.redpanda.outbound). The *_RES commands and OUTBOUND_NOTIFY are only ever
+    // written back to the client, never parsed here.
+    framed(Command.OUTBOUND_REGISTER_OH_REQ, outboundHandler::handleRegister);
+    framed(Command.OUTBOUND_FETCH_REQ, outboundHandler::handleFetch);
+    framed(Command.OUTBOUND_REVOKE_OH_REQ, outboundHandler::handleRevoke);
+    framed(Command.OUTBOUND_ACK_FETCH_REQ, outboundHandler::handleAckFetch);
+    framed(Command.OUTBOUND_SUBSCRIBE_REQ, outboundHandler::handleSubscribe);
   }
 
   public void loopCommands(Peer peer, ByteBuffer readBuffer) {
@@ -223,17 +216,18 @@ public class InboundCommandProcessor {
     }
   }
 
+  /**
+   * Parses one command off the connection buffer and runs its handler.
+   *
+   * @return the number of bytes consumed, or {@code 0} when the frame is not complete yet (the
+   *     caller leaves the buffer untouched and retries after the next read) or the peer was
+   *     disconnected
+   */
   public int parseCommand(byte command, ByteBuffer readBuffer, Peer peer) {
-    // Commands with payload require reading length first for some handlers,
-    // but the handler logic itself might not use it if it reads directly from
-    // buffer (?)
-    // Actually existing logic reads payload for specific commands before switch.
-    // Let's preserve that logic or move it into handlers?
-    // The previous logic pre-read payload for `isPayloadCommand`.
-    // We should keep that pre-reading behaviour to be safe or refactor carefully.
-    // The original code check `isPayloadCommand` then `readMessage`.
-    // Let's keep that structure but pass the payload to the handler.
-
+    // Framed commands get their [len:4][payload] read here, before the handler runs, so a handler
+    // never sees a partial frame: readMessage() resets the buffer and we report 0 consumed bytes
+    // until the whole payload has arrived. Bare commands read whatever they need straight off the
+    // buffer (the four update-timestamp answers read their 8 bytes themselves).
     byte[] payload = null;
     if (isPayloadCommand(command)) {
       payload = readMessage(readBuffer);
@@ -248,19 +242,14 @@ public class InboundCommandProcessor {
         return handler.handle(peer, readBuffer, payload);
       } catch (InvalidProtocolBufferException e) {
         logger.error("Failed to parse protobuf for command " + command, e);
-        // If payload was read, we can skip it.
-        // The original code had specific fallback: return 1 + 4 + payload.length;
-        // This assumes `payload` is not null if we are here and exception happened in a
-        // payload handler.
+        // A malformed payload must not desync the stream: skip the whole frame we already read,
+        // so the next command byte is still at a frame boundary. Only framed commands can raise
+        // this (protobuf parsing happens in their handlers), so payload is non-null in practice;
+        // the bare fallback just skips the command byte.
         if (payload != null) {
           return 1 + 4 + payload.length;
-        } else {
-          // Should not happen for payload commands if logic matches, but strictly
-          // speaking:
-          return 1; // skip command byte? Or just return 0?
-          // Original code only caught IPBE which comes from payload parsing.
-          // So payload IS not null.
         }
+        return 1;
       }
     } else {
       // Protocol desync: the byte stream no longer aligns to a command boundary (observed as
@@ -281,19 +270,9 @@ public class InboundCommandProcessor {
     }
   }
 
+  /** Whether the command carries a length-prefixed payload; see {@link #framed}. */
   private boolean isPayloadCommand(byte command) {
-    return command == Command.SEND_PEERLIST
-        || command == Command.JOB_ACK
-        || command == Command.KADEMLIA_GET
-        || command == Command.KADEMLIA_STORE
-        || command == Command.KADEMLIA_GET_ANSWER
-        || command == Command.FLASCHENPOST_PUT
-        || command == Command.FLASCHENPOST_V2
-        || command == Command.OUTBOUND_REGISTER_OH_REQ
-        || command == Command.OUTBOUND_FETCH_REQ
-        || command == Command.OUTBOUND_REVOKE_OH_REQ
-        || command == Command.OUTBOUND_ACK_FETCH_REQ
-        || command == Command.OUTBOUND_SUBSCRIBE_REQ;
+    return framedCommands.contains(command);
   }
 
   private byte[] readMessage(ByteBuffer readBuffer) {
@@ -309,203 +288,5 @@ public class InboundCommandProcessor {
     byte[] bytes = new byte[length];
     readBuffer.get(bytes);
     return bytes;
-  }
-
-  private int handlePing(Peer peer) {
-    Log.put("Received ping command", 200);
-    if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
-      logger.error(
-          "Got PING from node not in our peerlist, lets add it.... %s, id: %s"
-              .formatted(peer, peer.getKademliaId()));
-      serverContext.getPeerList().add(peer);
-      return 0;
-    }
-    peer.enqueueCommand(Command.PONG);
-    return 1;
-  }
-
-  private int handlePong(Peer peer) {
-    Log.put("Received pong command", 200);
-    peer.ping = (1 * peer.ping + (double) (System.currentTimeMillis() - peer.lastPinged)) / 2;
-    peer.setLastPongReceived(System.currentTimeMillis());
-    return 1;
-  }
-
-  private int handleRequestPeerList(Peer peer) {
-    // T87: PeerList.snapshot() takes the read lock and releases it — the response is built and
-    // written WITHOUT it. Holding it across the peer's writeBufferLock inverted the lock order
-    // documented on PeerList: ConnectionHandler.setupConnection() holds a peer's writeBufferLock
-    // and then takes the peer list WRITE lock, on the NIO selector thread. Reader thread and
-    // selector thread could therefore each hold one of the two and wait for the other, and because
-    // a ReentrantReadWriteLock is non-fair the selector's queued write request then blocked every
-    // subsequent reader as well. That deadlocked a public seed node on 2026-07-29: the selector
-    // stopped calling accept(), the listen backlog filled up and no client could connect any more.
-    //
-    // Snapshotting is also the pattern every other iteration site uses (NodeStore.addServerEdges,
-    // PeerJobs.runOnce, Saver.savePeers, OhForwarder.selectNextPeer); the peers themselves were
-    // never guarded by this lock, only the list structure, so nothing weakens by copying first.
-    List<Peer> snapshot = serverContext.getPeerList().snapshot();
-
-    var builder = SendPeerList.newBuilder();
-    for (Peer peerToCheck : snapshot) {
-      if (peerToCheck.ip == null) {
-        continue;
-      }
-      // Same predicate as on the ingest path, with the recipient as the "other side": do not
-      // hand a local-only address to a peer outside that network, and do not pass on entries
-      // that carry no dialable port. Without this we amplify exactly what we refuse to accept.
-      if (!Utils.isPlausibleAdvertisedAddress(peerToCheck.ip, peerToCheck.getPort(), peer.ip)) {
-        continue;
-      }
-      var peerBuilder =
-          PeerInfoProto.newBuilder().setIp(peerToCheck.ip).setPort(peerToCheck.getPort());
-      if (peerToCheck.getNodeId() != null && peerToCheck.getNodeId().hasKey()) {
-        peerBuilder.setNodeId(
-            NodeIdProto.newBuilder()
-                .setPublicKeyBytes(copyFrom(peerToCheck.getNodeId().exportPublic()))
-                .build());
-        // MS04: explicit X25519 key so light clients can pick garlic hops directly
-        peerBuilder.setEncryptionPublicKey(
-            copyFrom(peerToCheck.getNodeId().getEncryptionPubKey().getEncoded()));
-      }
-      builder.addPeers(peerBuilder.build());
-    }
-    byte[] data = builder.build().toByteArray();
-    peer.enqueueFrame(Command.SEND_PEERLIST, data);
-    return 1;
-  }
-
-  private int handleSendPeerList(byte[] bytesForPeerList, Peer peer)
-      throws InvalidProtocolBufferException {
-    SendPeerList sendPeerList = SendPeerList.parseFrom(bytesForPeerList);
-    for (PeerInfoProto peerProto : sendPeerList.getPeersList()) {
-      if (serverContext.getPeerList().size() >= Settings.MAX_PEERLIST_SIZE) {
-        Log.put("peer list is full, ignoring the rest of the gossiped peer list", 40);
-        break;
-      }
-      NodeId nodeId = null;
-      if (peerProto.hasNodeId()) {
-        try {
-          nodeId = NodeId.importPublic(peerProto.getNodeId().getPublicKeyBytes().toByteArray());
-        } catch (IllegalArgumentException e) {
-          // malformed or legacy (pre-MS03) key in the peer list — skip this entry
-          continue;
-        }
-      }
-      String ip = peerProto.getIp();
-      int port = peerProto.getPort();
-      // Peer-list gossip is unauthenticated: everything below this point comes from the peer and
-      // nothing above verifies it. Reject entries that the advertising peer cannot plausibly know
-      // about — otherwise any peer can steer us into dialling loopback, the local LAN or a
-      // portless address, and we then spread those entries further.
-      if (!Utils.isPlausibleAdvertisedAddress(ip, port, peer.ip)) {
-        Log.put("ignoring implausible peer list entry " + ip + ":" + port + " from " + peer.ip, 40);
-        continue;
-      }
-      if (port == serverContext.getPort() && Utils.isOwnHostAddress(ip)) {
-        Log.put("ignoring peer list entry that points back at us: " + ip + ":" + port, 40);
-        continue;
-      }
-      if (nodeId != null) {
-        if (nodeId.getKademliaId().equals(serverContext.getNonce())) {
-          Log.put("found ourselves in the peerlist", 80);
-          continue;
-        }
-        Peer newPeer = new Peer(ip, port, nodeId);
-        var byKademliaId = Node.getByKademliaId(serverContext, nodeId.getKademliaId());
-        if (byKademliaId != null) {
-          byKademliaId.addConnectionPoint(ip, port);
-        } else {
-          new Node(serverContext, nodeId);
-        }
-        serverContext.getPeerList().add(newPeer);
-      } else {
-        serverContext.getPeerList().add(new Peer(ip, port));
-      }
-    }
-    return 1; // Base command length, payload length added by caller
-  }
-
-  private void handleJobAck(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
-    JobAck ackMsg = JobAck.parseFrom(payload);
-    int jobId = ackMsg.getJobId();
-    var runningJob = Job.getRunningJob(jobId);
-    if (runningJob instanceof KademliaInsertJob job) {
-      job.ack(peer);
-      System.out.println("ACK from peer: " + peer.getNodeId().toString());
-    }
-  }
-
-  private void handleKademliaGet(byte[] payload, Peer peer) throws InvalidProtocolBufferException {
-    KademliaGet getMsg = KademliaGet.parseFrom(payload);
-    int jobId = getMsg.getJobId();
-    var searchedId = new KademliaId(getMsg.getSearchedId().getKeyBytes().toByteArray());
-    var kadContent = serverContext.getKadStoreManager().get(searchedId);
-    if (kadContent != null) {
-      var answerMsg =
-          KademliaGetAnswer.newBuilder()
-              .setAckId(jobId)
-              .setTimestamp(kadContent.getTimestamp())
-              .setPublicKey(copyFrom(kadContent.getPubkey()))
-              .setContent(copyFrom(kadContent.getContent()))
-              .setSignature(copyFrom(kadContent.getSignature()))
-              .build();
-      peer.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray());
-    } else {
-      new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
-    }
-  }
-
-  private void handleKademliaStore(byte[] payload, Peer peer)
-      throws InvalidProtocolBufferException {
-    KademliaStore storeMsg = KademliaStore.parseFrom(payload);
-    int jobId = storeMsg.getJobId();
-    var kadContent =
-        new KadContent(
-            storeMsg.getTimestamp(),
-            storeMsg.getPublicKey().toByteArray(),
-            storeMsg.getContent().toByteArray(),
-            storeMsg.getSignature().toByteArray());
-    if (kadContent.verify()) {
-      serverContext.getKadStoreManager().put(kadContent);
-      if (jobId != 0) {
-        var ackMsg = JobAck.newBuilder().setJobId(jobId).build();
-        peer.enqueueFrame(Command.JOB_ACK, ackMsg.toByteArray());
-      }
-    } else {
-      logger.error("Kademlia content verification failed!");
-    }
-  }
-
-  private void handleKademliaGetAnswer(byte[] payload, Peer peer)
-      throws InvalidProtocolBufferException {
-    KademliaGetAnswer answerMsg = KademliaGetAnswer.parseFrom(payload);
-    var kadContent =
-        new KadContent(
-            answerMsg.getTimestamp(),
-            answerMsg.getPublicKey().toByteArray(),
-            answerMsg.getContent().toByteArray(),
-            answerMsg.getSignature().toByteArray());
-    if (kadContent.verify()) {
-      var byId = Job.getRunningJob(answerMsg.getAckId());
-      if (byId instanceof KademliaSearchJob job) {
-        job.ack(kadContent, peer);
-      }
-    } else {
-      logger.error("Kademlia content verification failed!");
-    }
-  }
-
-  /**
-   * Parses the FLASCHENPOST_PUT frame and hands it to the mailbox domain.
-   *
-   * <p>The deposit/forward/R-ACK policy that used to live here (incl. the legacy garlic-destination
-   * deposit) is owned by {@link MailboxDepositPolicy} since the DDD review 2026-08-31 — the wire
-   * parser only parses and delegates.
-   */
-  private void handleFlaschenpostPut(byte[] payload, Peer peer)
-      throws InvalidProtocolBufferException {
-    MailboxDepositPolicy.handlePut(
-        serverContext, outboundService, FlaschenpostPut.parseFrom(payload), peer);
   }
 }
