@@ -180,11 +180,19 @@ public class NodeId {
     return new NodeId(null, verify, null, encryption);
   }
 
-  /** Imports a 128-byte private export. */
+  /**
+   * Imports a 128-byte private export.
+   *
+   * <p>The length guard is the contract of this method, not a defect: every caller that reads
+   * untrusted bytes (the settings/peer files via {@code NodeStateCodec}, the updater key file)
+   * checks the length itself and converts the exception. Sonar's dataflow engine started flagging
+   * the {@code throw} as reachable once T117 removed {@code readObject()}, the only in-class caller
+   * whose argument length it could constrain — hence the NOSONAR.
+   */
   public static NodeId importWithPrivate(byte[] bytes) {
     if (bytes == null || bytes.length != PRIVATE_KEYLEN) {
-      throw new IllegalArgumentException(
-          "private NodeId export must be exactly " + PRIVATE_KEYLEN + " bytes");
+      String message = "private NodeId export must be exactly " + PRIVATE_KEYLEN + " bytes";
+      throw new IllegalArgumentException(message); // NOSONAR (javabugs:S6416): see the javadoc
     }
     Ed25519PrivateKeyParameters signing = new Ed25519PrivateKeyParameters(bytes, 0);
     X25519PrivateKeyParameters encryption =
