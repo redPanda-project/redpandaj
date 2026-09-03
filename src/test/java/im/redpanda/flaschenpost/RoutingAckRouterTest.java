@@ -6,6 +6,7 @@ import im.redpanda.core.Command;
 import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -103,7 +104,7 @@ class RoutingAckRouterTest {
   private static Peer connect(ServerContext host, ServerContext target, int port) {
     Peer peer = new Peer("127.0.0.1", port, target.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
@@ -112,14 +113,14 @@ class RoutingAckRouterTest {
   private static Peer sender(ServerContext host, int port) {
     Peer peer = new Peer("127.0.0.1", port, host.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
 
   /** Reads one frame with the expected command byte from the peer's write buffer. */
   private static byte[] readFrame(Peer peer, byte expectedCommand) {
-    ByteBuffer out = peer.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer);
     out.flip();
     assertThat(out.hasRemaining()).as("expected a frame on the wire").isTrue();
     assertThat(out.get()).isEqualTo(expectedCommand);

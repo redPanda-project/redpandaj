@@ -431,31 +431,22 @@ public class GMParser {
       int hopCount,
       byte[] sessionTag,
       byte[] returnPath) {
-    peerToSendFP.getWriteBufferLock().lock();
-    try {
-      var builder =
-          im.redpanda.proto.FlaschenpostPut.newBuilder()
-              .setContent(com.google.protobuf.ByteString.copyFrom(content));
-      if (ohId != null) {
-        builder.setOhId(com.google.protobuf.ByteString.copyFrom(ohId));
-      }
-      if (hopCount > 0) {
-        builder.setHopCount(hopCount);
-      }
-      if (sessionTag != null && sessionTag.length > 0) {
-        builder.setSessionTag(com.google.protobuf.ByteString.copyFrom(sessionTag));
-      }
-      if (returnPath != null && returnPath.length > 0) {
-        builder.setReturnPath(com.google.protobuf.ByteString.copyFrom(returnPath));
-      }
-      byte[] data = builder.build().toByteArray();
-
-      peerToSendFP.writeBuffer.put(Command.FLASCHENPOST_PUT);
-      peerToSendFP.writeBuffer.putInt(data.length);
-      peerToSendFP.writeBuffer.put(data);
-      peerToSendFP.setWriteBufferFilled();
-    } finally {
-      peerToSendFP.getWriteBufferLock().unlock();
+    var builder =
+        im.redpanda.proto.FlaschenpostPut.newBuilder()
+            .setContent(com.google.protobuf.ByteString.copyFrom(content));
+    if (ohId != null) {
+      builder.setOhId(com.google.protobuf.ByteString.copyFrom(ohId));
     }
+    if (hopCount > 0) {
+      builder.setHopCount(hopCount);
+    }
+    if (sessionTag != null && sessionTag.length > 0) {
+      builder.setSessionTag(com.google.protobuf.ByteString.copyFrom(sessionTag));
+    }
+    if (returnPath != null && returnPath.length > 0) {
+      builder.setReturnPath(com.google.protobuf.ByteString.copyFrom(returnPath));
+    }
+
+    peerToSendFP.enqueueFrame(Command.FLASCHENPOST_PUT, builder.build().toByteArray());
   }
 }

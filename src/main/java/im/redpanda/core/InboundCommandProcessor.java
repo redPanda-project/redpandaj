@@ -98,26 +98,18 @@ public class InboundCommandProcessor {
    * Writes a single update-request command byte into the peer's write buffer.
    *
    * <p>{@link Peer#disconnect(String)} nulls {@code writeBuffer} while holding {@code
-   * writeBufferLock}, so the field is re-read and checked under that lock (the TD008 pattern from
-   * {@link Peer#sendPing()}). The previous code did {@code lock(); peer.writeBuffer.put(...);
-   * unlock();} with no {@code finally} — a disconnect in that window did not only NPE, it left
-   * {@code writeBufferLock} permanently locked.
+   * writeBufferLock}, so the field is re-read and checked under that lock — which is what {@link
+   * Peer#enqueueCommand(byte)} does (T115: the locking used to be spelled out here, and the version
+   * before that did {@code lock(); put(); unlock();} with no {@code finally}, so a disconnect in
+   * that window did not only NPE, it left the lock permanently held).
    *
    * @return {@code true} if the command was queued, {@code false} if the peer is gone
    */
   static boolean requestUpdateContent(Peer peer, byte command) {
-    peer.writeBufferLock.lock();
-    try {
-      ByteBuffer writeBuffer = peer.writeBuffer;
-      if (writeBuffer == null) {
-        logger.info("peer disconnected before the update could be requested, aborting");
-        return false;
-      }
-      writeBuffer.put(command);
-    } finally {
-      peer.writeBufferLock.unlock();
+    if (!peer.enqueueCommand(command)) {
+      logger.info("peer disconnected before the update could be requested, aborting");
+      return false;
     }
-    peer.setWriteBufferFilled();
     return true;
   }
 
@@ -127,34 +119,16 @@ public class InboundCommandProcessor {
    * <p>Same re-read-under-the-lock contract as {@link #requestUpdateContent(Peer, byte)}: the frame
    * is built after a {@code Thread.sleep} and a multi-megabyte disk read, so the peer may well be
    * gone by the time we get here. Dereferencing the nulled {@code writeBuffer} raised an NPE inside
-   * a {@code Runnable} whose {@code Future} nobody observes — no log, no Sentry.
+   * a {@code Runnable} whose {@code Future} nobody observes — no log, no Sentry. The growth policy
+   * itself is {@link Peer#enqueueGrowingFrame(ByteBuffer)}'s (T115).
    *
    * @return {@code true} if the frame was queued, {@code false} if the peer is gone
    */
   static boolean appendToWriteBuffer(Peer peer, ByteBuffer frame) {
-    peer.writeBufferLock.lock();
-    try {
-      ByteBuffer writeBuffer = peer.writeBuffer;
-      if (writeBuffer == null) {
-        logger.info("peer disconnected before the update could be uploaded, aborting");
-        return false;
-      }
-      if (writeBuffer.remaining() < frame.remaining()) {
-        ByteBuffer allocate =
-            ByteBuffer.allocate(writeBuffer.capacity() + frame.remaining() + 1024 * 1024 * 10);
-        writeBuffer.flip();
-        allocate.put(writeBuffer);
-        peer.writeBuffer = allocate;
-        writeBuffer = allocate;
-      }
-      // put(ByteBuffer), not put(frame.array()): the bulk-array form writes the whole backing
-      // array regardless of position/limit and fails outright on a non-array-backed buffer, so it
-      // does not match the remaining() capacity check above (Copilot review).
-      writeBuffer.put(frame);
-    } finally {
-      peer.writeBufferLock.unlock();
+    if (!peer.enqueueGrowingFrame(frame)) {
+      logger.info("peer disconnected before the update could be uploaded, aborting");
+      return false;
     }
-    peer.setWriteBufferFilled();
     return true;
   }
 
@@ -510,12 +484,7 @@ public class InboundCommandProcessor {
       serverContext.getPeerList().add(peer);
       return 0;
     }
-    peer.getWriteBufferLock().lock();
-    try {
-      peer.writeBuffer.put(Command.PONG);
-    } finally {
-      peer.getWriteBufferLock().unlock();
-    }
+    peer.enqueueCommand(Command.PONG);
     return 1;
   }
 
@@ -573,15 +542,7 @@ public class InboundCommandProcessor {
       builder.addPeers(peerBuilder.build());
     }
     byte[] data = builder.build().toByteArray();
-    peer.getWriteBufferLock().lock();
-    try {
-      peer.writeBuffer.put(Command.SEND_PEERLIST);
-      peer.writeBuffer.putInt(data.length);
-      peer.writeBuffer.put(data);
-      peer.setWriteBufferFilled();
-    } finally {
-      peer.getWriteBufferLock().unlock();
-    }
+    peer.enqueueFrame(Command.SEND_PEERLIST, data);
     return 1;
   }
 
@@ -637,15 +598,12 @@ public class InboundCommandProcessor {
   }
 
   private int handleUpdateRequestTimestamp(Peer peer) {
-    ByteBuffer writeBuffer = peer.getWriteBuffer();
-    peer.writeBufferLock.lock();
-    try {
-      writeBuffer.put(Command.UPDATE_ANSWER_TIMESTAMP);
-      writeBuffer.putLong(serverContext.getLocalSettings().getUpdateTimestamp());
-    } finally {
-      peer.writeBufferLock.unlock();
-    }
-    peer.setWriteBufferFilled();
+    long timestamp = serverContext.getLocalSettings().getUpdateTimestamp();
+    peer.writeBufferLocked(
+        writeBuffer -> {
+          writeBuffer.put(Command.UPDATE_ANSWER_TIMESTAMP);
+          writeBuffer.putLong(timestamp);
+        });
     return 1;
   }
 
@@ -861,11 +819,12 @@ public class InboundCommandProcessor {
     if (!file.exists()) {
       return 1;
     }
-    peer.writeBufferLock.lock();
-    peer.getWriteBuffer().put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
-    peer.getWriteBuffer().putLong(serverContext.getLocalSettings().getUpdateAndroidTimestamp());
-    peer.writeBufferLock.unlock();
-    peer.setWriteBufferFilled();
+    long timestamp = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
+    peer.writeBufferLocked(
+        writeBuffer -> {
+          writeBuffer.put(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP);
+          writeBuffer.putLong(timestamp);
+        });
     return 1;
   }
 
@@ -975,19 +934,10 @@ public class InboundCommandProcessor {
                   Thread.sleep(10000);
                 } catch (InterruptedException ignored) {
                 }
-                peer.writeBufferLock.lock();
-                try {
-                  // re-read under the lock: disconnect() nulls both buffers while holding it
-                  ByteBuffer writeBuffer = peer.writeBuffer;
-                  ByteBuffer writeBufferCrypted = peer.writeBufferCrypted;
-                  if (!peer.isConnected() || writeBuffer == null || writeBufferCrypted == null) {
-                    break;
-                  }
-                  if (writeBuffer.position() == 0 && writeBufferCrypted.position() == 0) {
-                    break;
-                  }
-                } finally {
-                  peer.writeBufferLock.unlock();
+                // hasQueuedOutboundBytes() re-reads both buffers under writeBufferLock:
+                // disconnect() nulls them while holding it.
+                if (!peer.hasQueuedOutboundBytes()) {
+                  break;
                 }
                 System.out.println("peer still downloading...");
               }
@@ -1098,24 +1048,15 @@ public class InboundCommandProcessor {
     var searchedId = new KademliaId(getMsg.getSearchedId().getKeyBytes().toByteArray());
     var kadContent = serverContext.getKadStoreManager().get(searchedId);
     if (kadContent != null) {
-      peer.getWriteBufferLock().lock();
-      try {
-        var answerMsg =
-            KademliaGetAnswer.newBuilder()
-                .setAckId(jobId)
-                .setTimestamp(kadContent.getTimestamp())
-                .setPublicKey(copyFrom(kadContent.getPubkey()))
-                .setContent(copyFrom(kadContent.getContent()))
-                .setSignature(copyFrom(kadContent.getSignature()))
-                .build();
-        byte[] answerData = answerMsg.toByteArray();
-        peer.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
-        peer.getWriteBuffer().putInt(answerData.length);
-        peer.getWriteBuffer().put(answerData);
-        peer.setWriteBufferFilled();
-      } finally {
-        peer.getWriteBufferLock().unlock();
-      }
+      var answerMsg =
+          KademliaGetAnswer.newBuilder()
+              .setAckId(jobId)
+              .setTimestamp(kadContent.getTimestamp())
+              .setPublicKey(copyFrom(kadContent.getPubkey()))
+              .setContent(copyFrom(kadContent.getContent()))
+              .setSignature(copyFrom(kadContent.getSignature()))
+              .build();
+      peer.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray());
     } else {
       new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
     }
@@ -1134,17 +1075,8 @@ public class InboundCommandProcessor {
     if (kadContent.verify()) {
       serverContext.getKadStoreManager().put(kadContent);
       if (jobId != 0) {
-        peer.getWriteBufferLock().lock();
-        try {
-          var ackMsg = JobAck.newBuilder().setJobId(jobId).build();
-          byte[] ackData = ackMsg.toByteArray();
-          peer.getWriteBuffer().put(Command.JOB_ACK);
-          peer.getWriteBuffer().putInt(ackData.length);
-          peer.getWriteBuffer().put(ackData);
-          peer.setWriteBufferFilled();
-        } finally {
-          peer.getWriteBufferLock().unlock();
-        }
+        var ackMsg = JobAck.newBuilder().setJobId(jobId).build();
+        peer.enqueueFrame(Command.JOB_ACK, ackMsg.toByteArray());
       }
     } else {
       logger.error("Kademlia content verification failed!");

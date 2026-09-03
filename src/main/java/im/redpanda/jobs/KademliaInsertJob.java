@@ -6,7 +6,6 @@ import im.redpanda.core.*;
 import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaStore;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -94,52 +93,33 @@ public class KademliaInsertJob extends Job {
 
       if (p.isConnected() && p.isIntegrated()) {
 
+        var storeMsg =
+            KademliaStore.newBuilder()
+                .setJobId(getJobId())
+                .setTimestamp(kadContent.getTimestamp())
+                .setPublicKey(copyFrom(kadContent.getPubkey()))
+                .setContent(copyFrom(kadContent.getContent()))
+                .setSignature(copyFrom(kadContent.getSignature()))
+                .build();
+
         try {
-          // lets not wait too long for a lock, since this job may timeout otherwise
-          boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
-          if (lockedByMe) {
-            try {
+          // lets not wait too long for a lock, since this job may timeout otherwise — a peer
+          // whose write buffer stays busy (or that disconnected) is simply not counted as asked.
+          if (p.tryEnqueueFrame(
+              Command.KADEMLIA_STORE, storeMsg.toByteArray(), 50, TimeUnit.MILLISECONDS)) {
+            peers.put(p, ASKED);
+            askedPeers++;
 
-              ByteBuffer writeBuffer = p.getWriteBuffer();
-
-              if (writeBuffer == null) {
-                continue;
-              }
-
-              peers.put(p, ASKED);
-              askedPeers++;
-
-              System.out.println(
-                  "putKadCmd to peer: "
-                      + p.getNodeId().toString()
-                      + " size: "
-                      + peers.size()
-                      + " distance: "
-                      + kadContent.getId().getDistance(p.getKademliaId())
-                      + " target: "
-                      + kadContent.getId());
-
-              var storeMsg =
-                  KademliaStore.newBuilder()
-                      .setJobId(getJobId())
-                      .setTimestamp(kadContent.getTimestamp())
-                      .setPublicKey(copyFrom(kadContent.getPubkey()))
-                      .setContent(copyFrom(kadContent.getContent()))
-                      .setSignature(copyFrom(kadContent.getSignature()))
-                      .build();
-              byte[] data = storeMsg.toByteArray();
-
-              writeBuffer.put(Command.KADEMLIA_STORE);
-              writeBuffer.putInt(data.length);
-              writeBuffer.put(data);
-
-              p.setWriteBufferFilled();
-
-            } finally {
-              p.getWriteBufferLock().unlock();
-            }
+            System.out.println(
+                "putKadCmd to peer: "
+                    + p.getNodeId().toString()
+                    + " size: "
+                    + peers.size()
+                    + " distance: "
+                    + kadContent.getId().getDistance(p.getKademliaId())
+                    + " target: "
+                    + kadContent.getId());
           }
-
         } catch (InterruptedException e) {
           e.printStackTrace();
         }

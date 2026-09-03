@@ -434,14 +434,11 @@ public final class GarlicRouter {
 
   /** Writes a FLASCHENPOST_V2 frame ([cmd][len:4][packet]) to the peer. */
   public static void sendToPeer(Peer peer, byte[] packet) {
-    peer.getWriteBufferLock().lock();
-    try {
-      peer.writeBuffer.put(Command.FLASCHENPOST_V2);
-      peer.writeBuffer.putInt(packet.length);
-      peer.writeBuffer.put(packet);
-      peer.setWriteBufferFilled();
-    } finally {
-      peer.getWriteBufferLock().unlock();
+    if (!peer.enqueueFrame(Command.FLASCHENPOST_V2, packet)) {
+      // The peer disconnected between the route selection and this write. Best-effort routing
+      // drops the packet either way; before T115 this was an NPE in a swallowed catch, so log it
+      // rather than let it become invisible.
+      log.debug("peer {} is gone, dropping flaschenpost v2 packet", peer);
     }
   }
 }

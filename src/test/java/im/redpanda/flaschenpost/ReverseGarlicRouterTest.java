@@ -6,6 +6,7 @@ import im.redpanda.core.Command;
 import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -90,7 +91,7 @@ class ReverseGarlicRouterTest {
   private static Peer connect(ServerContext host, ServerContext target, int port) {
     Peer peer = new Peer("127.0.0.1", port, target.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
@@ -99,14 +100,14 @@ class ReverseGarlicRouterTest {
   private static Peer sender(ServerContext host, int port) {
     Peer peer = new Peer("127.0.0.1", port, host.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
 
   /** Reads one FLASCHENPOST_V2 frame from the peer's write buffer. */
   private static byte[] readV2Frame(Peer peer) {
-    ByteBuffer out = peer.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer);
     out.flip();
     assertThat(out.hasRemaining()).as("expected a forwarded FLASCHENPOST_V2 frame").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_V2);
@@ -218,8 +219,8 @@ class ReverseGarlicRouterTest {
 
     // a captured reply packet replayed against the entry hop must be dropped (packet_id dedup)
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop1, 9522));
-    peer1To2.writeBuffer.flip();
-    assertThat(peer1To2.writeBuffer.hasRemaining())
+    PeerTestSupport.writeBuffer(peer1To2).flip();
+    assertThat(PeerTestSupport.writeBuffer(peer1To2).hasRemaining())
         .as("a replayed reply packet must not be forwarded again")
         .isFalse();
   }
@@ -281,7 +282,7 @@ class ReverseGarlicRouterTest {
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(hop1, 9550));
 
-    ByteBuffer out = peer1To2.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer1To2);
     out.flip();
     assertThat(out.hasRemaining()).as("MS02b forward expected").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_PUT);

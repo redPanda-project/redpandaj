@@ -42,24 +42,16 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
 
       KadContent kadContent = kadContents.get(i);
 
-      answerTo.getWriteBufferLock().lock();
-      try {
-        var answerMsg =
-            KademliaGetAnswer.newBuilder()
-                .setAckId(ackID)
-                .setTimestamp(kadContent.getTimestamp())
-                .setPublicKey(copyFrom(kadContent.getPubkey()))
-                .setContent(copyFrom(kadContent.getContent()))
-                .setSignature(copyFrom(kadContent.getSignature()))
-                .build();
-        byte[] data = answerMsg.toByteArray();
+      var answerMsg =
+          KademliaGetAnswer.newBuilder()
+              .setAckId(ackID)
+              .setTimestamp(kadContent.getTimestamp())
+              .setPublicKey(copyFrom(kadContent.getPubkey()))
+              .setContent(copyFrom(kadContent.getContent()))
+              .setSignature(copyFrom(kadContent.getSignature()))
+              .build();
 
-        answerTo.getWriteBuffer().put(Command.KADEMLIA_GET_ANSWER);
-        answerTo.getWriteBuffer().putInt(data.length);
-        answerTo.getWriteBuffer().put(data);
-      } finally {
-        answerTo.getWriteBufferLock().unlock();
-      }
+      answerTo.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray());
     }
 
     return kadContents;

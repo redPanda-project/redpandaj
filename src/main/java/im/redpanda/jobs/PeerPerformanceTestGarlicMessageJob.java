@@ -121,21 +121,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
     }
     insertNode.cleanChecks();
 
-    flaschenPostInsertPeer.getWriteBufferLock().lock();
-    try {
-      var putMsg =
-          im.redpanda.proto.FlaschenpostPut.newBuilder()
-              .setContent(com.google.protobuf.ByteString.copyFrom(content))
-              .build();
-      byte[] data = putMsg.toByteArray();
-
-      flaschenPostInsertPeer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-      flaschenPostInsertPeer.getWriteBuffer().putInt(data.length);
-      flaschenPostInsertPeer.getWriteBuffer().put(data);
-      flaschenPostInsertPeer.setWriteBufferFilled();
-    } finally {
-      flaschenPostInsertPeer.getWriteBufferLock().unlock();
-    }
+    var putMsg =
+        im.redpanda.proto.FlaschenpostPut.newBuilder()
+            .setContent(com.google.protobuf.ByteString.copyFrom(content))
+            .build();
+    flaschenPostInsertPeer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray());
   }
 
   private boolean calculatePathOrAbort() {

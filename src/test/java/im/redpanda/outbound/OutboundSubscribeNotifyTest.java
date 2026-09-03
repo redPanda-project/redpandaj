@@ -6,6 +6,7 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.outbound.v1.Notify;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import im.redpanda.outbound.v1.Status;
@@ -42,8 +43,8 @@ class OutboundSubscribeNotifyTest {
 
   private static Peer newConnectedPeer(int port) {
     Peer p = new Peer("127.0.0.1", port);
-    p.writeBuffer = ByteBuffer.allocate(8192);
-    p.writeBuffer.clear();
+    PeerTestSupport.initWriteBuffer(p, 8192);
+    PeerTestSupport.writeBuffer(p).clear();
     p.setConnected(true);
     return p;
   }
@@ -134,8 +135,10 @@ class OutboundSubscribeNotifyTest {
     // Peer disconnects: deposit must not notify (and the binding is pruned lazily)
     peer.setConnected(false);
     service.depositMessage(ohId(), "hi".getBytes(StandardCharsets.UTF_8));
-    peer.writeBuffer.flip();
-    assertThat(peer.writeBuffer.hasRemaining()).as("no Notify to a disconnected peer").isFalse();
+    PeerTestSupport.writeBuffer(peer).flip();
+    assertThat(PeerTestSupport.writeBuffer(peer).hasRemaining())
+        .as("no Notify to a disconnected peer")
+        .isFalse();
   }
 
   @Test
@@ -166,35 +169,35 @@ class OutboundSubscribeNotifyTest {
   }
 
   private static void drainBuffer(Peer p) {
-    p.writeBuffer.clear();
+    PeerTestSupport.writeBuffer(p).clear();
   }
 
   private static void assertNoMoreData(Peer p) {
-    p.writeBuffer.flip();
-    boolean remaining = p.writeBuffer.hasRemaining();
-    p.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(p).flip();
+    boolean remaining = PeerTestSupport.writeBuffer(p).hasRemaining();
+    PeerTestSupport.writeBuffer(p).compact();
     assertThat(remaining).as("no extra command written").isFalse();
   }
 
   private SubscribeResponse readSubscribeResponse() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_SUBSCRIBE_RES);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(peer).get(data);
+    PeerTestSupport.writeBuffer(peer).compact();
     return SubscribeResponse.parseFrom(data);
   }
 
   private Notify readNotify() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_NOTIFY);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(peer).get(data);
+    PeerTestSupport.writeBuffer(peer).compact();
     return Notify.parseFrom(data);
   }
 

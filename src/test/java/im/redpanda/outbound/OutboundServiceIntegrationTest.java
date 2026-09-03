@@ -6,6 +6,7 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.outbound.v1.AckFetchRequest;
 import im.redpanda.outbound.v1.AckFetchResponse;
 import im.redpanda.outbound.v1.FetchRequest;
@@ -47,8 +48,8 @@ class OutboundServiceIntegrationTest {
     service = new OutboundService(handleStore, mailboxStore);
 
     peer = new Peer("127.0.0.1", 12345);
-    peer.writeBuffer = ByteBuffer.allocate(8192);
-    peer.writeBuffer.clear();
+    PeerTestSupport.initWriteBuffer(peer, 8192);
+    PeerTestSupport.writeBuffer(peer).clear();
     peer.setConnected(true);
 
     clientNode = NodeId.generateWithSimpleKey();
@@ -536,8 +537,8 @@ class OutboundServiceIntegrationTest {
 
     // A different connection is not affected
     Peer otherPeer = new Peer("127.0.0.1", 23456);
-    otherPeer.writeBuffer = ByteBuffer.allocate(8192);
-    otherPeer.writeBuffer.clear();
+    PeerTestSupport.initWriteBuffer(otherPeer, 8192);
+    PeerTestSupport.writeBuffer(otherPeer).clear();
     otherPeer.setConnected(true);
     service.handleRegister(otherPeer, createSignedRegisterRequest());
     assertThat(readRegisterResponse(otherPeer).getStatus()).isEqualTo(Status.OK);
@@ -550,46 +551,46 @@ class OutboundServiceIntegrationTest {
   }
 
   private RegisterOhResponse readRegisterResponse(Peer fromPeer) throws Exception {
-    fromPeer.writeBuffer.flip();
-    byte cmd = fromPeer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(fromPeer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(fromPeer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_REGISTER_OH_RES);
-    int len = fromPeer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(fromPeer).getInt();
     byte[] data = new byte[len];
-    fromPeer.writeBuffer.get(data);
-    fromPeer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(fromPeer).get(data);
+    PeerTestSupport.writeBuffer(fromPeer).compact();
     return RegisterOhResponse.parseFrom(data);
   }
 
   private FetchResponse readFetchResponse() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_FETCH_RES);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(peer).get(data);
+    PeerTestSupport.writeBuffer(peer).compact();
     return FetchResponse.parseFrom(data);
   }
 
   private RevokeOhResponse readRevokeResponse() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_REVOKE_OH_RES);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(peer).get(data);
+    PeerTestSupport.writeBuffer(peer).compact();
     return RevokeOhResponse.parseFrom(data);
   }
 
   private AckFetchResponse readAckFetchResponse() throws Exception {
-    peer.writeBuffer.flip();
-    byte cmd = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte cmd = PeerTestSupport.writeBuffer(peer).get();
     assertThat(cmd).isEqualTo(Command.OUTBOUND_ACK_FETCH_RES);
-    int len = peer.writeBuffer.getInt();
+    int len = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] data = new byte[len];
-    peer.writeBuffer.get(data);
-    peer.writeBuffer.compact();
+    PeerTestSupport.writeBuffer(peer).get(data);
+    PeerTestSupport.writeBuffer(peer).compact();
     return AckFetchResponse.parseFrom(data);
   }
 

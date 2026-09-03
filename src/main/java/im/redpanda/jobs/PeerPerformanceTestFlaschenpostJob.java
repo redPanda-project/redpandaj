@@ -41,18 +41,8 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
       return;
     }
 
-    peer.getWriteBufferLock().lock();
-    try {
-      var putMsg = FlaschenpostPut.newBuilder().setContent(copyFrom(content)).build();
-      byte[] data = putMsg.toByteArray();
-
-      peer.getWriteBuffer().put(Command.FLASCHENPOST_PUT);
-      peer.getWriteBuffer().putInt(data.length);
-      peer.getWriteBuffer().put(data);
-      peer.setWriteBufferFilled();
-    } finally {
-      peer.getWriteBufferLock().unlock();
-    }
+    var putMsg = FlaschenpostPut.newBuilder().setContent(copyFrom(content)).build();
+    peer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray());
   }
 
   @Override
