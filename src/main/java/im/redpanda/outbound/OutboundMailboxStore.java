@@ -1,6 +1,5 @@
 package im.redpanda.outbound;
 
-import im.redpanda.crypt.Utils;
 import im.redpanda.outbound.v1.MailItem;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -27,7 +26,7 @@ public class OutboundMailboxStore {
   private final OutboundStore owner;
 
   /**
-   * Composite-key mailbox: key = hex(ohId) + ":" + zero-padded-19-digit-seqId, value =
+   * Composite-key mailbox: key = {@link OhId#toHex()} + ":" + zero-padded-19-digit-seqId, value =
    * MailItem.toByteArray(). BTreeMap gives lexicographic sort enabling efficient prefix range
    * queries per OH.
    */
@@ -65,7 +64,7 @@ public class OutboundMailboxStore {
    * fetch, so it is neither persisted nor restored by {@link #rebuildProjections()} — including
    * after a rollback, where a flag cleared by the failed transaction stays cleared (the client
    * loses one "deposits were rejected" hint, nothing that is stored). For the same reason {@link
-   * #checkAndClearOverflow(byte[])} does not take the store lock: the set is thread-safe on its own
+   * #checkAndClearOverflow(OhId)} does not take the store lock: the set is thread-safe on its own
    * and is not part of the transactional state.
    */
   private final Set<String> overflowFlags = ConcurrentHashMap.newKeySet();
@@ -168,8 +167,8 @@ public class OutboundMailboxStore {
    *
    * @return {@link AddResult#ADDED} or the rejection reason
    */
-  public AddResult addMessage(byte[] ohId, MailItem item) {
-    String ohKey = Utils.bytesToHexString(ohId);
+  public AddResult addMessage(OhId ohId, MailItem item) {
+    String ohKey = ohId.toHex();
     return owner.tx(
         () -> {
           long seqId = seqCounters.computeIfAbsent(ohKey, k -> new AtomicLong(1L)).get();
@@ -209,8 +208,8 @@ public class OutboundMailboxStore {
    *
    * @param afterSequence 0 = from start; otherwise the last acknowledged sequence_id
    */
-  public List<MailItem> fetchMessages(byte[] ohId, int limit, long afterSequence) {
-    String ohKey = Utils.bytesToHexString(ohId);
+  public List<MailItem> fetchMessages(OhId ohId, int limit, long afterSequence) {
+    String ohKey = ohId.toHex();
     return owner.read(
         () -> {
           String fromKey = itemKey(ohKey, afterSequence + 1);
@@ -231,7 +230,7 @@ public class OutboundMailboxStore {
   }
 
   /** Legacy overload — fetches from start (afterSequence = 0). */
-  public List<MailItem> fetchMessages(byte[] ohId, int limit) {
+  public List<MailItem> fetchMessages(OhId ohId, int limit) {
     return fetchMessages(ohId, limit, 0);
   }
 
@@ -240,8 +239,8 @@ public class OutboundMailboxStore {
    *
    * <p>Used by AckFetch to implement delete-after-acknowledge.
    */
-  public void deleteUpTo(byte[] ohId, long sequenceId) {
-    String ohKey = Utils.bytesToHexString(ohId);
+  public void deleteUpTo(OhId ohId, long sequenceId) {
+    String ohKey = ohId.toHex();
     owner.tx(
         () -> {
           String fromKey = ohPrefix(ohKey);
@@ -265,11 +264,12 @@ public class OutboundMailboxStore {
   }
 
   /**
-   * Deletes all items for the given OH identified by its hex key. Package-private: dropping a whole
-   * mailbox is only correct together with its handle, which is what {@link
-   * OutboundStore#removeHandle(byte[])} does in one transaction.
+   * Deletes all items for the given OH. Package-private: dropping a whole mailbox is only correct
+   * together with its handle, which is what {@link OutboundStore#removeHandle(OhId)} does in one
+   * transaction.
    */
-  void deleteAllByHexKey(String ohIdHex) {
+  void deleteAll(OhId ohId) {
+    String ohIdHex = ohId.toHex();
     owner.tx(
         () -> {
           NavigableMap<String, byte[]> sub =
@@ -301,8 +301,8 @@ public class OutboundMailboxStore {
    * detect a stale client cursor that is higher than anything ever stored — a symptom of a
    * pre-persistence node restart — and heal it by resetting to 0.
    */
-  public long lastAssignedSeq(byte[] ohId) {
-    String ohKey = Utils.bytesToHexString(ohId);
+  public long lastAssignedSeq(OhId ohId) {
+    String ohKey = ohId.toHex();
     return owner.read(
         () -> {
           AtomicLong counter = seqCounters.get(ohKey);
@@ -323,8 +323,8 @@ public class OutboundMailboxStore {
   }
 
   /** Bytes currently accounted for this OH — the in-memory projection, for tests. */
-  long usedBytes(byte[] ohId) {
-    String ohKey = Utils.bytesToHexString(ohId);
+  long usedBytes(OhId ohId) {
+    String ohKey = ohId.toHex();
     return owner.read(
         () -> {
           AtomicLong counter = byteCounters.get(ohKey);
@@ -337,7 +337,7 @@ public class OutboundMailboxStore {
    * quota reached) since the last call, and clears the overflow flag. This flag is transient — not
    * persisted across restarts.
    */
-  public boolean checkAndClearOverflow(byte[] ohId) {
-    return overflowFlags.remove(Utils.bytesToHexString(ohId));
+  public boolean checkAndClearOverflow(OhId ohId) {
+    return overflowFlags.remove(ohId.toHex());
   }
 }
