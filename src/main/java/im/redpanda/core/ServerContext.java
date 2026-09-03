@@ -28,19 +28,23 @@ public class ServerContext {
    * This node's own Kademlia identity: the 20-byte id of {@link #nodeId}, i.e. the DHT address
    * other nodes route to and the value this node announces in the handshake.
    *
-   * <p>This field used to be called {@code nonce}, which was a misnomer -- it is a stable identity,
-   * not a per-message random value. The rename is code-level only; nothing on the wire or in
+   * <p>This used to be called {@code nonce}, which was a misnomer -- it is a stable identity, not a
+   * per-message random value. The rename (T113) is code-level only; nothing on the wire or in
    * persisted node state carries the name (the handshake sends the raw 20 bytes, and {@code
-   * LocalSettings} persists the identity as {@code NodeId}, not as this field).
+   * LocalSettings} persists the identity as {@code NodeId}, not as this value).
    *
-   * <p><b>Redundant on purpose (for now):</b> this duplicates {@code nodeId.getKademliaId()}, and
-   * the generated {@code setNodeId} does <i>not</i> keep it in sync. Both are written together
-   * exactly once per node -- at startup, in {@link #buildDefaultServerContext()} and in {@code
-   * App#main} -- and never again, so the two cannot drift today. Deriving it from {@code nodeId}
-   * instead of storing it would be a behavioural change (every later {@code setNodeId} would start
-   * to take effect) and belongs to the identity context of T118, not to this rename.
+   * <p><b>Derived, not stored (T118 / TD146).</b> It used to be a second field that {@code
+   * setNodeId} did not keep in sync -- an invariant held by convention, not by code. All three
+   * writers (this class, {@code App#main}, {@code TestNodeLauncher}) set it from {@code
+   * getNodeId().getKademliaId()} in the statement right after {@code setNodeId}, so deriving it
+   * produces the same value at every read while making a later {@code setNodeId} take effect
+   * instead of silently drifting. {@code NodeId.getKademliaId()} caches, so this stays a field read
+   * after the first call. A context without a {@code nodeId} yields {@code null}, exactly as the
+   * uninitialised field did.
    */
-  private KademliaId ownNodeId;
+  public KademliaId getOwnNodeId() {
+    return nodeId == null ? null : nodeId.getKademliaId();
+  }
 
   private ConnectionHandler connectionHandler;
 
@@ -52,7 +56,6 @@ public class ServerContext {
     serverContext.setPort(-1);
     serverContext.setLocalSettings(new LocalSettings());
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
-    serverContext.setOwnNodeId(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithMemoryCacheOnly(serverContext));
     return serverContext;
   }
