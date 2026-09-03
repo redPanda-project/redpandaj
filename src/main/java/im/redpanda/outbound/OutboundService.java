@@ -642,16 +642,10 @@ public class OutboundService {
     writeResponse(peer, Command.OUTBOUND_ACK_FETCH_RES, res.toByteArray());
   }
 
-  // Helper to write [cmd][len][payload]
+  // Helper to write [cmd][len][payload]. Peer owns the write-buffer locking (T115).
   private void writeResponse(Peer peer, byte command, byte[] payload) {
-    peer.getWriteBufferLock().lock();
-    try {
-      peer.writeBuffer.put(command);
-      peer.writeBuffer.putInt(payload.length);
-      peer.writeBuffer.put(payload);
-      peer.setWriteBufferFilled();
-    } finally {
-      peer.getWriteBufferLock().unlock();
+    if (!peer.enqueueFrame(command, payload)) {
+      logger.debug("client {} disconnected before the response could be queued", peer);
     }
   }
 }

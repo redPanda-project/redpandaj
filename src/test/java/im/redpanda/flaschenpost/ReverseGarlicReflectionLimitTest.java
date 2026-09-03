@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OutboundHandleStore;
 import im.redpanda.outbound.OutboundMailboxStore;
@@ -47,7 +48,7 @@ class ReverseGarlicReflectionLimitTest {
 
     relayToTarget = new Peer("127.0.0.1", 9601, target.getNodeId());
     relayToTarget.setConnected(true);
-    relayToTarget.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(relayToTarget, 65536);
     relay.getPeerList().add(relayToTarget);
   }
 
@@ -126,7 +127,7 @@ class ReverseGarlicReflectionLimitTest {
 
   /** Counts (and drains) the FLASCHENPOST_V2 frames this relay wrote toward the target. */
   private int emittedFrames() {
-    ByteBuffer out = relayToTarget.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(relayToTarget);
     out.flip();
     int frames = 0;
     while (out.hasRemaining()) {

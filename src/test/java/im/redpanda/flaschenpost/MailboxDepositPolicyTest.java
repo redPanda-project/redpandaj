@@ -6,6 +6,7 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -80,14 +81,14 @@ class MailboxDepositPolicyTest {
     Peer peer = new Peer("127.0.0.1", port, node.getNodeId());
     peer.setConnected(true);
     peer.setLightClient(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     node.getPeerList().add(peer);
     return peer;
   }
 
   /** Reads the single FLASCHENPOST_PUT_RES status from the peer's write buffer. */
   private static Status responseStatus(Peer peer) throws Exception {
-    ByteBuffer out = peer.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer);
     out.flip();
     assertThat(out.hasRemaining()).as("expected a status response").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_PUT_RES);
@@ -139,7 +140,7 @@ class MailboxDepositPolicyTest {
     Peer peerWithoutFlag = lightClient(9402);
     Peer fullPeer = new Peer("127.0.0.1", 9403, node.getNodeId());
     fullPeer.setConnected(true);
-    fullPeer.writeBuffer = ByteBuffer.allocate(4096);
+    PeerTestSupport.initWriteBuffer(fullPeer, 4096);
     node.getPeerList().add(fullPeer);
 
     MailboxDepositPolicy.handlePut(
@@ -156,10 +157,10 @@ class MailboxDepositPolicyTest {
         put(new byte[8]).setOhId(ByteString.copyFrom(ohId)).build(),
         fullPeer);
 
-    assertThat(peerWithoutFlag.writeBuffer.position())
+    assertThat(PeerTestSupport.writeBuffer(peerWithoutFlag).position())
         .as("no want_response ⇒ no command 158")
         .isZero();
-    assertThat(fullPeer.writeBuffer.position())
+    assertThat(PeerTestSupport.writeBuffer(fullPeer).position())
         .as("full peers desync on command 158 and never receive it")
         .isZero();
   }
@@ -174,7 +175,7 @@ class MailboxDepositPolicyTest {
                 ohId, hostNode.getNodeId().getKademliaId(), System.currentTimeMillis()));
     Peer hostPeer = new Peer("127.0.0.1", 9404, hostNode.getNodeId());
     hostPeer.setConnected(true);
-    hostPeer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(hostPeer, 65536);
     node.getPeerList().add(hostPeer);
 
     byte[] content = "forward me".getBytes(StandardCharsets.UTF_8);
@@ -183,7 +184,7 @@ class MailboxDepositPolicyTest {
     MailboxDepositPolicy.handlePut(
         node, outboundService, put(content).setOhId(ByteString.copyFrom(ohId)).build(), sender);
 
-    ByteBuffer out = hostPeer.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(hostPeer);
     out.flip();
     assertThat(out.hasRemaining()).as("packet must be forwarded to the resolved host").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_PUT);
@@ -366,7 +367,9 @@ class MailboxDepositPolicyTest {
     List<MailItem> items = mailboxStore.fetchMessages(ohId, 10, 0);
     assertThat(items).hasSize(1);
     assertThat(items.get(0).getPayload().toByteArray()).isEqualTo(gmBytes);
-    assertThat(sender.writeBuffer.position()).as("the legacy path stays fire-and-forget").isZero();
+    assertThat(PeerTestSupport.writeBuffer(sender).position())
+        .as("the legacy path stays fire-and-forget")
+        .isZero();
   }
 
   @Test
@@ -391,7 +394,7 @@ class MailboxDepositPolicyTest {
         put(new byte[] {(byte) 0x2a, 1, 2, 3}).setOhId(ByteString.copyFrom(ohId)).build(),
         sender);
 
-    assertThat(sender.writeBuffer.position())
+    assertThat(PeerTestSupport.writeBuffer(sender).position())
         .as("no outbound service ⇒ no response, and no new rejection either")
         .isZero();
   }

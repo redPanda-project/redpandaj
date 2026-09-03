@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import im.redpanda.core.Command;
 import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.proto.FlaschenpostPut;
-import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 
 class GMParserReproductionTest {
@@ -37,7 +37,7 @@ class GMParserReproductionTest {
     byte[] content = garlicMessageBytes(serverContext, target);
 
     TestPeer peer = new TestPeer("10.0.0.1", 1000, target);
-    peer.writeBuffer = ByteBuffer.allocate(content.length + 1024);
+    PeerTestSupport.initWriteBuffer(peer, content.length + 1024);
     peer.setConnected(true);
     serverContext.getPeerList().add(peer);
 
@@ -56,13 +56,13 @@ class GMParserReproductionTest {
     GMParser.parse(serverContext, validContent);
 
     // Now check what was written to the peer
-    peer.writeBuffer.flip();
-    byte command = peer.writeBuffer.get();
+    PeerTestSupport.writeBuffer(peer).flip();
+    byte command = PeerTestSupport.writeBuffer(peer).get();
     assertEquals(Command.FLASCHENPOST_PUT, command);
 
-    int length = peer.writeBuffer.getInt();
+    int length = PeerTestSupport.writeBuffer(peer).getInt();
     byte[] payload = new byte[length];
-    peer.writeBuffer.get(payload);
+    PeerTestSupport.writeBuffer(peer).get(payload);
 
     // This should parse successfully if the sender is correct.
     // Currently it sends raw bytes, which are NOT a valid FlaschenpostPut protobuf

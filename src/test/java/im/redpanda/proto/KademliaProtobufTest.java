@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.*;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.kademlia.KadContent;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
@@ -87,7 +88,7 @@ class KademliaProtobufTest {
 
     Peer peer = new Peer("1.1.1.1", 1234);
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(1024);
+    PeerTestSupport.initWriteBuffer(peer, 1024);
     peer.setSelectionKey(new TestSelectionKey());
 
     int read = processor.parseCommand(buffer.get(), buffer, peer);

@@ -11,7 +11,6 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaIdProto;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -160,40 +159,21 @@ public class KademliaSearchJob extends Job {
 
       if (p.isConnected() && p.isIntegrated()) {
 
+        var getMsg =
+            KademliaGet.newBuilder()
+                .setJobId(getJobId())
+                .setSearchedId(
+                    KademliaIdProto.newBuilder().setKeyBytes(copyFrom(id.getBytes())).build())
+                .build();
+
         try {
-          // lets not wait too long for a lock, since this job may timeout otherwise
-          boolean lockedByMe = p.getWriteBufferLock().tryLock(50, TimeUnit.MILLISECONDS);
-          if (lockedByMe) {
-            try {
-
-              ByteBuffer writeBuffer = p.getWriteBuffer();
-
-              if (writeBuffer == null) {
-                continue;
-              }
-
-              peers.put(p, ASKED);
-              askedPeers++;
-
-              var getMsg =
-                  KademliaGet.newBuilder()
-                      .setJobId(getJobId())
-                      .setSearchedId(
-                          KademliaIdProto.newBuilder().setKeyBytes(copyFrom(id.getBytes())).build())
-                      .build();
-              byte[] data = getMsg.toByteArray();
-
-              writeBuffer.put(Command.KADEMLIA_GET);
-              writeBuffer.putInt(data.length);
-              writeBuffer.put(data);
-
-              p.setWriteBufferFilled();
-
-            } finally {
-              p.getWriteBufferLock().unlock();
-            }
+          // lets not wait too long for a lock, since this job may timeout otherwise — a peer
+          // whose write buffer stays busy (or that disconnected) is simply not counted as asked.
+          if (p.tryEnqueueFrame(
+              Command.KADEMLIA_GET, getMsg.toByteArray(), 50, TimeUnit.MILLISECONDS)) {
+            peers.put(p, ASKED);
+            askedPeers++;
           }
-
         } catch (InterruptedException e) {
           e.printStackTrace();
         }

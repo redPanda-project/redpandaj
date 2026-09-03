@@ -6,6 +6,7 @@ import im.redpanda.core.Command;
 import im.redpanda.core.InboundCommandProcessor;
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
 import im.redpanda.outbound.OhDht;
 import im.redpanda.outbound.OutboundHandleStore;
@@ -79,7 +80,7 @@ class GarlicRouterTest {
   private static Peer connect(ServerContext host, ServerContext target, int port) {
     Peer peer = new Peer("127.0.0.1", port, target.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
@@ -88,14 +89,14 @@ class GarlicRouterTest {
   private static Peer sender(ServerContext host, int port) {
     Peer peer = new Peer("127.0.0.1", port, host.getNodeId());
     peer.setConnected(true);
-    peer.writeBuffer = ByteBuffer.allocate(65536);
+    PeerTestSupport.initWriteBuffer(peer, 65536);
     host.getPeerList().add(peer);
     return peer;
   }
 
   /** Reads one FLASCHENPOST_V2 frame from the peer's write buffer. */
   private static byte[] readV2Frame(Peer peer) {
-    ByteBuffer out = peer.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer);
     out.flip();
     assertThat(out.hasRemaining()).as("expected a forwarded FLASCHENPOST_V2 frame").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_V2);
@@ -176,8 +177,8 @@ class GarlicRouterTest {
 
     // the identical packet (same packet_id) again — must be dropped by the dedup cache
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(node1, 9412));
-    peer1To2.writeBuffer.flip();
-    assertThat(peer1To2.writeBuffer.hasRemaining())
+    PeerTestSupport.writeBuffer(peer1To2).flip();
+    assertThat(PeerTestSupport.writeBuffer(peer1To2).hasRemaining())
         .as("a duplicate packet_id must not be forwarded again")
         .isFalse();
   }
@@ -196,8 +197,8 @@ class GarlicRouterTest {
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(node1, 9420));
 
-    peer1To2.writeBuffer.flip();
-    assertThat(peer1To2.writeBuffer.hasRemaining()).isFalse();
+    PeerTestSupport.writeBuffer(peer1To2).flip();
+    assertThat(PeerTestSupport.writeBuffer(peer1To2).hasRemaining()).isFalse();
   }
 
   @Test
@@ -222,8 +223,8 @@ class GarlicRouterTest {
     processor1.parseCommand(
         Command.FLASCHENPOST_V2, buildFrame(new byte[100]), sender(node1, 9440));
 
-    peer1To2.writeBuffer.flip();
-    assertThat(peer1To2.writeBuffer.hasRemaining()).isFalse();
+    PeerTestSupport.writeBuffer(peer1To2).flip();
+    assertThat(PeerTestSupport.writeBuffer(peer1To2).hasRemaining()).isFalse();
   }
 
   @Test
@@ -250,7 +251,7 @@ class GarlicRouterTest {
 
     processor1.parseCommand(Command.FLASCHENPOST_V2, buildFrame(packet), sender(node1, 9450));
 
-    ByteBuffer out = peer1To2.writeBuffer;
+    ByteBuffer out = PeerTestSupport.writeBuffer(peer1To2);
     out.flip();
     assertThat(out.hasRemaining()).as("MS02b forward expected").isTrue();
     assertThat(out.get()).isEqualTo(Command.FLASCHENPOST_PUT);
