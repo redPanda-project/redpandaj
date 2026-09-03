@@ -3,7 +3,8 @@ package im.redpanda.core;
 import static com.google.protobuf.ByteString.copyFrom;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Utils;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;

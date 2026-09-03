@@ -1,7 +1,7 @@
 package im.redpanda.mailbox;
 
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Utils;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;

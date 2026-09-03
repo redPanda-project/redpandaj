@@ -18,7 +18,7 @@ class SettingsKnownNodesTest {
   void defaultsDoNotContainLoopback() {
     for (String defaultNode : Settings.parseKnownNodes(null)) {
       assertFalse(
-          im.redpanda.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]),
+          im.redpanda.identity.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]),
           "loopback must not be a default bootstrap peer: " + defaultNode);
     }
   }

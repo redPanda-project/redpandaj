@@ -3,10 +3,10 @@ package im.redpanda.mailbox;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.dht.KadContent;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Sha256Hash;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.security.SecureRandom;
 import java.util.List;

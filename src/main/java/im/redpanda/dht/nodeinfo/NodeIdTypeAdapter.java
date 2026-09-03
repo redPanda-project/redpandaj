@@ -5,9 +5,9 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import im.redpanda.core.Log;
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.AddressFormatException;
-import im.redpanda.crypt.Base58;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.AddressFormatException;
+import im.redpanda.identity.crypt.Base58;
 import java.io.IOException;
 
 public class NodeIdTypeAdapter extends TypeAdapter<NodeId> {

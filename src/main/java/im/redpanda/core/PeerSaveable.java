@@ -4,6 +4,8 @@
  */
 package im.redpanda.core;
 
+import im.redpanda.identity.NodeId;
+
 /**
  * The persisted form of a dialable {@link Peer}: address plus identity. Written by {@link Saver} as
  * explicit JSON since T117 — not {@code Serializable} any more, so a package move cannot make the

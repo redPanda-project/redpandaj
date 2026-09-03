@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.identity.NodeId;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;

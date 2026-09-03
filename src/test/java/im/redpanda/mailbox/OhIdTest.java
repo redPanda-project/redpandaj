@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.core.KademliaId;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.crypt.Utils;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;

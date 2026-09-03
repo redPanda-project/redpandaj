@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.crypt.CryptoUtils;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import javax.crypto.AEADBadTagException;

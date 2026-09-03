@@ -2,13 +2,13 @@ package im.redpanda.routing;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.ChannelDht;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.KademliaInsertJob;
 import im.redpanda.dht.RecordLookupJob;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.ReturnPath;

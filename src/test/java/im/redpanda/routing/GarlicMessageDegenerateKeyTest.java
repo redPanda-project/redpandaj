@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
 import java.security.SecureRandom;

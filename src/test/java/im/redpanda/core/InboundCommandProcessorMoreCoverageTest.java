@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.dht.KadContent;
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.*;
 import im.redpanda.updater.UpdateTransfer;
 import java.io.File;

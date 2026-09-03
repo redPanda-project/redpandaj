@@ -3,7 +3,7 @@ package im.redpanda.updater;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.NodeId;
 import org.junit.jupiter.api.Test;
 
 class UpdaterKeyTest {

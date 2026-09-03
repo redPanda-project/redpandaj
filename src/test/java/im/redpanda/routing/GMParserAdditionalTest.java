@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.PeerTestSupport;
@@ -15,6 +14,7 @@ import im.redpanda.core.ServerContext;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.nodeinfo.GMEntryPointModel;
 import im.redpanda.dht.nodeinfo.NodeInfoModel;
+import im.redpanda.identity.NodeId;
 import im.redpanda.jobs.Job;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;

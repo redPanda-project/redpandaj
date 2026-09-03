@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;

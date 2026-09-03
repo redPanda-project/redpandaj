@@ -8,6 +8,8 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.*;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.dht.KadContent;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 

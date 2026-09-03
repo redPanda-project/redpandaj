@@ -1,7 +1,7 @@
 package im.redpanda.core;
 
-import im.redpanda.crypt.Sha256Hash;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.crypt.Sha256Hash;
+import im.redpanda.identity.crypt.Utils;
 import java.security.*;
 
 public class SmallChiperStreamTest {

@@ -3,6 +3,7 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;

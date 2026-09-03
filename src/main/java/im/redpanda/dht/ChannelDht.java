@@ -1,8 +1,8 @@
 package im.redpanda.dht;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Sha256Hash;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Sha256Hash;
 import im.redpanda.mailbox.OhDht;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

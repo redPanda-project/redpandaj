@@ -2,8 +2,8 @@ package im.redpanda.routing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.NodeId;
 import java.security.Security;
 import org.junit.jupiter.api.Test;
 

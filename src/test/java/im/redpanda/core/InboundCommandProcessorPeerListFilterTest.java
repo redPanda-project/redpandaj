@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.NodeIdProto;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;

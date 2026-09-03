@@ -3,7 +3,7 @@ package im.redpanda.routing.graph;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import im.redpanda.core.KademliaId;
+import im.redpanda.identity.KademliaId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.mapdb.DataInput2;

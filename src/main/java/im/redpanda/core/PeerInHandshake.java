@@ -1,7 +1,9 @@
 package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;

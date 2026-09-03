@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.dht.KadContent;
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGetAnswer;
 import im.redpanda.proto.KademliaStore;

@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Base58;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Base58;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;

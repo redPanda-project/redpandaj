@@ -3,9 +3,9 @@ package im.redpanda.mailbox;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
+import im.redpanda.identity.NodeId;
 import im.redpanda.outbound.v1.RegisterOhRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

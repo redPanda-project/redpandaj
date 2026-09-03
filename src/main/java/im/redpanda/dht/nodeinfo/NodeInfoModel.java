@@ -2,7 +2,7 @@ package im.redpanda.dht.nodeinfo;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.NodeId;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Getter;

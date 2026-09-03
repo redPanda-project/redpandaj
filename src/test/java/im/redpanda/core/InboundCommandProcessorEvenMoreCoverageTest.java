@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.KademliaInsertJob;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.*;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.AfterEach;

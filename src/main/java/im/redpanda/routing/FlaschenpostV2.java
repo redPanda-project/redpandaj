@@ -1,7 +1,7 @@
 package im.redpanda.routing;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.mailbox.ReturnPath;
 import im.redpanda.mailbox.RoutingAckSender;
 import java.nio.ByteBuffer;

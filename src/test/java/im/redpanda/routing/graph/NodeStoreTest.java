@@ -3,8 +3,8 @@ package im.redpanda.routing.graph;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.NodeId;
 import java.security.Security;
 import java.util.HashMap;
 import java.util.Map;

@@ -4,7 +4,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import java.security.Security;
 import org.junit.jupiter.api.Test;
 

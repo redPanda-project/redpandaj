@@ -3,6 +3,7 @@ package im.redpanda.core;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import im.redpanda.identity.NodeId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

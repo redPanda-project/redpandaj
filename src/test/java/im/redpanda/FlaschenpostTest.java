@@ -2,8 +2,8 @@ package im.redpanda;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.NodeId;
 import im.redpanda.routing.GMEchoTest;
 import im.redpanda.routing.GMType;
 import im.redpanda.routing.GarlicMessage;

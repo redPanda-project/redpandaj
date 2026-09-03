@@ -1,7 +1,7 @@
 package im.redpanda.mailbox;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.routing.FlaschenpostV2;
 import java.nio.ByteBuffer;
 import java.util.List;

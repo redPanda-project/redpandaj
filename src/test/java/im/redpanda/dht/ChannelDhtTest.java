@@ -2,9 +2,9 @@ package im.redpanda.dht;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Utils;
 import im.redpanda.mailbox.OhDht;
 import im.redpanda.mailbox.OhId;
 import java.security.SecureRandom;

@@ -1,7 +1,7 @@
 package im.redpanda.dht;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
+import im.redpanda.identity.KademliaId;
 import java.math.BigInteger;
 import java.util.Comparator;
 

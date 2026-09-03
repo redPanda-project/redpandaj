@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OutboundHandleStore;
 import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;

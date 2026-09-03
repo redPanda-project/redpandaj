@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.InboundCommandProcessor;
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.mailbox.OhDht;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OutboundHandleStore;

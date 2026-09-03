@@ -2,9 +2,9 @@ package im.redpanda.routing.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.Security;

@@ -3,8 +3,8 @@ package im.redpanda.routing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import javax.crypto.AEADBadTagException;

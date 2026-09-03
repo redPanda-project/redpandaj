@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.identity.NodeId;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;

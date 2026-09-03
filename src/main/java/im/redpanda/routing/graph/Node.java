@@ -1,9 +1,9 @@
 package im.redpanda.routing.graph;
 
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;

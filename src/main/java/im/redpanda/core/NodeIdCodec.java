@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import com.google.gson.JsonObject;
+import im.redpanda.identity.NodeId;
 import java.io.IOException;
 
 /**

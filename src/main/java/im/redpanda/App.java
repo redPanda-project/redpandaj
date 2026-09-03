@@ -99,7 +99,6 @@ public class App {
     serverContext.setPort(port);
     serverContext.setLocalSettings(LocalSettings.load(serverContext.getPort()));
     serverContext.setNodeId(serverContext.getLocalSettings().getMyIdentity());
-    serverContext.setOwnNodeId(serverContext.getLocalSettings().getMyIdentity().getKademliaId());
     serverContext.setNodeStore(NodeStore.buildWithDiskCache(serverContext));
 
     // Outbound Service V1 Init

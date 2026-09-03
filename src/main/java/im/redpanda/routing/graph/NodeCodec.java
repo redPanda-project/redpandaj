@@ -3,9 +3,9 @@ package im.redpanda.routing.graph;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.NodeIdCodec;
 import im.redpanda.core.StateFormat;
+import im.redpanda.identity.NodeId;
 import java.io.IOException;
 import java.util.ArrayList;
 
