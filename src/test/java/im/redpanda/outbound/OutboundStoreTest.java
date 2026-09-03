@@ -307,4 +307,28 @@ class OutboundStoreTest {
         .contains("ohAuthPublicKey")
         .doesNotContain("im.redpanda.outbound.OutboundHandleStore");
   }
+
+  /**
+   * Copilot review of #338: a handle record missing a field must be an unreadable record, not a
+   * lease with a null auth key (which NPEs in OutboundAuth.verifySignature) or defaulted
+   * timestamps.
+   */
+  @Test
+  void handleRecordWithoutItsFieldsIsRejected() {
+    assertThatThrownBy(
+            () ->
+                HandleRecord.fromJsonBytes(
+                    "{\"createdAtMs\":1,\"expiresAtMs\":2}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("ohAuthPublicKey");
+
+    assertThatThrownBy(
+            () ->
+                HandleRecord.fromJsonBytes(
+                    "{\"ohAuthPublicKey\":\"AAA=\"}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("timestamps");
+  }
 }

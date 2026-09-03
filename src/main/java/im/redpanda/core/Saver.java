@@ -150,12 +150,24 @@ public class Saver {
         if (ip == null || !ip.isJsonPrimitive()) {
           throw new IOException("peer without an ip");
         }
+        // savePeers writes only dialable peers (Peer#isDialable) with a non-negative retry count,
+        // so anything else means the file is corrupt or tampered with - and the point of this file
+        // is addresses to dial. Loading such an entry would re-introduce exactly the undialable
+        // peers T86 removed, so the whole file is rejected instead.
+        int port = StateFormat.optInt(peerJson, "port", 0);
+        if (port <= 0 || port > 65535) {
+          throw new IOException("peer with an undialable port: " + port);
+        }
+        int retries = StateFormat.optInt(peerJson, "retries", 0);
+        if (retries < 0) {
+          throw new IOException("peer with a negative retry count: " + retries);
+        }
         PeerSaveable saveable =
             new PeerSaveable(
                 ip.getAsString(),
-                StateFormat.optInt(peerJson, "port", 0),
+                port,
                 NodeStateCodec.nodeIdFromJson(StateFormat.requireObject(peerJson, "nodeId")),
-                StateFormat.optInt(peerJson, "retries", 0));
+                retries);
         loaded.put(saveable.nodeId.getKademliaId(), saveable.toPeer());
       }
       return loaded;

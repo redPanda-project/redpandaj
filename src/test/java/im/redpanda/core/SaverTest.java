@@ -242,4 +242,37 @@ class SaverTest {
     assertNotNull(loaded);
     assertEquals(3, loaded.retries);
   }
+
+  /**
+   * Copilot review of #338: savePeers only ever writes dialable peers (T86), so a port of 0 in the
+   * file means it is corrupt or tampered with. Loading it would re-introduce the undialable entries
+   * T86 removed, so the whole file is rejected.
+   */
+  @Test
+  void undialablePortInTheFileRejectsTheWholeFile() throws Exception {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peers.add(peer);
+    Saver.savePeers(peers);
+
+    String json = Files.readString(Path.of(TEST_FILE));
+    Files.writeString(Path.of(TEST_FILE), json.replace("\"port\":1234", "\"port\":0"));
+
+    assertTrue(Saver.loadPeers().isEmpty());
+  }
+
+  @Test
+  void negativeRetryCountRejectsTheWholeFile() throws Exception {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer peer = new Peer("127.0.0.1", 1234);
+    peer.setNodeId(new NodeId());
+    peers.add(peer);
+    Saver.savePeers(peers);
+
+    String json = Files.readString(Path.of(TEST_FILE));
+    Files.writeString(Path.of(TEST_FILE), json.replace("\"retries\":0", "\"retries\":-1"));
+
+    assertTrue(Saver.loadPeers().isEmpty());
+  }
 }

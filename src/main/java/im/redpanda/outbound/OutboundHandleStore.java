@@ -75,8 +75,18 @@ public class OutboundHandleStore {
       } catch (RuntimeException e) {
         throw new IOException("handle record is not a JSON object", e);
       }
+      // Every field is required. Defaulting them would turn a corrupt record into a lease that
+      // looks valid: a null auth key NPEs in OutboundAuth.verifySignature, and a defaulted
+      // expiresAtMs silently shortens or extends the lease.
+      byte[] authKey = StateFormat.optBase64(json, "ohAuthPublicKey");
+      if (authKey == null) {
+        throw new IOException("handle record without an ohAuthPublicKey");
+      }
+      if (!json.has("createdAtMs") || !json.has("expiresAtMs")) {
+        throw new IOException("handle record without its timestamps");
+      }
       return new HandleRecord(
-          StateFormat.optBase64(json, "ohAuthPublicKey"),
+          authKey,
           StateFormat.optLong(json, "createdAtMs", 0L),
           StateFormat.optLong(json, "expiresAtMs", 0L));
     }
