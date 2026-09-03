@@ -64,6 +64,16 @@ public final class OutboundStore {
   /** {@code null} in in-memory mode. */
   private final DB db;
 
+  /**
+   * The three persisted maps of this store. Not {@code final} only because the constructor falls
+   * back to in-memory maps when the database cannot be opened; they are assigned exactly once and
+   * never replaced afterwards.
+   */
+  private Map<String, HandleRecord> handleMap;
+
+  private NavigableMap<String, byte[]> itemMap;
+  private Map<String, Long> seqWatermarkMap;
+
   private final OutboundHandleStore handleStore;
   private final OutboundMailboxStore mailboxStore;
 
@@ -82,9 +92,6 @@ public final class OutboundStore {
 
   private OutboundStore(String dbPath) {
     DB opened = null;
-    Map<String, HandleRecord> handleMap = null;
-    NavigableMap<String, byte[]> itemMap = null;
-    Map<String, Long> seqMap = null;
     if (dbPath != null) {
       try {
         Path parent = Path.of(dbPath).getParent();
@@ -97,7 +104,8 @@ public final class OutboundStore {
             opened
                 .treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY)
                 .createOrOpen();
-        seqMap = opened.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG).createOrOpen();
+        seqWatermarkMap =
+            opened.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG).createOrOpen();
         // Commit the (possibly just created) map structures immediately. createOrOpen writes the
         // map roots inside the open transaction; without this commit the first rollback would
         // discard them and every later access to the map would fail with DBException$GetVoid.
@@ -107,21 +115,19 @@ public final class OutboundStore {
         logger.error("Failed to open the outbound store at {}, falling back to memory", dbPath, e);
         closeQuietly(opened);
         opened = null;
-        handleMap = null;
-        itemMap = null;
-        seqMap = null;
       }
     }
-    // All-or-nothing fallback: either all three maps are database-backed or none of them is. A
-    // mixed state (open database, in-memory map) would silently drop writes of one map on restart.
+    if (opened == null) {
+      // All-or-nothing fallback: either all three maps are database-backed or none of them is. A
+      // mixed state (open database, in-memory map) would silently drop writes of one map on
+      // restart.
+      handleMap = new ConcurrentHashMap<>();
+      itemMap = new TreeMap<>();
+      seqWatermarkMap = new ConcurrentHashMap<>();
+    }
     this.db = opened;
-    this.handleStore =
-        new OutboundHandleStore(this, handleMap != null ? handleMap : new ConcurrentHashMap<>());
-    this.mailboxStore =
-        new OutboundMailboxStore(
-            this,
-            itemMap != null ? itemMap : new TreeMap<>(),
-            seqMap != null ? seqMap : new ConcurrentHashMap<>());
+    this.handleStore = new OutboundHandleStore(this, handleMap);
+    this.mailboxStore = new OutboundMailboxStore(this, itemMap, seqWatermarkMap);
   }
 
   @SuppressWarnings("unchecked")
