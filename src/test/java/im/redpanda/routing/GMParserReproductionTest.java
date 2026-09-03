@@ -3,10 +3,10 @@ package im.redpanda.routing;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.FlaschenpostPut;
 import org.junit.jupiter.api.Test;
 

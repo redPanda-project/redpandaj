@@ -3,7 +3,8 @@ package im.redpanda.core;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;

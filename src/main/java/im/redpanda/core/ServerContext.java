@@ -1,6 +1,8 @@
 package im.redpanda.core;
 
 import im.redpanda.dht.KadStoreManager;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.routing.graph.Node;

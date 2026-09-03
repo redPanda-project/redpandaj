@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.identity.NodeId;
 import im.redpanda.proto.PeerInfoProto;
 import im.redpanda.proto.SendPeerList;
 import im.redpanda.updater.Updater;

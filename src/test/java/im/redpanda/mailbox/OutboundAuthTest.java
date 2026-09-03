@@ -2,7 +2,7 @@ package im.redpanda.mailbox;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.NodeId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

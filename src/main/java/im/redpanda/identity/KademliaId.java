@@ -3,10 +3,11 @@
  * @created 20140215
  * @desc Represents a Kademlia Node ID
  */
-package im.redpanda.core;
+package im.redpanda.identity;
 
-import im.redpanda.crypt.Base58;
-import im.redpanda.crypt.Utils;
+import im.redpanda.core.ServerContext;
+import im.redpanda.identity.crypt.Base58;
+import im.redpanda.identity.crypt.Utils;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;

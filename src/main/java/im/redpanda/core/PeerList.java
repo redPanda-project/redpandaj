@@ -1,5 +1,7 @@
 package im.redpanda.core;
 
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;

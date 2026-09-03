@@ -3,8 +3,8 @@ package im.redpanda.routing.graph;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.core.NodeId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.NodeId;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.junit.jupiter.api.Test;
 

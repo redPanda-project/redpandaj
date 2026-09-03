@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.identity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.crypt.Utils;
 import java.security.Security;
 import org.junit.jupiter.api.Test;
 
@@ -127,7 +127,8 @@ class NodeIdTest {
     NodeId nodeId = new NodeId();
     byte[] verifyKey = nodeId.getVerifyKeyBytes();
     KademliaId expected =
-        KademliaId.fromFirstBytes(im.redpanda.crypt.Sha256Hash.create(verifyKey).getBytes());
+        KademliaId.fromFirstBytes(
+            im.redpanda.identity.crypt.Sha256Hash.create(verifyKey).getBytes());
     assertEquals(nodeId.getKademliaId(), expected);
   }
 
@@ -139,9 +140,9 @@ class NodeIdTest {
     for (int i = 0; i < 10_000 && !(foundValid && foundInvalid); i++) {
       NodeId nodeId = NodeId.generateWithSimpleKey();
       byte[] doubleHash =
-          im.redpanda.crypt.Sha256Hash.createDouble(nodeId.getVerifyKeyBytes()).getBytes();
+          im.redpanda.identity.crypt.Sha256Hash.createDouble(nodeId.getVerifyKeyBytes()).getBytes();
       boolean expected =
-          im.redpanda.crypt.CryptoUtils.countLeadingZeroBits(doubleHash)
+          im.redpanda.identity.crypt.CryptoUtils.countLeadingZeroBits(doubleHash)
               >= NodeId.POW_MIN_LEADING_ZERO_BITS;
       assertEquals(nodeId.checkValid(), expected);
       foundValid |= expected;

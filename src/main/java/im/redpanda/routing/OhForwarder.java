@@ -1,10 +1,10 @@
 package im.redpanda.routing;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerList;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.PeerComparator;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.jobs.Job;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OhResolveJob;

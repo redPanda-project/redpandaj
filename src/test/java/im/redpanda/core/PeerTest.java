@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import im.redpanda.crypt.Utils;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Utils;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;

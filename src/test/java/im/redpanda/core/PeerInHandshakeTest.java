@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.security.Security;

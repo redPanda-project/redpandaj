@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import im.redpanda.identity.KademliaId;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -1,7 +1,7 @@
 package im.redpanda.dht;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import org.junit.jupiter.api.Test;
 
 class KademliaSearchJobTest {

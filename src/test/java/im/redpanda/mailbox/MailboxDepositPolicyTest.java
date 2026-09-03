@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.PeerTestSupport;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RoutingAck;

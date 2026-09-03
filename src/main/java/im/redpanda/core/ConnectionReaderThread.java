@@ -6,6 +6,8 @@
 package im.redpanda.core;
 
 import im.redpanda.core.exceptions.PeerProtocolException;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
 import io.sentry.SentryLevel;

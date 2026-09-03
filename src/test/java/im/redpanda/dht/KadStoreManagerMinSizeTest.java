@@ -2,8 +2,8 @@ package im.redpanda.dht;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import java.lang.reflect.Field;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -164,7 +164,7 @@ class KadStoreManagerMinSizeTest {
   }
 
   private static byte[] randomKey() {
-    return new im.redpanda.core.NodeId().exportPublic();
+    return new im.redpanda.identity.NodeId().exportPublic();
   }
 
   @SuppressWarnings("unchecked")

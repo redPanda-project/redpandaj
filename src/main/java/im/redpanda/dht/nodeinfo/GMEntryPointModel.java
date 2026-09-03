@@ -1,6 +1,6 @@
 package im.redpanda.dht.nodeinfo;
 
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.NodeId;
 import lombok.Getter;
 import lombok.Setter;
 

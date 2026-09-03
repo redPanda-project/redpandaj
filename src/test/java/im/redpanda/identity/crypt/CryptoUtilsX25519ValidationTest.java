@@ -1,4 +1,4 @@
-package im.redpanda.crypt;
+package im.redpanda.identity.crypt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

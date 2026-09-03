@@ -1,4 +1,4 @@
-package im.redpanda.crypt;
+package im.redpanda.identity.crypt;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

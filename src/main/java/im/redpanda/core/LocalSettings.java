@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import im.redpanda.identity.NodeId;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeEdge;
 import im.redpanda.routing.graph.NodeGraphCodec;

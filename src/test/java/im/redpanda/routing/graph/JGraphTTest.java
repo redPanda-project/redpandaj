@@ -2,7 +2,7 @@ package im.redpanda.routing.graph;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import im.redpanda.core.KademliaId;
+import im.redpanda.identity.KademliaId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Set;

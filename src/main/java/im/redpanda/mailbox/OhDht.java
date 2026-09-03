@@ -2,10 +2,10 @@ package im.redpanda.mailbox;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
-import im.redpanda.crypt.Sha256Hash;
 import im.redpanda.dht.KadContent;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Sha256Hash;
 import im.redpanda.outbound.v1.OhNodeRecord;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

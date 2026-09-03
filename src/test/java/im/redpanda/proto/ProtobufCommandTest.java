@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.core.KademliaId;
-import im.redpanda.core.NodeId;
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import org.junit.jupiter.api.Test;
 
 class ProtobufCommandTest {

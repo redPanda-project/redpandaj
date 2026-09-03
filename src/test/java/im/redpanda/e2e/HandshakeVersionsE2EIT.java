@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import im.redpanda.core.Command;
 import im.redpanda.core.GcmFramedStreams;
-import im.redpanda.core.NodeId;
 import im.redpanda.core.PeerInHandshake;
-import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.testutil.TestNodeProcess;
 import java.io.EOFException;
 import java.io.File;

@@ -4,9 +4,9 @@ import static com.google.protobuf.ByteString.copyFrom;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Peer;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.jobs.Job;
 import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGet;

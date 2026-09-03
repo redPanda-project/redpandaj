@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
-import im.redpanda.crypt.Base58;
+import im.redpanda.identity.NodeId;
+import im.redpanda.identity.crypt.Base58;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

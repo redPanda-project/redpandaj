@@ -1,5 +1,6 @@
 package im.redpanda.core;
 
+import im.redpanda.identity.KademliaId;
 import im.redpanda.jobs.RequestPeerListJob;
 import im.redpanda.routing.PeerPerformanceTestSchedulerJob;
 import im.redpanda.routing.graph.NodeStoreMaintainJob;

@@ -2,6 +2,7 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.identity.NodeId;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;

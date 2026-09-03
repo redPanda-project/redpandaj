@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.util.concurrent.TimeUnit;

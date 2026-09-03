@@ -1,4 +1,4 @@
-package im.redpanda.core;
+package im.redpanda.identity;
 
 import static org.junit.jupiter.api.Assertions.*;
 

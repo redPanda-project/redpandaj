@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import im.redpanda.identity.NodeId;
 import im.redpanda.updater.UpdateTransfer;
 import java.io.File;
 import java.io.FileOutputStream;

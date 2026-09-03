@@ -1,4 +1,4 @@
-package im.redpanda.crypt;
+package im.redpanda.identity.crypt;
 
 import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;

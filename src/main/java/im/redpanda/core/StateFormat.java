@@ -16,8 +16,8 @@ import java.util.Base64;
  * Shared plumbing of the explicit on-disk state format (T117, DDD review §5).
  *
  * <p>Node state used to be written with Java object serialization, which pins fully qualified class
- * names into every file: moving {@code im.redpanda.core.NodeId} to another package would have made
- * every deployed node fail to read its own identity. The replacement is plain JSON with an
+ * names into every file: moving {@code im.redpanda.identity.NodeId} to another package would have
+ * made every deployed node fail to read its own identity. The replacement is plain JSON with an
  * explicit, hand-written mapping per file — no reflection over domain classes, so a class can be
  * renamed or moved without touching a byte on disk (this is what un-gates the repackaging in T118).
  *

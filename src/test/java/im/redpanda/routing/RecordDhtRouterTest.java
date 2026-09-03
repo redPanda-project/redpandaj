@@ -3,11 +3,11 @@ package im.redpanda.routing;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
 import im.redpanda.dht.ChannelDht;
 import im.redpanda.dht.KadContent;
 import im.redpanda.dht.RecordLookupJob;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OutboundHandleStore;
 import im.redpanda.mailbox.OutboundMailboxStore;

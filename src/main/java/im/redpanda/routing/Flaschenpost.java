@@ -1,8 +1,8 @@
 package im.redpanda.routing;
 
-import im.redpanda.core.KademliaId;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 
 /**
  * This class represents the basic information for a Flaschenpost and will be extended by a

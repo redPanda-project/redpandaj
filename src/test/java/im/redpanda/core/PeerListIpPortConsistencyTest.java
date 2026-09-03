@@ -2,6 +2,8 @@ package im.redpanda.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import org.junit.jupiter.api.Test;
 
 /**
