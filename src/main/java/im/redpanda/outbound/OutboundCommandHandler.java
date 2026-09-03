@@ -14,9 +14,9 @@ import im.redpanda.outbound.v1.SubscribeRequest;
  *
  * <p>Split out of {@code core.InboundCommandProcessor} by T116 (DDD review 2026-08-31, §6 P2 step
  * 2) so the {@code im.redpanda.outbound.v1} protobuf types stop leaking into the wire dispatcher.
- * Verbatim: the {@code null}-payload tolerance of the original lambdas is preserved — {@code
- * parseFrom(null)} is never reached because the dispatcher only calls these for framed commands,
- * but the byte count stays defensive, exactly as before.
+ * The dispatcher registers all five as framed commands, so it has already read the whole {@code
+ * [len:4][payload]} frame and the payload handed in here is never {@code null}; the consumed-byte
+ * accounting is the dispatcher's, not this class's.
  *
  * <p>The response commands 151/153/155/157/158/160/161 are written by {@link OutboundService} and
  * never parsed on this side.
