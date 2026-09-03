@@ -15,7 +15,7 @@ import im.redpanda.kademlia.KadContent;
 import im.redpanda.kademlia.PeerComparator;
 import im.redpanda.kademlia.nodeinfo.GMEntryPointModel;
 import im.redpanda.kademlia.nodeinfo.NodeInfoModel;
-import im.redpanda.outbound.OhId;
+import im.redpanda.mailbox.OhId;
 import im.redpanda.store.NodeEdge;
 import java.nio.ByteBuffer;
 import java.time.Duration;

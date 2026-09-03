@@ -1,8 +1,8 @@
 package im.redpanda.core;
 
 import im.redpanda.kademlia.KadStoreManager;
-import im.redpanda.outbound.OutboundService;
-import im.redpanda.outbound.OutboundStore;
+import im.redpanda.mailbox.OutboundService;
+import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.store.NodeStore;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

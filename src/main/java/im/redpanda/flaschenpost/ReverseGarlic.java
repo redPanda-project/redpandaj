@@ -2,7 +2,9 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.core.ServerContext;
-import im.redpanda.outbound.OutboundService;
+import im.redpanda.mailbox.OutboundService;
+import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.mailbox.RoutingAckSender;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;

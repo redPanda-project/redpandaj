@@ -1,4 +1,4 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;

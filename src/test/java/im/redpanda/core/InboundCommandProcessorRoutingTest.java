@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.flaschenpost.FlaschenpostCommandHandler;
 import im.redpanda.kademlia.KademliaCommandHandler;
-import im.redpanda.outbound.OutboundCommandHandler;
+import im.redpanda.mailbox.OutboundCommandHandler;
 import im.redpanda.updater.ApkUpdateHandler;
 import im.redpanda.updater.JarUpdateHandler;
 import java.nio.ByteBuffer;

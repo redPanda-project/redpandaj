@@ -6,6 +6,8 @@ import im.redpanda.core.KademliaId;
 import im.redpanda.core.NodeId;
 import im.redpanda.crypt.Utils;
 import im.redpanda.kademlia.KadContent;
+import im.redpanda.mailbox.OhDht;
+import im.redpanda.mailbox.OhId;
 import java.security.SecureRandom;
 import java.util.List;
 import org.junit.jupiter.api.Test;

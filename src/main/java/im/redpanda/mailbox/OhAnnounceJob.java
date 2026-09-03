@@ -1,10 +1,9 @@
-package im.redpanda.jobs;
+package im.redpanda.mailbox;
 
 import im.redpanda.core.ServerContext;
+import im.redpanda.jobs.Job;
+import im.redpanda.jobs.KademliaInsertJob;
 import im.redpanda.kademlia.KadContent;
-import im.redpanda.outbound.OhDht;
-import im.redpanda.outbound.OhId;
-import im.redpanda.outbound.OutboundStore;
 import java.time.Duration;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;

@@ -1,4 +1,4 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Peer;

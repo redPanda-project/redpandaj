@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.protobuf.ByteString;
-import im.redpanda.outbound.OhId;
-import im.redpanda.outbound.OutboundHandleStore;
-import im.redpanda.outbound.OutboundHandleStore.HandleRecord;
-import im.redpanda.outbound.OutboundMailboxStore;
-import im.redpanda.outbound.OutboundService;
-import im.redpanda.outbound.OutboundStore;
+import im.redpanda.mailbox.OhId;
+import im.redpanda.mailbox.OutboundHandleStore;
+import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
+import im.redpanda.mailbox.OutboundMailboxStore;
+import im.redpanda.mailbox.OutboundService;
+import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
 import java.nio.ByteBuffer;

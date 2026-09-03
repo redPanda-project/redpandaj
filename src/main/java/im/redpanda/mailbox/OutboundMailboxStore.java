@@ -1,4 +1,4 @@
-package im.redpanda.outbound;
+package im.redpanda.mailbox;
 
 import im.redpanda.outbound.v1.MailItem;
 import java.util.ArrayList;

@@ -2,6 +2,8 @@ package im.redpanda.flaschenpost;
 
 import im.redpanda.core.KademliaId;
 import im.redpanda.crypt.CryptoUtils;
+import im.redpanda.mailbox.ReturnPath;
+import im.redpanda.mailbox.RoutingAckSender;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
