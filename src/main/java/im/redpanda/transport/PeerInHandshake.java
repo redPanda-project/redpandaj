@@ -200,6 +200,14 @@ public class PeerInHandshake {
     this.port = port;
   }
 
+  /**
+   * True if we opened this connection. Used by the simultaneous-open tie-break in {@code
+   * ConnectionHandler.setupConnection} (TD163) and by the v23 key schedule.
+   */
+  public boolean isInitiatedByUs() {
+    return initiatedByUs;
+  }
+
   public KademliaId getIdentity() {
     return identity;
   }
