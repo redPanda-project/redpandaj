@@ -193,8 +193,23 @@ public class PeerList {
      * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
      * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to add
      * Peers without (ip,port) here.
+     *
+     * <p>Only a <em>dialable</em> address decides ownership (T150/TD183). A peer with an ip but
+     * port 0 has no address: the handshake carries the sender's <em>listening</em> port and a light
+     * client has none, so it announces 0 — every inbound light client from one ip therefore shares
+     * the single key {@code "<ip>:0"}. Treating that shared bucket as an address made the branch
+     * below believe two unrelated light clients are the same endpoint, and it resolved the
+     * "conflict" by taking the address away from one of them. On a loopback topology (the mobile
+     * 4-node e2e, the emulator gate) that is every light client but the first, and the cost is not
+     * cosmetic: an ip-less peer is skipped by {@code PeerExchangeHandler.handleRequestPeerList},
+     * and the peer list it asks for comes back empty of every local relay, because {@code
+     * Utils.isPlausibleAdvertisedAddress} only believes a loopback address when the <em>asking</em>
+     * peer is itself local — which a peer without an ip is not. Symptom since #354: "Bob discovered
+     * only 0 of 3 relay candidates with encryption keys" (ms05/ms06/ms08) for the second client to
+     * connect, while the first one was fine. The two objects also never compete for a socket, which
+     * is the entire reason this branch exists: nobody ever dials port 0.
      */
-    if (peer.getIp() != null) {
+    if (peer.isDialable()) {
       oldPeer = peerlistIpPort.get(ipPortKey(peer));
       if (oldPeer != null) {
         // Peer with same Ip+Port exists already
@@ -642,7 +657,10 @@ public class PeerList {
    * <p>An address another peer owns is left alone as well. Callers must hold the write lock.
    */
   private void adoptAddress(Peer owner, Peer dropped) {
-    if (owner.getIp() != null || dropped.getIp() == null) {
+    if (owner.getIp() != null || !dropped.isDialable()) {
+      // Only a dialable address is worth moving: port 0 is the remote end of an inbound socket
+      // that is being torn down here anyway, and handing it to the owner would make the owner
+      // undialable-but-addressed and put it into the shared "<ip>:0" bucket (T150/TD183).
       return;
     }
     if (peerlistIpPort.containsKey(ipPortKey(dropped))) {
