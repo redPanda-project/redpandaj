@@ -155,17 +155,17 @@ public class InboundCommandProcessor {
         Command.ANDROID_UPDATE_ANSWER_CONTENT,
         (peer, buf, payload) -> apkUpdateHandler.handleAnswerContent(buf, peer));
 
-    // DHT (im.redpanda.kademlia)
+    // DHT (im.redpanda.dht)
     framed(Command.JOB_ACK, kademliaHandler::handleJobAck);
     framed(Command.KADEMLIA_GET, kademliaHandler::handleKademliaGet);
     framed(Command.KADEMLIA_STORE, kademliaHandler::handleKademliaStore);
     framed(Command.KADEMLIA_GET_ANSWER, kademliaHandler::handleKademliaGetAnswer);
 
-    // Mailbox / garlic routing (im.redpanda.flaschenpost)
+    // Mailbox deposit / garlic routing (im.redpanda.mailbox, im.redpanda.routing)
     framed(Command.FLASCHENPOST_PUT, flaschenpostHandler::handlePut);
     framed(Command.FLASCHENPOST_V2, (peer, payload) -> flaschenpostHandler.handleV2(payload));
 
-    // Outbound V1 (im.redpanda.outbound). The *_RES commands and OUTBOUND_NOTIFY are only ever
+    // Outbound V1 (im.redpanda.mailbox). The *_RES commands and OUTBOUND_NOTIFY are only ever
     // written back to the client, never parsed here.
     framed(Command.OUTBOUND_REGISTER_OH_REQ, outboundHandler::handleRegister);
     framed(Command.OUTBOUND_FETCH_REQ, outboundHandler::handleFetch);
