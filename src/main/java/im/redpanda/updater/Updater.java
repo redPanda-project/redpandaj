@@ -289,8 +289,19 @@ public class Updater {
    */
   static Path androidApkSource() {
     String configured = System.getProperty(ANDROID_APK_SOURCE_PROPERTY);
-    return Path.of(
-        configured == null || configured.isBlank() ? DEFAULT_ANDROID_APK_SOURCE : configured);
+    if (configured == null || configured.isBlank()) {
+      return Path.of(DEFAULT_ANDROID_APK_SOURCE);
+    }
+    try {
+      return Path.of(configured);
+    } catch (java.nio.file.InvalidPathException e) {
+      // Deliberately NOT the silent fallback UpdateTransfer.pathOverride() does. There the
+      // property only redirects where an update is stored, so the default is a safe answer; here
+      // it names the artefact we are about to sign with the network's update key, and quietly
+      // signing a different file than the operator asked for is the worst available outcome.
+      throw new IllegalArgumentException(
+          "unusable " + ANDROID_APK_SOURCE_PROPERTY + ": " + configured, e);
+    }
   }
 
   /** Signs the apk named by {@value #ANDROID_APK_SOURCE_PROPERTY} (or the default). */
@@ -315,7 +326,11 @@ public class Updater {
 
     System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
-    long timestamp = source.toFile().lastModified();
+    // Files.getLastModifiedTime, not File.lastModified(): the latter answers 0 for a missing file,
+    // which would be signed as a timestamp below the update floor and silently rejected by every
+    // peer. This throws NoSuchFileException instead, which main() already reports as "no
+    // android.apk found".
+    long timestamp = Files.getLastModifiedTime(source).toMillis();
 
     byte[] data = Files.readAllBytes(source);
 
@@ -344,6 +359,13 @@ public class Updater {
 
     Path destination = UpdateTransfer.updateApkPath();
     System.out.println("renaming file to " + destination + " to be used from the client");
+    Path destinationDirectory = destination.getParent();
+    if (destinationDirectory != null) {
+      // The apk path is configurable, so it may well point somewhere that does not exist yet;
+      // failing here after the signature is already in LocalSettings would leave the node
+      // advertising an apk it cannot serve.
+      Files.createDirectories(destinationDirectory);
+    }
     Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
   }
 }

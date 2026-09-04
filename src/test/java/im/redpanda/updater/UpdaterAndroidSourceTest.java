@@ -2,6 +2,7 @@ package im.redpanda.updater;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -41,5 +42,20 @@ class UpdaterAndroidSourceTest {
   void blankPropertyFallsBackToTheDefault() {
     System.setProperty(Updater.ANDROID_APK_SOURCE_PROPERTY, "  ");
     assertEquals(Path.of(Updater.DEFAULT_ANDROID_APK_SOURCE), Updater.androidApkSource());
+  }
+
+  /**
+   * A set-but-unusable value must stop the signing run, not fall back: the property names the
+   * artefact that is about to be signed with the network's update key, so signing something else
+   * than the operator asked for is the one outcome worth crashing over.
+   */
+  @Test
+  void unusablePropertyFailsInsteadOfSigningTheDefault() {
+    System.setProperty(Updater.ANDROID_APK_SOURCE_PROPERTY, "no\u0000such\u0000path.apk");
+    IllegalArgumentException thrown =
+        assertThrows(IllegalArgumentException.class, Updater::androidApkSource);
+    assertTrue(
+        thrown.getMessage().contains(Updater.ANDROID_APK_SOURCE_PROPERTY),
+        "the message must name the property: " + thrown.getMessage());
   }
 }
