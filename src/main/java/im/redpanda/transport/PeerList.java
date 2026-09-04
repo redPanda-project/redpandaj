@@ -229,10 +229,11 @@ public class PeerList {
         // ip/port/identity triple). Exactly one of the two objects may keep the address, otherwise
         // the outbound thread has two dial candidates for one socket; which one depends on who can
         // actually be reached there:
-        if (oldPeer.isConnected()) {
-          // We are talking to the old identity at this address right now, so the claim is wrong or
-          // stale. Register the newcomer without connection details — this class explicitly allows
-          // peers without them — instead of letting anyone take the address of a live peer.
+        if (oldPeer.isConnected() || oldPeer.isConnecting) {
+          // We are talking to the old identity at this address right now, or a dial to it is in
+          // flight, so the claim is wrong or stale. Register the newcomer without connection
+          // details — this class explicitly allows peers without them — instead of letting anyone
+          // take the address out from under a live peer or a running connection attempt.
           peer.removeIpAndPort();
         } else {
           // This is the case the javadoc above describes ("The (ip,port) will then be removed from
@@ -628,8 +629,17 @@ public class PeerList {
   /**
    * Moves the address of a dropped duplicate onto the peer that owns its identity, so that
    * enforcing "one object per identity" does not throw away the only address we have for a node we
-   * are talking to right now. Only fills a gap: an owner that already has an address keeps it, and
-   * an address another peer owns is left alone. Callers must hold the write lock.
+   * are talking to right now.
+   *
+   * <p>Deliberately only fills a gap: an owner that already has an address keeps it. The identity
+   * that triggers this merge comes from {@code ConnectionReaderThread.parseHandshake}, i.e. from
+   * the <em>plaintext</em> part of the handshake — it is announced, not yet proven (the proof is
+   * the first encrypted PING, several steps later). Overwriting a good address with the announced
+   * one would therefore let anyone we dial claim another node's identity and make that node
+   * undialable for us. Refreshing a stale address belongs behind that proof and is tracked
+   * separately.
+   *
+   * <p>An address another peer owns is left alone as well. Callers must hold the write lock.
    */
   private void adoptAddress(Peer owner, Peer dropped) {
     if (owner.getIp() != null || dropped.getIp() == null) {

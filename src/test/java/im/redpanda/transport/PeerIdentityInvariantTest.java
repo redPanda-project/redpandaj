@@ -330,4 +330,24 @@ class PeerIdentityInvariantTest {
         .as("the address index still points at the live peer")
         .isSameAs(live);
   }
+
+  /** Same for a dial that is still in flight — the address must not move out from under it. */
+  @Test
+  void aClaimOnTheAddressOfAPeerWeAreDiallingIsNotHonoured() {
+    ServerContext serverContext = ServerContext.buildDefaultServerContext();
+    PeerList peerList = serverContext.getPeerList();
+
+    NodeId dialledIdentity = NodeId.generateWithSimpleKey();
+    Peer dialling = new Peer("10.0.0.15", 59558, dialledIdentity);
+    peerList.add(dialling);
+    assertThat(OutboundHandler.claimForDial(dialling)).isTrue();
+
+    NodeId gossiped = NodeId.generateWithSimpleKey();
+    peerList.add(new Peer("10.0.0.15", 59558, gossiped));
+
+    assertThat(dialling.isDialable())
+        .as("stripping the address mid-dial would leave a connected peer with no address")
+        .isTrue();
+    assertThat(peerList.add(new Peer("10.0.0.15", 59558))).isSameAs(dialling);
+  }
 }

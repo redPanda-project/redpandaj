@@ -69,7 +69,12 @@ public class Peer implements Comparable<Peer> {
   ByteBuffer readBuffer;
   ByteBuffer writeBuffer;
   volatile SelectionKey selectionKey;
-  private boolean connected = false;
+  // volatile for the same reason as socketChannel/selectionKey above: this flag is written by the
+  // selector thread inside setupConnectionForPeer()'s swap and read lock-free by the outbound
+  // thread's dial guards and by ConnectionHandler.finishedReadingPeer(), whose "is this cancelled
+  // key still the peer's current one" check would otherwise rest on field-ordering convention
+  // rather than on the memory model.
+  private volatile boolean connected = false;
   boolean isConnecting;
   long lastPinged = 0;
   double ping = 0;
