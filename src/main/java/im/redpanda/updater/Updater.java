@@ -90,6 +90,22 @@ public class Updater {
   }
 
   /**
+   * System property overriding {@link #signingKeyPath()}. Tests only, and for the same reason as
+   * the {@code redpanda.update.*.path} properties in {@link UpdateTransfer}: Surefire runs 8 forks
+   * out of one working directory, so a test that touches the CWD-relative key file races the other
+   * forks — and this particular file is a private signing key, which has no business being written
+   * into a checkout by a test run at all.
+   */
+  static final String SIGNING_KEY_PATH_PROPERTY = "redpanda.updater.signing.key.path";
+
+  /** The signing key file the key ceremony writes and the update-inserting step reads. */
+  static Path signingKeyPath() {
+    String configured = System.getProperty(SIGNING_KEY_PATH_PROPERTY);
+    return Path.of(
+        configured == null || configured.isBlank() ? "privateSigningKey.txt" : configured);
+  }
+
+  /**
    * This method is the entry point for the maven target "package".
    *
    * @param args
@@ -101,7 +117,7 @@ public class Updater {
       return;
     }
 
-    if (!Path.of("privateSigningKey.txt").toFile().exists()) {
+    if (!signingKeyPath().toFile().exists()) {
       System.out.println("No private key for signing found, skipping insert update into network.");
       return;
     }
@@ -152,7 +168,7 @@ public class Updater {
    */
   public static void createNewKeys() {
 
-    Path keyFile = Path.of("privateSigningKey.txt");
+    Path keyFile = signingKeyPath();
     if (Files.exists(keyFile)) {
       // Never overwrite an existing signing key (accidental key loss during the key
       // ceremony); move the old file away first if a new key is really intended.
