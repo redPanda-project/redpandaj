@@ -3,9 +3,11 @@ package im.redpanda.updater;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Log;
 import im.redpanda.ops.Settings;
+import im.redpanda.transport.ConnectionReaderThread;
 import im.redpanda.transport.Peer;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
@@ -44,8 +46,41 @@ public final class UpdateTransfer {
    */
   static final Semaphore updateUploadLock = new Semaphore(1);
 
-  /** At most one update download at a time. Lived on {@code ConnectionReaderThread} before T116. */
+  /**
+   * At most one update download at a time, jar and apk alike. Lived on {@code
+   * ConnectionReaderThread} before T116.
+   *
+   * <p>T121/TD125: the apk download used to serialise on {@link #updateUploadLock} instead — a
+   * copy-paste that made every incoming apk offer block all uploads for up to {@link
+   * #downloadHoldMillis}, while doing nothing to stop a jar and an apk download from running at
+   * once. Both downloads now take this lock, so "one download at a time" actually holds and an
+   * upload is never held up by a download.
+   */
   static final ReentrantLock updateDownloadLock = new ReentrantLock();
+
+  /**
+   * The one executor every update-distribution task runs on — both directions, both artefacts.
+   *
+   * <p>T121/TD126: the jar download went to {@code Server.threadPool} while the other five tasks
+   * went to {@code ConnectionReaderThread.threadPool}. Both are unbounded {@code
+   * newVirtualThreadPerTaskExecutor()}s, so the split never caused a stall, but it meant the pool a
+   * task lands on depended on which handler queued it, and neither shutdown path covered all six.
+   * {@code ConnectionReaderThread.threadPool} wins because these tasks exist to get the blocking
+   * disk/socket work <em>off</em> the ConnectionReaderThread that queued them (REDPANDAJ-2DQ), and
+   * because it was already carrying five of the six. Routing every submit through this one field is
+   * what keeps them from drifting apart again.
+   */
+  static final ExecutorService updateTaskPool = ConnectionReaderThread.threadPool;
+
+  /**
+   * How long a download task keeps {@link #updateDownloadLock} after asking a peer for content —
+   * the window in which that peer may deliver before we try another one.
+   *
+   * <p>Not a constant so tests can shorten it: a test that exercises the download path otherwise
+   * leaves the static lock held for a full minute, which the next test in the same Surefire fork
+   * then blocks on. Production never writes it.
+   */
+  static long downloadHoldMillis = 60_000L;
 
   /**
    * Invoked to apply an installed update. Default restarts the JVM; tests replace this with a
@@ -192,6 +227,22 @@ public final class UpdateTransfer {
    */
   static Path updateInstallTmpPath(Path installPath) {
     return installPath.resolveSibling("tmp_redpanda.jar");
+  }
+
+  /**
+   * Staging file a received apk is written to before being moved onto the given destination. Same
+   * contract as {@link #updateInstallTmpPath(Path)}: a sibling of the destination, so the {@code
+   * Files.move} stays within one filesystem and is therefore atomic, and derived from the
+   * already-resolved destination rather than from the system property again.
+   *
+   * <p>The destination file name is part of the staging name (unlike the jar's fixed {@code
+   * tmp_redpanda.jar}) because the apk path is <em>not</em> redirected per test: Surefire hands
+   * each of the 8 forks its own {@code target/android-N.apk} via {@code
+   * redpanda.android.update.file}, and a shared {@code target/tmp_android.apk} would put the forks
+   * back on one file — exactly the collision that made the update tests flaky before T70.
+   */
+  static Path updateApkTmpPath(Path apkPath) {
+    return apkPath.resolveSibling("tmp_" + apkPath.getFileName());
   }
 
   /**
