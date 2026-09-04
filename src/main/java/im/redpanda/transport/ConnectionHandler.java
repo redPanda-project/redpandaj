@@ -1178,8 +1178,15 @@ public class ConnectionHandler extends Thread {
     if (!target.isConnected() || peerInHandshake.isLightClient() || target.isLightClient()) {
       return false;
     }
-    if (System.currentTimeMillis() - target.connectedSince >= SIMULTANEOUS_OPEN_WINDOW_MS) {
+    long ageOfTheLiveConnection = System.currentTimeMillis() - target.connectedSince;
+    if (ageOfTheLiveConnection >= SIMULTANEOUS_OPEN_WINDOW_MS) {
       // Not a simultaneous open but a reconnect onto a connection we still believe in: newest wins.
+      return false;
+    }
+    if (ageOfTheLiveConnection < 0) {
+      // The wall clock moved backwards (NTP step, VM resume) since the connection was established,
+      // so its age is unknown and it may well be an old one. Fall back to "newest wins", the
+      // policy that never refuses a reconnect (Copilot review, PR #359).
       return false;
     }
     KademliaId ourId = serverContext.getOwnNodeId();
