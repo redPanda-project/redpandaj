@@ -193,8 +193,23 @@ public class PeerList {
      * data the new Node has the same (ip,port) but different Identity. The (ip,port) will then be
      * removed from the old Peer. Since we allow Peers without (ip,port) in general we allow to add
      * Peers without (ip,port) here.
+     *
+     * <p>Only a <em>dialable</em> address decides ownership (T150/TD183). A peer with an ip but
+     * port 0 has no address: the handshake carries the sender's <em>listening</em> port and a light
+     * client has none, so it announces 0 — every inbound light client from one ip therefore shares
+     * the single key {@code "<ip>:0"}. Treating that shared bucket as an address made the branch
+     * below believe two unrelated light clients are the same endpoint, and it resolved the
+     * "conflict" by taking the address away from one of them. On a loopback topology (the mobile
+     * 4-node e2e, the emulator gate) that is every light client but the first, and the cost is not
+     * cosmetic: an ip-less peer is skipped by {@code PeerExchangeHandler.handleRequestPeerList},
+     * and the peer list it asks for comes back empty of every local relay, because {@code
+     * Utils.isPlausibleAdvertisedAddress} only believes a loopback address when the <em>asking</em>
+     * peer is itself local — which a peer without an ip is not. Symptom since #354: "Bob discovered
+     * only 0 of 3 relay candidates with encryption keys" (ms05/ms06/ms08) for the second client to
+     * connect, while the first one was fine. The two objects also never compete for a socket, which
+     * is the entire reason this branch exists: nobody ever dials port 0.
      */
-    if (peer.getIp() != null) {
+    if (peer.isDialable()) {
       oldPeer = peerlistIpPort.get(ipPortKey(peer));
       if (oldPeer != null) {
         // Peer with same Ip+Port exists already
@@ -267,10 +282,20 @@ public class PeerList {
       if (peer.getKademliaId() != null) {
         oldPeer = peerHashMap.put(peer.getKademliaId(), peer);
       }
-      // Only keyable peers go into the address map. A peer without an ip has no address, and
-      // addLocked's javadoc explicitly allows such peers in the list (clearConnectionDetails
-      // produces them). Keying them anyway would put every one of them into one shared bucket.
-      if (peer.getIp() != null) {
+      // Only peers with a dialable address go into the address map, the same predicate addLocked
+      // uses (T150/TD183). A peer without an ip has no address, and addLocked's javadoc explicitly
+      // allows such peers in the list (clearConnectionDetails produces them). A peer with an ip
+      // but port 0 has no address either -- that is the *listening* port from its handshake and a
+      // light client has none -- so keying it put every light client from one ip into a single
+      // shared "<ip>:0" bucket that the last one to connect silently took over.
+      //
+      // Nothing reads that bucket for ownership any more (addLocked and adoptAddress skip it), so
+      // leaving it filled would be dead state with teeth: removeIpPort(String,int) evicts whoever
+      // the key points at, from all three indices and without a value check, and its caller in
+      // ConnectionReaderThread runs on a plaintext, not-yet-proven handshake. A peer sharing an ip
+      // with a live light client could therefore have that client evicted while its socket was
+      // still open. No entry, no eviction.
+      if (peer.isDialable()) {
         peerlistIpPort.put(ipPortKey(peer), peer);
       }
       peerArrayList.add(peer);
@@ -400,7 +425,10 @@ public class PeerList {
    * @return
    */
   public boolean removeIpPort(String ip, int port) {
-    if (ip == null) {
+    if (ip == null || port <= 0) {
+      // Only dialable addresses are keyed (see addPeer), so a port-0 lookup can only ever hit a
+      // leftover from an older build -- and this method removes without a value check, so it must
+      // not act on an address that does not identify a peer (T150/TD183).
       return false;
     }
     readWriteLock.writeLock().lock();
@@ -642,7 +670,12 @@ public class PeerList {
    * <p>An address another peer owns is left alone as well. Callers must hold the write lock.
    */
   private void adoptAddress(Peer owner, Peer dropped) {
-    if (owner.getIp() != null || dropped.getIp() == null) {
+    if (owner.getIp() != null || !dropped.isDialable()) {
+      // Only a dialable address is worth moving (T150/TD183). Port 0 is not an ephemeral remote
+      // port -- it is the *listening* port the peer announced in its handshake, and a light
+      // client has no listening socket, so it announces 0. Such an address can never be dialled,
+      // and handing it to the owner would leave the owner addressed but still undialable, in the
+      // shared "<ip>:0" bucket.
       return;
     }
     if (peerlistIpPort.containsKey(ipPortKey(dropped))) {
