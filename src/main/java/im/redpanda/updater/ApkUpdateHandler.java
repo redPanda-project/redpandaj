@@ -11,7 +11,6 @@ import im.redpanda.core.Command;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Log;
-import im.redpanda.transport.ConnectionReaderThread;
 import im.redpanda.transport.Peer;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -31,9 +30,9 @@ import org.apache.logging.log4j.Logger;
  * <p>Moved verbatim out of {@code core.InboundCommandProcessor} by T116 (DDD review 2026-08-31, P2
  * step 3). Wire- and behaviour-invariant.
  *
- * <p>Note the asymmetry inherited from the original code: unlike the jar download, the apk download
- * serialises on {@link UpdateTransfer#updateUploadLock} (not the download lock). Preserved on
- * purpose — changing it would change the runtime behaviour of the deploy path.
+ * <p>T121 removed the two asymmetries the move had preserved verbatim: the apk download used the
+ * upload lock (TD125) and the apk install wrote straight to its destination (TD127). Both are now
+ * shaped like the jar path in {@link JarUpdateHandler}.
  */
 public class ApkUpdateHandler {
 
@@ -79,9 +78,15 @@ public class ApkUpdateHandler {
     if (othersTimestamp > floor) {
       Runnable runnable =
           () -> {
-            UpdateTransfer.updateUploadLock.acquireUninterruptibly();
+            // TD125: this is a download, so it waits behind other downloads - not behind, and not
+            // in front of, the uploads we serve to peers. It used to take updateUploadLock, which
+            // blocked every upload for the full hold below and still let a jar download run
+            // alongside this one.
+            UpdateTransfer.updateDownloadLock.lock();
             try {
-              if (othersTimestamp <= serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
+              // Re-check under the lock: whoever held it before us may have installed a newer apk
+              // already, which moves the floor (recorded timestamp AND the stored apk's mtime).
+              if (othersTimestamp <= androidUpdateFloor()) {
                 return;
               }
               System.out.println(
@@ -90,15 +95,15 @@ public class ApkUpdateHandler {
                 return;
               }
               try {
-                Thread.sleep(60000);
+                Thread.sleep(UpdateTransfer.downloadHoldMillis);
               } catch (InterruptedException ignored) {
               }
             } finally {
               System.out.println("we can now download it from another peer...");
-              UpdateTransfer.updateUploadLock.release();
+              UpdateTransfer.updateDownloadLock.unlock();
             }
           };
-      ConnectionReaderThread.threadPool.submit(
+      UpdateTransfer.updateTaskPool.submit(
           reporting("android-update-request-content-download", runnable));
     }
     return 1 + 8;
@@ -190,7 +195,7 @@ public class ApkUpdateHandler {
             UpdateTransfer.updateUploadLock.release();
           }
         };
-    ConnectionReaderThread.threadPool.submit(
+    UpdateTransfer.updateTaskPool.submit(
         reporting("android-update-answer-content-upload", runnable));
     return 1;
   }
@@ -246,7 +251,7 @@ public class ApkUpdateHandler {
       // thread pool so the ConnectionReaderThread is not stalled while it happens (REDPANDAJ-2DQ),
       // matching the request-side handlers. othersTimestamp/signature/data are already captured
       // above so nothing here races the reader moving on to the next command.
-      ConnectionReaderThread.threadPool.submit(
+      UpdateTransfer.updateTaskPool.submit(
           reporting(
               "install-apk-update", () -> installApkUpdate(othersTimestamp, signature, data)));
     }
@@ -255,15 +260,39 @@ public class ApkUpdateHandler {
 
   /**
    * Writes a verified apk update to disk and persists the new timestamp/signature. Runs on {@link
-   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ).
+   * UpdateTransfer#updateTaskPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ).
+   *
+   * <p>TD127: staged through a sibling tmp file and moved into place, the way {@link
+   * JarUpdateHandler#installJarUpdate} has always done it. Writing straight to {@code android.apk}
+   * truncated the apk the moment the stream opened, so a crash, a full disk or a short write left a
+   * truncated file behind that {@link #handleRequestContent} then happily served to peers (its
+   * signature check fails, so the peer gets nothing at all) and that {@code HTTPServer} handed to
+   * app downloads. The move is atomic within a filesystem, so the destination only ever holds a
+   * complete apk.
    */
   void installApkUpdate(long othersTimestamp, byte[] signature, byte[] data) {
     UpdateTransfer.installThreadHookForTests.accept(Thread.currentThread());
-    try (FileOutputStream fos = new FileOutputStream(updateApkPath().toFile())) {
+    // Resolve the destination once and derive the staging path from it, so the two cannot diverge
+    // if the overriding system property changes mid-install (same reasoning as installJarUpdate).
+    Path apkPath = updateApkPath();
+    Path tmpPath = UpdateTransfer.updateApkTmpPath(apkPath);
+    try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {
       fos.write(data);
     } catch (IOException e) {
       // Do not persist the new timestamp/signature if the apk was not actually written: that
       // would make LocalSettings claim an update is installed while the file is missing/corrupt.
+      // Reported like the failed move below and like installJarUpdate's write: a node that stops
+      // being able to stage updates is exactly the thing we want to hear about.
+      Log.sentry(e);
+      e.printStackTrace();
+      return;
+    }
+    try {
+      UpdateTransfer.publishStagedFile(tmpPath, apkPath);
+    } catch (IOException e) {
+      // Same reason as above: the apk on disk is still the old one, so the settings must keep
+      // describing the old one too.
+      Log.sentry(e);
       e.printStackTrace();
       return;
     }

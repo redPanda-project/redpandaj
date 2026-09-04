@@ -61,6 +61,13 @@ class UpdateHardeningTest {
   private File apkFile;
 
   /**
+   * Staging file the apk install writes before moving it onto {@link #apkFile} (T121/TD127).
+   * Derived from the production rule rather than spelled out, so the name scheme lives in exactly
+   * one place — {@link #apkStagingPathIsASiblingNamedAfterItsDestination} pins that rule.
+   */
+  private File apkTmpFile;
+
+  /**
    * Redirected "the jar this node runs and serves" ({@code redpanda.jar} in the CWD in prod). Left
    * non-existent by default, which is exactly the pre-T117 situation for the update floor (mtime
    * 0), so the tests that predate it are unaffected.
@@ -75,6 +82,7 @@ class UpdateHardeningTest {
     updateFile = new File(tempDir, "update");
     tmpJarFile = new File(tempDir, "tmp_redpanda.jar");
     apkFile = new File(tempDir, "android.apk");
+    apkTmpFile = UpdateTransfer.updateApkTmpPath(apkFile.toPath()).toFile();
     runningJarFile = new File(tempDir, "redpanda.jar");
     System.setProperty(INSTALL_PATH_PROPERTY, updateFile.getAbsolutePath());
     System.setProperty(APK_PATH_PROPERTY, apkFile.getAbsolutePath());
@@ -86,6 +94,11 @@ class UpdateHardeningTest {
     ByteBufferPool.init();
     Settings.seedNode = false;
     Settings.loadUpdates = false;
+    // A download task holds the static UpdateTransfer.updateDownloadLock for this long after
+    // asking a peer for content. At the production minute, every test that reaches the download
+    // path leaves the lock held far beyond its own runtime and the next test in this fork blocks
+    // on it; 200 ms is still orders of magnitude above what the assertions below need.
+    UpdateTransfer.downloadHoldMillis = 200L;
   }
 
   @AfterEach
@@ -100,6 +113,7 @@ class UpdateHardeningTest {
     // thread kill the whole Surefire fork mid-suite.
     UpdateTransfer.restartAction = () -> {};
     UpdateTransfer.installThreadHookForTests = t -> {};
+    UpdateTransfer.downloadHoldMillis = 60_000L;
     LocalSettings.settingsFile(TEST_PORT).delete();
   }
 
@@ -330,6 +344,9 @@ class UpdateHardeningTest {
     assertTrue(
         java.util.Arrays.equals(data, Files.readAllBytes(apkFile.toPath())),
         "installed apk file must contain the received data");
+    // T121/TD127: written to a sibling tmp file and moved, so the staging file is consumed by the
+    // move rather than left lying around next to the apk we serve.
+    assertFalse(apkTmpFile.exists(), "the apk staging file must not survive a successful install");
   }
 
   @Test
@@ -437,6 +454,191 @@ class UpdateHardeningTest {
     int consumed = proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, in, newPeer(8813));
 
     assertEquals(1 + 8, consumed);
+  }
+
+  // --- T121: apk install and lock hygiene (TD127, TD125) ---
+
+  /**
+   * The publish step must survive a filesystem without an atomic rename instead of leaving the
+   * update unstaged: the fallback replacing move is still strictly better than writing the
+   * destination directly, which is what TD127 was about.
+   */
+  @Test
+  void publishStagedFile_fallsBackWhenTheMoveCannotBeAtomic() throws Exception {
+    java.nio.file.Path staging = new File(tempDir, "staged").toPath();
+    java.nio.file.Path destination = new File(tempDir, "published").toPath();
+    Files.write(staging, "new".getBytes());
+    Files.write(destination, "old".getBytes());
+
+    UpdateTransfer.publishStagedFile(staging, destination);
+
+    assertTrue(
+        java.util.Arrays.equals("new".getBytes(), Files.readAllBytes(destination)),
+        "the staged bytes must be the ones that end up published");
+    assertFalse(Files.exists(staging), "the staging file is consumed by the publish");
+  }
+
+  /**
+   * The one place the staging-name scheme is asserted (every other test derives its expectation
+   * from {@link UpdateTransfer#updateApkTmpPath}). Sibling, so the {@code Files.move} stays within
+   * one filesystem and is atomic; named after the destination, so the 8 Surefire forks — each with
+   * its own {@code target/android-N.apk} — do not stage through one shared file, which is the
+   * collision that made the update tests flaky before T70.
+   */
+  @Test
+  void apkStagingPathIsASiblingNamedAfterItsDestination() {
+    java.nio.file.Path apk = java.nio.file.Path.of("target", "android-3.apk");
+    java.nio.file.Path staging = UpdateTransfer.updateApkTmpPath(apk);
+
+    assertEquals(apk.getParent(), staging.getParent(), "must be a sibling of the destination");
+    assertNotEquals(apk.getFileName(), staging.getFileName(), "must not be the destination itself");
+    assertTrue(
+        staging.getFileName().toString().contains(apk.getFileName().toString()),
+        "must carry the destination name so per-fork paths stay distinct: " + staging);
+  }
+
+  /** Builds a correctly signed ANDROID_UPDATE_ANSWER_CONTENT frame for {@code key}. */
+  private static ByteBuffer signedApkContent(NodeId key, long timestamp, byte[] data) {
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(timestamp);
+    toHash.put(data);
+    return buildUpdateAnswerContent(timestamp, key.sign(toHash.array()), data);
+  }
+
+  /**
+   * TD127. {@code installApkUpdate} wrote the received bytes straight into {@code android.apk},
+   * which truncated the apk we serve the moment the stream opened. Anything that stopped the write
+   * from finishing — a crash, a full disk, a short write — left a truncated file that {@code
+   * handleRequestContent} and {@code HTTPServer} then handed out, while the old apk was already
+   * gone. Since T121 the bytes go to a sibling staging file first and only an atomic move publishes
+   * them.
+   *
+   * <p>The failure is injected by putting a <em>directory</em> where the staging file belongs, so
+   * the {@code FileOutputStream} fails deterministically on open, with no timing involved. Against
+   * the pre-T121 code this test is red: there the same open targets the destination itself and
+   * succeeds, replacing the apk.
+   */
+  @Test
+  void apkInstall_failedStagingWrite_leavesTheServedApkIntact() throws Exception {
+    byte[] oldApk = "the-apk-we-currently-serve".getBytes();
+    Files.write(apkFile.toPath(), oldApk);
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    assertTrue(apkFile.setLastModified(installedAt), "could not set the apk mtime");
+    assertTrue(apkTmpFile.mkdir(), "could not block the staging path with a directory");
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    CountDownLatch installStarted = new CountDownLatch(1);
+    UpdateTransfer.installThreadHookForTests = t -> installStarted.countDown();
+
+    byte[] data = "the-apk-that-cannot-be-staged".getBytes();
+    long othersTs = installedAt + TimeUnit.HOURS.toMillis(1);
+    int consumed =
+        proc.parseCommand(
+            Command.ANDROID_UPDATE_ANSWER_CONTENT,
+            signedApkContent(testKey, othersTs, data),
+            newPeer(8818));
+    assertEquals(1 + 8 + 4 + NodeId.SIGNATURE_LEN + data.length, consumed);
+
+    assertTrue(installStarted.await(10, TimeUnit.SECONDS), "the install task never ran");
+    // The install ran and failed; nothing it could have done afterwards may show up, so watch for
+    // a window instead of asserting once right after the hook fired.
+    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (System.nanoTime() < deadlineNanos) {
+      assertTrue(
+          java.util.Arrays.equals(oldApk, Files.readAllBytes(apkFile.toPath())),
+          "a failed apk install must not touch the apk we serve");
+      assertEquals(
+          0L,
+          ctx.getLocalSettings().getUpdateAndroidTimestamp(),
+          "a failed apk install must not claim the update is installed");
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+    }
+  }
+
+  /**
+   * TD125, half one. The apk download used to acquire {@code UpdateTransfer.updateUploadLock}, so
+   * an upload in progress (a peer pulling our jar or apk, up to a minute) stopped us from even
+   * asking for a newer apk — and, the other way round, our apk download blocked every upload.
+   * Downloads and uploads are independent; only downloads serialise against each other.
+   */
+  @Test
+  void apkDownload_isNotHeldUpByAnUpload() {
+    Peer peer = newPeer(8819);
+    ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+
+    UpdateTransfer.updateUploadLock.acquireUninterruptibly(); // an upload is in flight
+    try {
+      proc.parseCommand(
+          Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
+          offer(Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30)),
+          peer);
+      awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
+      out.flip();
+      assertEquals(
+          Command.ANDROID_UPDATE_REQUEST_CONTENT,
+          out.get(),
+          "an upload in flight must not stop us from requesting a newer apk");
+    } finally {
+      UpdateTransfer.updateUploadLock.release();
+    }
+  }
+
+  /**
+   * TD125, half two. The lock the apk download does take is the download lock, so it queues behind
+   * a jar download instead of running next to it — "at most one update download at a time" was
+   * never true before, whatever the field name said.
+   */
+  @Test
+  void apkDownload_waitsForARunningDownload() {
+    Peer peer = newPeer(8820);
+    ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+
+    UpdateTransfer.updateDownloadLock.lock(); // stands in for a jar download in progress
+    try {
+      proc.parseCommand(
+          Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
+          offer(Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30)),
+          peer);
+      assertStaysEmpty(
+          out,
+          TimeUnit.SECONDS.toMillis(2),
+          "an apk download must queue behind a running download");
+    } finally {
+      UpdateTransfer.updateDownloadLock.unlock();
+    }
+    // Positive control: the request is only deferred, not dropped - which also proves the window
+    // above was measuring something.
+    awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
+  }
+
+  /**
+   * TD125/#347 follow-up: the re-check the download task does after waiting for the lock now uses
+   * the same floor as the offer check. Whoever held the lock before us may have installed a newer
+   * apk, and that shows up in the apk's mtime just as much as in the recorded timestamp — the old
+   * re-check looked at the recorded timestamp alone.
+   */
+  @Test
+  void apkDownload_isDroppedWhenTheFloorMovedWhileWaiting() throws Exception {
+    Peer peer = newPeer(8821);
+    ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+    long othersTs = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+
+    UpdateTransfer.updateDownloadLock.lock();
+    try {
+      proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, offer(othersTs), peer);
+      assertStaysEmpty(
+          out, 500L, "the download task must still be waiting for the lock at this point");
+      // "another download finished while we waited": an apk newer than the offer is now on disk,
+      // recorded nowhere but in its mtime.
+      Files.write(apkFile.toPath(), new byte[] {1, 2, 3});
+      assertTrue(apkFile.setLastModified(othersTs + 1), "could not set the apk mtime");
+    } finally {
+      UpdateTransfer.updateDownloadLock.unlock();
+    }
+    assertStaysEmpty(
+        out, TimeUnit.SECONDS.toMillis(2), "we must not request an apk that is no longer newer");
   }
 
   private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
@@ -560,14 +762,16 @@ class UpdateHardeningTest {
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
       // "nothing was queued" is only meaningful over a window, and only if the same window
       // reliably catches a request that IS made - which the positive control below establishes.
-      assertStaysEmpty(out, TimeUnit.SECONDS.toMillis(5));
+      assertStaysEmpty(
+          out, TimeUnit.SECONDS.toMillis(5), "we must not ask a peer for an older jar");
 
       // (b) T117d: a recorded timestamp from the PREVIOUS deploy, behind the jar we run. This is
       // what deploy #7 hit - the offer passes the record but is still a rollback.
       ctx.getLocalSettings().setUpdateTimestamp(installedAt - TimeUnit.HOURS.toMillis(2));
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
-      assertStaysEmpty(out, TimeUnit.SECONDS.toMillis(5));
+      assertStaysEmpty(
+          out, TimeUnit.SECONDS.toMillis(5), "we must not ask a peer for an older jar");
 
       // Positive control: an offer above the floor does reach requestUpdateContent through this
       // very harness, so both assertions above are not vacuously true.
@@ -591,13 +795,13 @@ class UpdateHardeningTest {
    * Fails as soon as anything is queued on {@code buffer}, polling for {@code windowMillis}. A
    * single check after a fixed sleep would pass whenever the queueing is merely late (CI load).
    */
-  private static void assertStaysEmpty(ByteBuffer buffer, long windowMillis) {
+  private static void assertStaysEmpty(ByteBuffer buffer, long windowMillis, String message) {
     long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(windowMillis);
     while (System.nanoTime() < deadlineNanos) {
-      assertEquals(0, buffer.position(), "we must not ask a peer for an older jar");
+      assertEquals(0, buffer.position(), message);
       LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
     }
-    assertEquals(0, buffer.position(), "we must not ask a peer for an older jar");
+    assertEquals(0, buffer.position(), message);
   }
 
   /**

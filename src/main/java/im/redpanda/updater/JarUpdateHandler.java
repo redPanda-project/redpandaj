@@ -10,12 +10,10 @@ import static im.redpanda.updater.UpdateTransfer.updateInstallTmpPath;
 import static im.redpanda.updater.UpdateTransfer.updateJarPath;
 
 import im.redpanda.core.Command;
-import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Log;
 import im.redpanda.ops.Settings;
-import im.redpanda.transport.ConnectionReaderThread;
 import im.redpanda.transport.Peer;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -23,7 +21,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,7 +74,7 @@ public class JarUpdateHandler {
                 return;
               }
               try {
-                Thread.sleep(60000);
+                Thread.sleep(UpdateTransfer.downloadHoldMillis);
               } catch (InterruptedException ignored) {
               }
             } finally {
@@ -85,7 +82,9 @@ public class JarUpdateHandler {
               UpdateTransfer.updateDownloadLock.unlock();
             }
           };
-      Server.threadPool.submit(reporting("update-request-content-download", runnable));
+      // TD126: one pool for every update task, see UpdateTransfer.updateTaskPool. This was the
+      // single submit that went to Server.threadPool instead.
+      UpdateTransfer.updateTaskPool.submit(reporting("update-request-content-download", runnable));
     }
     return 1 + 8;
   }
@@ -182,7 +181,7 @@ public class JarUpdateHandler {
             UpdateTransfer.updateUploadLock.release();
           }
         };
-    ConnectionReaderThread.threadPool.submit(reporting("update-answer-content-upload", runnable));
+    UpdateTransfer.updateTaskPool.submit(reporting("update-answer-content-upload", runnable));
     return 1;
   }
 
@@ -238,7 +237,7 @@ public class JarUpdateHandler {
       // handleRequestContent above). Everything the reader thread would otherwise need to read from
       // the connection buffer has already been captured above (othersTimestamp, signatureBytes,
       // data), so nothing here races the reader moving on to the next command.
-      ConnectionReaderThread.threadPool.submit(
+      UpdateTransfer.updateTaskPool.submit(
           reporting(
               "install-jar-update", () -> installJarUpdate(othersTimestamp, signatureBytes, data)));
     }
@@ -247,7 +246,7 @@ public class JarUpdateHandler {
 
   /**
    * Writes a verified jar update to disk, installs it and triggers the restart. Runs on {@link
-   * ConnectionReaderThread#threadPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ) — keep the
+   * UpdateTransfer#updateTaskPool}, off the ConnectionReaderThread (REDPANDAJ-2DQ) — keep the
    * write, move, settings save and restart trigger together and in this order so the process never
    * restarts (or persists a timestamp/signature) before the jar is actually in place.
    */
@@ -267,7 +266,7 @@ public class JarUpdateHandler {
     try {
       // Install the update
       // Save to 'update' file so the shell script can pick it up and restart
-      Files.move(tmpPath, installPath, StandardCopyOption.REPLACE_EXISTING);
+      UpdateTransfer.publishStagedFile(tmpPath, installPath);
 
       // Update local settings
       serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);
