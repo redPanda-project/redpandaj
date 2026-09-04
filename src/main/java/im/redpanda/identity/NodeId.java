@@ -2,7 +2,7 @@ package im.redpanda.identity;
 
 import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.identity.crypt.Sha256Hash;
-import im.redpanda.ops.Log;
+import im.redpanda.identity.crypt.Utils;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -87,7 +87,7 @@ public class NodeId {
       this.encryptionKey = candidate.encryptionKey;
       this.encryptionPubKey = candidate.encryptionPubKey;
 
-      if (Log.isJUnitTest() || checkValid()) {
+      if (Utils.isJUnitTest() || checkValid()) {
         break;
       }
     }

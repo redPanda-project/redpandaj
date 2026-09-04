@@ -22,8 +22,6 @@ import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.junit.jupiter.api.Test;
 
@@ -36,30 +34,16 @@ class GMParserAdditionalTest {
     return garlicMessage.getContent();
   }
 
-  private static void registerJob(Job job, int jobId) {
+  private static void registerJob(ServerContext serverContext, Job job, int jobId) {
     try {
       Field jobIdField = Job.class.getDeclaredField("jobId");
       jobIdField.setAccessible(true);
       jobIdField.setInt(job, jobId);
-
-      Field runningJobsField = Job.class.getDeclaredField("runningJobs");
-      runningJobsField.setAccessible(true);
-      @SuppressWarnings("unchecked")
-      HashMap<Integer, Job> runningJobs = (HashMap<Integer, Job>) runningJobsField.get(null);
-
-      Field lockField = Job.class.getDeclaredField("runningJobsLock");
-      lockField.setAccessible(true);
-      ReentrantLock lock = (ReentrantLock) lockField.get(null);
-
-      lock.lock();
-      try {
-        runningJobs.put(jobId, job);
-      } finally {
-        lock.unlock();
-      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+    // Job.start() draws a random id, so register the job under the deterministic one directly.
+    serverContext.getJobRegistry().register(jobId, job);
   }
 
   private static class TestPeer extends Peer {
@@ -212,7 +196,7 @@ class GMParserAdditionalTest {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     StubFlaschenpostJob job = new StubFlaschenpostJob(serverContext);
     int ackId = 424242;
-    registerJob(job, ackId);
+    registerJob(serverContext, job, ackId);
 
     GMContent parsed = GMParser.parse(serverContext, new GMAck(ackId).getContent());
 
@@ -225,7 +209,7 @@ class GMParserAdditionalTest {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
     StubGarlicJob job = new StubGarlicJob(serverContext);
     int ackId = 434343;
-    registerJob(job, ackId);
+    registerJob(serverContext, job, ackId);
 
     GMContent parsed = GMParser.parse(serverContext, new GMAck(ackId).getContent());
 

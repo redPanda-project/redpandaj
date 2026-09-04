@@ -16,6 +16,6 @@ public class KadRefreshJob extends Job {
   public void work() {
 
     System.out.println("refresh the KadContent");
-    KadStoreManager.maintain(serverContext);
+    serverContext.getKadStoreManager().maintain();
   }
 }

@@ -6,7 +6,6 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import im.redpanda.core.Command;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
-import im.redpanda.ops.Job;
 import im.redpanda.proto.JobAck;
 import im.redpanda.proto.KademliaGet;
 import im.redpanda.proto.KademliaGetAnswer;
@@ -23,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * P2 step 2): the dispatcher parses the frame, the DHT owns what the frame means. Nothing here
  * changed behaviourally.
  *
- * <p>The {@code Job.getRunningJob(id) instanceof …} correlation is the hand-rolled pending-
+ * <p>The {@code jobRegistry.get(id) instanceof …} correlation is the hand-rolled pending-
  * conversation registry the review's §"Fehlende Konzepte" flags; it moves as-is and is not this
  * task's business.
  */
@@ -40,7 +39,7 @@ public class KademliaCommandHandler {
   public void handleJobAck(Peer peer, byte[] payload) throws InvalidProtocolBufferException {
     JobAck ackMsg = JobAck.parseFrom(payload);
     int jobId = ackMsg.getJobId();
-    var runningJob = Job.getRunningJob(jobId);
+    var runningJob = serverContext.getJobRegistry().get(jobId);
     if (runningJob instanceof KademliaInsertJob job) {
       job.ack(peer);
       System.out.println("ACK from peer: " + peer.getNodeId().toString());
@@ -97,7 +96,7 @@ public class KademliaCommandHandler {
             answerMsg.getContent().toByteArray(),
             answerMsg.getSignature().toByteArray());
     if (kadContent.verify()) {
-      var byId = Job.getRunningJob(answerMsg.getAckId());
+      var byId = serverContext.getJobRegistry().get(answerMsg.getAckId());
       if (byId instanceof KademliaSearchJob job) {
         job.ack(kadContent, peer);
       }

@@ -317,4 +317,22 @@ public class Utils {
     }
     return octets;
   }
+
+  /**
+   * Whether the current call stack runs inside JUnit.
+   *
+   * <p>Lived in {@code ops.Log} until T118. {@code NodeId}'s default constructor asks it to skip
+   * the HashCash proof of work in unit tests, and identity must not depend on any other context
+   * (pinned by {@code BoundedContextArchitectureTest}), so the probe moved into the identity
+   * context's utility class. It is a stack walk, not a property: callers should treat it as the
+   * test-speed hack it is.
+   */
+  public static boolean isJUnitTest() {
+    for (StackTraceElement element : Thread.currentThread().getStackTrace()) {
+      if (element.getClassName().startsWith("org.junit.")) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

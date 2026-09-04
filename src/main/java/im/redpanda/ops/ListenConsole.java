@@ -2,7 +2,6 @@ package im.redpanda.ops;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
-import im.redpanda.dht.KadStoreManager;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.routing.graph.GraphAdjacentMatrixPrinter;
 import im.redpanda.routing.graph.Node;
@@ -133,7 +132,7 @@ public class ListenConsole extends Thread {
           // Stats.getSocketioConnectionsLiveTime());
 
           System.out.println("KadStore entries: ");
-          KadStoreManager.printStatus();
+          serverContext.getKadStoreManager().printStatus();
 
           System.out.println("NodeStore blacklist: ");
           serverContext.getNodeStore().printBlacklist();

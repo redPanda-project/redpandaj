@@ -72,7 +72,7 @@ class KadStoreManagerMinSizeTest {
   @Test
   void put_appliesDistanceBasedKeepTimeAboveMinSize() throws Exception {
     KadContent recent = storeDirectly(2L * ONE_DAY_MS, idAtMaxDistanceFromUs());
-    setStaticField("size", 11 * 1024 * 1024);
+    setField("size", 11 * 1024 * 1024);
 
     assertThat(kadStoreManager.put(freshContent())).isTrue();
 
@@ -103,7 +103,7 @@ class KadStoreManagerMinSizeTest {
   void maintain_expiresStaleEntriesInsteadOfRespreadingThem() throws Exception {
     storeDirectly(100L * ONE_DAY_MS, null);
 
-    KadStoreManager.maintain(serverContext);
+    kadStoreManager.maintain();
 
     assertThat(rawEntries()).isEmpty();
     assertThat(currentSize()).isZero();
@@ -152,15 +152,15 @@ class KadStoreManagerMinSizeTest {
     }
 
     rawEntries().put(content.getId(), content);
-    setStaticField("size", currentSize() + payload.length);
+    setField("size", currentSize() + payload.length);
 
     return content;
   }
 
-  private static int currentSize() throws Exception {
+  private int currentSize() throws Exception {
     Field field = KadStoreManager.class.getDeclaredField("size");
     field.setAccessible(true);
-    return (int) field.get(null);
+    return (int) field.get(kadStoreManager);
   }
 
   private static byte[] randomKey() {
@@ -168,22 +168,26 @@ class KadStoreManagerMinSizeTest {
   }
 
   @SuppressWarnings("unchecked")
-  private static Map<KademliaId, KadContent> rawEntries() throws Exception {
+  private Map<KademliaId, KadContent> rawEntries() throws Exception {
     Field entriesField = KadStoreManager.class.getDeclaredField("entries");
     entriesField.setAccessible(true);
-    return (Map<KademliaId, KadContent>) entriesField.get(null);
+    return (Map<KademliaId, KadContent>) entriesField.get(kadStoreManager);
   }
 
-  private static void resetStore() throws Exception {
+  /**
+   * Since T118 the store is instance state, so every test already starts on an empty manager; the
+   * reset is kept so a test that stores through {@code put()} cannot leak into the next one.
+   */
+  private void resetStore() throws Exception {
     rawEntries().clear();
 
-    setStaticField("size", 0);
-    setStaticField("lastCleanup", 0L);
+    setField("size", 0);
+    setField("lastCleanup", 0L);
   }
 
-  private static void setStaticField(String name, Object value) throws Exception {
+  private void setField(String name, Object value) throws Exception {
     Field field = KadStoreManager.class.getDeclaredField(name);
     field.setAccessible(true);
-    field.set(null, value);
+    field.set(kadStoreManager, value);
   }
 }

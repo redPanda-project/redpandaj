@@ -48,10 +48,17 @@ public class KadStoreManager {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
-  private static final Map<KademliaId, KadContent> entries = new HashMap<>();
-  private static final ReentrantLock lock = new ReentrantLock();
-  private static long lastCleanup = 0;
-  private static int size = 0;
+  /**
+   * The DHT store of <b>this</b> node. Instance state since T118: {@code entries}, its {@code
+   * lock}, the sweep timestamp and the byte counter used to be {@code static}, so two {@link
+   * ServerContext}s in one JVM shared one custodian store — a scope leak, given that {@code
+   * ServerContext} has owned a {@code KadStoreManager} per node since it was introduced.
+   */
+  private final Map<KademliaId, KadContent> entries = new HashMap<>();
+
+  private final ReentrantLock lock = new ReentrantLock();
+  private long lastCleanup = 0;
+  private int size = 0;
   private final ServerContext serverContext;
 
   public KadStoreManager(ServerContext serverContext) {
@@ -261,9 +268,9 @@ public class KadStoreManager {
     System.out.println("asd");
   }
 
-  public static void printStatus() {
+  public void printStatus() {
     lock.lock();
-    int size = 0;
+    int totalBytes = 0;
     try {
       for (KademliaId id : entries.keySet()) {
 
@@ -276,15 +283,15 @@ public class KadStoreManager {
                 + formatDuration(duration)
                 + " "
                 + Base58.encode(entries.get(id).createHash().getBytes()));
-        size += entries.get(id).getContent().length;
+        totalBytes += entries.get(id).getContent().length;
       }
     } finally {
       lock.unlock();
     }
-    System.out.println("size in kb: " + size / 1024.);
+    System.out.println("size in kb: " + totalBytes / 1024.);
   }
 
-  public static void maintain(ServerContext serverContext) {
+  public void maintain() {
     lock.lock();
     try {
       // expire instead of re-spreading entries every other node's put() would reject as too
@@ -302,7 +309,7 @@ public class KadStoreManager {
    * Removes all entries with a timestamp older than the given cutoff and updates {@link #size}.
    * Callers must hold {@link #lock}.
    */
-  private static void expireEntriesOlderThan(long cutoff) {
+  private void expireEntriesOlderThan(long cutoff) {
     Iterator<KadContent> iterator = entries.values().iterator();
     while (iterator.hasNext()) {
       KadContent c = iterator.next();
