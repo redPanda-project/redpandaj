@@ -131,6 +131,19 @@ public class Updater {
     }
   }
 
+  /**
+   * Offline key ceremony (T13): generates a fresh update-signing identity, writes the private half
+   * to {@code privateSigningKey.txt} (0600, never overwriting an existing file) and prints the
+   * public half for the operator to paste into {@link #PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS}.
+   *
+   * <p>The paste is deliberately manual (T121/TD131). Until 2026-09-04 a {@code @Test}-annotated
+   * class {@code core.SecureKeyGenerator} did all three steps automatically — generate, write the
+   * private key into the CWD, and rewrite the constant in this very source file. It escaped
+   * Surefire only because its class name misses the default include patterns, so a rename to {@code
+   * *Test} would have armed a live key-rewriting test that silently swaps the network's
+   * update-signing key. Rewriting the trust anchor is a decision, not a build step; the two steps
+   * that are safe to automate live here, the one that is not stays a human edit.
+   */
   public static void createNewKeys() {
 
     Path keyFile = Path.of("privateSigningKey.txt");
@@ -164,6 +177,10 @@ public class Updater {
         // non-POSIX filesystem (e.g. Windows); file is still not printed anywhere
       }
       System.out.println("Priv: written to " + keyFile.toAbsolutePath());
+      System.out.println(
+          "Next step is manual on purpose: paste the Pub value above into"
+              + " Updater.PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS, rebuild, and roll the new jar out"
+              + " before signing anything with this key.");
     } catch (IOException e) {
       e.printStackTrace();
     }
