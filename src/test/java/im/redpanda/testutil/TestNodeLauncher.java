@@ -159,7 +159,7 @@ public final class TestNodeLauncher {
       Server.setShuttingDown(true);
       ConnectionHandler.selector.wakeup();
       Server.shutdown(serverContext);
-      NodeStore.threadPool.shutdownNow();
+      // T150: the node cache expiry pool is per NodeStore now and dies with the store.
       Server.threadPool.shutdownNow();
       shutdownJobScheduler();
       shutdownConnectionReaderPool();

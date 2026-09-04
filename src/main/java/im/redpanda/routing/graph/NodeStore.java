@@ -40,7 +40,18 @@ public class NodeStore {
   public static final int MAX_EDGES_IN_GRAPH = 500;
   public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 5;
   public static final int MAX_NODES_FOR_GRAPH = 20;
-  public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
+
+  /**
+   * The expiry executor of this store's cache tiers.
+   *
+   * <p>Per instance, not JVM-wide (TD184). MapDB's {@code HTreeMap.close()} shuts the executor it
+   * was handed down, so a single shared pool meant that closing <em>one</em> store — which {@link
+   * #saveToDisk()}'s recovery path does — terminated the expiry threads of every store built
+   * afterwards in the same JVM, with a {@code RejectedExecutionException} out of the next {@code
+   * createOrOpen()}. Ownership now matches lifetime: the store that creates the pool is the store
+   * that closes it.
+   */
+  private final ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
   /**
    * These sizes are upper limits of the different dbs, the main eviction should be done via a
@@ -62,7 +73,12 @@ public class NodeStore {
   private long lastTimeEdgeAdded = 0;
   private final ServerContext serverContext;
   private final SecureRandom random = new SecureRandom();
-  @Getter private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+
+  /**
+   * Guards {@link #nodeGraph}. Not final: a store built to replace a broken one takes over the lock
+   * (and the graph) of its predecessor, see {@link #buildWithDiskCache(ServerContext, NodeStore)}.
+   */
+  @Getter private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
   private NodeStore(ServerContext serverContext) {
     this.serverContext = serverContext;
@@ -70,15 +86,39 @@ public class NodeStore {
   }
 
   public static NodeStore buildWithDiskCache(ServerContext serverContext) {
+    return buildWithDiskCache(serverContext, null);
+  }
+
+  /**
+   * @param replacing the store this one takes over from ({@link #saveToDisk()}'s recovery), or
+   *     {@code null} for a fresh start. See {@link #takeOverGraphGuardFrom(NodeStore)}.
+   */
+  private static NodeStore buildWithDiskCache(ServerContext serverContext, NodeStore replacing) {
 
     NodeStore nodeStore = new NodeStore(serverContext);
 
-    if (serverContext.getLocalSettings() == null) {
+    if (replacing != null) {
+      nodeStore.takeOverGraphGuardFrom(replacing);
+    } else if (serverContext.getLocalSettings() == null) {
       logger.warn("could not restore nodeGraph from local settings, starting with an empty graph");
     } else {
       nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
+    try {
+      buildDiskTiers(serverContext, nodeStore);
+    } catch (RuntimeException | Error e) {
+      // The executor is created with the instance, i.e. before any tier exists, and MapDB opens
+      // real heap/direct-memory/file handles here. Dropping a half-built store on the floor would
+      // leak two live threads and those handles for the rest of the process (Sonnet review, T150).
+      nodeStore.close();
+      throw e;
+    }
+
+    return nodeStore;
+  }
+
+  private static void buildDiskTiers(ServerContext serverContext, NodeStore nodeStore) {
     nodeStore.dbonHeap =
         DBMaker.heapDB()
             // .closeOnJvmShutdown()
@@ -103,7 +143,7 @@ public class NodeStore {
             .dbDisk
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_ONDISK)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
             // not seen in this time
             .expireAfterGet(60, TimeUnit.DAYS)
@@ -115,7 +155,7 @@ public class NodeStore {
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_OFFHEAP)
             .expireOverflow(nodeStore.onDisk)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             .expireAfterCreate()
             .expireAfterGet(60, TimeUnit.MINUTES)
             .create();
@@ -126,36 +166,63 @@ public class NodeStore {
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_ONHEAP)
             .expireOverflow(nodeStore.offHeap)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             .expireAfterCreate()
             .expireAfterGet(15, TimeUnit.MINUTES)
             .create();
-
-    return nodeStore;
   }
 
   public static NodeStore buildWithMemoryCacheOnly(ServerContext serverContext) {
+    return buildWithMemoryCacheOnly(serverContext, null);
+  }
+
+  private static NodeStore buildWithMemoryCacheOnly(
+      ServerContext serverContext, NodeStore replacing) {
     NodeStore nodeStore = new NodeStore(serverContext);
 
-    if (serverContext.getLocalSettings() == null) {
+    if (replacing != null) {
+      nodeStore.takeOverGraphGuardFrom(replacing);
+    } else if (serverContext.getLocalSettings() == null) {
       Log.put("warning, could not restore nodeGraph from local settings....", 5);
     } else {
       nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
-    nodeStore.dbonHeap = DBMaker.heapDB().make();
+    try {
+      nodeStore.dbonHeap = DBMaker.heapDB().make();
 
-    nodeStore.onHeap =
-        nodeStore
-            .dbonHeap
-            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-            .expireStoreSize(MAX_SIZE_ONHEAP)
-            .expireExecutor(threadPool)
-            .expireAfterCreate()
-            .expireAfterGet(15, TimeUnit.HOURS)
-            .create();
+      nodeStore.onHeap =
+          nodeStore
+              .dbonHeap
+              .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+              .expireStoreSize(MAX_SIZE_ONHEAP)
+              .expireExecutor(nodeStore.threadPool)
+              .expireAfterCreate()
+              .expireAfterGet(15, TimeUnit.HOURS)
+              .create();
+    } catch (RuntimeException | Error e) {
+      nodeStore.close();
+      throw e;
+    }
 
     return nodeStore;
+  }
+
+  /**
+   * Makes this store the successor of {@code previous}: same graph object, same lock object.
+   *
+   * <p>The lock matters more than the graph. {@code LocalSettings} holds the read lock it was
+   * handed at startup and serializes the graph under it, while jobs that cached a {@code NodeStore}
+   * reference mutate the very same graph under their store's write lock. Handing {@code
+   * LocalSettings} a <em>different</em> lock mid-flight would leave a mutator and the serializer
+   * holding two unrelated locks over one graph — so the successor keeps the predecessor's lock
+   * instead, and no re-registration happens at all (Sonnet review, T150). It is also why the
+   * recovery does not start from an empty graph: the vertices the DHT jobs hold references to must
+   * stay in it ("no such vertex in graph", deploy #9).
+   */
+  private void takeOverGraphGuardFrom(NodeStore previous) {
+    this.readWriteLock = previous.readWriteLock;
+    this.nodeGraph = previous.nodeGraph;
   }
 
   /**
@@ -206,6 +273,12 @@ public class NodeStore {
 
   public void saveToDisk() {
 
+    if (offHeap == null) {
+      // Memory-only store (buildWithMemoryCacheOnly): there is nothing to flush, and running the
+      // recovery below on it would be a self-inflicted wipe.
+      return;
+    }
+
     try {
       offHeap.clearWithExpire();
       onHeap.clearWithExpire();
@@ -221,18 +294,56 @@ public class NodeStore {
       } catch (IOException ex) {
         logger.warn("could not delete the broken node cache {}", path, ex);
       }
-      serverContext.setNodeStore(new NodeStore(serverContext));
+      // TD185: this used to install `new NodeStore(serverContext)` — the bare private constructor,
+      // which leaves onHeap/offHeap/onDisk null and replaces the live node graph with an empty
+      // one. Recovery therefore produced a store whose every get() threw
+      // `NullPointerException: ... because "this.onHeap" is null`, which
+      // ConnectionHandler.setupConnection turns into "Handshake failed with throwable": after one
+      // failed save the node dropped EVERY new inbound connection, and the DHT jobs spun on
+      // `IllegalArgumentException: no such vertex in graph` against the discarded graph. A store
+      // that cannot be read is not a recovery. Rebuild through the real builder instead, which
+      // re-adopts the persisted graph and re-creates all three tiers.
+      try {
+        serverContext.setNodeStore(buildWithDiskCache(serverContext, this));
+      } catch (RuntimeException | Error rebuildFailure) {
+        // The file-backed rebuild is the only step here that can fail on its own (the file could
+        // not be deleted, the mmap could not be taken). A node without a disk cache still routes;
+        // a node without a store at all does not.
+        logger.error(
+            "could not rebuild the on-disk node cache, continuing without one", rebuildFailure);
+        Log.sentry(rebuildFailure);
+        serverContext.setNodeStore(buildWithMemoryCacheOnly(serverContext, this));
+      }
     }
   }
 
+  /**
+   * Closes all cache tiers and this store's expiry executor.
+   *
+   * <p>Null-safe per tier: {@link #buildWithMemoryCacheOnly(ServerContext)} builds a store with
+   * only the on-heap tier.
+   */
   public void close() {
-    onHeap.close();
-    offHeap.close();
-    onDisk.close();
+    closeQuietly(onHeap);
+    closeQuietly(offHeap);
+    closeQuietly(onDisk);
 
-    dbonHeap.close();
-    dboffHeap.close();
-    dbDisk.close();
+    closeQuietly(dbonHeap);
+    closeQuietly(dboffHeap);
+    closeQuietly(dbDisk);
+
+    threadPool.shutdownNow();
+  }
+
+  private static void closeQuietly(java.io.Closeable closeable) {
+    if (closeable == null) {
+      return;
+    }
+    try {
+      closeable.close();
+    } catch (IOException | RuntimeException e) {
+      logger.warn("could not close a node cache tier", e);
+    }
   }
 
   /**

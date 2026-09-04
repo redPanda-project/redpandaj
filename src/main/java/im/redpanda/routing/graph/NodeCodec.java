@@ -8,6 +8,8 @@ import im.redpanda.core.StateFormat;
 import im.redpanda.identity.NodeId;
 import java.io.IOException;
 import java.util.ArrayList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Explicit JSON mapping of a persisted routing-graph {@link Node} including its connection points
@@ -24,6 +26,8 @@ import java.util.ArrayList;
  */
 public final class NodeCodec {
 
+  private static final Logger logger = LogManager.getLogger();
+
   private static final String MEMBER_LAST_SEEN = "lastSeen";
 
   private NodeCodec() {}
@@ -39,6 +43,19 @@ public final class NodeCodec {
 
     JsonArray points = new JsonArray();
     for (Node.ConnectionPoint point : node.getConnectionPoints()) {
+      if (point.getIp() == null) {
+        // T150: Gson turns a null String into a JSON null, and nodeFromJson below used to throw
+        // on reading one back -- writer and reader disagreed, so one unpersistable point made the
+        // whole node (and, through MapDB's overflow, the whole node cache) unreadable. Both ends
+        // are fixed: nothing without an ip is written here, and the reader drops rather than
+        // rejects what an older file already holds. Node itself no longer accepts such a point
+        // either; skipping it here keeps a node object that predates that guard -- restored from
+        // an old file, or built by a test -- persistable instead of poisoning the store.
+        logger.warn(
+            "not persisting a connection point without an ip, node {}",
+            node.getNodeId().getKademliaId());
+        continue;
+      }
       JsonObject pointJson = new JsonObject();
       pointJson.addProperty("ip", point.getIp());
       pointJson.addProperty("port", point.getPort());
@@ -63,7 +80,16 @@ public final class NodeCodec {
         JsonObject pointJson = element.getAsJsonObject();
         JsonElement ip = pointJson.get("ip");
         if (ip == null || !ip.isJsonPrimitive()) {
-          throw new IOException("connection point without an ip");
+          // T150: this used to throw. A connection point is a dialable-address hint, not part of
+          // the node's identity, so one unusable hint must not cost the node -- and, since MapDB
+          // deserializes whole tiers inside clearWithExpire(), must not cost the entire node
+          // cache and with it every Node.getByKademliaId() call of the running process. The
+          // identity (nodeId) below stays strict: a node we cannot name is genuinely corrupt.
+          logger.warn(
+              "dropping a persisted connection point without an ip, node {}: {}",
+              nodeId.getKademliaId(),
+              pointJson);
+          continue;
         }
         points.add(
             new Node.ConnectionPoint(
