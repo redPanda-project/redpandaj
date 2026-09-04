@@ -179,7 +179,9 @@ public class Updater {
 
     NodeId nodeId = new NodeId();
 
-    System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
+    // The public key is printed only once the private half is safely on disk (see below): on the
+    // race path and on any IO failure the generated key is discarded, and an operator who had
+    // already seen a "Pub:" line could paste a trust anchor whose private key exists nowhere.
     // The private key must never be written to stdout (it may end up in logs);
     // write it to the file insertNewUpdate() reads, owner-readable only.
     try {
@@ -204,6 +206,7 @@ public class Updater {
       } catch (UnsupportedOperationException ignored) {
         // non-POSIX filesystem (e.g. Windows); file is still not printed anywhere
       }
+      System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
       System.out.println("Priv: written to " + keyFile.toAbsolutePath());
       System.out.println(
           "Next step is manual on purpose: paste the Pub value above into"
@@ -222,7 +225,7 @@ public class Updater {
   public static void insertNewUpdate() throws IOException, AddressFormatException {
 
     // lets test if we have the priv key before generating update
-    String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
+    String keyString = new String(Files.readAllBytes(signingKeyPath()));
     keyString = keyString.replace("\n", "").replace("\r", "");
 
     NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));

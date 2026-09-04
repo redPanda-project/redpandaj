@@ -35,15 +35,23 @@ class UpdaterCreateKeysTest {
 
   private Path keyFile;
 
+  /** Whatever the property held before this test, so a value set from outside survives. */
+  private String previousKeyPath;
+
   @BeforeEach
   void setup() {
     keyFile = new File(tempDir, "privateSigningKey.txt").toPath();
+    previousKeyPath = System.getProperty(Updater.SIGNING_KEY_PATH_PROPERTY);
     System.setProperty(Updater.SIGNING_KEY_PATH_PROPERTY, keyFile.toAbsolutePath().toString());
   }
 
   @AfterEach
   void cleanup() {
-    System.clearProperty(Updater.SIGNING_KEY_PATH_PROPERTY);
+    if (previousKeyPath == null) {
+      System.clearProperty(Updater.SIGNING_KEY_PATH_PROPERTY);
+    } else {
+      System.setProperty(Updater.SIGNING_KEY_PATH_PROPERTY, previousKeyPath);
+    }
   }
 
   @Test
