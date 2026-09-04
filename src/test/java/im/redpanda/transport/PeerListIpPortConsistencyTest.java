@@ -79,28 +79,39 @@ class PeerListIpPortConsistencyTest {
   }
 
   /**
-   * Every inbound light client from the same ip announces port 0, so they all share the key {@code
-   * "127.0.0.1:0"} and the last {@code add} owns the mapping. Removing an earlier peer must not
-   * evict the mapping of the peer that owns it now — which is why the removal is value-checked
-   * rather than a plain {@code remove(key)}.
+   * Colocated inbound light clients do not share an address-map entry any more — they have no entry
+   * at all (T150/TD183).
+   *
+   * <p>Every inbound light client from one ip announces port 0, so they used to share the key
+   * {@code "127.0.0.1:0"} with the last {@code add} owning it. Port 0 is not an address, and the
+   * shared bucket was both useless (nothing may resolve identity or ownership through it) and
+   * dangerous ({@link PeerList#removeIpPort(String, int)} evicts whoever the key points at, from
+   * all three indices and without a value check). {@code addPeer} therefore only keys peers with a
+   * dialable address, and {@code removeIpPort} refuses a port-0 lookup outright.
+   *
+   * <p>The removal that used to be at risk here is unaffected: alice's removal takes alice, and bob
+   * keeps his registration.
    */
   @Test
-  void removalDoesNotStealAColocatedPeersIpPortEntry() {
+  void colocatedLightClientsHaveNoSharedAddressEntryToSteal() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
     Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
     Peer bob = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
     peerList.add(alice);
-    peerList.add(bob); // same ip+port hash: bob now owns the mapping
+    peerList.add(bob);
+
+    assertThat(peerList.removeIpPort("127.0.0.1", 0))
+        .as("no light client may be reachable — let alone evictable — through \"<ip>:0\"")
+        .isFalse();
 
     peerList.remove(alice);
 
-    // removeIpPort resolves through that mapping and cascades to whoever it points at — so if it
-    // still finds and drops bob, alice's removal left his entry alone.
-    assertThat(peerList.removeIpPort("127.0.0.1", 0))
-        .as("bob's ip+port mapping must survive alice's removal")
-        .isTrue();
-    assertThat(peerList.get(bob.getKademliaId())).isNull();
+    assertThat(peerList.get(alice.getKademliaId())).isNull();
+    assertThat(peerList.get(bob.getKademliaId()))
+        .as("bob's registration must survive alice's removal")
+        .isSameAs(bob);
+    assertThat(bob.getIp()).as("and so must his address").isEqualTo("127.0.0.1");
   }
 
   /** A dialable peer keeps behaving as before — the guard removal must not change that. */
@@ -191,25 +202,26 @@ class PeerListIpPortConsistencyTest {
    * ConnectionReaderThread:230} — must not evict a live neighbour's mapping.
    *
    * <p>T88 made the two peer-based removal paths value-checked but left {@code removeIpPortOnly} on
-   * an unconditional {@code remove(key)}. Alice and Bob are two inbound light clients from the same
-   * ip, so they genuinely share the key {@code "127.0.0.1:0"} and Bob, added last, owns it. Wiping
-   * Alice's connection details used to drop Bob's mapping instead.
+   * an unconditional {@code remove(key)}. The pair used here are two ordinary dialable nodes, one
+   * of which reappeared at the other's address (a wipe, a reassigned address, gossip): {@code
+   * addLocked}'s contested-address branch leaves exactly one of them holding it, and clearing the
+   * one that does not hold it must not take the other's mapping with it.
    */
   @Test
-  void clearingConnectionDetailsDoesNotStealAColocatedPeersIpPortEntry() {
+  void clearingConnectionDetailsDoesNotStealAnotherPeersIpPortEntry() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
-    Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
-    Peer bob = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
+    Peer alice = new Peer("10.0.0.7", 59558, NodeId.generateWithSimpleKey());
     peerList.add(alice);
-    peerList.add(bob); // same address: bob now owns the mapping
+    Peer bob = new Peer("10.0.0.7", 59558, NodeId.generateWithSimpleKey());
+    peerList.add(bob); // a different identity claims alice's address; alice is idle, so bob wins
+
+    assertThat(bob.getIp()).as("bob holds the address now").isEqualTo("10.0.0.7");
+    assertThat(alice.getIp()).as("and alice gave it up").isNull();
 
     peerList.clearConnectionDetails(alice);
 
-    assertThat(alice.getIp()).as("alice's own details are still cleared").isNull();
-    // removeIpPort resolves through the address map and cascades to whoever it points at — so if it
-    // still finds and drops bob, alice's clearConnectionDetails left his entry alone.
-    assertThat(peerList.removeIpPort("127.0.0.1", 0))
+    assertThat(peerList.removeIpPort("10.0.0.7", 59558))
         .as("bob's ip+port mapping must survive alice's clearConnectionDetails")
         .isTrue();
     assertThat(peerList.get(bob.getKademliaId())).isNull();
@@ -220,13 +232,13 @@ class PeerListIpPortConsistencyTest {
   void removeIpPortOnlyOnlyRemovesTheMappingThePeerOwns() {
     PeerList peerList = ServerContext.buildDefaultServerContext().getPeerList();
 
-    Peer alice = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
-    Peer bob = inboundLightClient("127.0.0.1", NodeId.generateWithSimpleKey());
+    Peer alice = new Peer("10.0.0.7", 59558, NodeId.generateWithSimpleKey());
     peerList.add(alice);
+    Peer bob = new Peer("10.0.0.7", 59558, NodeId.generateWithSimpleKey());
     peerList.add(bob);
 
     assertThat(peerList.removeIpPortOnly(alice))
-        .as("alice never owned the mapping, so there is nothing for her to remove")
+        .as("alice no longer owns the mapping, so there is nothing for her to remove")
         .isFalse();
     assertThat(peerList.removeIpPortOnly(bob)).as("bob owns it").isTrue();
     assertThat(peerList.removeIpPortOnly(bob)).as("and only once").isFalse();

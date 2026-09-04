@@ -86,6 +86,38 @@ class PeerListLightClientAddressTest {
   }
 
   /**
+   * More than two, because "the last one wins" is exactly the shape the shared {@code "<ip>:0"}
+   * bucket had: every client must stay registered, keep its address, and none of them may be
+   * reachable — let alone evictable — through that key.
+   */
+  @Test
+  void manyLightClientsFromOneIp_allKeepTheirAddressAndRegistration() {
+    List<Peer> clients = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      Peer client = lightClient(LOOPBACK);
+      ctx.getPeerList().add(client);
+      client.setConnected(true);
+      clients.add(client);
+    }
+
+    for (Peer client : clients) {
+      assertThat(client.getIp()).isEqualTo(LOOPBACK);
+      assertThat(ctx.getPeerList().get(client.getKademliaId())).isSameAs(client);
+    }
+    assertThat(ctx.getPeerList().removeIpPort(LOOPBACK, 0))
+        .as("no light client may be evicted through the shared \"<ip>:0\" key")
+        .isFalse();
+
+    // Removing one leaves the others exactly as they were.
+    ctx.getPeerList().remove(clients.getFirst());
+    assertThat(ctx.getPeerList().get(clients.getFirst().getKademliaId())).isNull();
+    for (Peer client : clients.subList(1, clients.size())) {
+      assertThat(ctx.getPeerList().get(client.getKademliaId())).isSameAs(client);
+      assertThat(client.getIp()).isEqualTo(LOOPBACK);
+    }
+  }
+
+  /**
    * The mobile e2e failure itself: the second light client asks the entry node for its peer list
    * and must get all three loopback relays, with their public and X25519 keys.
    */
