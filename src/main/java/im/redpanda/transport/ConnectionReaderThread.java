@@ -25,11 +25,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * @author robin
  */
 public class ConnectionReaderThread implements Runnable {
+
+  private static final Logger logger = LogManager.getLogger();
 
   public static final int STD_TIMEOUT = 10;
   private static final ArrayList<ConnectionReaderThread> threads = new ArrayList<>();
@@ -94,7 +98,7 @@ public class ConnectionReaderThread implements Runnable {
 
     PeerList peerList = serverContext.getPeerList();
     if (buffer.remaining() < 30) {
-      System.out.println("not enough bytes for handshake");
+      logger.debug("not enough bytes for handshake yet, waiting for more");
       return false;
     }
 
@@ -147,7 +151,7 @@ public class ConnectionReaderThread implements Runnable {
     peerInHandshake.setPort(port);
 
     if (port < 0 || port > 65535) {
-      System.out.println("wrong port...");
+      logger.debug("handshake advertised an out-of-range port: {}", port);
       return false;
     }
 
@@ -168,12 +172,12 @@ public class ConnectionReaderThread implements Runnable {
 
     if (identity.equals(serverContext.getOwnNodeId())) {
       /** We connected to ourselves, disconnect */
-      System.out.println("connected to ourselves, disconnecting...");
+      logger.info("connected to ourselves, disconnecting");
       peerInHandshake.setStatus(2); // set disconnect code
       try {
         peerInHandshake.getSocketChannel().close();
       } catch (IOException e) {
-        e.printStackTrace();
+        logger.debug("could not close the self-connection", e);
       }
       /**
        * Lets remove this peer from our peerlist if it is present, note that an incoming connection
@@ -182,7 +186,11 @@ public class ConnectionReaderThread implements Runnable {
       if (peerInHandshake.getPeer() != null) {
         // PeerList.remove(peerInHandshake.getPeer());
         boolean b = peerList.removeIpPort(peerInHandshake.ip, peerInHandshake.port);
-        System.out.println("remove of peer successful?: " + b);
+        logger.debug(
+            "removed our own address {}:{} from the peer list: {}",
+            peerInHandshake.ip,
+            peerInHandshake.port,
+            b);
       }
       return false;
     }
@@ -221,7 +229,7 @@ public class ConnectionReaderThread implements Runnable {
             peerInHandshake.getSocketChannel().close();
             peerInHandshake.getKey().cancel();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.debug("could not close the connection of a peer with a wrong identity", e);
           }
           /**
            * Lets create a new Peer with the connection details but without any Identity so that
@@ -285,7 +293,7 @@ public class ConnectionReaderThread implements Runnable {
       }
     }
 
-    System.out.println("peer status for handshake: " + peerInHandshake.getStatus());
+    logger.debug("peer status after handshake: {}", peerInHandshake.getStatus());
     return true;
   }
 
@@ -330,7 +338,6 @@ public class ConnectionReaderThread implements Runnable {
       Log.sentry(e);
       Log.sentry(
           "Could not read in ConnectionReaderThread, buffer before read was: " + debugStringRead);
-      e.printStackTrace();
       key.cancel();
       if (peer.getSocketChannel() == channel) {
         peer.disconnect("could not read...");
@@ -351,7 +358,9 @@ public class ConnectionReaderThread implements Runnable {
       try {
         Thread.sleep(500);
       } catch (InterruptedException e) {
-        e.printStackTrace();
+        // Same reasoning as PeerJobs: the flag stays cleared so the reader loop is not turned
+        // into a busy spin; the loop's own `run` flag is what stops this thread.
+        logger.debug("interrupted while backing off from a zero-byte read", e);
       }
       Breadcrumb breadcrumb = new Breadcrumb();
       breadcrumb.setCategory("IO");
@@ -509,6 +518,17 @@ public class ConnectionReaderThread implements Runnable {
   public static void sendHandshake(ServerContext serverContext, PeerInHandshake peerInHandshake) {
 
     ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
+    if (writeBuffer == null) {
+      // borrowObject returns null when the pool cannot hand out a buffer at all. Without this
+      // guard the next line NPEs and the connection is left half-open with no diagnosis.
+      logger.warn("no buffer available for the handshake, closing the connection");
+      try {
+        peerInHandshake.getSocketChannel().close();
+      } catch (IOException e) {
+        logger.debug("could not close the connection after a failed handshake buffer borrow", e);
+      }
+      return;
+    }
     String bufferBeforeWriting = writeBuffer.toString();
 
     try {
@@ -530,11 +550,11 @@ public class ConnectionReaderThread implements Runnable {
         throw new RuntimeException("could not write all data for handshake...");
       }
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.debug("could not write the handshake, closing the connection", e);
       try {
         peerInHandshake.getSocketChannel().close();
       } catch (IOException ex) {
-        ex.printStackTrace();
+        logger.debug("could not close the connection after a failed handshake write", ex);
       }
     }
 
@@ -554,9 +574,9 @@ public class ConnectionReaderThread implements Runnable {
 
     try {
       long write = peerInHandshake.getSocketChannel().write(buffer);
-      System.out.println("written bytes to SEND_PUBLIC_KEY: " + write);
+      logger.debug("written bytes to SEND_PUBLIC_KEY: {}", write);
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.debug("could not send our public key", e);
     }
   }
 
@@ -573,9 +593,9 @@ public class ConnectionReaderThread implements Runnable {
 
     try {
       int write = peerInHandshake.getSocketChannel().write(writeBuffer);
-      System.out.println("written bytes to REQUEST_PUBLIC_KEY: " + write);
+      logger.debug("written bytes to REQUEST_PUBLIC_KEY: {}", write);
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.debug("could not request the peer's public key", e);
     }
   }
 
@@ -608,7 +628,7 @@ public class ConnectionReaderThread implements Runnable {
 
         int size = ConnectionHandler.peersToReadAndParse.size();
         if (size > 20) {
-          System.out.println("too many peers waiting for read: " + size);
+          logger.info("too many peers waiting for read: {}", size);
         }
 
         if (ConnectionHandler.peersToReadAndParse.peek() != null) {
@@ -631,7 +651,10 @@ public class ConnectionReaderThread implements Runnable {
                 Log.put("threads now: " + threads.size(), -10);
               } catch (Throwable e) {
                 maxThreads = maxThreads - 1;
-                System.out.println("reducing max threads: " + maxThreads);
+                logger.warn(
+                    "could not start another reader thread, reducing max threads to {}",
+                    maxThreads,
+                    e);
               }
             }
             threadLock.unlock();
@@ -663,7 +686,7 @@ public class ConnectionReaderThread implements Runnable {
         run = false;
         continue;
       } catch (Throwable e) {
-        e.printStackTrace();
+        logger.error("uncaught throwable in the connection reader loop", e);
       }
 
       if (peer == null) {

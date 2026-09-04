@@ -7,8 +7,12 @@ import im.redpanda.ops.Settings;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class PeerJobs extends Thread {
+
+  private static final Logger logger = LogManager.getLogger();
 
   /** A handshake that has not completed within this time is closed and dropped. */
   static final long HANDSHAKE_TIMEOUT_MS = 1000L * 10L;
@@ -30,7 +34,10 @@ public class PeerJobs extends Thread {
     try {
       sleep(3000);
     } catch (InterruptedException ex) {
-      ex.printStackTrace();
+      // Logged, not rethrown and the flag is deliberately NOT restored: this thread's stop signal
+      // is Server.isShuttingDown(), and a set interrupt flag would make every following sleep()
+      // throw immediately, turning the loop below into a busy spin.
+      logger.debug("interrupted during the initial delay", ex);
     }
 
     while (!Server.isShuttingDown()) {
@@ -38,7 +45,7 @@ public class PeerJobs extends Thread {
       try {
         sleep(1000 + Server.secureRandom.nextInt(4000));
       } catch (InterruptedException ex) {
-        ex.printStackTrace();
+        logger.debug("interrupted between two peer maintenance rounds", ex);
       }
 
       runOnce();
@@ -87,7 +94,7 @@ public class PeerJobs extends Thread {
       try {
         Thread.sleep(20);
       } catch (InterruptedException e) {
-        e.printStackTrace();
+        logger.debug("interrupted while pacing the per-peer maintenance loop", e);
       }
 
       Log.put("running over peer: " + peer, 120);
@@ -188,7 +195,7 @@ public class PeerJobs extends Thread {
           try {
             peerInHandshake.getSocketChannel().close();
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.debug("could not close a timed-out handshake connection", e);
           }
           toRemove.add(peerInHandshake);
         }

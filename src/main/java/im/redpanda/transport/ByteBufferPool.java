@@ -16,8 +16,12 @@ import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class ByteBufferPool {
+
+  private static final Logger logger = LogManager.getLogger();
 
   private static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(ByteBufferPool.class);
@@ -167,7 +171,7 @@ public class ByteBufferPool {
     try {
       byteBuffer = pool.borrowObject(key);
     } catch (Exception e) {
-      e.printStackTrace();
+      logger.warn("could not borrow a ByteBuffer of size class {} from the pool", key, e);
     }
 
     if (byteBuffer == null) {
@@ -184,7 +188,8 @@ public class ByteBufferPool {
         pool.invalidateObject(key, byteBuffer);
         byteBuffer = pool.borrowObject(key);
       } catch (Exception e) {
-        e.printStackTrace();
+        logger.warn("could not replace an invalid ByteBuffer of size class {}", key, e);
+        return null;
       }
     }
 
@@ -206,7 +211,7 @@ public class ByteBufferPool {
       try {
         pool.invalidateObject(key, byteBuffer);
       } catch (Exception e) {
-        e.printStackTrace();
+        logger.warn("could not invalidate a dirty ByteBuffer of size class {}", key, e);
       }
 
       StringBuilder out = new StringBuilder();
