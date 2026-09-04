@@ -4,7 +4,6 @@ import static im.redpanda.updater.UpdateTransfer.MAX_FUTURE_SKEW_MS;
 import static im.redpanda.updater.UpdateTransfer.SIGNATURE_LEN;
 import static im.redpanda.updater.UpdateTransfer.appendToWriteBuffer;
 import static im.redpanda.updater.UpdateTransfer.reporting;
-import static im.redpanda.updater.UpdateTransfer.requestUpdateContent;
 import static im.redpanda.updater.UpdateTransfer.updateApkPath;
 
 import im.redpanda.core.Command;
@@ -91,40 +90,15 @@ public class ApkUpdateHandler {
           serverContext.getLocalSettings().getUpdateAndroidTimestamp());
     }
     if (othersTimestamp > floor) {
-      Runnable runnable =
-          () -> {
-            // TD125: this is a download, so it waits behind other downloads - not behind, and not
-            // in front of, the uploads we serve to peers. It used to take updateUploadLock, which
-            // blocked every upload for the full hold below and still let a jar download run
-            // alongside this one.
-            UpdateTransfer.updateDownloadLock.lock();
-            try {
-              // Re-check under the lock: whoever held it before us may have installed a newer apk
-              // already, which moves the floor (recorded timestamp AND the stored apk's mtime).
-              if (othersTimestamp <= androidUpdateFloor()) {
-                return;
-              }
-              if (!requestUpdateContent(peer, Command.ANDROID_UPDATE_REQUEST_CONTENT)) {
-                // requestUpdateContent already logs why; do not claim a request we did not send.
-                return;
-              }
-              // info: the first line of an apk update actually happening on this node. Logged
-              // after the request is queued, so it never reports a download that never started.
-              logger.info(
-                  "our android.apk is outdated, requested the {} build from {}",
-                  othersTimestamp,
-                  peer.getNodeId());
-              try {
-                Thread.sleep(UpdateTransfer.downloadHoldMillis);
-              } catch (InterruptedException ignored) {
-              }
-            } finally {
-              logger.debug("apk download slot released, another peer may serve us now");
-              UpdateTransfer.updateDownloadLock.unlock();
-            }
-          };
       UpdateTransfer.updateTaskPool.submit(
-          reporting("android-update-request-content-download", runnable));
+          reporting(
+              "android-update-request-content-download",
+              UpdateTransfer.downloadTask(
+                  "android.apk",
+                  peer,
+                  Command.ANDROID_UPDATE_REQUEST_CONTENT,
+                  othersTimestamp,
+                  this::androidUpdateFloor)));
     }
     return 1 + 8;
   }

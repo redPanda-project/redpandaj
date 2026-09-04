@@ -134,6 +134,59 @@ public final class UpdateTransfer {
   }
 
   /**
+   * The download side of both artefacts: ask one peer for the newer build and hold the download
+   * slot for {@link #downloadHoldMillis} so it gets a chance to deliver before we try another one.
+   *
+   * <p>One method rather than two identical lambdas (T121d): the jar and the apk copy of this block
+   * are how the apk download ended up on the upload lock (TD125) and how the two of them ended up
+   * on different thread pools (TD126) in the first place. The only difference left is which command
+   * byte is sent and which floor is consulted, and both are parameters.
+   *
+   * @param artefact what appears in the log lines, {@code "jar"} or {@code "android.apk"}
+   * @param floor re-read <em>after</em> the lock is taken: whoever held it before us may have
+   *     installed something newer, which moves the floor through the recorded timestamp and through
+   *     the mtime of the file we now hold
+   */
+  static Runnable downloadTask(
+      String artefact,
+      Peer peer,
+      byte requestCommand,
+      long offeredTimestamp,
+      java.util.function.LongSupplier floor) {
+    return () -> {
+      updateDownloadLock.lock();
+      try {
+        if (offeredTimestamp <= floor.getAsLong()) {
+          logger.debug(
+              "{} offer {} is no longer newer than us after waiting for the download slot",
+              artefact,
+              offeredTimestamp);
+          return;
+        }
+        if (!requestUpdateContent(peer, requestCommand)) {
+          // requestUpdateContent already logs why; do not claim a request we did not send.
+          return;
+        }
+        // info: the first line of an update actually happening on this node and the anchor for
+        // the deploy watch. After the request is queued, so it never reports a download that
+        // never started.
+        logger.info(
+            "our {} is outdated, requested the {} build from {}",
+            artefact,
+            offeredTimestamp,
+            peer.getNodeId());
+        try {
+          Thread.sleep(downloadHoldMillis);
+        } catch (InterruptedException ignored) {
+        }
+      } finally {
+        logger.debug("{} download slot released, another peer may serve us now", artefact);
+        updateDownloadLock.unlock();
+      }
+    };
+  }
+
+  /**
    * Writes a single update-request command byte into the peer's write buffer.
    *
    * <p>{@code Peer.disconnect(String)} nulls {@code writeBuffer} while holding {@code

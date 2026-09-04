@@ -4,7 +4,6 @@ import static im.redpanda.updater.UpdateTransfer.MAX_FUTURE_SKEW_MS;
 import static im.redpanda.updater.UpdateTransfer.SIGNATURE_LEN;
 import static im.redpanda.updater.UpdateTransfer.appendToWriteBuffer;
 import static im.redpanda.updater.UpdateTransfer.reporting;
-import static im.redpanda.updater.UpdateTransfer.requestUpdateContent;
 import static im.redpanda.updater.UpdateTransfer.updateInstallPath;
 import static im.redpanda.updater.UpdateTransfer.updateInstallTmpPath;
 import static im.redpanda.updater.UpdateTransfer.updateJarPath;
@@ -77,33 +76,15 @@ public class JarUpdateHandler {
           serverContext.getLocalSettings().getUpdateTimestamp());
     }
     if (othersTimestamp > floor && Settings.isLoadUpdates()) {
-      Runnable runnable =
-          () -> {
-            UpdateTransfer.updateDownloadLock.lock();
-            try {
-              if (!requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)) {
-                // requestUpdateContent already logs why; do not claim a request we did not send.
-                return;
-              }
-              // info: this is the first line of an update actually happening on this node, and
-              // the anchor for the deploy watch. Logged after the request is queued, so it never
-              // reports a download that never started.
-              logger.info(
-                  "our jar is outdated, requested the {} build from {}",
+      UpdateTransfer.updateTaskPool.submit(
+          reporting(
+              "update-request-content-download",
+              UpdateTransfer.downloadTask(
+                  "jar",
+                  peer,
+                  Command.UPDATE_REQUEST_CONTENT,
                   othersTimestamp,
-                  peer.getNodeId());
-              try {
-                Thread.sleep(UpdateTransfer.downloadHoldMillis);
-              } catch (InterruptedException ignored) {
-              }
-            } finally {
-              logger.debug("jar download slot released, another peer may serve us now");
-              UpdateTransfer.updateDownloadLock.unlock();
-            }
-          };
-      // TD126: one pool for every update task, see UpdateTransfer.updateTaskPool. This was the
-      // single submit that went to Server.threadPool instead.
-      UpdateTransfer.updateTaskPool.submit(reporting("update-request-content-download", runnable));
+                  this::updateFloor)));
     }
     return 1 + 8;
   }
