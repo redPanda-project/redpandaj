@@ -12,7 +12,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.Security;
 import org.apache.logging.log4j.LogManager;
@@ -139,7 +138,10 @@ public class Updater {
       System.out.println(
           "Update of android.apk was successfully signed and inserted in the defaul client for upload.");
     } catch (java.nio.file.NoSuchFileException e) {
-      System.out.println("No android.apk found, not inserting any android update...");
+      // Name the file: the source is configurable via redpanda.android.apk.source now, so
+      // "no android.apk found" would send an operator looking in the wrong place.
+      System.out.println(
+          "No apk found at " + e.getFile() + ", not inserting any android update...");
     } catch (IOException e) {
       e.printStackTrace();
     } catch (AddressFormatException e) {
@@ -265,25 +267,74 @@ public class Updater {
     System.out.println("hash: " + Sha256Hash.create(toHash.array()));
   }
 
-  public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
+  /**
+   * System property naming the freshly built apk that {@link #insertNewAndroidUpdate()} signs and
+   * moves into place. Defaults to {@link #DEFAULT_ANDROID_APK_SOURCE}.
+   */
+  public static final String ANDROID_APK_SOURCE_PROPERTY = "redpanda.android.apk.source";
 
-    System.out.println("inserting android.apk as android update...");
+  /**
+   * Where a Flutter release build puts the apk, relative to this repository next to the mobile
+   * checkout.
+   *
+   * <p>TD130: this used to be spelled with backslashes ({@code ..\app\build\...}), which is a
+   * single path segment with backslashes in its name on Linux — so {@code lastModified()} returned
+   * 0 and the read failed on every non-Windows signing host, including the one that actually signs
+   * the testnet releases. Forward slashes work on both platforms.
+   */
+  public static final String DEFAULT_ANDROID_APK_SOURCE =
+      "../app/build/app/outputs/apk/release/app-release.apk";
+
+  /**
+   * The apk {@link #insertNewAndroidUpdate()} signs: {@value #ANDROID_APK_SOURCE_PROPERTY} if set,
+   * otherwise {@link #DEFAULT_ANDROID_APK_SOURCE}.
+   */
+  static Path androidApkSource() {
+    String configured = System.getProperty(ANDROID_APK_SOURCE_PROPERTY);
+    if (configured == null || configured.isBlank()) {
+      return Path.of(DEFAULT_ANDROID_APK_SOURCE);
+    }
+    try {
+      return Path.of(configured);
+    } catch (java.nio.file.InvalidPathException e) {
+      // Deliberately NOT the silent fallback UpdateTransfer.pathOverride() does. There the
+      // property only redirects where an update is stored, so the default is a safe answer; here
+      // it names the artefact we are about to sign with the network's update key, and quietly
+      // signing a different file than the operator asked for is the worst available outcome.
+      throw new IllegalArgumentException(
+          "unusable " + ANDROID_APK_SOURCE_PROPERTY + ": " + configured, e);
+    }
+  }
+
+  /** Signs the apk named by {@value #ANDROID_APK_SOURCE_PROPERTY} (or the default). */
+  public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
+    insertNewAndroidUpdate(androidApkSource());
+  }
+
+  /**
+   * Signs {@code source} with the local signing key, records timestamp and signature in the
+   * uploader node's settings and moves the apk to the file the node distributes ({@link
+   * UpdateTransfer#updateApkPath()}).
+   */
+  public static void insertNewAndroidUpdate(Path source)
+      throws IOException, AddressFormatException {
+
+    System.out.println("inserting " + source + " as android update...");
     // lets test if we have the priv key before generating update
-    String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
+    String keyString = new String(Files.readAllBytes(signingKeyPath()));
     keyString = keyString.replace("\n", "").replace("\r", "");
 
     NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
 
     System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
-    String fileName = "..\\app\\build\\app\\outputs\\apk\\release\\app-release.apk";
+    // Files.getLastModifiedTime, not File.lastModified(): the latter answers 0 for a missing file,
+    // which would be signed as a timestamp below the update floor and silently rejected by every
+    // peer. This throws NoSuchFileException instead, which main() reports naming the file it
+    // looked for.
+    long timestamp = Files.getLastModifiedTime(source).toMillis();
 
-    File file = new File(fileName);
-
-    long timestamp = file.lastModified();
-
-    Path path = Path.of(fileName);
-    byte[] data = Files.readAllBytes(path);
+    byte[] data = Files.readAllBytes(source);
 
     ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
     toHash.putLong(timestamp);
@@ -297,6 +348,30 @@ public class Updater {
 
     System.out.println("signature: " + Utils.bytesToHexString(signature));
 
+    // Publish the apk BEFORE recording it. The settings are what the node advertises to peers and
+    // over HTTP, so writing them first and then failing to put the file in place would leave the
+    // node offering an update it cannot serve. Same ordering rule as the node-side install in
+    // ApkUpdateHandler.installApkUpdate.
+    Path destination = UpdateTransfer.updateApkPath();
+    System.out.println("publishing the signed apk as " + destination + " for the client");
+    Path destinationDirectory = destination.getParent();
+    if (destinationDirectory != null) {
+      // The apk path is configurable, so it may well point somewhere that does not exist yet.
+      Files.createDirectories(destinationDirectory);
+    }
+    // Stage next to the destination rather than publishing the build output directly: the build
+    // output lives in another directory and possibly on another filesystem, where the publish
+    // would degrade to copy+delete and a peer could read the destination halfway through. Writing
+    // `data` also guarantees that what gets published is byte-for-byte what was just signed.
+    Path staging = UpdateTransfer.updateApkTmpPath(destination);
+    Files.write(staging, data);
+    UpdateTransfer.publishStagedFile(staging, destination);
+    if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
+      // The original moved the build output away; keep that, but never delete what we just
+      // published (a source configured to be the destination itself).
+      Files.deleteIfExists(source);
+    }
+
     LocalSettings localSettings = LocalSettings.load(59558);
 
     localSettings.setUpdateAndroidSignature(signature);
@@ -307,10 +382,5 @@ public class Updater {
     System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
 
     System.out.println("hash: " + Sha256Hash.create(toHash.array()));
-
-    System.out.println("renaming file to android.apk to be used from the client");
-
-    Path source = Path.of(fileName);
-    Files.move(source, Path.of("android.apk"), StandardCopyOption.REPLACE_EXISTING);
   }
 }
