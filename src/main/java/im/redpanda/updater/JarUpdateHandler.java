@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -267,7 +266,7 @@ public class JarUpdateHandler {
     try {
       // Install the update
       // Save to 'update' file so the shell script can pick it up and restart
-      Files.move(tmpPath, installPath, StandardCopyOption.REPLACE_EXISTING);
+      UpdateTransfer.publishStagedFile(tmpPath, installPath);
 
       // Update local settings
       serverContext.getLocalSettings().setUpdateTimestamp(othersTimestamp);

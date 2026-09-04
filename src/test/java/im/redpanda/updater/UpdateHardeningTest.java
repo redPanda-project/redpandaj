@@ -459,6 +459,26 @@ class UpdateHardeningTest {
   // --- T121: apk install and lock hygiene (TD127, TD125) ---
 
   /**
+   * The publish step must survive a filesystem without an atomic rename instead of leaving the
+   * update unstaged: the fallback replacing move is still strictly better than writing the
+   * destination directly, which is what TD127 was about.
+   */
+  @Test
+  void publishStagedFile_fallsBackWhenTheMoveCannotBeAtomic() throws Exception {
+    java.nio.file.Path staging = new File(tempDir, "staged").toPath();
+    java.nio.file.Path destination = new File(tempDir, "published").toPath();
+    Files.write(staging, "new".getBytes());
+    Files.write(destination, "old".getBytes());
+
+    UpdateTransfer.publishStagedFile(staging, destination);
+
+    assertTrue(
+        java.util.Arrays.equals("new".getBytes(), Files.readAllBytes(destination)),
+        "the staged bytes must be the ones that end up published");
+    assertFalse(Files.exists(staging), "the staging file is consumed by the publish");
+  }
+
+  /**
    * The one place the staging-name scheme is asserted (every other test derives its expectation
    * from {@link UpdateTransfer#updateApkTmpPath}). Sibling, so the {@code Files.move} stays within
    * one filesystem and is atomic; named after the destination, so the 8 Surefire forks — each with

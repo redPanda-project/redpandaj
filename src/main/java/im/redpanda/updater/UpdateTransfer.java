@@ -5,8 +5,12 @@ import im.redpanda.ops.Log;
 import im.redpanda.ops.Settings;
 import im.redpanda.transport.ConnectionReaderThread;
 import im.redpanda.transport.Peer;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
@@ -243,6 +247,31 @@ public final class UpdateTransfer {
    */
   static Path updateApkTmpPath(Path apkPath) {
     return apkPath.resolveSibling("tmp_" + apkPath.getFileName());
+  }
+
+  /**
+   * Publishes a fully written staging file onto its destination, atomically where the filesystem
+   * can do it.
+   *
+   * <p>{@code Files.move} with {@code REPLACE_EXISTING} alone is <em>not</em> guaranteed to be
+   * atomic — a provider may implement it as copy+delete even within one directory, which would put
+   * the "destination is truncated while the install runs" window (TD127) straight back. {@code
+   * ATOMIC_MOVE} asks for the rename that has no such window; it can only fail here for a
+   * filesystem that does not offer one at all (both paths are siblings, so this never crosses a
+   * device), and for that case the replacing move is still strictly better than writing the
+   * destination directly.
+   *
+   * <p>{@code ATOMIC_MOVE} implies replacement, so the two options are not combined: {@code
+   * Files.move} ignores every other option when it is present.
+   */
+  static void publishStagedFile(Path staging, Path destination) throws IOException {
+    try {
+      Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException | UnsupportedOperationException e) {
+      logger.warn(
+          "no atomic move available for {}, falling back to a replacing move", destination, e);
+      Files.move(staging, destination, StandardCopyOption.REPLACE_EXISTING);
+    }
   }
 
   /**

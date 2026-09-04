@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Date;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -289,7 +288,7 @@ public class ApkUpdateHandler {
       return;
     }
     try {
-      Files.move(tmpPath, apkPath, StandardCopyOption.REPLACE_EXISTING);
+      UpdateTransfer.publishStagedFile(tmpPath, apkPath);
     } catch (IOException e) {
       // Same reason as above: the apk on disk is still the old one, so the settings must keep
       // describing the old one too.
