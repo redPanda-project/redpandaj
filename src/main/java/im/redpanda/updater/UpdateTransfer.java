@@ -75,12 +75,14 @@ public final class UpdateTransfer {
    * what keeps them from drifting apart again.
    *
    * <p>Declared as an {@link Executor} rather than an {@code ExecutorService}, and not final, for
-   * two reasons (T121e). Nothing here ever looks at a {@code Future} — {@link #reporting(String,
-   * Runnable)} is what makes a failed task visible — and {@code execute} lets an uncaught throwable
-   * reach the thread's handler instead of being buried in a {@code Future} nobody reads. And a test
-   * can substitute {@link #SAME_THREAD_TASK_POOL}, which turns "the handler queued a task" into
-   * something that has already finished when {@code parseCommand} returns, so the assertion needs
-   * neither polling nor a timeout. Production never assigns it.
+   * two reasons (T121e). The narrow one: a test can substitute {@link #SAME_THREAD_TASK_POOL},
+   * which turns "the handler queued a task" into something that has already finished when {@code
+   * parseCommand} returns, so the assertion needs neither polling nor a timeout. The other: {@code
+   * submit} returns a {@code Future} that captures whatever the task throws, and nobody here ever
+   * looks at one, so the type was promising an error channel that is not read. What actually
+   * surfaces a failed task is {@link #reporting(String, Runnable)}, which every call site wraps its
+   * task in; {@code execute} says that plainly instead of leaving a second, silent one lying about.
+   * Production never assigns this field.
    */
   static Executor updateTaskPool = ConnectionReaderThread.threadPool;
 

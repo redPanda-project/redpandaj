@@ -664,32 +664,34 @@ class UpdateHardeningTest {
 
     CountDownLatch holderHasTheLock = new CountDownLatch(1);
     CountDownLatch releaseTheLock = new CountDownLatch(1);
+    AtomicReference<Throwable> holderFailure = new AtomicReference<>();
+    AtomicReference<Throwable> downloadFailure = new AtomicReference<>();
     Thread holder =
-        Thread.ofVirtual()
-            .start(
-                () -> {
-                  UpdateTransfer.updateDownloadLock.lock();
-                  try {
-                    holderHasTheLock.countDown();
-                    releaseTheLock.await();
-                  } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                  } finally {
-                    UpdateTransfer.updateDownloadLock.unlock();
-                  }
-                });
+        startRecording(
+            () -> {
+              UpdateTransfer.updateDownloadLock.lock();
+              try {
+                holderHasTheLock.countDown();
+                releaseTheLock.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              } finally {
+                UpdateTransfer.updateDownloadLock.unlock();
+              }
+            },
+            holderFailure);
     assertTrue(
         holderHasTheLock.await(10, TimeUnit.SECONDS), "the stand-in download never took the lock");
 
     Thread download =
-        Thread.ofVirtual()
-            .start(
-                UpdateTransfer.downloadTask(
-                    "android.apk",
-                    peer,
-                    Command.ANDROID_UPDATE_REQUEST_CONTENT,
-                    offered,
-                    () -> Updater.MIN_UPDATE_TIMESTAMP_MS));
+        startRecording(
+            UpdateTransfer.downloadTask(
+                "android.apk",
+                peer,
+                Command.ANDROID_UPDATE_REQUEST_CONTENT,
+                offered,
+                () -> Updater.MIN_UPDATE_TIMESTAMP_MS),
+            downloadFailure);
 
     // "nothing happened" needs a window - but a window can only fail if something IS queued, never
     // because the machine was slow, which is the difference to the wait this test used to do.
@@ -699,6 +701,8 @@ class UpdateHardeningTest {
     releaseTheLock.countDown();
     joinOrFail(holder, "the stand-in download never released the lock");
     joinOrFail(download, "the deferred download never ran after the lock was released");
+    assertNothingThrown(holderFailure, "the stand-in download");
+    assertNothingThrown(downloadFailure, "the deferred download");
 
     out.flip();
     assertEquals(
@@ -774,7 +778,35 @@ class UpdateHardeningTest {
    * instead of wedging the Surefire fork.
    */
   private static void runToCompletion(Runnable body, String message) {
-    joinOrFail(Thread.ofVirtual().start(body), message);
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    joinOrFail(startRecording(body, failure), message);
+    assertNothingThrown(failure, message);
+  }
+
+  /**
+   * Starts {@code body} on a virtual thread, recording anything it throws into {@code failure}.
+   *
+   * <p>Without this a body that blows up takes its exception to the grave: the thread dies, the
+   * join returns, {@code isAlive()} is false, and the test passes having asserted nothing.
+   */
+  private static Thread startRecording(Runnable body, AtomicReference<Throwable> failure) {
+    return Thread.ofVirtual()
+        .start(
+            () -> {
+              try {
+                body.run();
+              } catch (Throwable t) {
+                failure.set(t);
+              }
+            });
+  }
+
+  /** Fails with the recorded cause if the thread {@link #startRecording} started threw. */
+  private static void assertNothingThrown(AtomicReference<Throwable> failure, String message) {
+    Throwable thrown = failure.get();
+    if (thrown != null) {
+      throw new AssertionError(message + ": the work threw on its own thread", thrown);
+    }
   }
 
   /**
