@@ -787,9 +787,6 @@ public class Peer implements Comparable<Peer> {
   }
 
   public void setupConnectionForPeer(PeerInHandshake peerInHandshake) {
-    // disconnect old connection if present
-    disconnect("new connection for this peer");
-
     // The whole connection swap — state flags, buffers, socketChannel, selectionKey AND the
     // cipher streams — happens in one writeBufferLock section: a concurrently running
     // ConnectionReaderThread (readConnection/decryptInputData work under the same lock since
@@ -798,9 +795,21 @@ public class Peer implements Comparable<Peer> {
     // (REDPANDAJ-2EE) or leaks bytes between the old and the new connection. The only caller
     // (ConnectionHandler.setupConnection) already holds this lock; taking the reentrant lock
     // here as well keeps the invariant local to this class.
+    //
+    // The disconnect of the previous connection is part of that section (TD143). It used to run
+    // before the lock was taken, which opened a window in which this peer was neither connected
+    // nor connecting: disconnect() clears both flags and setConnected(true) is only reached a few
+    // instructions later. OutboundHandler reads those flags from an unsynchronised snapshot, so a
+    // pass that fell into the window saw an idle peer and dialled a redundant parallel connection
+    // — which the far side then swaps in ("newest wins", T54) and thereby tears down the
+    // connection that had just been established. Inside the lock the transition is atomic for
+    // everyone who takes it, and OutboundHandler.claimForDial() does.
     ReentrantLock writeBufferLock = getWriteBufferLock();
     writeBufferLock.lock();
     try {
+      // disconnect old connection if present
+      disconnect("new connection for this peer");
+
       setConnected(true);
       isConnecting = false;
       authed = true;

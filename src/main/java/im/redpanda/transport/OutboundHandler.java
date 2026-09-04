@@ -31,12 +31,51 @@ public class OutboundHandler extends Thread {
     // System.out.println("try interrupt");
   }
 
+  /**
+   * Marks a peer as being dialled by us, or refuses when it already has a connection.
+   *
+   * <p>All the guards in {@link #run()} work on an unsynchronised {@code snapshot()} of the peer
+   * list, and the flags they read ({@code connected}, {@code isConnecting}) are mutated by the
+   * selector thread. {@link Peer#setupConnectionForPeer(PeerInHandshake)} clears both while it
+   * swaps a new connection in, so a snapshot taken inside that window shows an idle peer and the
+   * whole chain of guards — including {@code alreadyConnectedToSameNodeId}, which additionally only
+   * runs for candidates that carry a {@link im.redpanda.identity.KademliaId} — waves the dial
+   * through (TD143). The redundant connection is then swapped in by the far side ("newest wins",
+   * T54), which tears down the connection that had just been established, and the far side redials
+   * in turn.
+   *
+   * <p>This is the last check before a socket is opened and the only one that is not a snapshot
+   * read: it takes the peer's own {@code writeBufferLock}, the lock {@code
+   * setupConnectionForPeer()} holds across the entire swap, so the window cannot be observed any
+   * more.
+   *
+   * @return {@code true} if this peer is now ours to dial, {@code false} if it is already connected
+   *     or connecting and must be left alone
+   */
+  static boolean claimForDial(final Peer peer) {
+    peer.getWriteBufferLock().lock();
+    try {
+      if (peer.isConnected() || peer.isConnecting) {
+        return false;
+      }
+      peer.retries++;
+      peer.isConnecting = true;
+      peer.isConnectionInitializedByMe = true;
+      peer.setLastPongReceived(System.currentTimeMillis());
+      return true;
+    } finally {
+      peer.getWriteBufferLock().unlock();
+    }
+  }
+
   private static boolean connectTo(ServerContext serverContext, final Peer peer) {
 
-    peer.retries++;
-    peer.isConnecting = true;
-    peer.isConnectionInitializedByMe = true;
-    peer.setLastPongReceived(System.currentTimeMillis());
+    if (!claimForDial(peer)) {
+      // Lost the race against a connection that was being established for this peer anyway.
+      // Reported as "no new connection", which only costs this pass a bit of its dial budget.
+      Log.put("not dialing " + peer.ip + ":" + peer.port + ", it just got a connection", 70);
+      return false;
+    }
 
     Node byKademliaId = Node.getByKademliaId(serverContext, peer.getKademliaId());
 
@@ -268,6 +307,10 @@ public class OutboundHandler extends Thread {
         }
 
         boolean alreadyConnectedToSameNodeId = false;
+        // The id check is only an optimisation: equalsNodeId() is false whenever either side has
+        // no KademliaId, so a candidate without one can never match here anyway. Such a candidate
+        // is covered by isAddressAlreadyInUse() above, and everything this loop can miss because
+        // it reads an unsynchronised snapshot is caught by claimForDial() (TD143).
         if (peer.getKademliaId() != null) {
           // already connected to same trusted node?
           for (Peer p2 : peers) {
