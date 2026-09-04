@@ -16,8 +16,12 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class KademliaSearchJob extends Job {
+
+  private static final Logger logger = LogManager.getLogger();
 
   /**
    * Here we use a blacklist to block search request for the same KademliaId in short time
@@ -114,7 +118,7 @@ public class KademliaSearchJob extends Job {
 
     /** check for timeout, maybe we already got an answer but not SEND_TO_NODES */
     if (getEstimatedRuntime() > 1000 * 5) {
-      System.out.println("5 second timeout reached for KadSearch... ");
+      logger.debug("5 second timeout reached for KadSearch");
       success();
       done();
       return;
@@ -160,7 +164,9 @@ public class KademliaSearchJob extends Job {
             askedPeers++;
           }
         } catch (InterruptedException e) {
-          e.printStackTrace();
+          // Restore the flag: swallowing it left the job's thread looking uninterrupted.
+          Thread.currentThread().interrupt();
+          logger.debug("interrupted while queueing KADEMLIA_GET for {}", p);
         }
       }
     }
@@ -198,6 +204,15 @@ public class KademliaSearchJob extends Job {
   public void ack(KadContent c, Peer p) {
     synchronized (contents) {
       contents.add(c);
+    }
+    // Same two holes the insert job had, reachable from KADEMLIA_GET_ANSWER: peers is null until
+    // init() has run (Job.start() registers the job first) and on the blacklisted-key path above,
+    // and the map's PeerComparator dereferences getKademliaId(), which is null for a peer that
+    // never sent a public key. The answer itself is kept either way — only the bookkeeping of
+    // which peer we asked is skipped, and such a peer was never in the map to begin with.
+    if (peers == null || p.getNodeId() == null) {
+      logger.debug("not counting the KADEMLIA_GET_ANSWER of {} towards job {}", p, getJobId());
+      return;
     }
     peers.put(p, SUCCESS);
   }

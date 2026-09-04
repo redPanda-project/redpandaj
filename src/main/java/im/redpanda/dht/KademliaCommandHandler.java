@@ -42,7 +42,10 @@ public class KademliaCommandHandler {
     var runningJob = serverContext.getJobRegistry().get(jobId);
     if (runningJob instanceof KademliaInsertJob job) {
       job.ack(peer);
-      System.out.println("ACK from peer: " + peer.getNodeId().toString());
+      // TD133: this was a System.out.println with peer.getNodeId().toString() on it. A light
+      // client that never sent a public key has a null NodeId, so an ACK from one NPEd out of the
+      // dispatcher — the log4j placeholder renders "null" instead.
+      logger.debug("ACK for job {} from peer {} (node id {})", jobId, peer, peer.getNodeId());
     }
   }
 

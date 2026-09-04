@@ -14,9 +14,13 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 public class NodeInfoSetRefreshJob extends Job {
+
+  private static final Logger logger = LogManager.getLogger();
 
   public NodeInfoSetRefreshJob(ServerContext serverContext) {
     super(serverContext, Duration.ofSeconds(15).toMillis(), true, true);
@@ -41,7 +45,7 @@ public class NodeInfoSetRefreshJob extends Job {
       nodeInfoModel.addService("outbound_v1");
     }
 
-    System.out.println("string to store: " + nodeInfoModel.export());
+    logger.debug("storing node info: {}", nodeInfoModel.export());
 
     byte[] payload = nodeInfoModel.export().getBytes();
 

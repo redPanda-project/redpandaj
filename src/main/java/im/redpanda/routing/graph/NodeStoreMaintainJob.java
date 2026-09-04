@@ -24,7 +24,8 @@ public class NodeStoreMaintainJob extends Job {
         serverContext.getNodeStore().maintainNodes();
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      // Log.sentry already logs the throwable; the extra printStackTrace only duplicated it on
+      // stdout, outside log4j's file appender.
       Log.sentry(e);
     }
   }

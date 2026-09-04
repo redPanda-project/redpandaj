@@ -163,6 +163,46 @@ class InboundCommandProcessorEvenMoreCoverageTest {
     assertEquals(1 + 4 + ackData.length, consumed);
   }
 
+  /**
+   * TD133: {@code handleJobAck} logged the ack with {@code peer.getNodeId().toString()}. A light
+   * client that never sent a public key has a null NodeId, so an ACK from one threw an NPE out of
+   * the dispatcher — on the log line, after the job had already been acked.
+   */
+  @Test
+  void parseJobAck_fromPeerWithoutNodeId_doesNotThrow() {
+    NodeId author = NodeId.generateWithSimpleKey();
+    KadContent kad =
+        new KadContent(System.currentTimeMillis(), author.exportPublic(), "ack-me".getBytes());
+    kad.signWith(author);
+
+    KademliaInsertJob job = new KademliaInsertJob(ctx, kad);
+
+    Peer withId = new Peer("127.0.0.5", 6667, NodeId.generateWithSimpleKey());
+    withId.setConnected(true);
+    ctx.getPeerList().add(withId);
+
+    job.init();
+    job.start();
+
+    byte[] ackData = JobAck.newBuilder().setJobId(job.getJobId()).build().toByteArray();
+    ByteBuffer in = ByteBuffer.allocate(4 + ackData.length);
+    in.putInt(ackData.length);
+    in.put(ackData);
+    in.flip();
+
+    // A light client: connected, but no NodeId was ever exchanged.
+    Peer lightClient = new Peer("127.0.0.6", 7779);
+    lightClient.setConnected(true);
+    assertNull(lightClient.getNodeId());
+
+    int consumed = proc.parseCommand(Command.JOB_ACK, in, lightClient);
+    assertEquals(1 + 4 + ackData.length, consumed);
+
+    // Stop the recurring job: nothing in this test drives it to done(), so its future would keep
+    // firing on the shared scheduler for the rest of the suite.
+    job.done();
+  }
+
   @Test
   void kademliaGet_miss_startsSearch_returnsConsumed() {
     Peer peer = new Peer("127.0.0.1", 8888, ctx.getNodeId());

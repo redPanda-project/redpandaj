@@ -10,8 +10,12 @@ import im.redpanda.transport.PeerList;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class KademliaInsertJob extends Job {
+
+  private static final Logger logger = LogManager.getLogger();
 
   public static final int SEND_TO_NODES = 2;
   private static final int NONE = 0;
@@ -96,18 +100,18 @@ public class KademliaInsertJob extends Job {
             peers.put(p, ASKED);
             askedPeers++;
 
-            System.out.println(
-                "putKadCmd to peer: "
-                    + p.getNodeId().toString()
-                    + " size: "
-                    + peers.size()
-                    + " distance: "
-                    + kadContent.getId().getDistance(p.getKademliaId())
-                    + " target: "
-                    + kadContent.getId());
+            logger.debug(
+                "putKadCmd to peer {} (node id {}) size: {} distance: {} target: {}",
+                p,
+                p.getNodeId(),
+                peers.size(),
+                kadContent.getId().getDistance(p.getKademliaId()),
+                kadContent.getId());
           }
         } catch (InterruptedException e) {
-          e.printStackTrace();
+          // Restore the flag: swallowing it left the job's thread looking uninterrupted.
+          Thread.currentThread().interrupt();
+          logger.debug("interrupted while queueing KADEMLIA_STORE for {}", p);
         }
       }
     }
@@ -120,7 +124,23 @@ public class KademliaInsertJob extends Job {
   }
 
   public void ack(Peer p) {
-    // todo: concurrency?
+    // Only peers that have a NodeId ever enter this map (init() skips the others), and the map is
+    // sorted by PeerComparator, which dereferences getKademliaId(). Acking a peer without one
+    // therefore NPEd inside put() — reachable from the wire: any light client that sends a JOB_ACK
+    // carrying a live insert job's id took the whole command loop down with it (found while
+    // making the TD133 log line null-safe; the NPE happened before that line was ever reached).
+    if (peers == null) {
+      // Job.start() registers the job in the JobRegistry BEFORE init() runs (init() is scheduled
+      // on the job thread), so an inbound JOB_ACK can find this job through the registry while
+      // peers is still null. Same window KademliaSearchJob.work() guards against for Sentry
+      // REDPANDAJ-2E3.
+      logger.debug("ignoring JOB_ACK from {}: job {} has not been initialised yet", p, getJobId());
+      return;
+    }
+    if (p.getNodeId() == null) {
+      logger.debug("ignoring JOB_ACK from {}: peer has no node id, it was never asked", p);
+      return;
+    }
     peers.put(p, SUCCESS);
   }
 }
