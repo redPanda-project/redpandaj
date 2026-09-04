@@ -8,6 +8,7 @@ package im.redpanda.transport;
 import im.redpanda.core.Command;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.Utils;
 import im.redpanda.ops.Log;
@@ -24,6 +25,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -1075,6 +1077,15 @@ public class ConnectionHandler extends Thread {
       target = registered;
     }
 
+    if (losesTheSimultaneousOpenTieBreak(target, peerInHandshake)) {
+      logger.info(
+          "simultaneous open with {}: keeping the connection dialled by the lower KademliaId and"
+              + " dropping this one",
+          peerInHandshake.getIdentity());
+      dropHandshakeConnection(peerInHandshake);
+      return false;
+    }
+
     ReentrantLock writeBufferLock = target.getWriteBufferLock();
     writeBufferLock.lock();
 
@@ -1126,6 +1137,66 @@ public class ConnectionHandler extends Thread {
     } finally {
       writeBufferLock.unlock();
     }
+  }
+
+  /**
+   * How long after a connection was established a second, completed connection to the same node is
+   * treated as a <em>simultaneous open</em> rather than as a reconnect (TD163).
+   *
+   * <p>Both ends of a simultaneous open establish their two sockets within about one round trip, so
+   * a second of leeway is already generous; ten seconds is chosen so that a slow handshake still
+   * falls inside the window on both ends, since the tie-break is only symmetric while both ends
+   * classify the situation the same way. It has to stay far below any half-open detection horizon
+   * ({@link Settings#pingTimeout} is 65 s): a peer that lost its socket and redials minutes later
+   * must still be able to replace our stale connection, which is what the "newest wins" policy of
+   * {@link Peer#setupConnectionForPeer(PeerInHandshake)} is for (T54).
+   */
+  static final long SIMULTANEOUS_OPEN_WINDOW_MS = 10_000;
+
+  /**
+   * The deterministic half of the duplicate-connection policy (TD163).
+   *
+   * <p>"Newest wins" resolves a duplicate connection, but not a <em>simultaneous</em> one: if two
+   * nodes dial each other at the same time, both handshakes complete, each end adopts the socket
+   * the other end has just closed, and both are left with nothing until the random {@code
+   * OutboundHandler} interval breaks the symmetry (it took 7.5 minutes on the testnet on
+   * 2026-09-03). Nothing in "newest wins" makes the two ends pick the <em>same</em> socket, because
+   * each end sees a different one as the newest.
+   *
+   * <p>So when a live connection already exists and the second one is that fresh, the surviving
+   * connection is the one <b>dialled by the lower {@link im.redpanda.identity.KademliaId}</b> — a
+   * rule both ends evaluate on the same two inputs (who dialled, whose id is lower) and therefore
+   * answer identically, whichever order the two handshakes complete in. The end whose dial loses
+   * drops it and keeps the connection it has; the other end adopts the winner and closes its own
+   * outbound in {@code setupConnectionForPeer}'s disconnect.
+   *
+   * <p>Not applied to light clients: they have no listening socket, so they can only ever be the
+   * dialling side and a simultaneous open is impossible. Dropping their reconnect because we still
+   * hold a fresh connection would cost them a round trip for nothing.
+   */
+  private boolean losesTheSimultaneousOpenTieBreak(Peer target, PeerInHandshake peerInHandshake) {
+    if (!target.isConnected() || peerInHandshake.isLightClient() || target.isLightClient()) {
+      return false;
+    }
+    long ageOfTheLiveConnection = System.currentTimeMillis() - target.connectedSince;
+    if (ageOfTheLiveConnection >= SIMULTANEOUS_OPEN_WINDOW_MS) {
+      // Not a simultaneous open but a reconnect onto a connection we still believe in: newest wins.
+      return false;
+    }
+    if (ageOfTheLiveConnection < 0) {
+      // The wall clock moved backwards (NTP step, VM resume) since the connection was established,
+      // so its age is unknown and it may well be an old one. Fall back to "newest wins", the
+      // policy that never refuses a reconnect (Copilot review, PR #359).
+      return false;
+    }
+    KademliaId ourId = serverContext.getOwnNodeId();
+    KademliaId theirId = peerInHandshake.getIdentity();
+    if (ourId == null || theirId == null) {
+      return false;
+    }
+    boolean weAreLower = Arrays.compareUnsigned(ourId.getBytes(), theirId.getBytes()) < 0;
+    // The new connection survives iff it was dialled by the lower id.
+    return peerInHandshake.isInitiatedByUs() != weAreLower;
   }
 
   /**
