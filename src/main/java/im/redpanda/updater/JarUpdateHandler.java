@@ -76,7 +76,7 @@ public class JarUpdateHandler {
           serverContext.getLocalSettings().getUpdateTimestamp());
     }
     if (othersTimestamp > floor && Settings.isLoadUpdates()) {
-      UpdateTransfer.updateTaskPool.submit(
+      UpdateTransfer.updateTaskPool.execute(
           reporting(
               "update-request-content-download",
               UpdateTransfer.downloadTask(
@@ -187,7 +187,7 @@ public class JarUpdateHandler {
             UpdateTransfer.updateUploadLock.release();
           }
         };
-    UpdateTransfer.updateTaskPool.submit(reporting("update-answer-content-upload", runnable));
+    UpdateTransfer.updateTaskPool.execute(reporting("update-answer-content-upload", runnable));
     return 1;
   }
 
@@ -243,7 +243,7 @@ public class JarUpdateHandler {
       // handleRequestContent above). Everything the reader thread would otherwise need to read from
       // the connection buffer has already been captured above (othersTimestamp, signatureBytes,
       // data), so nothing here races the reader moving on to the next command.
-      UpdateTransfer.updateTaskPool.submit(
+      UpdateTransfer.updateTaskPool.execute(
           reporting(
               "install-jar-update", () -> installJarUpdate(othersTimestamp, signatureBytes, data)));
     }
