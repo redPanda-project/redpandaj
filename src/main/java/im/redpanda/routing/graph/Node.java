@@ -117,9 +117,10 @@ public class Node {
     seen();
     if (ip == null) {
       // T150: a connection point is an address we can dial again, so an entry without an ip is
-      // not a weaker hint, it is no hint at all -- and it is unpersistable: NodeCodec writes the
-      // ip as a JSON null and refuses to read one back, so a single such point made the whole
-      // node cache unreadable and took the NodeStore down 15 minutes later (deploy #9). The
+      // not a weaker hint, it is no hint at all. It also used to be unpersistable: NodeCodec
+      // wrote the ip as a JSON null and threw on reading one back, so a single such point made
+      // the whole node cache unreadable and took the NodeStore down 15 minutes later (deploy
+      // #9). The codec tolerates it now, but the point still carries no information. The
       // callers that can pass null are ConnectionHandler.setupConnection and above all
       // NodeConnectionPointsSeenJob, which reads Peer.getIp() -- null for every peer whose
       // address was taken away by PeerList.addLocked's "another identity claims this address"

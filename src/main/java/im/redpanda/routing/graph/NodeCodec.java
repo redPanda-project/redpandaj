@@ -44,12 +44,13 @@ public final class NodeCodec {
     JsonArray points = new JsonArray();
     for (Node.ConnectionPoint point : node.getConnectionPoints()) {
       if (point.getIp() == null) {
-        // T150: Gson turns a null String into a JSON null, which nodeFromJson below cannot read
-        // back -- writer and reader disagreed, so one unpersistable point made the whole node
-        // (and, through MapDB's overflow, the whole node cache) unreadable. Node itself no longer
-        // accepts such a point; skipping it here keeps a node object that predates that guard
-        // -- restored from an old file, or built by a test -- persistable instead of poisoning
-        // the store.
+        // T150: Gson turns a null String into a JSON null, and nodeFromJson below used to throw
+        // on reading one back -- writer and reader disagreed, so one unpersistable point made the
+        // whole node (and, through MapDB's overflow, the whole node cache) unreadable. Both ends
+        // are fixed: nothing without an ip is written here, and the reader drops rather than
+        // rejects what an older file already holds. Node itself no longer accepts such a point
+        // either; skipping it here keeps a node object that predates that guard -- restored from
+        // an old file, or built by a test -- persistable instead of poisoning the store.
         continue;
       }
       JsonObject pointJson = new JsonObject();
@@ -81,7 +82,10 @@ public final class NodeCodec {
           // deserializes whole tiers inside clearWithExpire(), must not cost the entire node
           // cache and with it every Node.getByKademliaId() call of the running process. The
           // identity (nodeId) below stays strict: a node we cannot name is genuinely corrupt.
-          logger.warn("dropping a persisted connection point without an ip");
+          logger.warn(
+              "dropping a persisted connection point without an ip, node {}: {}",
+              nodeId.getKademliaId(),
+              pointJson);
           continue;
         }
         points.add(
