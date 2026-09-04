@@ -46,7 +46,13 @@ public class JarUpdateHandler {
   /** Command 9: a peer asks which jar version we have. */
   public int handleRequestTimestamp(Peer peer) {
     long timestamp = serverContext.getLocalSettings().getUpdateTimestamp();
-    peer.enqueueTimestamp(Command.UPDATE_ANSWER_TIMESTAMP, timestamp);
+    if (!peer.enqueueTimestamp(Command.UPDATE_ANSWER_TIMESTAMP, timestamp)) {
+      // The peer disconnected between sending the request and us answering it. Nothing to repair
+      // — it will ask again after reconnecting — but the drop used to be entirely silent, which
+      // during a deploy looks exactly like a node that refuses to answer.
+      logger.debug(
+          "could not queue UPDATE_ANSWER_TIMESTAMP for {}: peer already disconnected", peer);
+    }
     return 1;
   }
 
@@ -62,14 +68,25 @@ public class JarUpdateHandler {
     }
     long floor = updateFloor();
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateTimestamp()) {
-      System.out.println("WARNING: peer has outdated redPandaj version! " + peer.getNodeId());
+      // debug: during a rollout this fires for every timestamp exchange with every node that has
+      // not been updated yet, i.e. for half the network for as long as the rollout takes.
+      logger.debug(
+          "peer {} has an outdated redPandaj version: {} < ours {}",
+          peer.getNodeId(),
+          othersTimestamp,
+          serverContext.getLocalSettings().getUpdateTimestamp());
     }
     if (othersTimestamp > floor && Settings.isLoadUpdates()) {
       Runnable runnable =
           () -> {
             UpdateTransfer.updateDownloadLock.lock();
             try {
-              System.out.println("our version is outdated, we try to download it from this peer!");
+              // info: this is the first line of an update actually happening on this node, and
+              // the anchor for the deploy watch.
+              logger.info(
+                  "our jar is outdated, requesting the {} build from {}",
+                  othersTimestamp,
+                  peer.getNodeId());
               if (!requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)) {
                 return;
               }
@@ -78,7 +95,7 @@ public class JarUpdateHandler {
               } catch (InterruptedException ignored) {
               }
             } finally {
-              System.out.println("we can now download it from another peer...");
+              logger.debug("jar download slot released, another peer may serve us now");
               UpdateTransfer.updateDownloadLock.unlock();
             }
           };
@@ -135,8 +152,7 @@ public class JarUpdateHandler {
       return 1;
     }
     if (serverContext.getLocalSettings().getUpdateSignature() == null) {
-      System.out.println(
-          "we dont have an official signature to upload that update to other peers!");
+      logger.debug("no official signature for our jar, not uploading it to {}", peer.getNodeId());
       return 1;
     }
     Runnable runnable =
@@ -149,7 +165,12 @@ public class JarUpdateHandler {
             }
             Path path = updateJarPath();
             try {
-              System.out.println("we send the update to a peer!");
+              // info: the uploading half of a deploy; the pair of this line and the receiver's
+              // "installed" line is what a deploy watch follows.
+              logger.info(
+                  "sending our jar ({}) to {}",
+                  serverContext.getLocalSettings().getUpdateTimestamp(),
+                  peer.getNodeId());
               byte[] data = Files.readAllBytes(path);
               ByteBuffer a =
                   ByteBuffer.allocate(
@@ -168,14 +189,14 @@ public class JarUpdateHandler {
                 return;
               }
             } catch (FileNotFoundException e) {
+              logger.warn("the jar we are supposed to upload is not at {}", path, e);
               Log.sentry(e);
-              e.printStackTrace();
             } catch (IOException e) {
               // Copilot on #332: the moved code reported the same exception to Sentry twice
-              // (a copy-paste in the original). Report once, and keep the stack trace like the
-              // FileNotFoundException branch above.
+              // (a copy-paste in the original). Report once, with the stack trace on the log
+              // record rather than on stderr (T121d).
+              logger.warn("could not read our jar at {} to upload it", path, e);
               Log.sentry(e);
-              e.printStackTrace();
             }
           } finally {
             UpdateTransfer.updateUploadLock.release();
@@ -218,7 +239,7 @@ public class JarUpdateHandler {
       // Verify signature before writing anything
       NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
       if (publicUpdaterKey == null) {
-        System.out.println("No public updater key available, cannot verify update.");
+        logger.warn("no public updater key available, cannot verify the jar update from {}", peer);
         return consumedBytes;
       }
 
@@ -227,7 +248,7 @@ public class JarUpdateHandler {
       toHash.put(data);
 
       if (!publicUpdaterKey.verify(toHash.array(), signatureBytes)) {
-        System.out.println("Update verification failed! Signature invalid.");
+        logger.warn("jar update from {} rejected: signature invalid", peer);
         return consumedBytes;
       }
 
@@ -273,12 +294,11 @@ public class JarUpdateHandler {
       serverContext.getLocalSettings().setUpdateSignature(signatureBytes);
       serverContext.getLocalSettings().save(serverContext.getPort());
 
-      System.out.println(
-          "Update successfully verified and saved to '"
-              + installPath
-              + "'. New timestamp: "
-              + othersTimestamp);
-      System.out.println("Stopping server to apply update...");
+      logger.info(
+          "jar update verified and installed to '{}', new timestamp {}; stopping the server to"
+              + " apply it",
+          installPath,
+          othersTimestamp);
 
       // Exit asynchronously to allow current method to return and log to be written
       Thread.ofVirtual()
@@ -297,7 +317,7 @@ public class JarUpdateHandler {
 
     } catch (IOException e) {
       Log.sentry(e);
-      System.out.println("Failed to install update: " + e.getMessage());
+      logger.error("failed to install the jar update to '{}'", installPath, e);
     }
   }
 }

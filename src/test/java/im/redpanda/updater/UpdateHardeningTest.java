@@ -459,6 +459,28 @@ class UpdateHardeningTest {
   // --- T121: apk install and lock hygiene (TD127, TD125) ---
 
   /**
+   * TD191. Both timestamp answers (commands 9 and 13) discarded the {@code enqueueTimestamp} return
+   * value, so a peer that disconnected between its request and our answer was dropped in complete
+   * silence — indistinguishable, from the requesting side, from a node that refuses to answer,
+   * which is exactly the shape of the "peer has outdated version" confusion of deploy #7. The drop
+   * itself is correct (the peer asks again after reconnecting); it just has to be visible. What
+   * must not change is the consumed byte count, or the parser desyncs.
+   */
+  @Test
+  void timestampAnswers_toAGonePeer_areDroppedWithoutDesyncingTheParser() throws Exception {
+    Files.write(apkFile.toPath(), new byte[] {1, 2, 3}); // else command 13 answers nothing at all
+    // A peer with no write buffer is what Peer.enqueueTimestamp sees after disconnect(): the
+    // field it writes through is nulled under writeBufferLock.
+    Peer gone = newPeer(8823);
+
+    assertEquals(
+        1, proc.parseCommand(Command.UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), gone));
+    assertEquals(
+        1,
+        proc.parseCommand(Command.ANDROID_UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), gone));
+  }
+
+  /**
    * The publish step must survive a filesystem without an atomic rename instead of leaving the
    * update unstaged: the fallback replacing move is still strictly better than writing the
    * destination directly, which is what TD127 was about.
@@ -706,6 +728,64 @@ class UpdateHardeningTest {
     assertFalse(
         restarted.await(5, TimeUnit.SECONDS), "a rollback must not trigger the restart/install");
     assertFalse(updateFile.exists(), "a rollback must not be installed");
+    assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp());
+  }
+
+  /**
+   * TD160, the noise half of the T117 identity-reset story. A node whose {@code LocalSettings} were
+   * regenerated has {@code updateTimestamp == -1}, so before #343/#347 it re-accepted the update it
+   * was already running: same sha, same signature, one extra download and a second restart per
+   * deploy. It is not a downgrade, which is why it was filed as noise — but it is a restart nobody
+   * asked for, in the middle of a deploy.
+   *
+   * <p>The unconditional floor of #347 closes it without a dedup check of its own, and this is the
+   * exact boundary case: an offer whose timestamp <em>equals</em> the mtime of the jar we run. That
+   * is what a re-offer of our own release looks like when the deploy preserved the mtime; a
+   * re-offer through the updater itself is strictly older than the mtime (the file was written when
+   * it was installed, after it was signed) and is covered by {@link
+   * #downgrade_rejected_onFreshSettings_whenOlderThanTheInstalledJar}. Either way the floor is
+   * {@code >=} the offer and {@code >} is required, so nothing happens.
+   *
+   * <p>Known residual, deliberately not fixed here: if {@code UpdateTransfer.updateJarPath()} names
+   * a file that does not exist — a checkout run out of an IDE, a client layout without the jar —
+   * the mtime term is 0 and the floor falls back to {@link Updater#MIN_UPDATE_TIMESTAMP_MS}, where
+   * the extra cycle is still possible. Closing that would mean deriving the floor from the running
+   * artefact (e.g. the code source location), which on such a layout is a class directory whose
+   * mtime is the last compile — that would push the floor to "now" and block real updates. The
+   * layout that matters (a node started from {@code redpanda.jar}, which is also the only one where
+   * {@code Settings.init} enables updates at all) always has the file.
+   */
+  @Test
+  void sameReleaseAfterIdentityReset_isNotInstalledAgain() throws Exception {
+    assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp(), "settings just regenerated");
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    installedJarWithMtime(installedAt);
+
+    NodeId testKey = new NodeId();
+    Updater.setPublicUpdaterKeyForTests(testKey);
+
+    // A peer re-offers the very release we are running: correctly signed, well above the build
+    // constant, and with no recorded timestamp to compare against.
+    byte[] data = new byte[] {9, 9, 9};
+    ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
+    toHash.putLong(installedAt);
+    toHash.put(data);
+    byte[] sig = testKey.sign(toHash.array());
+
+    CountDownLatch restarted = new CountDownLatch(1);
+    UpdateTransfer.restartAction = restarted::countDown;
+
+    int consumed =
+        proc.parseCommand(
+            Command.UPDATE_ANSWER_CONTENT,
+            buildUpdateAnswerContent(installedAt, sig, data),
+            newPeer(8822));
+
+    assertEquals(1 + 8 + 4 + sig.length + data.length, consumed);
+    assertFalse(
+        restarted.await(5, TimeUnit.SECONDS),
+        "re-installing the release we are already running is the extra restart of TD160");
+    assertFalse(updateFile.exists(), "nothing may be installed");
     assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp());
   }
 

@@ -49,7 +49,7 @@ public class HTTPServer extends Thread {
   @Override
   public void run() {
     try {
-      System.out.println("starting HTTP server...");
+      logger.info("starting the android.apk HTTP server on port {}", PORT);
       HttpServer created = HttpServer.create(new InetSocketAddress(PORT), 10);
       created.createContext("/android.apk.signed", new HHandler());
       ExecutorService createdExecutor = Executors.newVirtualThreadPerTaskExecutor();

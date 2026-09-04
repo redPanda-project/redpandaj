@@ -51,7 +51,13 @@ public class ApkUpdateHandler {
       return 1;
     }
     long timestamp = serverContext.getLocalSettings().getUpdateAndroidTimestamp();
-    peer.enqueueTimestamp(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, timestamp);
+    if (!peer.enqueueTimestamp(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, timestamp)) {
+      // Peer gone between its request and our answer; it will ask again after reconnecting. The
+      // drop used to be silent, which is indistinguishable from a node refusing to answer.
+      logger.debug(
+          "could not queue ANDROID_UPDATE_ANSWER_TIMESTAMP for {}: peer already disconnected",
+          peer);
+    }
     return 1;
   }
 
@@ -66,14 +72,19 @@ public class ApkUpdateHandler {
       return 1 + 8;
     }
     long floor = androidUpdateFloor();
-    Log.put(
-        "Update found from: "
-            + new Date(othersTimestamp)
-            + " our version is from: "
-            + new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()),
-        70);
+    // debug, as Log.put(.., 70) already was: one line per timestamp exchange.
+    logger.debug(
+        "apk offer from {}: {}, ours is {}",
+        peer.getNodeId(),
+        new Date(othersTimestamp),
+        new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()));
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
-      System.out.println("WARNING: peer has outdated android.apk version! " + peer.getNodeId());
+      // debug: during a rollout this fires for every exchange with every not-yet-updated node.
+      logger.debug(
+          "peer {} has an outdated android.apk version: {} < ours {}",
+          peer.getNodeId(),
+          othersTimestamp,
+          serverContext.getLocalSettings().getUpdateAndroidTimestamp());
     }
     if (othersTimestamp > floor) {
       Runnable runnable =
@@ -89,8 +100,11 @@ public class ApkUpdateHandler {
               if (othersTimestamp <= androidUpdateFloor()) {
                 return;
               }
-              System.out.println(
-                  "our android.apk version is outdated, we try to download it from this peer!");
+              // info: the first line of an apk update actually happening on this node.
+              logger.info(
+                  "our android.apk is outdated, requesting the {} build from {}",
+                  othersTimestamp,
+                  peer.getNodeId());
               if (!requestUpdateContent(peer, Command.ANDROID_UPDATE_REQUEST_CONTENT)) {
                 return;
               }
@@ -99,7 +113,7 @@ public class ApkUpdateHandler {
               } catch (InterruptedException ignored) {
               }
             } finally {
-              System.out.println("we can now download it from another peer...");
+              logger.debug("apk download slot released, another peer may serve us now");
               UpdateTransfer.updateDownloadLock.unlock();
             }
           };
@@ -128,8 +142,8 @@ public class ApkUpdateHandler {
    */
   public int handleRequestContent(Peer peer) {
     if (serverContext.getLocalSettings().getUpdateAndroidSignature() == null) {
-      System.out.println(
-          "we dont have an official signature to upload that android.apk update to other peers!");
+      logger.debug(
+          "no official signature for our android.apk, not uploading it to {}", peer.getNodeId());
       return 1;
     }
     Runnable runnable =
@@ -144,7 +158,10 @@ public class ApkUpdateHandler {
             try {
               NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
               if (publicUpdaterKey == null) {
-                System.out.println("No public updater key available, cannot verify update.");
+                logger.warn(
+                    "no public updater key available, cannot verify our own android.apk before"
+                        + " uploading it to {}",
+                    peer.getNodeId());
                 return;
               }
               byte[] data = Files.readAllBytes(path);
@@ -156,12 +173,19 @@ public class ApkUpdateHandler {
                       bytesToHash.array(),
                       serverContext.getLocalSettings().getUpdateAndroidSignature());
               if (!verify) {
-                System.out.println(
-                    "################################ update not verified "
-                        + serverContext.getLocalSettings().getUpdateAndroidTimestamp());
+                // warn: our stored apk does not match our stored signature, so this node cannot
+                // serve the apk at all until an operator looks at it.
+                logger.warn(
+                    "our stored android.apk ({}) does not verify against its stored signature, not"
+                        + " uploading it",
+                    serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                 return;
               }
-              System.out.println("we send the android.apk update to a peer!");
+              // info: the uploading half of an apk rollout.
+              logger.info(
+                  "sending our android.apk ({}) to {}",
+                  serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
+                  peer.getNodeId());
               byte[] androidSignature =
                   serverContext.getLocalSettings().getUpdateAndroidSignature();
               ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
@@ -186,10 +210,11 @@ public class ApkUpdateHandler {
                 if (!peer.hasQueuedOutboundBytes()) {
                   break;
                 }
-                System.out.println("peer still downloading...");
+                logger.debug("{} is still downloading the android.apk", peer.getNodeId());
               }
             } catch (IOException e) {
-              e.printStackTrace();
+              logger.warn("could not read our android.apk at {} to upload it", path, e);
+              Log.sentry(e);
             }
           } finally {
             UpdateTransfer.updateUploadLock.release();
@@ -234,7 +259,8 @@ public class ApkUpdateHandler {
       // Verify signature
       NodeId publicUpdaterKey = Updater.getPublicUpdaterKey();
       if (publicUpdaterKey == null) {
-        System.out.println("No public updater key available, cannot verify android update.");
+        logger.warn(
+            "no public updater key available, cannot verify the android update from {}", peer);
         return consumedBytes;
       }
 
@@ -243,7 +269,7 @@ public class ApkUpdateHandler {
       toHash.put(data);
 
       if (!publicUpdaterKey.verify(toHash.array(), signature)) {
-        System.out.println("Android update verification failed! Signature invalid.");
+        logger.warn("android update from {} rejected: signature invalid", peer);
         return consumedBytes;
       }
 
@@ -281,10 +307,10 @@ public class ApkUpdateHandler {
     } catch (IOException e) {
       // Do not persist the new timestamp/signature if the apk was not actually written: that
       // would make LocalSettings claim an update is installed while the file is missing/corrupt.
-      // Reported like the failed move below and like installJarUpdate's write: a node that stops
-      // being able to stage updates is exactly the thing we want to hear about.
+      // Reported like the failed publish below and like installJarUpdate's write: a node that
+      // stops being able to stage updates is exactly the thing we want to hear about.
+      logger.error("could not stage the android update at {}", tmpPath, e);
       Log.sentry(e);
-      e.printStackTrace();
       return;
     }
     try {
@@ -292,12 +318,15 @@ public class ApkUpdateHandler {
     } catch (IOException e) {
       // Same reason as above: the apk on disk is still the old one, so the settings must keep
       // describing the old one too.
+      logger.error("could not publish the android update to {}", apkPath, e);
       Log.sentry(e);
-      e.printStackTrace();
       return;
     }
     serverContext.getLocalSettings().setUpdateAndroidTimestamp(othersTimestamp);
     serverContext.getLocalSettings().setUpdateAndroidSignature(signature);
     serverContext.getLocalSettings().save(serverContext.getPort());
+    // info: the apk path has no restart, so this is its only "it landed" line.
+    logger.info(
+        "android update verified and installed to {}, new timestamp {}", apkPath, othersTimestamp);
   }
 }
