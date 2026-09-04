@@ -12,6 +12,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -31,6 +33,9 @@ public class HTTPServer extends Thread {
   /** The running server, or {@code null} before {@link #run()} and after a failed bind. */
   private volatile HttpServer server;
 
+  /** The executor handed to {@link #server}; owned here so {@link #stopServer()} can close it. */
+  private volatile ExecutorService executor;
+
   public HTTPServer(ServerContext serverContext) {
     this.PORT = 8081;
     this.serverContext = serverContext;
@@ -47,8 +52,10 @@ public class HTTPServer extends Thread {
       System.out.println("starting HTTP server...");
       HttpServer created = HttpServer.create(new InetSocketAddress(PORT), 10);
       created.createContext("/android.apk.signed", new HHandler());
-      created.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+      ExecutorService createdExecutor = Executors.newVirtualThreadPerTaskExecutor();
+      created.setExecutor(createdExecutor);
       created.start();
+      executor = createdExecutor;
       server = created;
     } catch (IOException e) {
       // TD129: this was an empty catch with the logging commented out, so a port conflict (a
@@ -73,6 +80,13 @@ public class HTTPServer extends Thread {
       running.stop(0);
       server = null;
     }
+    ExecutorService runningExecutor = executor;
+    if (runningExecutor != null) {
+      // HttpServer.stop() does not touch an executor it was handed, so this one would otherwise
+      // outlive the server for the rest of the JVM (a Surefire fork runs many test classes).
+      runningExecutor.shutdown();
+      executor = null;
+    }
   }
 
   class HHandler implements HttpHandler {
@@ -89,7 +103,9 @@ public class HTTPServer extends Thread {
         // TD128: a node with no signed apk (every node that has not received one yet) threw
         // NullPointerException / NoSuchFileException out of handle(), which the JDK server turns
         // into a dropped connection plus a stack trace on stderr. Say "we have nothing" instead.
-        logger.info(
+        // debug, not info: "no update available" is the normal answer for most of a node's life
+        // and an app may poll this endpoint, so an info line per request would drown the log.
+        logger.debug(
             "no signed android.apk to serve (signature present: {}, readable file at {}: {})",
             signature != null,
             path,

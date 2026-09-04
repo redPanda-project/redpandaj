@@ -353,15 +353,24 @@ public class Updater {
     // node offering an update it cannot serve. Same ordering rule as the node-side install in
     // ApkUpdateHandler.installApkUpdate.
     Path destination = UpdateTransfer.updateApkPath();
-    System.out.println("renaming file to " + destination + " to be used from the client");
+    System.out.println("publishing the signed apk as " + destination + " for the client");
     Path destinationDirectory = destination.getParent();
     if (destinationDirectory != null) {
       // The apk path is configurable, so it may well point somewhere that does not exist yet.
       Files.createDirectories(destinationDirectory);
     }
-    // Not a plain replacing move: this overwrites the file the node is serving right now, and a
-    // non-atomic publish would hand a peer a half-written apk. See UpdateTransfer.
-    UpdateTransfer.publishStagedFile(source, destination);
+    // Stage next to the destination rather than publishing the build output directly: the build
+    // output lives in another directory and possibly on another filesystem, where the publish
+    // would degrade to copy+delete and a peer could read the destination halfway through. Writing
+    // `data` also guarantees that what gets published is byte-for-byte what was just signed.
+    Path staging = UpdateTransfer.updateApkTmpPath(destination);
+    Files.write(staging, data);
+    UpdateTransfer.publishStagedFile(staging, destination);
+    if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
+      // The original moved the build output away; keep that, but never delete what we just
+      // published (a source configured to be the destination itself).
+      Files.deleteIfExists(source);
+    }
 
     LocalSettings localSettings = LocalSettings.load(59558);
 
