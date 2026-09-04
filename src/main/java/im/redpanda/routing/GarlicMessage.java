@@ -192,8 +192,9 @@ public class GarlicMessage extends Flaschenpost {
       setContent(encryptedAndAuthenticatedBytes.array());
 
     } catch (GeneralSecurityException e) {
+      // Log.sentry already logs the throwable; the extra printStackTrace only duplicated it on
+      // stdout, outside log4j's file appender.
       Log.sentry(e);
-      e.printStackTrace();
     }
   }
 
@@ -249,8 +250,9 @@ public class GarlicMessage extends Flaschenpost {
       // drop the packet without parsing anything
       Log.put("garlic message authentication failed, dropping packet...", 50);
     } catch (GeneralSecurityException e) {
+      // Log.sentry already logs the throwable; the extra printStackTrace only duplicated it on
+      // stdout, outside log4j's file appender.
       Log.sentry(e);
-      e.printStackTrace();
     }
   }
 

@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.Getter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
@@ -29,8 +31,10 @@ import org.mapdb.HTreeMap;
 
 public class NodeStore {
 
+  private static final Logger logger = LogManager.getLogger();
+
   /** Name of the node map in every cache tier; "V2" is the T117 format (explicit serializers). */
-  private static final String NODE_MAP = "nodesV2";
+  static final String NODE_MAP = "nodesV2";
 
   public static final long NODE_BLACKLISTED_FOR_GRAPH = 1000L * 60L * 60L * 24L;
   public static final int MAX_EDGES_IN_GRAPH = 500;
@@ -70,7 +74,7 @@ public class NodeStore {
     NodeStore nodeStore = new NodeStore(serverContext);
 
     if (serverContext.getLocalSettings() == null) {
-      System.out.println("warning, could not restore nodeGraph from local settings....");
+      logger.warn("could not restore nodeGraph from local settings, starting with an empty graph");
     } else {
       nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
@@ -169,12 +173,29 @@ public class NodeStore {
     onHeap.put(kademliaId, node);
   }
 
+  /**
+   * Reads a node from the cache; a miss on the on-heap tier cascades down to the off-heap and
+   * on-disk tiers via MapDB's overflow loader.
+   *
+   * <p>TD159: since T117 the tiers have explicit serializers, so an exception out of this read is a
+   * precise signal — one of the cached entries cannot be deserialized, i.e. the on-disk cache is
+   * corrupt or was written by an incompatible build. Dropping the disk tier is the right recovery
+   * (the graph is rebuilt from the network, user decision 2026-09-01), but it used to happen behind
+   * an {@code e.printStackTrace()}: a node threw its whole node cache away with no line in {@code
+   * redpanda.log} and nothing in Sentry. Now it is a WARN plus a Sentry event, and the clear is
+   * guarded — {@link #buildWithMemoryCacheOnly(ServerContext)} leaves {@code onDisk} null, so the
+   * old code would have NPEd inside the catch block instead of returning null.
+   */
   public Node get(KademliaId kademliaId) {
     try {
       return onHeap.get(kademliaId);
     } catch (Exception e) {
-      e.printStackTrace();
-      onDisk.clear();
+      logger.warn(
+          "could not read node {} from the node cache, dropping the on-disk tier", kademliaId, e);
+      Log.sentry(e);
+      if (onDisk != null) {
+        onDisk.clear();
+      }
       return null;
     }
   }
@@ -190,14 +211,15 @@ public class NodeStore {
       onHeap.clearWithExpire();
       offHeap.clearWithExpire();
     } catch (Throwable e) {
-      System.out.println("NodeStore may be broken here we have to close and reopen the store...");
+      logger.warn("NodeStore may be broken, closing and reopening the store", e);
+      Log.sentry(e);
 
       close();
       Path path = Path.of(nodeCachePath(serverContext.getPort()));
       try {
         Files.delete(path);
       } catch (IOException ex) {
-        ex.printStackTrace();
+        logger.warn("could not delete the broken node cache {}", path, ex);
       }
       serverContext.setNodeStore(new NodeStore(serverContext));
     }
@@ -275,9 +297,11 @@ public class NodeStore {
           }
         }
         if (veryGoodLinks <= 1) {
-          System.out.println(
-              "remove node %s due to bad score of %s, very good links only %s"
-                  .formatted(node, node.getScore(), veryGoodLinks));
+          logger.debug(
+              "remove node {} due to bad score of {}, very good links only {}",
+              node,
+              node.getScore(),
+              veryGoodLinks);
           removeNodeFromGraphAndBlacklist(node);
         }
       }
@@ -378,7 +402,7 @@ public class NodeStore {
   private void removeNodeFromGraphAndBlacklist(Node nodeToRemove) {
     nodeToRemove.touchBlacklisted();
     nodeGraph.removeVertex(nodeToRemove);
-    System.out.println("removed node since no good link available: " + nodeToRemove);
+    logger.debug("removed node since no good link available: {}", nodeToRemove);
   }
 
   private boolean isOneGoodLinkAvailable(Node node) {
@@ -437,8 +461,7 @@ public class NodeStore {
       if (defaultEdge != null) {
         nodeGraph.setEdgeWeight(defaultEdge, PeerPerformanceTestGarlicMessageJob.CUT_HARD);
         added = true;
-        System.out.println(
-            "added edge: %s -> %s".formatted(nodeFrome.getNodeId(), nodeTo.getNodeId()));
+        logger.debug("added edge: {} -> {}", nodeFrome.getNodeId(), nodeTo.getNodeId());
       }
     }
   }
