@@ -11,7 +11,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
@@ -73,8 +73,18 @@ public final class UpdateTransfer {
    * disk/socket work <em>off</em> the ConnectionReaderThread that queued them (REDPANDAJ-2DQ), and
    * because it was already carrying five of the six. Routing every submit through this one field is
    * what keeps them from drifting apart again.
+   *
+   * <p>Declared as an {@link Executor} rather than an {@code ExecutorService}, and not final, for
+   * two reasons (T121e). The narrow one: a test can substitute {@link #SAME_THREAD_TASK_POOL},
+   * which turns "the handler queued a task" into something that has already finished when {@code
+   * parseCommand} returns, so the assertion needs neither polling nor a timeout. The other: {@code
+   * submit} returns a {@code Future} that captures whatever the task throws, and nobody here ever
+   * looks at one, so the type was promising an error channel that is not read. What actually
+   * surfaces a failed task is {@link #reporting(String, Runnable)}, which every call site wraps its
+   * task in; {@code execute} says that plainly instead of leaving a second, silent one lying about.
+   * Production never assigns this field.
    */
-  static final ExecutorService updateTaskPool = ConnectionReaderThread.threadPool;
+  static Executor updateTaskPool = ConnectionReaderThread.threadPool;
 
   /**
    * How long a download task keeps {@link #updateDownloadLock} after asking a peer for content —
@@ -82,9 +92,15 @@ public final class UpdateTransfer {
    *
    * <p>Not a constant so tests can shorten it: a test that exercises the download path otherwise
    * leaves the static lock held for a full minute, which the next test in the same Surefire fork
-   * then blocks on. Production never writes it.
+   * then blocks on — which is exactly what went wrong in T121e. Production never writes it.
    */
   static long downloadHoldMillis = 60_000L;
+
+  /**
+   * A direct executor — the task runs on the calling thread, and has finished by the time {@code
+   * execute} returns. Tests only; see {@link #updateTaskPool}.
+   */
+  static final Executor SAME_THREAD_TASK_POOL = Runnable::run;
 
   /**
    * Invoked to apply an installed update. Default restarts the JVM; tests replace this with a

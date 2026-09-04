@@ -20,11 +20,13 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,6 +79,9 @@ class UpdateHardeningTest {
   private ServerContext ctx;
   private InboundCommandProcessor proc;
 
+  /** The real pool, put back in {@link #cleanup()} after a test substituted a direct one. */
+  private Executor originalTaskPool;
+
   @BeforeEach
   void setup() {
     updateFile = new File(tempDir, "update");
@@ -95,10 +100,11 @@ class UpdateHardeningTest {
     Settings.seedNode = false;
     Settings.loadUpdates = false;
     // A download task holds the static UpdateTransfer.updateDownloadLock for this long after
-    // asking a peer for content. At the production minute, every test that reaches the download
-    // path leaves the lock held far beyond its own runtime and the next test in this fork blocks
-    // on it; 200 ms is still orders of magnitude above what the assertions below need.
-    UpdateTransfer.downloadHoldMillis = 200L;
+    // asking a peer for content. Nothing in this class asserts anything about that window, and at
+    // the production minute a task outliving its test wedges every later test in the fork, so the
+    // hold is simply switched off for the whole class. NOT restored per test - see cleanup().
+    UpdateTransfer.downloadHoldMillis = 0L;
+    originalTaskPool = UpdateTransfer.updateTaskPool;
   }
 
   @AfterEach
@@ -113,8 +119,18 @@ class UpdateHardeningTest {
     // thread kill the whole Surefire fork mid-suite.
     UpdateTransfer.restartAction = () -> {};
     UpdateTransfer.installThreadHookForTests = t -> {};
-    UpdateTransfer.downloadHoldMillis = 60_000L;
+    UpdateTransfer.updateTaskPool = originalTaskPool;
+    // downloadHoldMillis is deliberately NOT restored here. It used to be, and that was the
+    // T121e flake: a download task submitted by the finishing test can reach its Thread.sleep
+    // after @AfterEach has run, read the restored 60 s and hold the static updateDownloadLock for
+    // a minute - long enough for the next test's 30 s wait to expire. The production value is put
+    // back once, after the whole class (@AfterAll), when no task of ours can still be running.
     LocalSettings.settingsFile(TEST_PORT).delete();
+  }
+
+  @AfterAll
+  static void restoreProductionDownloadHold() {
+    UpdateTransfer.downloadHoldMillis = 60_000L;
   }
 
   /** A syntactically valid (fixed 64-byte Ed25519) but cryptographically fake signature. */
@@ -133,6 +149,20 @@ class UpdateHardeningTest {
     in.put(data);
     in.flip();
     return in;
+  }
+
+  /**
+   * Runs every update task on the calling thread instead of the pool, so a task the handler queues
+   * has already finished when {@code parseCommand} returns.
+   *
+   * <p>This is what makes the assertions below plain assertions. Polling a buffer for up to 30 s
+   * "until the pool got round to it" is not just slow, it is unfalsifiable in the negative
+   * direction and, as T121e showed, it fails for reasons that have nothing to do with the code
+   * under test. Restored in {@link #cleanup()}. Not for the tests that assert a task runs OFF the
+   * calling thread ({@code validUpdate_offloadsDiskWriteToThreadPool}), which need the real pool.
+   */
+  private void runUpdateTasksOnTheCallingThread() {
+    UpdateTransfer.updateTaskPool = UpdateTransfer.SAME_THREAD_TASK_POOL;
   }
 
   private Peer newPeer(int port) {
@@ -555,8 +585,9 @@ class UpdateHardeningTest {
     NodeId testKey = new NodeId();
     Updater.setPublicUpdaterKeyForTests(testKey);
 
-    CountDownLatch installStarted = new CountDownLatch(1);
-    UpdateTransfer.installThreadHookForTests = t -> installStarted.countDown();
+    AtomicInteger installsRun = new AtomicInteger();
+    UpdateTransfer.installThreadHookForTests = t -> installsRun.incrementAndGet();
+    runUpdateTasksOnTheCallingThread();
 
     byte[] data = "the-apk-that-cannot-be-staged".getBytes();
     long othersTs = installedAt + TimeUnit.HOURS.toMillis(1);
@@ -567,20 +598,16 @@ class UpdateHardeningTest {
             newPeer(8818));
     assertEquals(1 + 8 + 4 + NodeId.SIGNATURE_LEN + data.length, consumed);
 
-    assertTrue(installStarted.await(10, TimeUnit.SECONDS), "the install task never ran");
-    // The install ran and failed; nothing it could have done afterwards may show up, so watch for
-    // a window instead of asserting once right after the hook fired.
-    long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-    while (System.nanoTime() < deadlineNanos) {
-      assertTrue(
-          java.util.Arrays.equals(oldApk, Files.readAllBytes(apkFile.toPath())),
-          "a failed apk install must not touch the apk we serve");
-      assertEquals(
-          0L,
-          ctx.getLocalSettings().getUpdateAndroidTimestamp(),
-          "a failed apk install must not claim the update is installed");
-      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-    }
+    // The install ran inline, so there is nothing left in flight to wait for: everything it could
+    // have done it has already done.
+    assertEquals(1, installsRun.get(), "the install task must have run");
+    assertTrue(
+        java.util.Arrays.equals(oldApk, Files.readAllBytes(apkFile.toPath())),
+        "a failed apk install must not touch the apk we serve");
+    assertEquals(
+        0L,
+        ctx.getLocalSettings().getUpdateAndroidTimestamp(),
+        "a failed apk install must not claim the update is installed");
   }
 
   /**
@@ -593,78 +620,208 @@ class UpdateHardeningTest {
   void apkDownload_isNotHeldUpByAnUpload() {
     Peer peer = newPeer(8819);
     ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+    runUpdateTasksOnTheCallingThread();
 
     UpdateTransfer.updateUploadLock.acquireUninterruptibly(); // an upload is in flight
     try {
-      proc.parseCommand(
-          Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
-          offer(Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30)),
-          peer);
-      awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
-      out.flip();
-      assertEquals(
-          Command.ANDROID_UPDATE_REQUEST_CONTENT,
-          out.get(),
-          "an upload in flight must not stop us from requesting a newer apk");
+      // On a separate thread only so a regression (the download task taking the upload lock this
+      // thread holds) shows up as a failed join with a message, instead of deadlocking the fork.
+      // The task itself still runs inline on that thread, so the join returns the moment the
+      // handler is done - nothing here waits on a clock.
+      runToCompletion(
+          () ->
+              proc.parseCommand(
+                  Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
+                  offer(Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30)),
+                  peer),
+          "the download task must not wait for the upload lock");
     } finally {
       UpdateTransfer.updateUploadLock.release();
     }
+
+    out.flip();
+    assertEquals(
+        Command.ANDROID_UPDATE_REQUEST_CONTENT,
+        out.get(),
+        "an upload in flight must not stop us from requesting a newer apk");
   }
 
   /**
-   * TD125, half two. The lock the apk download does take is the download lock, so it queues behind
-   * a jar download instead of running next to it — "at most one update download at a time" was
+   * TD125, half two. The lock the download does take is the download lock, so it queues behind
+   * another download instead of running next to it — "at most one update download at a time" was
    * never true before, whatever the field name said.
+   *
+   * <p>Drives {@link UpdateTransfer#downloadTask} directly (T121e): the handler's only job here is
+   * to hand it a command byte and a floor, and going through the handler and the pool added two
+   * schedulings that the assertions then had to poll for. The lock hand-over is a latch handshake,
+   * so nothing waits on a clock in the passing case.
    */
   @Test
-  void apkDownload_waitsForARunningDownload() {
+  void downloadTask_waitsForARunningDownload() throws Exception {
     Peer peer = newPeer(8820);
     ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+    long offered = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
 
-    UpdateTransfer.updateDownloadLock.lock(); // stands in for a jar download in progress
-    try {
-      proc.parseCommand(
-          Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
-          offer(Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30)),
-          peer);
-      assertStaysEmpty(
-          out,
-          TimeUnit.SECONDS.toMillis(2),
-          "an apk download must queue behind a running download");
-    } finally {
-      UpdateTransfer.updateDownloadLock.unlock();
-    }
-    // Positive control: the request is only deferred, not dropped - which also proves the window
-    // above was measuring something.
-    awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
+    CountDownLatch holderHasTheLock = new CountDownLatch(1);
+    CountDownLatch releaseTheLock = new CountDownLatch(1);
+    AtomicReference<Throwable> holderFailure = new AtomicReference<>();
+    AtomicReference<Throwable> downloadFailure = new AtomicReference<>();
+    Thread holder =
+        startRecording(
+            () -> {
+              UpdateTransfer.updateDownloadLock.lock();
+              try {
+                holderHasTheLock.countDown();
+                releaseTheLock.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              } finally {
+                UpdateTransfer.updateDownloadLock.unlock();
+              }
+            },
+            holderFailure);
+    assertTrue(
+        holderHasTheLock.await(10, TimeUnit.SECONDS), "the stand-in download never took the lock");
+
+    Thread download =
+        startRecording(
+            UpdateTransfer.downloadTask(
+                "android.apk",
+                peer,
+                Command.ANDROID_UPDATE_REQUEST_CONTENT,
+                offered,
+                () -> Updater.MIN_UPDATE_TIMESTAMP_MS),
+            downloadFailure);
+
+    // "nothing happened" needs a window - but a window can only fail if something IS queued, never
+    // because the machine was slow, which is the difference to the wait this test used to do.
+    assertStaysEmpty(
+        out, TimeUnit.SECONDS.toMillis(1), "a download must queue behind a running download");
+
+    releaseTheLock.countDown();
+    joinOrFail(holder, "the stand-in download never released the lock");
+    joinOrFail(download, "the deferred download never ran after the lock was released");
+    assertNothingThrown(holderFailure, "the stand-in download");
+    assertNothingThrown(downloadFailure, "the deferred download");
+
+    out.flip();
+    assertEquals(
+        Command.ANDROID_UPDATE_REQUEST_CONTENT,
+        out.get(),
+        "the request must be deferred, not dropped");
   }
 
   /**
-   * TD125/#347 follow-up: the re-check the download task does after waiting for the lock now uses
-   * the same floor as the offer check. Whoever held the lock before us may have installed a newer
-   * apk, and that shows up in the apk's mtime just as much as in the recorded timestamp — the old
-   * re-check looked at the recorded timestamp alone.
+   * TD125/#347 follow-up: the re-check the download task does after waiting for the lock reads the
+   * floor again, so a download that whoever held the lock before us has already made pointless is
+   * dropped rather than requested.
+   *
+   * <p>The floor is the task's parameter, so "the floor moved while we waited" is expressed by what
+   * the supplier answers — no lock hand-over, no thread, no window (T121e). The second half is the
+   * control that keeps the first from passing for the wrong reason.
    */
   @Test
-  void apkDownload_isDroppedWhenTheFloorMovedWhileWaiting() throws Exception {
+  void downloadTask_isDroppedWhenTheFloorMovedWhileWaiting() {
     Peer peer = newPeer(8821);
     ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
-    long othersTs = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    long offered = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
 
-    UpdateTransfer.updateDownloadLock.lock();
-    try {
-      proc.parseCommand(Command.ANDROID_UPDATE_ANSWER_TIMESTAMP, offer(othersTs), peer);
-      assertStaysEmpty(
-          out, 500L, "the download task must still be waiting for the lock at this point");
-      // "another download finished while we waited": an apk newer than the offer is now on disk,
-      // recorded nowhere but in its mtime.
-      Files.write(apkFile.toPath(), new byte[] {1, 2, 3});
-      assertTrue(apkFile.setLastModified(othersTs + 1), "could not set the apk mtime");
-    } finally {
-      UpdateTransfer.updateDownloadLock.unlock();
+    UpdateTransfer.downloadTask(
+            "android.apk",
+            peer,
+            Command.ANDROID_UPDATE_REQUEST_CONTENT,
+            offered,
+            () -> offered) // the floor caught up with the offer while we waited
+        .run();
+    assertEquals(0, out.position(), "we must not request an apk that is no longer newer than us");
+
+    UpdateTransfer.downloadTask(
+            "android.apk", peer, Command.ANDROID_UPDATE_REQUEST_CONTENT, offered, () -> offered - 1)
+        .run();
+    out.flip();
+    assertEquals(
+        Command.ANDROID_UPDATE_REQUEST_CONTENT,
+        out.get(),
+        "with the floor still behind the offer the very same task does request the apk");
+  }
+
+  /**
+   * The handler half of the above: what it hands the task as the floor must be {@code
+   * androidUpdateFloor()}, i.e. include the stored apk's mtime, not just the recorded timestamp
+   * (which is still 0 on fresh settings here).
+   */
+  @Test
+  void apkOffer_belowTheStoredApkMtime_neverReachesTheDownloadTask() throws Exception {
+    Peer peer = newPeer(8824);
+    ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
+    runUpdateTasksOnTheCallingThread();
+
+    long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
+    Files.write(apkFile.toPath(), new byte[] {1, 2, 3});
+    assertTrue(apkFile.setLastModified(installedAt), "could not set the apk mtime");
+    assertEquals(0L, ctx.getLocalSettings().getUpdateAndroidTimestamp(), "fresh settings");
+
+    proc.parseCommand(
+        Command.ANDROID_UPDATE_ANSWER_TIMESTAMP,
+        offer(installedAt - TimeUnit.HOURS.toMillis(1)),
+        peer);
+
+    assertEquals(0, out.position(), "an apk older than the one we hold must not be requested");
+  }
+
+  /**
+   * Runs {@code body} on its own thread and waits for it to finish.
+   *
+   * <p>The wait is a {@link Thread#join(long)} on work that has no timer in it, not a poll for a
+   * condition that may or may not become true: it returns the instant the body is done. The
+   * deadline exists so a regression that makes the body block on a lock fails with {@code message}
+   * instead of wedging the Surefire fork.
+   */
+  private static void runToCompletion(Runnable body, String message) {
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    joinOrFail(startRecording(body, failure), message);
+    assertNothingThrown(failure, message);
+  }
+
+  /**
+   * Starts {@code body} on a virtual thread, recording anything it throws into {@code failure}.
+   *
+   * <p>Without this a body that blows up takes its exception to the grave: the thread dies, the
+   * join returns, {@code isAlive()} is false, and the test passes having asserted nothing.
+   */
+  private static Thread startRecording(Runnable body, AtomicReference<Throwable> failure) {
+    return Thread.ofVirtual()
+        .start(
+            () -> {
+              try {
+                body.run();
+              } catch (Throwable t) {
+                failure.set(t);
+              }
+            });
+  }
+
+  /** Fails with the recorded cause if the thread {@link #startRecording} started threw. */
+  private static void assertNothingThrown(AtomicReference<Throwable> failure, String message) {
+    Throwable thrown = failure.get();
+    if (thrown != null) {
+      throw new AssertionError(message + ": the work threw on its own thread", thrown);
     }
-    assertStaysEmpty(
-        out, TimeUnit.SECONDS.toMillis(2), "we must not request an apk that is no longer newer");
+  }
+
+  /**
+   * Waits for a thread whose work contains no timer; the deadline only turns a hang into a fail.
+   */
+  private static void joinOrFail(Thread worker, String message) {
+    try {
+      worker.join(java.time.Duration.ofSeconds(10));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      fail("interrupted while waiting for: " + message);
+    }
+    if (worker.isAlive()) {
+      fail(message + " (still running after 10 s)");
+    }
   }
 
   private static void awaitCondition(BooleanSupplier condition, long timeoutMillis) {
@@ -836,6 +993,11 @@ class UpdateHardeningTest {
     long installedAt = Updater.MIN_UPDATE_TIMESTAMP_MS + TimeUnit.DAYS.toMillis(30);
     installedJarWithMtime(installedAt);
     Settings.loadUpdates = true;
+    // Every task the handler queues runs before parseCommand returns, so "nothing was queued" is
+    // a fact the moment the call comes back rather than something to watch for a while. That is
+    // what removes the 30 s positive wait this test used to end with (T121e: it expired on a
+    // loaded CI fork and turned a correct implementation red).
+    runUpdateTasksOnTheCallingThread();
     try {
       Peer peer = newPeer(8813);
       ByteBuffer out = PeerTestSupport.initWriteBuffer(peer, 4096);
@@ -844,24 +1006,22 @@ class UpdateHardeningTest {
       assertEquals(-1L, ctx.getLocalSettings().getUpdateTimestamp());
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
-      // "nothing was queued" is only meaningful over a window, and only if the same window
-      // reliably catches a request that IS made - which the positive control below establishes.
-      assertStaysEmpty(
-          out, TimeUnit.SECONDS.toMillis(5), "we must not ask a peer for an older jar");
+      assertEquals(0, out.position(), "we must not ask a peer for an older jar");
 
       // (b) T117d: a recorded timestamp from the PREVIOUS deploy, behind the jar we run. This is
       // what deploy #7 hit - the offer passes the record but is still a rollback.
       ctx.getLocalSettings().setUpdateTimestamp(installedAt - TimeUnit.HOURS.toMillis(2));
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt - TimeUnit.HOURS.toMillis(1)), peer);
-      assertStaysEmpty(
-          out, TimeUnit.SECONDS.toMillis(5), "we must not ask a peer for an older jar");
+      assertEquals(0, out.position(), "we must not ask a peer for an older jar");
 
       // Positive control: an offer above the floor does reach requestUpdateContent through this
       // very harness, so both assertions above are not vacuously true.
       proc.parseCommand(
           Command.UPDATE_ANSWER_TIMESTAMP, offer(installedAt + TimeUnit.HOURS.toMillis(1)), peer);
-      awaitCondition(() -> out.position() > 0, TimeUnit.SECONDS.toMillis(30));
+      out.flip();
+      assertEquals(
+          Command.UPDATE_REQUEST_CONTENT, out.get(), "an offer above the floor is asked for");
     } finally {
       Settings.loadUpdates = false;
     }

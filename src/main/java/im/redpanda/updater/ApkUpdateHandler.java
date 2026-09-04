@@ -90,7 +90,7 @@ public class ApkUpdateHandler {
           serverContext.getLocalSettings().getUpdateAndroidTimestamp());
     }
     if (othersTimestamp > floor) {
-      UpdateTransfer.updateTaskPool.submit(
+      UpdateTransfer.updateTaskPool.execute(
           reporting(
               "android-update-request-content-download",
               UpdateTransfer.downloadTask(
@@ -202,7 +202,7 @@ public class ApkUpdateHandler {
             UpdateTransfer.updateUploadLock.release();
           }
         };
-    UpdateTransfer.updateTaskPool.submit(
+    UpdateTransfer.updateTaskPool.execute(
         reporting("android-update-answer-content-upload", runnable));
     return 1;
   }
@@ -259,7 +259,7 @@ public class ApkUpdateHandler {
       // thread pool so the ConnectionReaderThread is not stalled while it happens (REDPANDAJ-2DQ),
       // matching the request-side handlers. othersTimestamp/signature/data are already captured
       // above so nothing here races the reader moving on to the next command.
-      UpdateTransfer.updateTaskPool.submit(
+      UpdateTransfer.updateTaskPool.execute(
           reporting(
               "install-apk-update", () -> installApkUpdate(othersTimestamp, signature, data)));
     }
