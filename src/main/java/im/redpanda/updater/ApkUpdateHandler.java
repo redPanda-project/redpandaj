@@ -104,14 +104,16 @@ public class ApkUpdateHandler {
               if (othersTimestamp <= androidUpdateFloor()) {
                 return;
               }
-              // info: the first line of an apk update actually happening on this node.
-              logger.info(
-                  "our android.apk is outdated, requesting the {} build from {}",
-                  othersTimestamp,
-                  peer.getNodeId());
               if (!requestUpdateContent(peer, Command.ANDROID_UPDATE_REQUEST_CONTENT)) {
+                // requestUpdateContent already logs why; do not claim a request we did not send.
                 return;
               }
+              // info: the first line of an apk update actually happening on this node. Logged
+              // after the request is queued, so it never reports a download that never started.
+              logger.info(
+                  "our android.apk is outdated, requested the {} build from {}",
+                  othersTimestamp,
+                  peer.getNodeId());
               try {
                 Thread.sleep(UpdateTransfer.downloadHoldMillis);
               } catch (InterruptedException ignored) {
@@ -185,11 +187,6 @@ public class ApkUpdateHandler {
                     serverContext.getLocalSettings().getUpdateAndroidTimestamp());
                 return;
               }
-              // info: the uploading half of an apk rollout.
-              logger.info(
-                  "sending our android.apk ({}) to {}",
-                  serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
-                  peer.getNodeId());
               byte[] androidSignature =
                   serverContext.getLocalSettings().getUpdateAndroidSignature();
               ByteBuffer a = ByteBuffer.allocate(1 + 8 + 4 + androidSignature.length + data.length);
@@ -200,8 +197,15 @@ public class ApkUpdateHandler {
               a.put(data);
               a.flip();
               if (!appendToWriteBuffer(peer, a)) {
+                // appendToWriteBuffer already logs why; do not claim an upload that never left.
                 return;
               }
+              // info: the uploading half of an apk rollout.
+              logger.info(
+                  "sent our android.apk ({}, {} bytes) to {}",
+                  serverContext.getLocalSettings().getUpdateAndroidTimestamp(),
+                  data.length,
+                  peer.getNodeId());
               int cnt = 0;
               while (cnt < 6) {
                 cnt++;

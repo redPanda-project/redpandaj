@@ -81,15 +81,17 @@ public class JarUpdateHandler {
           () -> {
             UpdateTransfer.updateDownloadLock.lock();
             try {
-              // info: this is the first line of an update actually happening on this node, and
-              // the anchor for the deploy watch.
-              logger.info(
-                  "our jar is outdated, requesting the {} build from {}",
-                  othersTimestamp,
-                  peer.getNodeId());
               if (!requestUpdateContent(peer, Command.UPDATE_REQUEST_CONTENT)) {
+                // requestUpdateContent already logs why; do not claim a request we did not send.
                 return;
               }
+              // info: this is the first line of an update actually happening on this node, and
+              // the anchor for the deploy watch. Logged after the request is queued, so it never
+              // reports a download that never started.
+              logger.info(
+                  "our jar is outdated, requested the {} build from {}",
+                  othersTimestamp,
+                  peer.getNodeId());
               try {
                 Thread.sleep(UpdateTransfer.downloadHoldMillis);
               } catch (InterruptedException ignored) {
@@ -165,12 +167,6 @@ public class JarUpdateHandler {
             }
             Path path = updateJarPath();
             try {
-              // info: the uploading half of a deploy; the pair of this line and the receiver's
-              // "installed" line is what a deploy watch follows.
-              logger.info(
-                  "sending our jar ({}) to {}",
-                  serverContext.getLocalSettings().getUpdateTimestamp(),
-                  peer.getNodeId());
               byte[] data = Files.readAllBytes(path);
               ByteBuffer a =
                   ByteBuffer.allocate(
@@ -186,8 +182,16 @@ public class JarUpdateHandler {
               a.put(data);
               a.flip();
               if (!appendToWriteBuffer(peer, a)) {
+                // appendToWriteBuffer already logs why; do not claim an upload that never left.
                 return;
               }
+              // info: the uploading half of a deploy; the pair of this line and the receiver's
+              // "installed" line is what a deploy watch follows.
+              logger.info(
+                  "sent our jar ({}, {} bytes) to {}",
+                  serverContext.getLocalSettings().getUpdateTimestamp(),
+                  data.length,
+                  peer.getNodeId());
             } catch (FileNotFoundException e) {
               logger.warn("the jar we are supposed to upload is not at {}", path, e);
               Log.sentry(e);
