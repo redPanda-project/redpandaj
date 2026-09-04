@@ -31,6 +31,12 @@ public class Settings {
       parseMinConnections(
           System.getProperty("redpanda.minConnections", System.getenv("REDPANDA_MIN_CONNECTIONS")));
 
+  /**
+   * A blank value counts as "not configured" and is accepted silently, exactly as in {@link
+   * #parseKnownNodes}; anything else that cannot be used is reported, since it is a configuration
+   * mistake someone has to see. The message names both spellings because this method cannot tell
+   * which of the two the value came from.
+   */
   static int parseMinConnections(String configured) {
     if (configured == null || configured.isBlank()) {
       return DEFAULT_MIN_CONNECTIONS;
@@ -38,16 +44,23 @@ public class Settings {
     try {
       int parsed = Integer.parseInt(configured.trim());
       if (parsed < 1) {
-        System.err.println(
-            "ignoring invalid REDPANDA_MIN_CONNECTIONS '" + configured + "' (expected >= 1)");
-        return DEFAULT_MIN_CONNECTIONS;
+        return warnInvalidMinConnections(configured, "expected at least 1");
       }
       return parsed;
     } catch (NumberFormatException e) {
-      System.err.println(
-          "ignoring invalid REDPANDA_MIN_CONNECTIONS '" + configured + "' (expected a number)");
-      return DEFAULT_MIN_CONNECTIONS;
+      return warnInvalidMinConnections(configured, "expected a number");
     }
+  }
+
+  private static int warnInvalidMinConnections(String configured, String expectation) {
+    System.err.println(
+        "ignoring invalid minimum connection count '"
+            + configured
+            + "' (-Dredpanda.minConnections / REDPANDA_MIN_CONNECTIONS, "
+            + expectation
+            + "), using "
+            + DEFAULT_MIN_CONNECTIONS);
+    return DEFAULT_MIN_CONNECTIONS;
   }
 
   public static int MAX_CONNECTIONS = 50;

@@ -263,9 +263,12 @@ public class OutboundHandler extends Thread {
       int actCons = 0;
       int connectingCons = 0;
       int newConnections = 0;
-      // TD144: the same two counts restricted to peers we could dial at all. Inbound-only peers —
-      // above all light clients, which announce port 0 — can never be the result of a dial, so
-      // they must not count towards a minimum that exists to decide whether to dial more.
+      // TD144: the same two counts restricted to peers we could dial at all. They feed the
+      // dialable-peer cap in hasEnoughConnections(), not the MIN_CONNECTIONS comparison, which
+      // keeps working on actCons as before. Inbound-only peers — above all light clients, which
+      // announce port 0 — can never be the result of a dial, so neither side of that cap may
+      // count them: they would otherwise make "we know 3 dialable peers and have 3 connections"
+      // true without a single one of those three being connected.
       int dialableKnown = 0;
       int dialableCons = 0;
       for (Peer peer : peers) {
