@@ -261,6 +261,9 @@ public class PeerInHandshake {
    * status -1 without ever copying them onto the handshake. {@code hasPublicKey()} then said yes
    * (it asked the peer) and the key schedule found nothing (it asked the handshake).
    *
+   * <p>Private on purpose: this is the resolution rule of the handshake state machine, and the
+   * three methods below are the only way it should ever be observed from the outside.
+   *
    * <p>Preferring a keyed NodeId over a key-less one is safe: a NodeId that carries keys derives
    * its {@link KademliaId} from its Ed25519 verify key, so it is self-certifying, and it is only
    * used here when it belongs to the identity this connection announced.
@@ -269,7 +272,7 @@ public class PeerInHandshake {
    *     whatever this handshake was given (possibly key-less, possibly {@code null}) — so a caller
    *     that finds no key still takes the REQUEST_PUBLIC_KEY path instead of failing
    */
-  NodeId resolvePeerNodeId() {
+  private NodeId resolvePeerNodeId() {
     if (nodeId != null && nodeId.hasKey()) {
       return nodeId;
     }
