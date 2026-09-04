@@ -469,9 +469,13 @@ class UpdateHardeningTest {
   @Test
   void timestampAnswers_toAGonePeer_areDroppedWithoutDesyncingTheParser() throws Exception {
     Files.write(apkFile.toPath(), new byte[] {1, 2, 3}); // else command 13 answers nothing at all
-    // A peer with no write buffer is what Peer.enqueueTimestamp sees after disconnect(): the
-    // field it writes through is nulled under writeBufferLock.
+    // Go through the real disconnect path rather than just never giving the peer a buffer:
+    // disconnect() nulls writeBuffer under writeBufferLock, and that is the state
+    // enqueueTimestamp reports false for.
     Peer gone = newPeer(8823);
+    PeerTestSupport.initWriteBuffer(gone, 64);
+    gone.disconnect("test: gone before we could answer");
+    assertFalse(gone.enqueueCommand(Command.PING), "precondition: the peer must be unwritable");
 
     assertEquals(
         1, proc.parseCommand(Command.UPDATE_REQUEST_TIMESTAMP, ByteBuffer.allocate(0), gone));

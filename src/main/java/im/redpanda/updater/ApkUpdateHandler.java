@@ -72,12 +72,16 @@ public class ApkUpdateHandler {
       return 1 + 8;
     }
     long floor = androidUpdateFloor();
-    // debug, as Log.put(.., 70) already was: one line per timestamp exchange.
-    logger.debug(
-        "apk offer from {}: {}, ours is {}",
-        peer.getNodeId(),
-        new Date(othersTimestamp),
-        new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()));
+    // debug, as Log.put(.., 70) already was: one line per timestamp exchange. Guarded because the
+    // two Date objects would be allocated on every exchange even with debug off - during a
+    // rollout that is every peer, repeatedly.
+    if (logger.isDebugEnabled()) {
+      logger.debug(
+          "apk offer from {}: {}, ours is {}",
+          peer.getNodeId(),
+          new Date(othersTimestamp),
+          new Date(serverContext.getLocalSettings().getUpdateAndroidTimestamp()));
+    }
     if (othersTimestamp < serverContext.getLocalSettings().getUpdateAndroidTimestamp()) {
       // debug: during a rollout this fires for every exchange with every not-yet-updated node.
       logger.debug(
