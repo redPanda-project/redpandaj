@@ -160,6 +160,35 @@ public class OutboundHandler extends Thread {
     return false;
   }
 
+  /**
+   * Whether this pass should stop offering peers to the dial logic.
+   *
+   * <p>{@link Settings#MIN_CONNECTIONS} is 20, which a network smaller than that can never reach.
+   * The loop then never took its early break: it offered every dialable peer to the dial logic on
+   * every pass, for ever, and the duplicate guards were the only thing between that and a permanent
+   * redial loop — the standing pressure behind the reconnect storm of 2026-09-03 (TD142/TD144). It
+   * also means the outbound thread does real work (sort, snapshot, guard chain) on every pass of a
+   * network that has nothing left to dial.
+   *
+   * <p>So the effective minimum is additionally capped at the number of peers we could dial at all:
+   * once every one of them has a connection or an attempt, there is nothing left to establish and
+   * the pass ends here. That cannot starve the dial logic — the cap is only reached when no
+   * dialable peer is left unconnected — and it cannot change behaviour on a network large enough to
+   * reach {@code MIN_CONNECTIONS}, because there {@code dialableCons >= MIN_CONNECTIONS} implies
+   * the first condition anyway.
+   *
+   * @param actCons connected plus connecting peers, light clients included (the count the
+   *     MAX_CONNECTIONS logic works on)
+   * @param dialableCons the same, restricted to peers we could dial
+   * @param dialableKnown how many dialable peers we know
+   */
+  static boolean hasEnoughConnections(int actCons, int dialableCons, int dialableKnown) {
+    if (actCons >= Settings.MIN_CONNECTIONS) {
+      return true;
+    }
+    return dialableCons >= Math.min(Settings.MIN_CONNECTIONS, dialableKnown);
+  }
+
   private void reseed() {
 
     if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
@@ -234,11 +263,26 @@ public class OutboundHandler extends Thread {
       int actCons = 0;
       int connectingCons = 0;
       int newConnections = 0;
+      // TD144: the same two counts restricted to peers we could dial at all. Inbound-only peers —
+      // above all light clients, which announce port 0 — can never be the result of a dial, so
+      // they must not count towards a minimum that exists to decide whether to dial more.
+      int dialableKnown = 0;
+      int dialableCons = 0;
       for (Peer peer : peers) {
+        boolean dialable = peer.isDialable();
+        if (dialable) {
+          dialableKnown++;
+        }
         if (peer.isConnected()) {
           actCons++;
+          if (dialable) {
+            dialableCons++;
+          }
         } else if (peer.isConnecting) {
           connectingCons++;
+          if (dialable) {
+            dialableCons++;
+          }
         }
 
         // if ((peer.isConnecting || peer.isConnected()) && (System.currentTimeMillis()
@@ -258,7 +302,7 @@ public class OutboundHandler extends Thread {
           break;
         }
 
-        if (actCons >= Settings.MIN_CONNECTIONS) {
+        if (hasEnoughConnections(actCons, dialableCons, dialableKnown)) {
 
           Log.put("peers " + actCons + " are enough...", 300);
 
