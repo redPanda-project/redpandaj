@@ -197,6 +197,10 @@ class InboundCommandProcessorEvenMoreCoverageTest {
 
     int consumed = proc.parseCommand(Command.JOB_ACK, in, lightClient);
     assertEquals(1 + 4 + ackData.length, consumed);
+
+    // Stop the recurring job: nothing in this test drives it to done(), so its future would keep
+    // firing on the shared scheduler for the rest of the suite.
+    job.done();
   }
 
   @Test

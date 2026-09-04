@@ -205,6 +205,15 @@ public class KademliaSearchJob extends Job {
     synchronized (contents) {
       contents.add(c);
     }
+    // Same two holes the insert job had, reachable from KADEMLIA_GET_ANSWER: peers is null until
+    // init() has run (Job.start() registers the job first) and on the blacklisted-key path above,
+    // and the map's PeerComparator dereferences getKademliaId(), which is null for a peer that
+    // never sent a public key. The answer itself is kept either way — only the bookkeeping of
+    // which peer we asked is skipped, and such a peer was never in the map to begin with.
+    if (peers == null || p.getNodeId() == null) {
+      logger.debug("not counting the KADEMLIA_GET_ANSWER of {} towards job {}", p, getJobId());
+      return;
+    }
     peers.put(p, SUCCESS);
   }
 

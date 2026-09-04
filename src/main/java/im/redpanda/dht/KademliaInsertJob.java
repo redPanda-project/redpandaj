@@ -129,6 +129,14 @@ public class KademliaInsertJob extends Job {
     // therefore NPEd inside put() — reachable from the wire: any light client that sends a JOB_ACK
     // carrying a live insert job's id took the whole command loop down with it (found while
     // making the TD133 log line null-safe; the NPE happened before that line was ever reached).
+    if (peers == null) {
+      // Job.start() registers the job in the JobRegistry BEFORE init() runs (init() is scheduled
+      // on the job thread), so an inbound JOB_ACK can find this job through the registry while
+      // peers is still null. Same window KademliaSearchJob.work() guards against for Sentry
+      // REDPANDAJ-2E3.
+      logger.debug("ignoring JOB_ACK from {}: job {} has not been initialised yet", p, getJobId());
+      return;
+    }
     if (p.getNodeId() == null) {
       logger.debug("ignoring JOB_ACK from {}: peer has no node id, it was never asked", p);
       return;
