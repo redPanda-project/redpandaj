@@ -518,6 +518,17 @@ public class ConnectionReaderThread implements Runnable {
   public static void sendHandshake(ServerContext serverContext, PeerInHandshake peerInHandshake) {
 
     ByteBuffer writeBuffer = ByteBufferPool.borrowObject(30);
+    if (writeBuffer == null) {
+      // borrowObject returns null when the pool cannot hand out a buffer at all. Without this
+      // guard the next line NPEs and the connection is left half-open with no diagnosis.
+      logger.warn("no buffer available for the handshake, closing the connection");
+      try {
+        peerInHandshake.getSocketChannel().close();
+      } catch (IOException e) {
+        logger.debug("could not close the connection after a failed handshake buffer borrow", e);
+      }
+      return;
+    }
     String bufferBeforeWriting = writeBuffer.toString();
 
     try {
