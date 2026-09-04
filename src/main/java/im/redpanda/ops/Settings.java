@@ -10,7 +10,59 @@ public class Settings {
   public static boolean DEBUG = true;
   public static boolean NAT_OPEN = false;
   public static int STD_PORT = 59558;
-  public static int MIN_CONNECTIONS = 20;
+
+  /** Default for {@link #MIN_CONNECTIONS} when nothing is configured. */
+  static final int DEFAULT_MIN_CONNECTIONS = 20;
+
+  /**
+   * How many connections a node tries to establish before {@code OutboundHandler.run()} stops
+   * offering peers to the dial logic for this pass.
+   *
+   * <p>Overridable without rebuilding via the system property {@code redpanda.minConnections} or
+   * the environment variable {@code REDPANDA_MIN_CONNECTIONS}, exactly like {@link #knownNodes}:
+   * the property wins over the environment, and a blank or unparsable value falls back to the
+   * default.
+   *
+   * <p>Configuring it is the coarse half of TD144; the fine half is that {@code OutboundHandler}
+   * caps the effective minimum at the number of peers it could dial at all, so a network smaller
+   * than this value does not leave every node permanently in "dial everything" mode.
+   */
+  public static int MIN_CONNECTIONS =
+      parseMinConnections(
+          System.getProperty("redpanda.minConnections", System.getenv("REDPANDA_MIN_CONNECTIONS")));
+
+  /**
+   * A blank value counts as "not configured" and is accepted silently, exactly as in {@link
+   * #parseKnownNodes}; anything else that cannot be used is reported, since it is a configuration
+   * mistake someone has to see. The message names both spellings because this method cannot tell
+   * which of the two the value came from.
+   */
+  static int parseMinConnections(String configured) {
+    if (configured == null || configured.isBlank()) {
+      return DEFAULT_MIN_CONNECTIONS;
+    }
+    try {
+      int parsed = Integer.parseInt(configured.trim());
+      if (parsed < 1) {
+        return warnInvalidMinConnections(configured, "expected at least 1");
+      }
+      return parsed;
+    } catch (NumberFormatException e) {
+      return warnInvalidMinConnections(configured, "expected a number");
+    }
+  }
+
+  private static int warnInvalidMinConnections(String configured, String expectation) {
+    System.err.println(
+        "ignoring invalid minimum connection count '"
+            + configured
+            + "' (-Dredpanda.minConnections / REDPANDA_MIN_CONNECTIONS, "
+            + expectation
+            + "), using "
+            + DEFAULT_MIN_CONNECTIONS);
+    return DEFAULT_MIN_CONNECTIONS;
+  }
+
   public static int MAX_CONNECTIONS = 50;
 
   /**

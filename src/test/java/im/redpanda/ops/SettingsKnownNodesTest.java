@@ -1,6 +1,7 @@
 package im.redpanda.ops;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import org.junit.jupiter.api.Test;
@@ -77,12 +78,26 @@ class SettingsKnownNodesTest {
    * {@code InboundCommandProcessorPeerListFilterTest} until T118 moved {@code Settings} into the
    * ops context; it never tested the peer-list filter, only this parser.
    */
-  @org.junit.jupiter.api.Test
+  @Test
   void configuredSeedsMayStillUseHostNames() {
     assertArrayEquals(
         new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
     org.assertj.core.api.Assertions.assertThat(Settings.parseKnownNodes(null))
         .as("the default seed list must keep its host name entry")
         .contains("redpanda.im:59559");
+  }
+
+  /**
+   * TD144: {@code MIN_CONNECTIONS} is configurable the same way the known nodes are — an invalid
+   * value must not silently disable dialling.
+   */
+  @Test
+  void minConnectionsFallsBackToTheDefaultForAnythingUnusable() {
+    assertEquals(Settings.DEFAULT_MIN_CONNECTIONS, Settings.parseMinConnections(null));
+    assertEquals(Settings.DEFAULT_MIN_CONNECTIONS, Settings.parseMinConnections("  "));
+    assertEquals(Settings.DEFAULT_MIN_CONNECTIONS, Settings.parseMinConnections("many"));
+    assertEquals(Settings.DEFAULT_MIN_CONNECTIONS, Settings.parseMinConnections("0"));
+    assertEquals(Settings.DEFAULT_MIN_CONNECTIONS, Settings.parseMinConnections("-3"));
+    assertEquals(3, Settings.parseMinConnections(" 3 "));
   }
 }
