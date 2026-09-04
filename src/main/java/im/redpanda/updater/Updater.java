@@ -12,7 +12,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.Security;
 import org.apache.logging.log4j.LogManager;
@@ -139,7 +138,10 @@ public class Updater {
       System.out.println(
           "Update of android.apk was successfully signed and inserted in the defaul client for upload.");
     } catch (java.nio.file.NoSuchFileException e) {
-      System.out.println("No android.apk found, not inserting any android update...");
+      // Name the file: the source is configurable via redpanda.android.apk.source now, so
+      // "no android.apk found" would send an operator looking in the wrong place.
+      System.out.println(
+          "No apk found at " + e.getFile() + ", not inserting any android update...");
     } catch (IOException e) {
       e.printStackTrace();
     } catch (AddressFormatException e) {
@@ -319,7 +321,7 @@ public class Updater {
 
     System.out.println("inserting " + source + " as android update...");
     // lets test if we have the priv key before generating update
-    String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
+    String keyString = new String(Files.readAllBytes(signingKeyPath()));
     keyString = keyString.replace("\n", "").replace("\r", "");
 
     NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
@@ -346,6 +348,21 @@ public class Updater {
 
     System.out.println("signature: " + Utils.bytesToHexString(signature));
 
+    // Publish the apk BEFORE recording it. The settings are what the node advertises to peers and
+    // over HTTP, so writing them first and then failing to put the file in place would leave the
+    // node offering an update it cannot serve. Same ordering rule as the node-side install in
+    // ApkUpdateHandler.installApkUpdate.
+    Path destination = UpdateTransfer.updateApkPath();
+    System.out.println("renaming file to " + destination + " to be used from the client");
+    Path destinationDirectory = destination.getParent();
+    if (destinationDirectory != null) {
+      // The apk path is configurable, so it may well point somewhere that does not exist yet.
+      Files.createDirectories(destinationDirectory);
+    }
+    // Not a plain replacing move: this overwrites the file the node is serving right now, and a
+    // non-atomic publish would hand a peer a half-written apk. See UpdateTransfer.
+    UpdateTransfer.publishStagedFile(source, destination);
+
     LocalSettings localSettings = LocalSettings.load(59558);
 
     localSettings.setUpdateAndroidSignature(signature);
@@ -356,16 +373,5 @@ public class Updater {
     System.out.println("verified: " + getPublicUpdaterKey().verify(toHash.array(), signature));
 
     System.out.println("hash: " + Sha256Hash.create(toHash.array()));
-
-    Path destination = UpdateTransfer.updateApkPath();
-    System.out.println("renaming file to " + destination + " to be used from the client");
-    Path destinationDirectory = destination.getParent();
-    if (destinationDirectory != null) {
-      // The apk path is configurable, so it may well point somewhere that does not exist yet;
-      // failing here after the signature is already in LocalSettings would leave the node
-      // advertising an apk it cannot serve.
-      Files.createDirectories(destinationDirectory);
-    }
-    Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
   }
 }
