@@ -330,8 +330,8 @@ public class Updater {
 
     // Files.getLastModifiedTime, not File.lastModified(): the latter answers 0 for a missing file,
     // which would be signed as a timestamp below the update floor and silently rejected by every
-    // peer. This throws NoSuchFileException instead, which main() already reports as "no
-    // android.apk found".
+    // peer. This throws NoSuchFileException instead, which main() reports naming the file it
+    // looked for.
     long timestamp = Files.getLastModifiedTime(source).toMillis();
 
     byte[] data = Files.readAllBytes(source);
