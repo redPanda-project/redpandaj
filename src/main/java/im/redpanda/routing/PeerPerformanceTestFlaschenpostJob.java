@@ -8,8 +8,12 @@ import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Job;
 import im.redpanda.proto.FlaschenpostPut;
 import im.redpanda.transport.Peer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class PeerPerformanceTestFlaschenpostJob extends Job {
+
+  private static final Logger logger = LogManager.getLogger();
 
   Peer peer;
   boolean success = false;
@@ -24,7 +28,7 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
 
     peer.getNode().cleanChecks();
 
-    System.out.println("we are creating a Flaschenpost to monitor other peers...");
+    logger.debug("creating a flaschenpost to monitor other peers");
 
     // lets target to ourselves without the private key!
     NodeId targetId = NodeId.importPublic(serverContext.getNodeId().exportPublic());
@@ -41,7 +45,11 @@ public class PeerPerformanceTestFlaschenpostJob extends Job {
     }
 
     var putMsg = FlaschenpostPut.newBuilder().setContent(copyFrom(content)).build();
-    peer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray());
+    // TD110: a drop here means the probe never leaves, so the job can only time out and count the
+    // peer as failed. Say so instead of scoring the peer down without a trace.
+    if (!peer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray())) {
+      logger.debug("peer {} is gone, flaschenpost performance probe not sent", peer);
+    }
   }
 
   @Override

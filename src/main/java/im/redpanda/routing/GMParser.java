@@ -434,6 +434,11 @@ public class GMParser {
       builder.setReturnPath(com.google.protobuf.ByteString.copyFrom(returnPath));
     }
 
-    peerToSendFP.enqueueFrame(Command.FLASCHENPOST_PUT, builder.build().toByteArray());
+    // TD110: same best-effort drop as GarlicRouter.sendToPeer — the peer can disconnect between
+    // the route selection and this write, and before T115 this was an NPE. All sendFpToPeer
+    // overloads funnel through here, so one log line covers every garlic/flaschenpost forward.
+    if (!peerToSendFP.enqueueFrame(Command.FLASCHENPOST_PUT, builder.build().toByteArray())) {
+      log.debug("peer {} is gone, dropping flaschenpost put (ohId {})", peerToSendFP, ohId);
+    }
   }
 }

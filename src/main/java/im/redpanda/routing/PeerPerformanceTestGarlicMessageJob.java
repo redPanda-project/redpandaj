@@ -16,9 +16,13 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 public class PeerPerformanceTestGarlicMessageJob extends Job {
+
+  private static final Logger logger = LogManager.getLogger();
 
   public static final int TEST_HOPS_MAX = 8;
   public static final int TEST_HOPS_MIN = 2;
@@ -124,7 +128,11 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
         im.redpanda.proto.FlaschenpostPut.newBuilder()
             .setContent(com.google.protobuf.ByteString.copyFrom(content))
             .build();
-    flaschenPostInsertPeer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray());
+    // TD110: a drop here means the probe never leaves; the job then times out and scores every
+    // edge on the chosen path down as if the path were bad. Log the reason instead.
+    if (!flaschenPostInsertPeer.enqueueFrame(Command.FLASCHENPOST_PUT, putMsg.toByteArray())) {
+      logger.debug("peer {} is gone, garlic performance probe not sent", flaschenPostInsertPeer);
+    }
   }
 
   private boolean calculatePathOrAbort() {
@@ -372,18 +380,14 @@ public class PeerPerformanceTestGarlicMessageJob extends Job {
       graphLock.unlock();
     }
 
-    // if (!success) {
-    System.out.println(
-        (success ? ANSI_GREEN : ANSI_RED)
-            + "path: "
-            + pathString
-            + " hops: "
-            + (nodes.size() - 1)
-            + " inserted to peer: "
-            + insertNode
-            + ANSI_RESET
-            + (includeReversedPath ? " REVERSED" : ""));
-    // }
+    logger.debug(
+        "{}path: {} hops: {} inserted to peer: {}{}{}",
+        success ? ANSI_GREEN : ANSI_RED,
+        pathString,
+        nodes.size() - 1,
+        insertNode,
+        ANSI_RESET,
+        includeReversedPath ? " REVERSED" : "");
 
     if (success) {
       countSuccess.incrementAndGet();

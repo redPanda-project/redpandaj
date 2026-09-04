@@ -8,8 +8,12 @@ import im.redpanda.identity.KademliaId;
 import im.redpanda.proto.KademliaGetAnswer;
 import im.redpanda.transport.Peer;
 import java.util.ArrayList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
+
+  private static final Logger logger = LogManager.getLogger();
 
   private final Peer answerTo;
   private final int ackID;
@@ -27,7 +31,7 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
     ArrayList<KadContent> kadContents = super.success();
 
     if (kadContents == null || kadContents.getFirst() == null) {
-      System.out.println("job failed, did not found an entry in time...");
+      logger.debug("kademlia answer job failed, did not find an entry in time");
       fail();
       return null;
     }
@@ -50,7 +54,18 @@ public class KademliaSearchJobAnswerPeer extends KademliaSearchJob {
               .setSignature(copyFrom(kadContent.getSignature()))
               .build();
 
-      answerTo.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray());
+      // TD110: the peer can disconnect between the isConnected() check above and here, and a
+      // dropped answer used to leave the requester waiting for its whole job timeout with no
+      // trace on our side. Stop after the first drop: the remaining frames would go to the same
+      // gone peer.
+      if (!answerTo.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray())) {
+        logger.debug(
+            "could not queue KADEMLIA_GET_ANSWER for {}: peer already disconnected, dropping the"
+                + " remaining {} answer(s)",
+            answerTo,
+            Math.min(3, kadContents.size()) - i - 1);
+        break;
+      }
     }
 
     return kadContents;

@@ -21,10 +21,10 @@ import org.apache.logging.log4j.Logger;
  * Peer-list gossip and liveness: wire commands 5 (PING), 6 (PONG), 7 (REQUEST_PEERLIST) and 8
  * (SEND_PEERLIST).
  *
- * <p>Split out of {@link InboundCommandProcessor} by T116 (DDD review 2026-08-31, §6 P2 step 2).
- * This one stays in {@code im.redpanda.core}: the peer list <em>is</em> a core concept, and the
- * handlers reach straight into {@link PeerList} and {@link Peer}'s package-private state. The
- * bodies are verbatim; only their visibility changed.
+ * <p>Split out of {@link InboundCommandProcessor} by T116 (DDD review 2026-08-31, §6 P2 step 2) and
+ * moved into {@code im.redpanda.transport} with the rest of the connection layer by T118: the
+ * handlers reach straight into {@link PeerList} and {@link Peer}'s package-private state, so they
+ * belong next to them.
  */
 class PeerExchangeHandler {
 
@@ -39,13 +39,21 @@ class PeerExchangeHandler {
   int handlePing(Peer peer) {
     Log.put("Received ping command", 200);
     if (!serverContext.getPeerList().contains(peer.getKademliaId())) {
-      logger.error(
-          "Got PING from node not in our peerlist, lets add it.... %s, id: %s"
-              .formatted(peer, peer.getKademliaId()));
+      // TD132: this used to `return 0` after adding the peer. 0 means "frame incomplete" to the
+      // dispatcher, so it rewound the buffer to the PING byte and ended the loop WITHOUT a PONG.
+      // The PING was only re-parsed once the peer sent something else, so a peer whose first
+      // encrypted command is a PING and that then waits for the PONG stalled until its next write.
+      // Adding the peer and answering in the same pass is the whole fix; PING stays a 1-byte
+      // command either way, so the wire format is untouched.
+      logger.info(
+          "PING from a node that is not in our peer list yet, adding it: {}, id: {}",
+          peer,
+          peer.getKademliaId());
       serverContext.getPeerList().add(peer);
-      return 0;
     }
-    peer.enqueueCommand(Command.PONG);
+    if (!peer.enqueueCommand(Command.PONG)) {
+      logger.debug("could not queue PONG for {}: peer already disconnected", peer);
+    }
     return 1;
   }
 
@@ -96,7 +104,9 @@ class PeerExchangeHandler {
       builder.addPeers(peerBuilder.build());
     }
     byte[] data = builder.build().toByteArray();
-    peer.enqueueFrame(Command.SEND_PEERLIST, data);
+    if (!peer.enqueueFrame(Command.SEND_PEERLIST, data)) {
+      logger.debug("could not queue SEND_PEERLIST for {}: peer already disconnected", peer);
+    }
     return 1;
   }
 

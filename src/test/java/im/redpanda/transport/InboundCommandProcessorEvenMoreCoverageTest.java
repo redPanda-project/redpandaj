@@ -32,18 +32,26 @@ class InboundCommandProcessorEvenMoreCoverageTest {
     // nothing special
   }
 
+  /**
+   * TD132: this used to pin {@code consumed == 0} — the handler added the peer and told the
+   * dispatcher the frame was incomplete, which rewound the buffer and ended the loop without a
+   * PONG. Adding the peer and answering now happen in the same pass, so the PING byte is consumed.
+   */
   @Test
-  void ping_fromUnknownPeer_addsPeerAndReturnsZero() {
+  void ping_fromUnknownPeer_addsPeerAndAnswersPong() {
     Peer peer = new Peer("10.0.0.1", 1111, ctx.getNodeId());
     peer.setConnected(true);
+    peer.writeBuffer = ByteBuffer.allocate(16);
 
     // ensure not in peer list
     assertFalse(ctx.getPeerList().contains(peer.getKademliaId()));
 
     int consumed = proc.parseCommand(Command.PING, ByteBuffer.allocate(0), peer);
 
-    assertEquals(0, consumed);
+    assertEquals(1, consumed);
     assertTrue(ctx.getPeerList().contains(peer.getKademliaId()));
+    assertEquals(1, peer.writeBuffer.position());
+    assertEquals(Command.PONG, peer.writeBuffer.get(0));
   }
 
   @Test

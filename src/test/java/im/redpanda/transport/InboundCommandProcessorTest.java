@@ -45,6 +45,58 @@ class InboundCommandProcessorTest {
     assertEquals(Command.PONG, peer.writeBuffer.get(0));
   }
 
+  /**
+   * TD132: a PING from a peer that is not in the peer list yet must be answered in the same pass.
+   *
+   * <p>The handler used to add the peer and then {@code return 0}. Zero means "frame incomplete" to
+   * the dispatcher: {@code loopCommands} rewinds to the PING byte and stops, so no PONG was ever
+   * written. The peer only got its PONG once it sent something else — a peer waiting for the PONG
+   * stalled. Pinning both halves here: the peer is added AND one PONG byte is queued, and the
+   * dispatcher reports the PING byte as consumed.
+   */
+  @Test
+  void parseCommand_ping_fromPeerNotInPeerList_addsPeerAndWritesPong() {
+    ServerContext ctx = ServerContext.buildDefaultServerContext();
+    InboundCommandProcessor proc = newProcessor(ctx);
+
+    Peer peer = new Peer("127.0.0.1", 12346, new NodeId());
+    peer.setConnected(true);
+    peer.writeBuffer = ByteBuffer.allocate(16);
+
+    assertFalse(ctx.getPeerList().contains(peer.getKademliaId()));
+
+    ByteBuffer dummy = ByteBuffer.allocate(0);
+    int consumed = proc.parseCommand(Command.PING, dummy, peer);
+
+    assertEquals(1, consumed);
+    assertTrue(ctx.getPeerList().contains(peer.getKademliaId()));
+    assertEquals(1, peer.writeBuffer.position());
+    assertEquals(Command.PONG, peer.writeBuffer.get(0));
+  }
+
+  /**
+   * The stall TD132 actually produced: driven through {@code loopCommands}, a lone PING byte from
+   * an unknown peer left the byte in the buffer and produced no answer at all.
+   */
+  @Test
+  void loopCommands_ping_fromPeerNotInPeerList_consumesByteAndWritesPong() {
+    ServerContext ctx = ServerContext.buildDefaultServerContext();
+    InboundCommandProcessor proc = newProcessor(ctx);
+
+    Peer peer = new Peer("127.0.0.1", 12347, new NodeId());
+    peer.setConnected(true);
+    peer.writeBuffer = ByteBuffer.allocate(16);
+
+    ByteBuffer readBuffer = ByteBuffer.allocate(16);
+    readBuffer.put(Command.PING);
+    proc.loopCommands(peer, readBuffer, true);
+
+    // compact() leaves the buffer in write mode; position 0 means the PING byte was consumed.
+    assertEquals(0, readBuffer.position());
+    assertEquals(1, peer.writeBuffer.position());
+    assertEquals(Command.PONG, peer.writeBuffer.get(0));
+  }
+
   @Test
   void parseCommand_pong_updatesMetrics() {
     ServerContext ctx = ServerContext.buildDefaultServerContext();

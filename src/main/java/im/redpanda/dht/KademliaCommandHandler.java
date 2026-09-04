@@ -60,7 +60,9 @@ public class KademliaCommandHandler {
               .setContent(copyFrom(kadContent.getContent()))
               .setSignature(copyFrom(kadContent.getSignature()))
               .build();
-      peer.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray());
+      if (!peer.enqueueFrame(Command.KADEMLIA_GET_ANSWER, answerMsg.toByteArray())) {
+        logger.debug("could not queue KADEMLIA_GET_ANSWER for {}: peer already disconnected", peer);
+      }
     } else {
       new KademliaSearchJobAnswerPeer(serverContext, searchedId, peer, jobId).start();
     }
@@ -79,7 +81,9 @@ public class KademliaCommandHandler {
       serverContext.getKadStoreManager().put(kadContent);
       if (jobId != 0) {
         var ackMsg = JobAck.newBuilder().setJobId(jobId).build();
-        peer.enqueueFrame(Command.JOB_ACK, ackMsg.toByteArray());
+        if (!peer.enqueueFrame(Command.JOB_ACK, ackMsg.toByteArray())) {
+          logger.debug("could not queue JOB_ACK for {}: peer already disconnected", peer);
+        }
       }
     } else {
       logger.error("Kademlia content verification failed!");
