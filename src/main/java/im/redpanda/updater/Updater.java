@@ -90,6 +90,22 @@ public class Updater {
   }
 
   /**
+   * System property overriding {@link #signingKeyPath()}. Tests only, and for the same reason as
+   * the {@code redpanda.update.*.path} properties in {@link UpdateTransfer}: Surefire runs 8 forks
+   * out of one working directory, so a test that touches the CWD-relative key file races the other
+   * forks — and this particular file is a private signing key, which has no business being written
+   * into a checkout by a test run at all.
+   */
+  static final String SIGNING_KEY_PATH_PROPERTY = "redpanda.updater.signing.key.path";
+
+  /** The signing key file the key ceremony writes and the update-inserting step reads. */
+  static Path signingKeyPath() {
+    String configured = System.getProperty(SIGNING_KEY_PATH_PROPERTY);
+    return Path.of(
+        configured == null || configured.isBlank() ? "privateSigningKey.txt" : configured);
+  }
+
+  /**
    * This method is the entry point for the maven target "package".
    *
    * @param args
@@ -101,7 +117,7 @@ public class Updater {
       return;
     }
 
-    if (!Path.of("privateSigningKey.txt").toFile().exists()) {
+    if (!signingKeyPath().toFile().exists()) {
       System.out.println("No private key for signing found, skipping insert update into network.");
       return;
     }
@@ -131,9 +147,28 @@ public class Updater {
     }
   }
 
+  /**
+   * Offline key ceremony (T13): generates a fresh update-signing identity, writes the private half
+   * to {@code privateSigningKey.txt} and prints the public half for the operator to paste into
+   * {@link #PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS}.
+   *
+   * <p>The key file is created exclusively, so an existing signing key is never overwritten — not
+   * even by two ceremonies racing each other. Its permissions are {@code 0600} from creation on
+   * POSIX filesystems and best-effort elsewhere (a non-POSIX filesystem simply has nothing to set);
+   * the private key is never printed, so a filesystem without permissions still does not leak it
+   * into a log.
+   *
+   * <p>The paste is deliberately manual (T121/TD131). Until 2026-09-04 a {@code @Test}-annotated
+   * class {@code im.redpanda.core.SecureKeyGenerator} did all three steps automatically — generate,
+   * write the private key into the CWD, and rewrite the constant in this very source file. It
+   * escaped Surefire only because its class name misses the default include patterns, so a rename
+   * to {@code *Test} would have armed a live key-rewriting test that silently swaps the network's
+   * update-signing key. Rewriting the trust anchor is a decision, not a build step; the two steps
+   * that are safe to automate live here, the one that is not stays a human edit.
+   */
   public static void createNewKeys() {
 
-    Path keyFile = Path.of("privateSigningKey.txt");
+    Path keyFile = signingKeyPath();
     if (Files.exists(keyFile)) {
       // Never overwrite an existing signing key (accidental key loss during the key
       // ceremony); move the old file away first if a new key is really intended.
@@ -144,18 +179,26 @@ public class Updater {
 
     NodeId nodeId = new NodeId();
 
-    System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
+    // The public key is printed only once the private half is safely on disk (see below): on the
+    // race path and on any IO failure the generated key is discarded, and an operator who had
+    // already seen a "Pub:" line could paste a trust anchor whose private key exists nowhere.
     // The private key must never be written to stdout (it may end up in logs);
     // write it to the file insertNewUpdate() reads, owner-readable only.
     try {
       try {
         // Create with 0600 upfront so the key is never world-readable, not even
-        // between creation and the setPosixFilePermissions below.
+        // between creation and the setPosixFilePermissions below. createFile is
+        // exclusive, and its FileAlreadyExistsException is the guard that actually
+        // holds: the Files.exists() check above can only refuse a file that was
+        // already there when we looked, and swallowing the exception here would let
+        // the writeString below truncate a signing key that appeared in between.
         Files.createFile(
             keyFile,
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-      } catch (FileAlreadyExistsException | UnsupportedOperationException ignored) {
-        // pre-existing file or non-POSIX filesystem; permissions re-applied below
+      } catch (UnsupportedOperationException e) {
+        // non-POSIX filesystem (e.g. Windows): create exclusively anyway, without the
+        // permission attribute; there is nothing to apply below either.
+        Files.createFile(keyFile);
       }
       Files.writeString(keyFile, Base58.encode(nodeId.exportWithPrivate()));
       try {
@@ -163,7 +206,17 @@ public class Updater {
       } catch (UnsupportedOperationException ignored) {
         // non-POSIX filesystem (e.g. Windows); file is still not printed anywhere
       }
+      System.out.println("Pub: " + Base58.encode(nodeId.exportPublic()));
       System.out.println("Priv: written to " + keyFile.toAbsolutePath());
+      System.out.println(
+          "Next step is manual on purpose: paste the Pub value above into"
+              + " Updater.PUBLIC_SIGNING_KEY_OF_CORE_DEVELOPERS, rebuild, and roll the new jar out"
+              + " before signing anything with this key.");
+    } catch (FileAlreadyExistsException e) {
+      // A key file appeared between the check above and the exclusive create. Keep the existing
+      // key; the one generated here is discarded unwritten.
+      System.out.println(
+          "Refusing to create new keys: " + keyFile.toAbsolutePath() + " appeared meanwhile.");
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -172,7 +225,7 @@ public class Updater {
   public static void insertNewUpdate() throws IOException, AddressFormatException {
 
     // lets test if we have the priv key before generating update
-    String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
+    String keyString = new String(Files.readAllBytes(signingKeyPath()));
     keyString = keyString.replace("\n", "").replace("\r", "");
 
     NodeId nodeId = NodeId.importWithPrivate(Base58.decode(keyString));
