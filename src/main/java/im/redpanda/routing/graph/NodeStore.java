@@ -40,7 +40,18 @@ public class NodeStore {
   public static final int MAX_EDGES_IN_GRAPH = 500;
   public static final int MIN_EDGES_NEEDED_FOR_NODE_REMOVAL = 5;
   public static final int MAX_NODES_FOR_GRAPH = 20;
-  public static ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
+
+  /**
+   * The expiry executor of this store's cache tiers.
+   *
+   * <p>Per instance, not JVM-wide (TD184). MapDB's {@code HTreeMap.close()} shuts the executor it
+   * was handed down, so a single shared pool meant that closing <em>one</em> store — which {@link
+   * #saveToDisk()}'s recovery path does — terminated the expiry threads of every store built
+   * afterwards in the same JVM, with a {@code RejectedExecutionException} out of the next {@code
+   * createOrOpen()}. Ownership now matches lifetime: the store that creates the pool is the store
+   * that closes it.
+   */
+  private final ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(2);
 
   /**
    * These sizes are upper limits of the different dbs, the main eviction should be done via a
@@ -103,7 +114,7 @@ public class NodeStore {
             .dbDisk
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_ONDISK)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             // .expireAfterUpdate(60, TimeUnit.SECONDS) // no update since 14 days,
             // not seen in this time
             .expireAfterGet(60, TimeUnit.DAYS)
@@ -115,7 +126,7 @@ public class NodeStore {
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_OFFHEAP)
             .expireOverflow(nodeStore.onDisk)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             .expireAfterCreate()
             .expireAfterGet(60, TimeUnit.MINUTES)
             .create();
@@ -126,7 +137,7 @@ public class NodeStore {
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_ONHEAP)
             .expireOverflow(nodeStore.offHeap)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             .expireAfterCreate()
             .expireAfterGet(15, TimeUnit.MINUTES)
             .create();
@@ -150,7 +161,7 @@ public class NodeStore {
             .dbonHeap
             .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
             .expireStoreSize(MAX_SIZE_ONHEAP)
-            .expireExecutor(threadPool)
+            .expireExecutor(nodeStore.threadPool)
             .expireAfterCreate()
             .expireAfterGet(15, TimeUnit.HOURS)
             .create();
@@ -206,6 +217,12 @@ public class NodeStore {
 
   public void saveToDisk() {
 
+    if (offHeap == null) {
+      // Memory-only store (buildWithMemoryCacheOnly): there is nothing to flush, and running the
+      // recovery below on it would be a self-inflicted wipe.
+      return;
+    }
+
     try {
       offHeap.clearWithExpire();
       onHeap.clearWithExpire();
@@ -221,18 +238,56 @@ public class NodeStore {
       } catch (IOException ex) {
         logger.warn("could not delete the broken node cache {}", path, ex);
       }
-      serverContext.setNodeStore(new NodeStore(serverContext));
+      // TD185: this used to install `new NodeStore(serverContext)` — the bare private constructor,
+      // which leaves onHeap/offHeap/onDisk null and replaces the live node graph with an empty
+      // one. Recovery therefore produced a store whose every get() threw
+      // `NullPointerException: ... because "this.onHeap" is null`, which
+      // ConnectionHandler.setupConnection turns into "Handshake failed with throwable": after one
+      // failed save the node dropped EVERY new inbound connection, and the DHT jobs spun on
+      // `IllegalArgumentException: no such vertex in graph` against the discarded graph. A store
+      // that cannot be read is not a recovery. Rebuild through the real builder instead, which
+      // re-adopts the persisted graph and re-creates all three tiers.
+      try {
+        serverContext.setNodeStore(buildWithDiskCache(serverContext));
+      } catch (RuntimeException rebuildFailure) {
+        // The file-backed rebuild is the only step here that can fail on its own (the file could
+        // not be deleted, the mmap could not be taken). A node without a disk cache still routes;
+        // a node without a store at all does not.
+        logger.error(
+            "could not rebuild the on-disk node cache, continuing without one", rebuildFailure);
+        Log.sentry(rebuildFailure);
+        serverContext.setNodeStore(buildWithMemoryCacheOnly(serverContext));
+      }
     }
   }
 
+  /**
+   * Closes all cache tiers and this store's expiry executor.
+   *
+   * <p>Null-safe per tier: {@link #buildWithMemoryCacheOnly(ServerContext)} builds a store with
+   * only the on-heap tier.
+   */
   public void close() {
-    onHeap.close();
-    offHeap.close();
-    onDisk.close();
+    closeQuietly(onHeap);
+    closeQuietly(offHeap);
+    closeQuietly(onDisk);
 
-    dbonHeap.close();
-    dboffHeap.close();
-    dbDisk.close();
+    closeQuietly(dbonHeap);
+    closeQuietly(dboffHeap);
+    closeQuietly(dbDisk);
+
+    threadPool.shutdownNow();
+  }
+
+  private static void closeQuietly(java.io.Closeable closeable) {
+    if (closeable == null) {
+      return;
+    }
+    try {
+      closeable.close();
+    } catch (IOException | RuntimeException e) {
+      logger.warn("could not close a node cache tier", e);
+    }
   }
 
   /**

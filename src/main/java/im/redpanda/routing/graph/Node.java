@@ -115,6 +115,18 @@ public class Node {
    */
   public void seen(String ip, int port) {
     seen();
+    if (ip == null) {
+      // T150: a connection point is an address we can dial again, so an entry without an ip is
+      // not a weaker hint, it is no hint at all -- and it is unpersistable: NodeCodec writes the
+      // ip as a JSON null and refuses to read one back, so a single such point made the whole
+      // node cache unreadable and took the NodeStore down 15 minutes later (deploy #9). The
+      // callers that can pass null are ConnectionHandler.setupConnection and above all
+      // NodeConnectionPointsSeenJob, which reads Peer.getIp() -- null for every peer whose
+      // address was taken away by PeerList.addLocked's "another identity claims this address"
+      // branch (T120a/#354) and for every peer that went through clearConnectionDetails.
+      // Refreshing lastSeen is still right: we ARE talking to that node.
+      return;
+    }
     ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
 
     ArrayList<ConnectionPoint> toRemove = new ArrayList<>();
@@ -161,6 +173,11 @@ public class Node {
   }
 
   public boolean addConnectionPoint(String ip, int port) {
+    if (ip == null) {
+      // Same invariant as in seen(String, int): no connection point without an ip ever enters a
+      // node, so none can ever be written (T150).
+      return false;
+    }
     ConnectionPoint connectionPoint = new ConnectionPoint(ip, port);
 
     // todo can be removed later

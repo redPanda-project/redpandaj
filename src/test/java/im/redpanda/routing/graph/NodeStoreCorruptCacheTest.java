@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.security.Security;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
@@ -91,13 +90,13 @@ class NodeStoreCorruptCacheTest {
   }
 
   /**
-   * Closes the store and puts a fresh expire executor back.
+   * Closes the store.
    *
-   * <p>MapDB's {@code HTreeMap.close()} shuts down the executor it was given, and every cache tier
-   * here is handed the JVM-wide static {@code NodeStore.threadPool}. Closing one store therefore
-   * terminates that pool for the whole JVM, and every later {@code NodeStore} build in the same
-   * surefire fork fails with a {@code RejectedExecutionException}. Replacing it keeps this test
-   * from poisoning its neighbours; the production side of that landmine is logged as tech debt.
+   * <p>MapDB's {@code HTreeMap.close()} shuts down the executor it was given. That used to be the
+   * JVM-wide static {@code NodeStore.threadPool}, so closing one store terminated the expiry pool
+   * for the whole JVM and every later {@code NodeStore} build in the same surefire fork failed with
+   * a {@code RejectedExecutionException} — this method had to put a fresh pool back. Since
+   * T150/TD184 the pool belongs to the store that created it, so closing is enough.
    */
   private void closeStore() {
     if (nodeStore == null) {
@@ -105,7 +104,6 @@ class NodeStoreCorruptCacheTest {
     }
     nodeStore.close();
     nodeStore = null;
-    NodeStore.threadPool = Executors.newScheduledThreadPool(2);
   }
 
   @Test
