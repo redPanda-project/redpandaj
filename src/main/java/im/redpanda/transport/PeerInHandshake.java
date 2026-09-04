@@ -236,8 +236,53 @@ public class PeerInHandshake {
     return socketChannel;
   }
 
+  /**
+   * The peer's public {@link NodeId} as far as this handshake can tell — see {@link
+   * #resolvePeerNodeId()}, which is the single source of truth for it.
+   */
   public NodeId getNodeId() {
-    return nodeId;
+    return resolvePeerNodeId();
+  }
+
+  /**
+   * The peer's public NodeId, taken from this handshake or, failing that, from the {@link Peer}
+   * object it belongs to.
+   *
+   * <p>Both objects carry one, and they can disagree. This handshake's own field is set by {@code
+   * OutboundHandler.connectTo} (only when the peer already had a NodeId), by {@code
+   * ConnectionReaderThread.parseHandshake} on two of its branches, and by SEND_PUBLIC_KEY; the
+   * {@link Peer} gets one from the peer list, from a restored {@code PeerSaveable}, from gossip or
+   * from the same SEND_PUBLIC_KEY. Reading one of them in {@link #hasPublicKey()} and the other in
+   * {@link #calculateSharedSecret(ServerContext)} is what produced {@code RuntimeException:
+   * calculateSharedSecret: missing the peers public NodeId keys} on the testnet after the T120a
+   * deploy: we dialled a node through an id-less placeholder, {@code PeerList.updateKademliaId}
+   * handed the handshake over to the registered peer object for that identity — which already had
+   * the keys — and {@code parseHandshake}'s "the peer already has a keyed NodeId" branch goes to
+   * status -1 without ever copying them onto the handshake. {@code hasPublicKey()} then said yes
+   * (it asked the peer) and the key schedule found nothing (it asked the handshake).
+   *
+   * <p>Preferring a keyed NodeId over a key-less one is safe: a NodeId that carries keys derives
+   * its {@link KademliaId} from its Ed25519 verify key, so it is self-certifying, and it is only
+   * used here when it belongs to the identity this connection announced.
+   *
+   * @return a NodeId with keys if either side has one for this connection's identity, otherwise
+   *     whatever this handshake was given (possibly key-less, possibly {@code null}) — so a caller
+   *     that finds no key still takes the REQUEST_PUBLIC_KEY path instead of failing
+   */
+  NodeId resolvePeerNodeId() {
+    if (nodeId != null && nodeId.hasKey()) {
+      return nodeId;
+    }
+    NodeId fromPeer = peer == null ? null : peer.getNodeId();
+    if (fromPeer != null && identity != null && !identity.equals(fromPeer.getKademliaId())) {
+      // Not this connection's identity — the peer object belongs to someone else, so its keys
+      // would derive a session secret for the wrong node.
+      fromPeer = null;
+    }
+    if (fromPeer != null && fromPeer.hasKey()) {
+      return fromPeer;
+    }
+    return nodeId != null ? nodeId : fromPeer;
   }
 
   public boolean isLightClient() {
@@ -275,7 +320,8 @@ public class PeerInHandshake {
    *     protocol violation on this path.
    */
   public void calculateSharedSecret(ServerContext serverContext) throws PeerProtocolException {
-    if (nodeId == null || !nodeId.hasKey()) {
+    NodeId peerNodeId = resolvePeerNodeId();
+    if (peerNodeId == null || !peerNodeId.hasKey()) {
       throw new RuntimeException("calculateSharedSecret: missing the peers public NodeId keys");
     }
     if (ephemeralKeyFromUs == null || ephemeralPublicFromThem == null) {
@@ -293,7 +339,7 @@ public class PeerInHandshake {
     }
 
     byte[] ourVerifyKey = serverContext.getNodeId().getVerifyKeyBytes();
-    byte[] theirVerifyKey = nodeId.getVerifyKeyBytes();
+    byte[] theirVerifyKey = peerNodeId.getVerifyKeyBytes();
 
     byte[] minKey =
         compareUnsigned(ourVerifyKey, theirVerifyKey) <= 0 ? ourVerifyKey : theirVerifyKey;
@@ -333,12 +379,18 @@ public class PeerInHandshake {
     this.awaitingEncryption = awaitingEncryption;
   }
 
-  /** True if we obtained the keys of the peer required to derive the session secret. */
+  /**
+   * True if we obtained the keys of the peer required to derive the session secret.
+   *
+   * <p>Asks exactly the same question {@link #calculateSharedSecret(ServerContext)} will answer
+   * itself — see {@link #resolvePeerNodeId()}. It used to read the {@link Peer}'s NodeId while the
+   * key schedule read this handshake's own, so a "yes" here could still leave the key schedule
+   * empty-handed. Also null-safe now: an inbound handshake has no peer until {@code parseHandshake}
+   * runs.
+   */
   public boolean hasPublicKey() {
-    if (getPeer().getNodeId() == null) {
-      return false;
-    }
-    return getPeer().getNodeId().hasKey();
+    NodeId peerNodeId = resolvePeerNodeId();
+    return peerNodeId != null && peerNodeId.hasKey();
   }
 
   public boolean isEncryptionActive() {
