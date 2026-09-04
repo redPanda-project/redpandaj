@@ -60,7 +60,11 @@ class UpdateHardeningTest {
   /** Redirected apk destination ({@link UpdateTransfer#ANDROID_UPDATE_FILE} in prod). */
   private File apkFile;
 
-  /** Staging file the apk install writes before moving it onto {@link #apkFile} (T121/TD127). */
+  /**
+   * Staging file the apk install writes before moving it onto {@link #apkFile} (T121/TD127).
+   * Derived from the production rule rather than spelled out, so the name scheme lives in exactly
+   * one place — {@link #apkStagingPathIsASiblingNamedAfterItsDestination} pins that rule.
+   */
   private File apkTmpFile;
 
   /**
@@ -78,7 +82,7 @@ class UpdateHardeningTest {
     updateFile = new File(tempDir, "update");
     tmpJarFile = new File(tempDir, "tmp_redpanda.jar");
     apkFile = new File(tempDir, "android.apk");
-    apkTmpFile = new File(tempDir, "tmp_android.apk");
+    apkTmpFile = UpdateTransfer.updateApkTmpPath(apkFile.toPath()).toFile();
     runningJarFile = new File(tempDir, "redpanda.jar");
     System.setProperty(INSTALL_PATH_PROPERTY, updateFile.getAbsolutePath());
     System.setProperty(APK_PATH_PROPERTY, apkFile.getAbsolutePath());
@@ -453,6 +457,25 @@ class UpdateHardeningTest {
   }
 
   // --- T121: apk install and lock hygiene (TD127, TD125) ---
+
+  /**
+   * The one place the staging-name scheme is asserted (every other test derives its expectation
+   * from {@link UpdateTransfer#updateApkTmpPath}). Sibling, so the {@code Files.move} stays within
+   * one filesystem and is atomic; named after the destination, so the 8 Surefire forks — each with
+   * its own {@code target/android-N.apk} — do not stage through one shared file, which is the
+   * collision that made the update tests flaky before T70.
+   */
+  @Test
+  void apkStagingPathIsASiblingNamedAfterItsDestination() {
+    java.nio.file.Path apk = java.nio.file.Path.of("target", "android-3.apk");
+    java.nio.file.Path staging = UpdateTransfer.updateApkTmpPath(apk);
+
+    assertEquals(apk.getParent(), staging.getParent(), "must be a sibling of the destination");
+    assertNotEquals(apk.getFileName(), staging.getFileName(), "must not be the destination itself");
+    assertTrue(
+        staging.getFileName().toString().contains(apk.getFileName().toString()),
+        "must carry the destination name so per-fork paths stay distinct: " + staging);
+  }
 
   /** Builds a correctly signed ANDROID_UPDATE_ANSWER_CONTENT frame for {@code key}. */
   private static ByteBuffer signedApkContent(NodeId key, long timestamp, byte[] data) {

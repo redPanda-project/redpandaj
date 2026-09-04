@@ -282,6 +282,9 @@ public class ApkUpdateHandler {
     } catch (IOException e) {
       // Do not persist the new timestamp/signature if the apk was not actually written: that
       // would make LocalSettings claim an update is installed while the file is missing/corrupt.
+      // Reported like the failed move below and like installJarUpdate's write: a node that stops
+      // being able to stage updates is exactly the thing we want to hear about.
+      Log.sentry(e);
       e.printStackTrace();
       return;
     }
