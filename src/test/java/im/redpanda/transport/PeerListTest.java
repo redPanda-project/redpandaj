@@ -43,10 +43,15 @@ class PeerListTest {
     peerList.add(mtestip);
     assertEquals(1, peerList.size() - initSize);
 
+    // The node behind that address identifies itself. This used to add a SECOND Peer object for
+    // one node — the state OutboundHandler dials through and the TD142 redial loop ran on; the
+    // id-less entry adopts the identity instead (T120/TD162, see PeerIdentityInvariantTest).
     Peer mtestipWithNodeId = new Peer("mtestip", 5);
-    mtestipWithNodeId.setNodeId(new NodeId());
-    peerList.add(mtestipWithNodeId);
-    assertEquals(2, peerList.size() - initSize);
+    NodeId identity = new NodeId();
+    mtestipWithNodeId.setNodeId(identity);
+    assertEquals(mtestip, peerList.add(mtestipWithNodeId));
+    assertEquals(1, peerList.size() - initSize);
+    assertEquals(identity, mtestip.getNodeId());
 
     peerList.getReadWriteLock().writeLock().unlock();
   }

@@ -524,22 +524,59 @@ public class ConnectionHandler extends Thread {
     }
   }
 
-  private void finishedReadingPeer(Peer p) {
+  /**
+   * Puts a peer whose reader thread is done back under the selector's OP_READ interest.
+   *
+   * <p>The key is read once into a local: {@code getSelectionKey()} is volatile and a concurrent
+   * {@link Peer#setupConnectionForPeer(PeerInHandshake)} replaces it, so reading it twice could mix
+   * the interest ops of one key into another.
+   *
+   * <p>A cancelled key used to be logged (with the misspelling "key was canneled", kept here so old
+   * incident logs stay greppable) and otherwise ignored, which left the peer {@code connected ==
+   * true} with a key nobody reads any more: no OP_READ interest is ever restored, so the socket
+   * delivers nothing, every send goes into a write buffer that is never flushed, and the outbound
+   * thread's duplicate guards keep counting the peer as a live connection — a node that is silently
+   * gone but occupies its slot forever (TD165). The peer is torn down instead so the normal
+   * reconnect path can run. Only when the cancelled key is still the peer's current one: after a
+   * swap the cancelled key belongs to the previous connection and the fresh one must not be
+   * disconnected.
+   *
+   * <p>{@link Peer#setupConnectionForPeer(PeerInHandshake)} aside, one part of that hole was
+   * already covered: {@code setWriteBufferFilled()} above disconnects a connected peer whose key is
+   * invalid <em>at that moment</em>. What was left is the key being cancelled between the two calls
+   * (the selector thread runs this while reader threads and {@code disconnect()} cancel keys), and
+   * a connected peer whose write buffer is gone, for which {@code setWriteBufferFilled()} returns
+   * early without looking at the key at all.
+   */
+  void finishedReadingPeer(Peer p) {
+    workingRead.remove(p);
+
+    // ToDo: optimize
+    p.writeBufferLock.lock();
     try {
-      workingRead.remove(p);
+      p.setWriteBufferFilled();
+    } finally {
+      p.writeBufferLock.unlock();
+    }
 
-      // ToDo: optimize
-      p.writeBufferLock.lock();
-      try {
-        p.setWriteBufferFilled();
-      } finally {
-        p.writeBufferLock.unlock();
+    SelectionKey key = p.getSelectionKey();
+    if (key == null) {
+      if (p.isConnected()) {
+        p.disconnect("no selection key after reading");
       }
+      return;
+    }
 
-      p.getSelectionKey().interestOps(p.getSelectionKey().interestOps() | SelectionKey.OP_READ);
-
+    try {
+      key.interestOps(key.interestOps() | SelectionKey.OP_READ);
     } catch (CancelledKeyException e) {
-      Log.putStd("key was canneled");
+      logger.info(
+          "selection key of {}:{} was cancelled while the peer was queued for reading",
+          p.getIp(),
+          p.getPort());
+      if (p.getSelectionKey() == key && p.isConnected()) {
+        p.disconnect("selection key cancelled, the connection is no longer readable");
+      }
     }
   }
 

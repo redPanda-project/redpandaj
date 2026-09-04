@@ -208,9 +208,13 @@ public class ConnectionReaderThread implements Runnable {
       if (!identity.equals(peerInHandshake.getPeer().getKademliaId())) {
         // the Identity is not as expected, maybe there where no Identity for this peer?
         if (peerInHandshake.getPeer().getKademliaId() == null) {
-          // we can now update the Identity of the Peer since we had non, most likely we
-          // connect from a reseed list
-          peerList.updateKademliaId(peerInHandshake.getPeer(), identity);
+          // we can now update the Identity of the Peer since we had none, most likely we
+          // connected from a reseed list.
+          // updateKademliaId hands back the object that owns this identity in the peer list: the
+          // seed peer we dialled, or — when another Peer object already had it — that one, with
+          // the seed object dropped. Continuing the handshake on the dropped duplicate is what
+          // produced two Peer objects for one node (TD162).
+          peerInHandshake.setPeer(peerList.updateKademliaId(peerInHandshake.getPeer(), identity));
         } else {
           Log.put("wrong identity for that peer, disconnecting....", 30);
           try {

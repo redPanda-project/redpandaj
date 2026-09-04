@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.logging.log4j.LogManager;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -52,6 +53,8 @@ import org.jetbrains.annotations.Nullable;
  * established pattern.
  */
 public class PeerList {
+
+  private static final org.apache.logging.log4j.Logger logger = LogManager.getLogger();
 
   /**
    * Signals that the peer list write lock could not be acquired within the caller's budget. Only
@@ -201,14 +204,59 @@ public class PeerList {
           return oldPeer;
         }
 
-        if (oldPeer.getNodeId() == null || !oldPeer.getNodeId().equals(peer.getNodeId())) {
-        } else {
+        if (oldPeer.getNodeId() == null) {
+          // The entry at this address is an id-less placeholder for the node that has just
+          // identified itself: a seed from Settings.knownNodes, a restored PeerSaveable, or a
+          // gossiped address. Registering the identified object next to it is what produced two
+          // Peer objects for one node — one reachable by identity, one only through snapshot(),
+          // and both dial candidates for OutboundHandler. That is the state the TD142 redial loop
+          // ran on, and #339 only made it self-healing on the next completed handshake.
+          //
+          // One object per identity instead: the placeholder adopts the identity and stays the
+          // registered owner of the address (TD162). The caller gets it back as `oldPeer` and thus
+          // continues with the object the peer list actually knows.
+          adoptIdentity(oldPeer, peer.getNodeId());
           return oldPeer;
+        }
+
+        if (oldPeer.getNodeId().equals(peer.getNodeId())) {
+          return oldPeer;
+        }
+
+        // A genuinely different identity claims this address — the node behind it wiped its data,
+        // the address was reassigned, or a peer gossiped it at us ({@code
+        // PeerExchangeHandler.handleSendPeerList} builds Peer objects from an unauthenticated
+        // ip/port/identity triple). Exactly one of the two objects may keep the address, otherwise
+        // the outbound thread has two dial candidates for one socket; which one depends on who can
+        // actually be reached there:
+        if (oldPeer.isConnected() || oldPeer.isConnecting) {
+          // We are talking to the old identity at this address right now, or a dial to it is in
+          // flight, so the claim is wrong or stale. Register the newcomer without connection
+          // details — this class explicitly allows peers without them — instead of letting anyone
+          // take the address out from under a live peer or a running connection attempt.
+          peer.removeIpAndPort();
+        } else {
+          // This is the case the javadoc above describes ("The (ip,port) will then be removed from
+          // the old Peer"), which nothing implemented: addPeer() below overwrote the address
+          // mapping while the old object kept its ip and port, leaving a second dialable object
+          // for one address behind (TD162).
+          removeIpPortMapping(oldPeer);
+          oldPeer.removeIpAndPort();
         }
       }
     }
 
     return addPeer(peer);
+  }
+
+  /**
+   * Gives an id-less peer that is already in the list its identity and registers it under the
+   * corresponding {@link KademliaId}. Callers must hold the write lock and must have checked that
+   * the identity is not owned by another object yet.
+   */
+  private void adoptIdentity(Peer peer, NodeId nodeId) {
+    peer.setNodeId(nodeId);
+    peerHashMap.put(nodeId.getKademliaId(), peer);
   }
 
   @Nullable
@@ -518,24 +566,91 @@ public class PeerList {
   /**
    * Call this method to update an identity/KademliaId of a Peer.
    *
-   * @param peer
+   * <p>Two things this must not do, both of which it used to (TD162/TD164):
+   *
+   * <ol>
+   *   <li><b>Create a second object for one identity.</b> The {@code newId} can already be owned by
+   *       another {@link Peer} object — we dialled an address we only knew as a seed and the node
+   *       behind it turns out to be one we already track under a different (or no) address. The
+   *       blind {@code peerHashMap.put(newId, peer)} then dropped the owner out of the identity
+   *       index while leaving it in the array list, i.e. it manufactured exactly the duplicate pair
+   *       the TD142 redial loop ran on. The duplicate is dropped instead and the owner is returned.
+   *   <li><b>Discard the peer's public key.</b> {@code setNodeId(new NodeId(newId))} replaces a
+   *       {@link NodeId} that may carry the peer's Ed25519/X25519 keys with a key-less one, and the
+   *       keys are what {@code PeerInHandshake.hasPublicKey()} / {@code calculateSharedSecret()}
+   *       need — losing them costs a public-key round trip at best and desynchronises the handshake
+   *       state machine at worst. They are only kept when the identity is unchanged: a different
+   *       KademliaId means a different keypair, so for a genuine identity change the old keys are
+   *       not just stale but wrong, and a key-less NodeId (which makes the handshake request the
+   *       public key again) is the correct state.
+   * </ol>
+   *
+   * @param peer the peer whose identity was just learned
+   * @param newId the identity the peer announced
+   * @return the peer that owns {@code newId} in this list afterwards: {@code peer} itself in the
+   *     normal case, or the object that already owned the identity — in which case {@code peer} has
+   *     been removed from the list and the caller must continue with the returned object.
    */
-  public void updateKademliaId(Peer peer, KademliaId newId) {
-
-    KademliaId oldId = peer.getKademliaId();
-    System.out.println("updating KadId, old " + oldId + " new: " + newId.toString());
+  public Peer updateKademliaId(Peer peer, KademliaId newId) {
 
     readWriteLock.writeLock().lock();
     try {
-      if (oldId != null) {
-        // We have to remove the old id
-        peerHashMap.remove(oldId);
+      KademliaId oldId = peer.getKademliaId();
+      logger.debug("updating KadId, old {} new: {}", oldId, newId);
+
+      Peer owner = peerHashMap.get(newId);
+      if (owner != null && owner != peer) {
+        logger.info(
+            "identity {} is already owned by another peer object; dropping the duplicate for"
+                + " {}:{}",
+            newId,
+            peer.getIp(),
+            peer.getPort());
+        removeExact(peer);
+        adoptAddress(owner, peer);
+        return owner;
       }
-      peer.setNodeId(new NodeId(newId));
+
+      if (oldId != null) {
+        // Value-checked: if this peer is not the object registered under its own old id, that
+        // entry belongs to someone else and must survive.
+        peerHashMap.remove(oldId, peer);
+      }
+      if (!newId.equals(oldId)) {
+        peer.setNodeId(new NodeId(newId));
+      }
       peerHashMap.put(newId, peer);
+      return peer;
     } finally {
       readWriteLock.writeLock().unlock();
     }
+  }
+
+  /**
+   * Moves the address of a dropped duplicate onto the peer that owns its identity, so that
+   * enforcing "one object per identity" does not throw away the only address we have for a node we
+   * are talking to right now.
+   *
+   * <p>Deliberately only fills a gap: an owner that already has an address keeps it. The identity
+   * that triggers this merge comes from {@code ConnectionReaderThread.parseHandshake}, i.e. from
+   * the <em>plaintext</em> part of the handshake — it is announced, not yet proven (the proof is
+   * the first encrypted PING, several steps later). Overwriting a good address with the announced
+   * one would therefore let anyone we dial claim another node's identity and make that node
+   * undialable for us. Refreshing a stale address belongs behind that proof and is tracked
+   * separately.
+   *
+   * <p>An address another peer owns is left alone as well. Callers must hold the write lock.
+   */
+  private void adoptAddress(Peer owner, Peer dropped) {
+    if (owner.getIp() != null || dropped.getIp() == null) {
+      return;
+    }
+    if (peerlistIpPort.containsKey(ipPortKey(dropped))) {
+      return;
+    }
+    owner.ip = dropped.getIp();
+    owner.port = dropped.getPort();
+    peerlistIpPort.put(ipPortKey(owner), owner);
   }
 
   public Peer getGoodPeer() {
