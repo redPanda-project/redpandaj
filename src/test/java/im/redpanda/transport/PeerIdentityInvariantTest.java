@@ -170,8 +170,9 @@ class PeerIdentityInvariantTest {
 
   /**
    * TD165: a peer whose selection key was cancelled while it sat in the read queue used to be
-   * logged ("key was canneled") and left {@code connected}, with no OP_READ interest restored —
-   * nobody reads it any more, but every duplicate guard counts it as a live connection.
+   * logged (with the misspelling "key was canneled") and left {@code connected}, with no OP_READ
+   * interest restored — nobody reads it any more, but every duplicate guard counts it as a live
+   * connection.
    */
   @Test
   void aCancelledSelectionKeyDisconnectsThePeerInsteadOfLeavingItUnread() throws Exception {
