@@ -73,7 +73,12 @@ public class NodeStore {
   private long lastTimeEdgeAdded = 0;
   private final ServerContext serverContext;
   private final SecureRandom random = new SecureRandom();
-  @Getter private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+
+  /**
+   * Guards {@link #nodeGraph}. Not final: a store built to replace a broken one takes over the lock
+   * (and the graph) of its predecessor, see {@link #buildWithDiskCache(ServerContext, NodeStore)}.
+   */
+  @Getter private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
   private NodeStore(ServerContext serverContext) {
     this.serverContext = serverContext;
@@ -81,15 +86,39 @@ public class NodeStore {
   }
 
   public static NodeStore buildWithDiskCache(ServerContext serverContext) {
+    return buildWithDiskCache(serverContext, null);
+  }
+
+  /**
+   * @param replacing the store this one takes over from ({@link #saveToDisk()}'s recovery), or
+   *     {@code null} for a fresh start. See {@link #takeOverGraphGuardFrom(NodeStore)}.
+   */
+  private static NodeStore buildWithDiskCache(ServerContext serverContext, NodeStore replacing) {
 
     NodeStore nodeStore = new NodeStore(serverContext);
 
-    if (serverContext.getLocalSettings() == null) {
+    if (replacing != null) {
+      nodeStore.takeOverGraphGuardFrom(replacing);
+    } else if (serverContext.getLocalSettings() == null) {
       logger.warn("could not restore nodeGraph from local settings, starting with an empty graph");
     } else {
       nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
+    try {
+      buildDiskTiers(serverContext, nodeStore);
+    } catch (RuntimeException | Error e) {
+      // The executor is created with the instance, i.e. before any tier exists, and MapDB opens
+      // real heap/direct-memory/file handles here. Dropping a half-built store on the floor would
+      // leak two live threads and those handles for the rest of the process (Sonnet review, T150).
+      nodeStore.close();
+      throw e;
+    }
+
+    return nodeStore;
+  }
+
+  private static void buildDiskTiers(ServerContext serverContext, NodeStore nodeStore) {
     nodeStore.dbonHeap =
         DBMaker.heapDB()
             // .closeOnJvmShutdown()
@@ -141,32 +170,59 @@ public class NodeStore {
             .expireAfterCreate()
             .expireAfterGet(15, TimeUnit.MINUTES)
             .create();
-
-    return nodeStore;
   }
 
   public static NodeStore buildWithMemoryCacheOnly(ServerContext serverContext) {
+    return buildWithMemoryCacheOnly(serverContext, null);
+  }
+
+  private static NodeStore buildWithMemoryCacheOnly(
+      ServerContext serverContext, NodeStore replacing) {
     NodeStore nodeStore = new NodeStore(serverContext);
 
-    if (serverContext.getLocalSettings() == null) {
+    if (replacing != null) {
+      nodeStore.takeOverGraphGuardFrom(replacing);
+    } else if (serverContext.getLocalSettings() == null) {
       Log.put("warning, could not restore nodeGraph from local settings....", 5);
     } else {
       nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
 
-    nodeStore.dbonHeap = DBMaker.heapDB().make();
+    try {
+      nodeStore.dbonHeap = DBMaker.heapDB().make();
 
-    nodeStore.onHeap =
-        nodeStore
-            .dbonHeap
-            .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
-            .expireStoreSize(MAX_SIZE_ONHEAP)
-            .expireExecutor(nodeStore.threadPool)
-            .expireAfterCreate()
-            .expireAfterGet(15, TimeUnit.HOURS)
-            .create();
+      nodeStore.onHeap =
+          nodeStore
+              .dbonHeap
+              .hashMap(NODE_MAP, NodeStoreSerializers.KADEMLIA_ID, NodeStoreSerializers.NODE)
+              .expireStoreSize(MAX_SIZE_ONHEAP)
+              .expireExecutor(nodeStore.threadPool)
+              .expireAfterCreate()
+              .expireAfterGet(15, TimeUnit.HOURS)
+              .create();
+    } catch (RuntimeException | Error e) {
+      nodeStore.close();
+      throw e;
+    }
 
     return nodeStore;
+  }
+
+  /**
+   * Makes this store the successor of {@code previous}: same graph object, same lock object.
+   *
+   * <p>The lock matters more than the graph. {@code LocalSettings} holds the read lock it was
+   * handed at startup and serializes the graph under it, while jobs that cached a {@code NodeStore}
+   * reference mutate the very same graph under their store's write lock. Handing {@code
+   * LocalSettings} a <em>different</em> lock mid-flight would leave a mutator and the serializer
+   * holding two unrelated locks over one graph — so the successor keeps the predecessor's lock
+   * instead, and no re-registration happens at all (Sonnet review, T150). It is also why the
+   * recovery does not start from an empty graph: the vertices the DHT jobs hold references to must
+   * stay in it ("no such vertex in graph", deploy #9).
+   */
+  private void takeOverGraphGuardFrom(NodeStore previous) {
+    this.readWriteLock = previous.readWriteLock;
+    this.nodeGraph = previous.nodeGraph;
   }
 
   /**
@@ -248,15 +304,15 @@ public class NodeStore {
       // that cannot be read is not a recovery. Rebuild through the real builder instead, which
       // re-adopts the persisted graph and re-creates all three tiers.
       try {
-        serverContext.setNodeStore(buildWithDiskCache(serverContext));
-      } catch (RuntimeException rebuildFailure) {
+        serverContext.setNodeStore(buildWithDiskCache(serverContext, this));
+      } catch (RuntimeException | Error rebuildFailure) {
         // The file-backed rebuild is the only step here that can fail on its own (the file could
         // not be deleted, the mmap could not be taken). A node without a disk cache still routes;
         // a node without a store at all does not.
         logger.error(
             "could not rebuild the on-disk node cache, continuing without one", rebuildFailure);
         Log.sentry(rebuildFailure);
-        serverContext.setNodeStore(buildWithMemoryCacheOnly(serverContext));
+        serverContext.setNodeStore(buildWithMemoryCacheOnly(serverContext, this));
       }
     }
   }

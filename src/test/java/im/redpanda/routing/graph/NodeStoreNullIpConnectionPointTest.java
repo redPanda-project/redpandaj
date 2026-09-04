@@ -145,6 +145,54 @@ class NodeStoreNullIpConnectionPointTest {
   }
 
   /**
+   * The recovery machinery itself (TD185), driven into its catch block rather than around it: the
+   * test above only proves that the flush no longer fails. Here the flush is made to fail — the
+   * tiers are closed under it, which is what MapDB throwing out of {@code clearWithExpire()} looks
+   * like from {@code saveToDisk()}'s point of view — and the store that comes out has to be one the
+   * node can keep working with.
+   *
+   * <p>On 8dcbb74 the replacement was {@code new NodeStore(serverContext)}: null tiers, empty
+   * graph, an NPE on every read.
+   */
+  @Test
+  void saveToDisk_whenTheFlushFails_installsAUsableStoreOnTheSameGraphAndLock() {
+    ServerContext serverContext = new ServerContext();
+    serverContext.setPort(PORT);
+    serverContext.setLocalSettings(new LocalSettings());
+    NodeStore broken = NodeStore.buildWithDiskCache(serverContext);
+    serverContext.setNodeStore(broken);
+
+    NodeId nodeId = new NodeId();
+    new Node(serverContext, nodeId);
+    Object graphBefore = broken.getNodeGraph();
+    Object lockBefore = broken.getReadWriteLock();
+
+    broken.close();
+    broken.saveToDisk();
+
+    nodeStore = serverContext.getNodeStore();
+    assertThat(nodeStore).as("the broken store must have been replaced").isNotSameAs(broken);
+
+    // Usable: a read does not throw and a write survives a read-back. This is the whole point --
+    // Node.getByKademliaId() is on the inbound-connection path, so a store that throws costs the
+    // node every new connection.
+    NodeId fresh = new NodeId();
+    assertThatCode(
+            () -> {
+              nodeStore.get(nodeId.getKademliaId());
+              nodeStore.put(fresh.getKademliaId(), new Node(serverContext, fresh));
+            })
+        .doesNotThrowAnyException();
+    assertThat(nodeStore.get(fresh.getKademliaId())).isNotNull();
+
+    // Same graph object AND same lock object, so LocalSettings' registered read lock still guards
+    // the graph the successor mutates.
+    assertThat(nodeStore.getNodeGraph()).isSameAs(graphBefore);
+    assertThat(nodeStore.getReadWriteLock()).isSameAs(lockBefore);
+    assertThat(serverContext.getLocalSettings().getNodeGraph()).isSameAs(graphBefore);
+  }
+
+  /**
    * TD184: MapDB's {@code HTreeMap.close()} shuts down the executor it was handed. While that was
    * the JVM-wide static {@code NodeStore.threadPool}, closing one store killed the expiry threads
    * of every store built afterwards — which is exactly what the recovery path above does, so the

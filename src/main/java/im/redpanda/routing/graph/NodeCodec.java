@@ -51,6 +51,9 @@ public final class NodeCodec {
         // rejects what an older file already holds. Node itself no longer accepts such a point
         // either; skipping it here keeps a node object that predates that guard -- restored from
         // an old file, or built by a test -- persistable instead of poisoning the store.
+        logger.warn(
+            "not persisting a connection point without an ip, node {}",
+            node.getNodeId().getKademliaId());
         continue;
       }
       JsonObject pointJson = new JsonObject();
