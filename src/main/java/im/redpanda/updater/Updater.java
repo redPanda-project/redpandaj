@@ -265,9 +265,48 @@ public class Updater {
     System.out.println("hash: " + Sha256Hash.create(toHash.array()));
   }
 
-  public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
+  /**
+   * System property naming the freshly built apk that {@link #insertNewAndroidUpdate()} signs and
+   * moves into place. Defaults to {@link #DEFAULT_ANDROID_APK_SOURCE}.
+   */
+  public static final String ANDROID_APK_SOURCE_PROPERTY = "redpanda.android.apk.source";
 
-    System.out.println("inserting android.apk as android update...");
+  /**
+   * Where a Flutter release build puts the apk, relative to this repository next to the mobile
+   * checkout.
+   *
+   * <p>TD130: this used to be spelled with backslashes ({@code ..\app\build\...}), which is a
+   * single path segment with backslashes in its name on Linux — so {@code lastModified()} returned
+   * 0 and the read failed on every non-Windows signing host, including the one that actually signs
+   * the testnet releases. Forward slashes work on both platforms.
+   */
+  public static final String DEFAULT_ANDROID_APK_SOURCE =
+      "../app/build/app/outputs/apk/release/app-release.apk";
+
+  /**
+   * The apk {@link #insertNewAndroidUpdate()} signs: {@value #ANDROID_APK_SOURCE_PROPERTY} if set,
+   * otherwise {@link #DEFAULT_ANDROID_APK_SOURCE}.
+   */
+  static Path androidApkSource() {
+    String configured = System.getProperty(ANDROID_APK_SOURCE_PROPERTY);
+    return Path.of(
+        configured == null || configured.isBlank() ? DEFAULT_ANDROID_APK_SOURCE : configured);
+  }
+
+  /** Signs the apk named by {@value #ANDROID_APK_SOURCE_PROPERTY} (or the default). */
+  public static void insertNewAndroidUpdate() throws IOException, AddressFormatException {
+    insertNewAndroidUpdate(androidApkSource());
+  }
+
+  /**
+   * Signs {@code source} with the local signing key, records timestamp and signature in the
+   * uploader node's settings and moves the apk to the file the node distributes ({@link
+   * UpdateTransfer#updateApkPath()}).
+   */
+  public static void insertNewAndroidUpdate(Path source)
+      throws IOException, AddressFormatException {
+
+    System.out.println("inserting " + source + " as android update...");
     // lets test if we have the priv key before generating update
     String keyString = new String(Files.readAllBytes(Path.of("privateSigningKey.txt")));
     keyString = keyString.replace("\n", "").replace("\r", "");
@@ -276,14 +315,9 @@ public class Updater {
 
     System.out.println("public key encoded: " + Base58.encode(nodeId.exportPublic()));
 
-    String fileName = "..\\app\\build\\app\\outputs\\apk\\release\\app-release.apk";
+    long timestamp = source.toFile().lastModified();
 
-    File file = new File(fileName);
-
-    long timestamp = file.lastModified();
-
-    Path path = Path.of(fileName);
-    byte[] data = Files.readAllBytes(path);
+    byte[] data = Files.readAllBytes(source);
 
     ByteBuffer toHash = ByteBuffer.allocate(8 + data.length);
     toHash.putLong(timestamp);
@@ -308,9 +342,8 @@ public class Updater {
 
     System.out.println("hash: " + Sha256Hash.create(toHash.array()));
 
-    System.out.println("renaming file to android.apk to be used from the client");
-
-    Path source = Path.of(fileName);
-    Files.move(source, Path.of("android.apk"), StandardCopyOption.REPLACE_EXISTING);
+    Path destination = UpdateTransfer.updateApkPath();
+    System.out.println("renaming file to " + destination + " to be used from the client");
+    Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
   }
 }
