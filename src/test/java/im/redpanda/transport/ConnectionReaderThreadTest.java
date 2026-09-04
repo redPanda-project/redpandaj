@@ -2,6 +2,7 @@ package im.redpanda.transport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
@@ -49,13 +50,68 @@ class ConnectionReaderThreadTest {
     }
   }
 
+  /** Fewer than 30 bytes is "not complete yet", not a reject: the channel stays open. */
+  @Test
+  void partialHandshakeIsNotRejected() throws Exception {
+    try (SocketChannel channel = SocketChannel.open()) {
+      PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
+
+      boolean accepted =
+          ConnectionReaderThread.parseHandshake(
+              new ServerContext(), peerInHandshake, ByteBuffer.allocate(29).limit(29));
+
+      assertFalse(accepted);
+      assertTrue(channel.isOpen(), "a partial handshake must not close the channel");
+    }
+  }
+
+  /** The advertised port is read as a signed int, so it has to be range-checked. */
+  @Test
+  void handshakeWithAnOutOfRangePortIsRejected() throws Exception {
+    try (SocketChannel channel = SocketChannel.open()) {
+      PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
+
+      boolean accepted =
+          ConnectionReaderThread.parseHandshake(
+              new ServerContext(), peerInHandshake, handshake(Server.VERSION, (byte) 0, 70000));
+
+      assertFalse(accepted);
+    }
+  }
+
+  /** Our own KademliaId on the wire means we dialled ourselves; the connection is dropped. */
+  @Test
+  void handshakeFromOurselvesIsRejectedAndClosed() throws Exception {
+    ServerContext ctx = ServerContext.buildDefaultServerContext();
+
+    ByteBuffer handshake = ByteBuffer.allocate(30);
+    handshake.put(Server.MAGIC.getBytes());
+    handshake.put((byte) Server.VERSION);
+    handshake.put((byte) 0);
+    handshake.put(ctx.getOwnNodeId().getBytes());
+    handshake.putInt(1234);
+    handshake.flip();
+
+    try (SocketChannel channel = SocketChannel.open()) {
+      PeerInHandshake peerInHandshake = new PeerInHandshake("127.0.0.1", channel);
+
+      assertFalse(ConnectionReaderThread.parseHandshake(ctx, peerInHandshake, handshake));
+      assertEquals(2, peerInHandshake.getStatus(), "status 2 is the disconnect code");
+      assertFalse(channel.isOpen());
+    }
+  }
+
   private static ByteBuffer handshake(int version, byte clientType) {
+    return handshake(version, clientType, 0);
+  }
+
+  private static ByteBuffer handshake(int version, byte clientType, int port) {
     ByteBuffer handshake = ByteBuffer.allocate(30);
     handshake.put(Server.MAGIC.getBytes());
     handshake.put((byte) version);
     handshake.put(clientType); // > 128 as unsigned byte marks a light client
     handshake.put(new byte[20]); // KademliaId
-    handshake.putInt(0); // port
+    handshake.putInt(port);
     handshake.flip();
     return handshake;
   }
