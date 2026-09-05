@@ -147,9 +147,11 @@ class NodeStoreNullIpConnectionPointTest {
   /**
    * The recovery machinery itself (TD185), driven into its catch block rather than around it: the
    * test above only proves that the flush no longer fails. Here the flush is made to fail — the
-   * tiers are closed under it, which is what MapDB throwing out of {@code clearWithExpire()} looks
-   * like from {@code saveToDisk()}'s point of view — and the store that comes out has to be one the
-   * node can keep working with.
+   * on-disk tier is killed under it, which is what MapDB throwing out of {@code clearWithExpire()}
+   * looks like from {@code saveToDisk()}'s point of view — and the store that comes out has to be
+   * one the node can keep working with. (Closing the whole store first, as this test used to do, is
+   * no longer a failure: since REDPANDAJ-2EZ a save on a closed store is a deliberate no-op, see
+   * {@code NodeStoreShutdownRaceTest}.)
    *
    * <p>On 8dcbb74 the replacement was {@code new NodeStore(serverContext)}: null tiers, empty
    * graph, an NPE on every read.
@@ -167,11 +169,12 @@ class NodeStoreNullIpConnectionPointTest {
     Object graphBefore = broken.getNodeGraph();
     Object lockBefore = broken.getReadWriteLock();
 
-    broken.close();
+    broken.breakDiskTierForTest();
     broken.saveToDisk();
 
     nodeStore = serverContext.getNodeStore();
     assertThat(nodeStore).as("the broken store must have been replaced").isNotSameAs(broken);
+    assertThat(broken.isClosed()).as("the recovery closes the store it replaces").isTrue();
 
     // Usable: a read does not throw and a write survives a read-back. This is the whole point --
     // Node.getByKademliaId() is on the inbound-connection path, so a store that throws costs the
