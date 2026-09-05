@@ -79,6 +79,23 @@ class NodeStoreShutdownRaceTest {
     assertThat(cachePath).as("the recovery's Files.delete must not have run").exists();
   }
 
+  /** The memory-only fallback store (no offHeap/onDisk tier) takes the same no-op path. */
+  @Test
+  void saveToDisk_afterClose_isANoOpOnAMemoryOnlyStore() {
+    ServerContext serverContext = new ServerContext();
+    serverContext.setPort(PORT);
+    serverContext.setLocalSettings(new LocalSettings());
+    nodeStore = NodeStore.buildWithMemoryCacheOnly(serverContext);
+    serverContext.setNodeStore(nodeStore);
+    new Node(serverContext, new NodeId());
+    NodeStore closedStore = nodeStore;
+
+    closedStore.close();
+
+    assertThatCode(closedStore::saveToDisk).doesNotThrowAnyException();
+    assertThat(serverContext.getNodeStore()).isSameAs(closedStore);
+  }
+
   @Test
   void close_isIdempotent() {
     contextWithStore();
