@@ -80,6 +80,22 @@ public class NodeStore {
    */
   @Getter private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
+  /**
+   * Serializes {@link #saveToDisk()} against {@link #close()}.
+   *
+   * <p>Both run on the job pool, and by construction at the same instant: {@code ServerRestartJob}
+   * ticks hourly and {@code SaveJobs} every 15 minutes, both counted from process start, so every
+   * restart tick is also a save tick. {@code Server.shutdown()} then closed the tiers while the
+   * save was still inside {@code clearWithExpire()}; MapDB threw {@code IllegalAccessError: Store
+   * was closed}, and the recovery path below read that as a corrupt cache — deleted the file and
+   * rebuilt the store a moment before the JVM exited (REDPANDAJ-2EZ, testnet node1 restart
+   * 2026-09-05 01:46 UTC). With the lock, close waits for an in-flight save and a save after close
+   * is a no-op.
+   */
+  private final Object lifecycleLock = new Object();
+
+  private boolean closed;
+
   private NodeStore(ServerContext serverContext) {
     this.serverContext = serverContext;
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
@@ -272,6 +288,17 @@ public class NodeStore {
   }
 
   public void saveToDisk() {
+    synchronized (lifecycleLock) {
+      if (closed) {
+        // Shutdown already closed the tiers under us; there is nothing left to flush, and MapDB's
+        // "Store was closed" is not a corrupt cache.
+        return;
+      }
+      saveToDiskLocked();
+    }
+  }
+
+  private void saveToDiskLocked() {
 
     if (offHeap == null) {
       // Memory-only store (buildWithMemoryCacheOnly): there is nothing to flush, and running the
@@ -324,15 +351,39 @@ public class NodeStore {
    * only the on-heap tier.
    */
   public void close() {
-    closeQuietly(onHeap);
-    closeQuietly(offHeap);
-    closeQuietly(onDisk);
+    synchronized (lifecycleLock) {
+      if (closed) {
+        // Server.shutdown() runs twice on a job-triggered restart (ServerRestartJob, then the JVM
+        // shutdown hook); the second close must not touch the tiers again.
+        return;
+      }
+      closed = true;
 
-    closeQuietly(dbonHeap);
-    closeQuietly(dboffHeap);
-    closeQuietly(dbDisk);
+      closeQuietly(onHeap);
+      closeQuietly(offHeap);
+      closeQuietly(onDisk);
 
-    threadPool.shutdownNow();
+      closeQuietly(dbonHeap);
+      closeQuietly(dboffHeap);
+      closeQuietly(dbDisk);
+
+      threadPool.shutdownNow();
+    }
+  }
+
+  boolean isClosed() {
+    synchronized (lifecycleLock) {
+      return closed;
+    }
+  }
+
+  /**
+   * Test hook: kills the on-disk tier underneath a live store, which is what a corrupt cache file
+   * looks like to {@link #saveToDisk()} — the flush throws out of {@code clearWithExpire()} while
+   * the store itself is still open. Unlike {@link #close()} this must drive the recovery path.
+   */
+  void breakDiskTierForTest() {
+    dbDisk.close();
   }
 
   private static void closeQuietly(java.io.Closeable closeable) {
