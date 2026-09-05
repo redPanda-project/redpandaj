@@ -96,6 +96,13 @@ public class NodeStore {
 
   private boolean closed;
 
+  /**
+   * Test seam: runs between the flush steps of {@link #saveToDiskLocked()}, i.e. while the save
+   * holds {@link #lifecycleLock}. Null outside tests. Lets {@code NodeStoreShutdownRaceTest} park a
+   * close() on the lock deterministically instead of hoping a sleep lines up.
+   */
+  static volatile Runnable betweenFlushStepsForTest;
+
   private NodeStore(ServerContext serverContext) {
     this.serverContext = serverContext;
     nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
@@ -309,6 +316,10 @@ public class NodeStore {
     try {
       offHeap.clearWithExpire();
       onHeap.clearWithExpire();
+      Runnable seam = betweenFlushStepsForTest;
+      if (seam != null) {
+        seam.run();
+      }
       offHeap.clearWithExpire();
     } catch (Throwable e) {
       logger.warn("NodeStore may be broken, closing and reopening the store", e);

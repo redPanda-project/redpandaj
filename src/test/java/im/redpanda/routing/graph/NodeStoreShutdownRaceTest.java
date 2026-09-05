@@ -10,10 +10,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Security;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,51 +91,44 @@ class NodeStoreShutdownRaceTest {
 
   /**
    * The other interleaving: the save is in flight when shutdown closes the store. Close has to wait
-   * for it; neither side may end up in the recovery path. The test above is the deterministic pin;
-   * this one is a regression guard for the concurrent case — with the lifecycle lock it cannot
-   * fail, without the lock it fails only when the timing happens to line up (it did not in one
-   * negative-control run, so do not read a green run here as proof on its own).
+   * for it, and neither side may end up in the recovery path. Deterministic: the test seam runs
+   * between the flush steps while the save holds the lifecycle lock; from there the closer thread
+   * is started and the seam returns only once that thread is parked on the lock ({@code
+   * Thread.State.BLOCKED}). Without the lock the closer never blocks, closes the tiers under the
+   * flush, and the third {@code clearWithExpire()} drives the recovery (store replaced, file gone).
    */
   @Test
-  void close_whileASaveIsInFlight_neverTriggersTheRecovery() throws Exception {
+  void close_whileASaveIsInFlight_waitsForTheSaveAndSkipsTheRecovery() throws Exception {
     ServerContext serverContext = contextWithStore();
     NodeStore original = nodeStore;
-    for (int i = 0; i < 200; i++) {
+    for (int i = 0; i < 20; i++) {
       new Node(serverContext, new NodeId());
     }
 
-    AtomicReference<Throwable> saverFailure = new AtomicReference<>();
-    AtomicInteger saves = new AtomicInteger();
-    CountDownLatch firstSaveDone = new CountDownLatch(1);
-    Thread saver =
-        new Thread(
-            () -> {
-              try {
-                while (!original.isClosed()) {
-                  original.saveToDisk();
-                  saves.incrementAndGet();
-                  firstSaveDone.countDown();
-                }
-              } catch (Throwable t) {
-                saverFailure.set(t);
-              } finally {
-                firstSaveDone.countDown();
-              }
-            },
-            "SaveJobs-under-test");
-    saver.start();
-    // At least one save has run against the live store before the close (Copilot review: a
-    // "thread started" latch would let a slow runner close before the first save was attempted).
-    assertThat(firstSaveDone.await(30, TimeUnit.SECONDS)).isTrue();
-    // Then let the saver get into the middle of a later flush before pulling the store away.
-    Thread.sleep(50);
+    Thread closer = new Thread(original::close, "Server.shutdown-under-test");
+    AtomicBoolean closerParkedOnTheLock = new AtomicBoolean();
+    AtomicBoolean closedDuringTheFlush = new AtomicBoolean();
+    NodeStore.betweenFlushStepsForTest =
+        () -> {
+          closer.start();
+          long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+          while (closer.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+          }
+          closerParkedOnTheLock.set(closer.getState() == Thread.State.BLOCKED);
+          closedDuringTheFlush.set(original.isClosed());
+        };
+    try {
+      assertThatCode(original::saveToDisk).doesNotThrowAnyException();
+    } finally {
+      NodeStore.betweenFlushStepsForTest = null;
+    }
+    closer.join(TimeUnit.SECONDS.toMillis(30));
 
-    original.close();
-    saver.join(TimeUnit.SECONDS.toMillis(30));
-
-    assertThat(saver.isAlive()).as("the saver must observe the close and stop").isFalse();
-    assertThat(saverFailure.get()).as("no exception escaped saveToDisk").isNull();
-    assertThat(saves.get()).as("the saver did run against the live store").isPositive();
+    assertThat(closerParkedOnTheLock).as("close() must wait for the in-flight save").isTrue();
+    assertThat(closedDuringTheFlush).as("the tiers were still open while the save ran").isFalse();
+    assertThat(closer.isAlive()).as("close() completes once the save is done").isFalse();
+    assertThat(original.isClosed()).isTrue();
     assertThat(serverContext.getNodeStore())
         .as("closing under a save must not be mistaken for a corrupt cache")
         .isSameAs(original);
