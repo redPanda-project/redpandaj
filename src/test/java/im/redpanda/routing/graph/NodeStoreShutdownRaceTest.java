@@ -108,24 +108,28 @@ class NodeStoreShutdownRaceTest {
 
     AtomicReference<Throwable> saverFailure = new AtomicReference<>();
     AtomicInteger saves = new AtomicInteger();
-    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch firstSaveDone = new CountDownLatch(1);
     Thread saver =
         new Thread(
             () -> {
               try {
-                started.countDown();
                 while (!original.isClosed()) {
                   original.saveToDisk();
                   saves.incrementAndGet();
+                  firstSaveDone.countDown();
                 }
               } catch (Throwable t) {
                 saverFailure.set(t);
+              } finally {
+                firstSaveDone.countDown();
               }
             },
             "SaveJobs-under-test");
     saver.start();
-    assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
-    // Let the saver get into the middle of a flush before pulling the store away.
+    // At least one save has run against the live store before the close (Copilot review: a
+    // "thread started" latch would let a slow runner close before the first save was attempted).
+    assertThat(firstSaveDone.await(30, TimeUnit.SECONDS)).isTrue();
+    // Then let the saver get into the middle of a later flush before pulling the store away.
     Thread.sleep(50);
 
     original.close();

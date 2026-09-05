@@ -383,7 +383,13 @@ public class NodeStore {
    * the store itself is still open. Unlike {@link #close()} this must drive the recovery path.
    */
   void breakDiskTierForTest() {
-    dbDisk.close();
+    synchronized (lifecycleLock) {
+      if (closed || dbDisk == null) {
+        throw new IllegalStateException(
+            "breakDiskTierForTest needs an open store with an on-disk tier");
+      }
+      dbDisk.close();
+    }
   }
 
   private static void closeQuietly(java.io.Closeable closeable) {
