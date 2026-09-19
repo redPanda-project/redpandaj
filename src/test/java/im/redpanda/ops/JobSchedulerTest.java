@@ -52,11 +52,32 @@ class JobSchedulerTest {
     try {
       boolean sawJitteredFirstTick = false;
       for (int i = 0; i < 50 && !sawJitteredFirstTick; i++) {
-        ScheduledFuture<?> future = JobScheduler.insert(() -> {}, SERVER_RESTART_PERIOD_MS);
+        ScheduledFuture<?> future = JobScheduler.insert(() -> {}, SERVER_RESTART_PERIOD_MS, true);
         futures.add(future);
         sawJitteredFirstTick = future.getDelay(TimeUnit.MILLISECONDS) > SERVER_RESTART_PERIOD_MS;
       }
       assertThat(sawJitteredFirstTick).isTrue();
+    } finally {
+      futures.forEach(future -> future.cancel(false));
+    }
+  }
+
+  /**
+   * The jitter must stay opt-in: one-shot jobs ({@code skipImminentRun}) sample their delay from a
+   * documented {@code [0, max]} and that single run is a deadline, not a re-run interval, so the
+   * default {@code insert()} has to schedule the first tick exactly one period away (Copilot review
+   * of this PR).
+   */
+  @Test
+  void insertDoesNotJitterUnlessAskedTo() {
+    List<ScheduledFuture<?>> futures = new ArrayList<>();
+    try {
+      for (int i = 0; i < 50; i++) {
+        ScheduledFuture<?> future = JobScheduler.insert(() -> {}, SERVER_RESTART_PERIOD_MS);
+        futures.add(future);
+        assertThat(future.getDelay(TimeUnit.MILLISECONDS))
+            .isLessThanOrEqualTo(SERVER_RESTART_PERIOD_MS);
+      }
     } finally {
       futures.forEach(future -> future.cancel(false));
     }

@@ -189,7 +189,7 @@ public abstract class Job implements Runnable {
     serverContext.getJobRegistry().registerWithFreshId(this);
 
     // run delayed recurrent
-    future = JobScheduler.insert(this, reRunDelay);
+    future = JobScheduler.insert(this, reRunDelay, jittersInitialDelay());
 
     // run immediately
     JobScheduler.runNow(this);
@@ -242,7 +242,18 @@ public abstract class Job implements Runnable {
     }
     this.reRunDelay = newDelay;
     future.cancel(false);
-    future = JobScheduler.insert(this, reRunDelay);
+    future = JobScheduler.insert(this, reRunDelay, jittersInitialDelay());
+  }
+
+  /**
+   * Whether this job's first tick may be spread by {@link JobScheduler}'s jitter (TD224). Only the
+   * recurring permanent jobs need it — they are the ones that all start within the same millisecond
+   * with periods that are multiples of each other. A one-shot job ({@code skipImminentRun}) is
+   * excluded: its delay is the deadline of its single run, sampled from a documented range by the
+   * caller, and must not be stretched (Copilot review of this PR).
+   */
+  private boolean jittersInitialDelay() {
+    return permanent && !skipImminentRun;
   }
 
   public long getReRunDelay() {

@@ -31,13 +31,34 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
    */
   static final long INITIAL_DELAY_JITTER_DIVISOR = 10;
 
+  /**
+   * Schedules {@code runnable} every {@code delayInMS}, with the first tick exactly that far off.
+   */
   public static ScheduledFuture<?> insert(Runnable runnable, long delayInMS) {
+    return insert(runnable, delayInMS, false);
+  }
+
+  /**
+   * Schedules {@code runnable} every {@code delayInMS}.
+   *
+   * @param jitterInitialDelay whether the FIRST tick may be spread inside {@link
+   *     #initialDelayWithJitter} (TD224). Only recurring permanent jobs want that. A one-shot job
+   *     ({@code skipImminentRun}) must not get it: for those the delay <b>is</b> the deadline of
+   *     their single run and its distribution is part of their contract — {@code
+   *     OhAnnounceJob.SingleAnnounceJob}, {@code OhResolveJob.DelayedSearchJob} and {@code
+   *     RecordLookupJob.DelayedSearchJob} sample it uniformly from a documented {@code [0, max]},
+   *     and adding up to 10% would push it past that bound and skew the distribution (Copilot
+   *     review of this PR).
+   */
+  public static ScheduledFuture<?> insert(
+      Runnable runnable, long delayInMS, boolean jitterInitialDelay) {
     // scheduleWithFixedDelay rejects a period <= 0. Jittered delays sampled
     // from [0, n] (e.g. OhResolveJob.DelayedSearchJob) can legitimately hit 0,
     // which must mean "as soon as possible", not an IllegalArgumentException.
     long delay = Math.max(1, delayInMS);
+    long initialDelay = jitterInitialDelay ? initialDelayWithJitter(delay) : delay;
     return jobScheduler.scheduleWithFixedDelay(
-        runnable, initialDelayWithJitter(delay), delay, TimeUnit.MILLISECONDS);
+        runnable, initialDelay, delay, TimeUnit.MILLISECONDS);
   }
 
   /**

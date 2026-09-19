@@ -98,9 +98,11 @@ public class Server {
    * following {@code System.exit(0)} runs the JVM shutdown hook of {@code App}, which calls it
    * again — a second {@code savePeers} plus {@code localSettings.save} against an already closed
    * store, on a node that is on its way out. {@code ListenConsole}'s {@code e} command does the
-   * same. The guard sits here rather than in the callers because all three call sites pair up with
-   * the hook (which always runs on {@code System.exit}) and neither of the other two may simply
-   * drop its call: {@code TestNodeLauncher} has no such hook and would then never save at all.
+   * same. The guard sits here rather than in the callers because every call site pairs up with a
+   * hook that always runs on {@code System.exit}, and none of them may simply drop its call: the
+   * E2E harness {@code TestNodeLauncher} goes through a wrapper of its own that both its JVM hook
+   * and its {@code startNode} path invoke (guarded there by a separate {@code AtomicBoolean}), so
+   * removing the direct call from a caller here would only move the same problem one level up.
    *
    * <p>Two details the guard has to get right (both from the adversarial review of this PR):
    *
