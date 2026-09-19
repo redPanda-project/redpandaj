@@ -123,7 +123,10 @@ class InboundCommandProcessorEvenMoreCoverageTest {
 
     // Should have added two peers (one with id, one without).
     assertNotNull(ctx.getPeerList().get(otherNode.getKademliaId()));
-    assertTrue(ctx.getPeerList().removeIpPort("10.10.0.2", 2222));
+    Peer idLess = ctx.getPeerList().getByAddress("10.10.0.2", 2222);
+    assertNotNull(idLess);
+    assertNull(idLess.getKademliaId(), "entry 2 carried no nodeId, so neither may its peer");
+    assertNotSame(idLess, ctx.getPeerList().get(otherNode.getKademliaId()));
   }
 
   @Test

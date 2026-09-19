@@ -183,14 +183,37 @@ public class ConnectionReaderThread implements Runnable {
        * Lets remove this peer from our peerlist if it is present, note that an incoming connection
        * is not in our peerlist
        */
-      if (peerInHandshake.getPeer() != null) {
-        // PeerList.remove(peerInHandshake.getPeer());
-        boolean b = peerList.removeIpPort(peerInHandshake.ip, peerInHandshake.port);
+      Peer self = peerInHandshake.getPeer();
+      if (self != null) {
+        // Remove exactly the peer object we dialled, not "whoever owns the announced address"
+        // (TD214). This branch runs on the plaintext part of the handshake: the ip is established
+        // by TCP, but the announced port and identity are whatever the far side chose to send. The
+        // old removeIpPort(ip, port) evicted the current owner of that address from all three
+        // indices without a value check, so a host sharing our peer's ip -- same NAT, a co-located
+        // container, a shared exit -- could have that peer dropped from our peer list by echoing
+        // our own identity and naming its port. removeExact is value-checked and touches nothing
+        // but the object we dialled.
+        //
+        // Removing the whole object (rather than only its address) is deliberate, and an attempt
+        // to be gentler was withdrawn in review: leaving a keyed peer behind with ip == null does
+        // not keep it, it only delays its removal. PeerJobs times out the dial (isConnecting, no
+        // pong for 10 s) and its next pass evicts every peer that is neither dialable, connected
+        // nor connecting -- by KademliaId. So the peer is gone either way, just later and through
+        // a path that is harder to reason about.
+        boolean b = peerList.removeExact(self);
         logger.debug(
             "removed our own address {}:{} from the peer list: {}",
             peerInHandshake.ip,
             peerInHandshake.port,
             b);
+        // The dial is over, so clear isConnecting/authed -- nothing else does it on this path, and
+        // a peer left "connecting" is counted by OutboundHandler's connection budget until
+        // PeerJobs times it out. Guarded like setupConnection's PeerListBusyException path: only
+        // tear the peer down when it has nothing to lose, because a concurrent inbound handshake
+        // for the same identity may have given this object a live connection in the meantime.
+        if (!self.isConnected()) {
+          self.disconnect("connected to ourselves");
+        }
       }
       return false;
     }
