@@ -58,7 +58,7 @@ public class PeerList {
 
   /**
    * Signals that the peer list write lock could not be acquired within the caller's budget. Only
-   * thrown by {@link #add(Peer, long)}; the unbounded {@link #add(Peer)} waits forever.
+   * thrown by {@link #addFromCompletedHandshake}; the unbounded {@link #add(Peer)} waits forever.
    */
   public static class PeerListBusyException extends RuntimeException {
     public PeerListBusyException(String message) {
@@ -78,8 +78,8 @@ public class PeerList {
    * collide, and so does every pair whose ip hashes differ by exactly the port difference. A
    * colliding peer took over the slot of a live one, which made {@link #addLocked} answer with the
    * wrong peer (and, for a peer without a {@link NodeId}, refuse to register the new one at all)
-   * and let {@link #removeIpPort} cascade a full removal onto an innocent peer at a completely
-   * different address (TD027).
+   * and let the removal-by-address path cascade a full removal onto an innocent peer at a
+   * completely different address (TD027; that path is gone since TD214, see {@link #getByAddress}).
    *
    * <p>Only peers that have an ip are in here — see {@link #addPeer}. Peers without connection
    * details are explicitly allowed in the peer list, and there is no address to key them by.
@@ -135,21 +135,40 @@ public class PeerList {
   }
 
   /**
-   * Like {@link #add(Peer)}, but gives up instead of parking forever.
+   * Like {@link #add(Peer)}, for a peer whose connection has just been established, and gives up
+   * instead of parking forever.
    *
-   * <p>For callers that must not block indefinitely — above all {@code
-   * ConnectionHandler.setupConnection()}, which runs on the single NIO selector thread. A selector
-   * thread parked on a lock stops calling {@code accept()} and stops servicing every existing
-   * connection, so a peer list lock that is stuck for any reason takes the entire node down rather
-   * than costing one connection (T87). The timeout does not make a stuck lock correct; it turns a
-   * silent total wedge into one dropped connection plus a loud Sentry event.
+   * <p>The timeout is for callers that must not block indefinitely — {@code
+   * ConnectionHandler.setupConnection()}, which runs on the single NIO selector thread, is the only
+   * caller. A selector thread parked on a lock stops calling {@code accept()} and stops servicing
+   * every existing connection, so a peer list lock that is stuck for any reason takes the entire
+   * node down rather than costing one connection (T87). The timeout does not make a stuck lock
+   * correct; it turns a silent total wedge into one dropped connection plus a loud Sentry event.
    *
+   * <p>The completed handshake is also the strongest evidence this class ever gets about an
+   * address, and it is what {@link #adoptAddressLocked} uses to close TD213: a peer we are
+   * demonstrably talking to should not stay address-less <em>forever</em> just because the address
+   * happened to be owned at the moment of its first connection. The adoption only ever <em>fills a
+   * gap</em> — see {@link #adoptAddressLocked} for why it may not do more than that.
+   *
+   * <p>The announced address is passed separately instead of being read off {@code peer}, because
+   * in the case this is for {@code peer} does not carry it: an inbound reconnect of a known
+   * identity continues on the registered {@link Peer} object ({@code
+   * ConnectionReaderThread.parseHandshake} resolves the identity through {@link #get(KademliaId)}),
+   * and that object is precisely the one whose ip is null. The handshake keeps the pair ({@code
+   * PeerInHandshake.ip}, the ip the TCP connection actually came from, and the <em>listening</em>
+   * port the far side announced).
+   *
+   * @param peer the peer whose handshake just completed
+   * @param announcedIp the ip of the socket this handshake ran on, may be null
+   * @param announcedPort the listening port the far side announced in its handshake
    * @param timeoutMillis how long to wait for the write lock
    * @return old peer, null if no old peer or old peer null — same contract as {@link #add(Peer)}
    * @throws PeerListBusyException if the write lock was not acquired in time, or the wait was
    *     interrupted
    */
-  public Peer add(Peer peer, long timeoutMillis) {
+  public Peer addFromCompletedHandshake(
+      Peer peer, String announcedIp, int announcedPort, long timeoutMillis) {
     boolean locked;
     try {
       locked = readWriteLock.writeLock().tryLock(timeoutMillis, TimeUnit.MILLISECONDS);
@@ -162,7 +181,12 @@ public class PeerList {
           "peer list write lock not acquired within " + timeoutMillis + " ms");
     }
     try {
-      return addLocked(peer);
+      Peer registered = addLocked(peer);
+      // `registered` is the object that owns this identity in the list; when it is null, `peer`
+      // itself was just registered. Either way it is the object the caller continues with, i.e.
+      // the one that will own the connection (ConnectionHandler.setupConnection).
+      adoptAddressLocked(registered != null ? registered : peer, announcedIp, announcedPort);
+      return registered;
     } finally {
       readWriteLock.writeLock().unlock();
     }
@@ -249,6 +273,17 @@ public class PeerList {
           // flight, so the claim is wrong or stale. Register the newcomer without connection
           // details — this class explicitly allows peers without them — instead of letting anyone
           // take the address out from under a live peer or a running connection attempt.
+          //
+          // The newcomer may well be the peer whose connection is being established (TD213: the
+          // testnet auto-updater uploader restarting with a fresh identity, logged as "Connected
+          // successfully to null:0"), and it still loses the address here. That is deliberate: the
+          // completed handshake proves we can talk to that *socket*, it does not prove that the
+          // *listening* port the newcomer announced is its own. Handing the address over on that
+          // evidence would let any inbound connection from a co-located host (same NAT, same ip)
+          // strip a live peer's address — the same eviction primitive TD214 removes. What used to
+          // be wrong is that the address was then lost forever, because nothing ever filled an
+          // address back onto a registered peer; addFromCompletedHandshake's gap-filling adoption
+          // does, on the next completed handshake after this address stops being owned.
           peer.removeIpAndPort();
         } else {
           // This is the case the javadoc above describes ("The (ip,port) will then be removed from
@@ -289,12 +324,11 @@ public class PeerList {
       // light client has none -- so keying it put every light client from one ip into a single
       // shared "<ip>:0" bucket that the last one to connect silently took over.
       //
-      // Nothing reads that bucket for ownership any more (addLocked and adoptAddress skip it), so
-      // leaving it filled would be dead state with teeth: removeIpPort(String,int) evicts whoever
-      // the key points at, from all three indices and without a value check, and its caller in
-      // ConnectionReaderThread runs on a plaintext, not-yet-proven handshake. A peer sharing an ip
-      // with a live light client could therefore have that client evicted while its socket was
-      // still open. No entry, no eviction.
+      // Nothing reads that bucket for ownership any more (addLocked and adoptAddressLocked skip
+      // it), so leaving it filled would be dead state: an entry nothing may resolve through. It
+      // used to be dead state with teeth, because removeIpPort(String,int) evicted whoever the key
+      // pointed at, from all three indices and without a value check, on a plaintext handshake
+      // (TD214) -- that method no longer exists, and no removal path takes an address any more.
       if (peer.isDialable()) {
         peerlistIpPort.put(ipPortKey(peer), peer);
       }
@@ -325,6 +359,15 @@ public class PeerList {
    */
   private static String ipPortKey(String ip, int port) {
     return ip + ":" + port;
+  }
+
+  /**
+   * Whether an address is one that can be keyed at all — the same predicate as {@link
+   * Peer#isDialable()}, for callers that hold the two halves of an address rather than a {@link
+   * Peer}. Only dialable addresses are in {@link #peerlistIpPort} (see {@link #addPeer}).
+   */
+  private static boolean isDialableAddress(String ip, int port) {
+    return ip != null && port > 0 && port <= 65535;
   }
 
   /**
@@ -418,30 +461,35 @@ public class PeerList {
   }
 
   /**
-   * Completely removes the Peer from all Lists by Ip and Port.
+   * The peer that currently owns an address, or {@code null} if nobody does.
    *
-   * @param ip
-   * @param port
-   * @return
+   * <p>Read-only on purpose. This replaced {@code removeIpPort(String, int)} (TD214), which was the
+   * last removal path that was not value-checked: it evicted whoever the address key pointed at
+   * from all three indices, and its only production caller was the self-connect branch of {@code
+   * ConnectionReaderThread.parseHandshake} — driven by the <em>plaintext</em>, not-yet-proven part
+   * of a handshake, in which the announced port and identity are attacker-chosen and only the ip is
+   * established by TCP. A host sharing an ip with a known peer (same NAT, a co-located container, a
+   * shared exit) could therefore have that peer removed from the peer list by announcing its port.
+   * T150b narrowed this to dialable addresses; it did not close it. The caller wants its own dial
+   * target gone and has the {@link Peer} object for it, so it uses {@link #removeExact(Peer)} now
+   * and no removal-by-address exists any more.
+   *
+   * @param ip the ip of the address, may be null
+   * @param port the port of the address
+   * @return the owner of {@code ip:port}, or {@code null} if the address is not keyed — which is
+   *     always the case for an address that is not dialable ({@link Peer#isDialable()}, see {@link
+   *     #addPeer})
    */
-  public boolean removeIpPort(String ip, int port) {
-    if (ip == null || port <= 0) {
-      // Only dialable addresses are keyed (see addPeer), so a port-0 lookup can only ever hit a
-      // leftover from an older build -- and this method removes without a value check, so it must
-      // not act on an address that does not identify a peer (T150/TD183).
-      return false;
+  @Nullable
+  public Peer getByAddress(String ip, int port) {
+    if (!isDialableAddress(ip, port)) {
+      return null;
     }
-    readWriteLock.writeLock().lock();
+    readWriteLock.readLock().lock();
     try {
-      Peer peer = peerlistIpPort.remove(ipPortKey(ip, port));
-      if (peer == null) {
-        return false;
-      }
-      peerHashMap.remove(peer.getKademliaId());
-      peerArrayList.remove(peer);
-      return true;
+      return peerlistIpPort.get(ipPortKey(ip, port));
     } finally {
-      readWriteLock.writeLock().unlock();
+      readWriteLock.readLock().unlock();
     }
   }
 
@@ -453,7 +501,8 @@ public class PeerList {
    * value-checked: an address does not identify a peer (see {@link #peerlistIpPort}), so removing
    * by address alone evicted whichever peer happened to own that key — the very mistake the other
    * two removal paths were fixed for in T88, left behind on this one (TD027). Its caller {@link
-   * #clearConnectionDetails} always has the peer.
+   * #clearConnectionDetails} always has the peer, and since TD214 every removal path in this class
+   * works this way: there is no way left to remove a peer by naming an address.
    *
    * @param peer the peer whose address mapping should go
    * @return true if this peer's own mapping was removed, false if it did not own one
@@ -670,20 +719,55 @@ public class PeerList {
    * <p>An address another peer owns is left alone as well. Callers must hold the write lock.
    */
   private void adoptAddress(Peer owner, Peer dropped) {
-    if (owner.getIp() != null || !dropped.isDialable()) {
-      // Only a dialable address is worth moving (T150/TD183). Port 0 is not an ephemeral remote
-      // port -- it is the *listening* port the peer announced in its handshake, and a light
-      // client has no listening socket, so it announces 0. Such an address can never be dialled,
-      // and handing it to the owner would leave the owner addressed but still undialable, in the
-      // shared "<ip>:0" bucket.
-      return;
+    adoptAddressLocked(owner, dropped.getIp(), dropped.getPort());
+  }
+
+  /**
+   * Fills in a peer's missing address with one we have just seen it announce, if and only if that
+   * takes nothing away from anybody.
+   *
+   * <p>Three guards, and every one of them is load-bearing:
+   *
+   * <ol>
+   *   <li><b>An owner that already has an address keeps it.</b> The announced address comes from
+   *       the <em>plaintext</em> part of a handshake — announced, not proven (the proof is the
+   *       first encrypted PING, several steps later; moving an address behind that proof is tracked
+   *       as TD178). Overwriting a good address with an announced one would let anyone we talk to
+   *       claim another node's identity and make that node undialable for us.
+   *   <li><b>An address someone else owns is left alone.</b> This is the whole difference between
+   *       filling a gap and the eviction primitive TD214 removes: no peer may lose its address
+   *       because another identity showed up claiming it. In particular the newcomer of {@link
+   *       #addLocked}'s contested-address branch does not get the address back here while the
+   *       sitting peer still holds it — it gets it on its next completed handshake, once the
+   *       sitting peer has been reaped (TD213).
+   *   <li><b>Only a dialable address is adopted</b> (T150/TD183). Port 0 is not an ephemeral remote
+   *       port, it is the <em>listening</em> port the peer announced, and a light client has no
+   *       listening socket, so it announces 0. Such an address can never be dialled, and adopting
+   *       it would leave the owner addressed but still undialable, in the shared {@code "<ip>:0"}
+   *       bucket.
+   * </ol>
+   *
+   * <p>What an attacker can get out of it is therefore bounded by construction: a bogus dial
+   * candidate for an identity we had <em>no</em> address for at all. No existing address, mapping
+   * or registration changes. Callers must hold the write lock.
+   *
+   * @param owner the peer that should hold the address
+   * @param ip the announced ip, may be null
+   * @param port the announced port
+   * @return true if the address was adopted
+   */
+  private boolean adoptAddressLocked(Peer owner, String ip, int port) {
+    if (owner.getIp() != null || !isDialableAddress(ip, port)) {
+      return false;
     }
-    if (peerlistIpPort.containsKey(ipPortKey(dropped))) {
-      return;
+    String key = ipPortKey(ip, port);
+    if (peerlistIpPort.containsKey(key)) {
+      return false;
     }
-    owner.ip = dropped.getIp();
-    owner.port = dropped.getPort();
-    peerlistIpPort.put(ipPortKey(owner), owner);
+    owner.ip = ip;
+    owner.port = port;
+    peerlistIpPort.put(key, owner);
+    return true;
   }
 
   public Peer getGoodPeer() {

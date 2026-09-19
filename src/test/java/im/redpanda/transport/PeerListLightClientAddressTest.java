@@ -104,9 +104,9 @@ class PeerListLightClientAddressTest {
       assertThat(client.getIp()).isEqualTo(LOOPBACK);
       assertThat(ctx.getPeerList().get(client.getKademliaId())).isSameAs(client);
     }
-    assertThat(ctx.getPeerList().removeIpPort(LOOPBACK, 0))
-        .as("no light client may be evicted through the shared \"<ip>:0\" key")
-        .isFalse();
+    assertThat(ctx.getPeerList().getByAddress(LOOPBACK, 0))
+        .as("no light client may be reachable through the shared \"<ip>:0\" key")
+        .isNull();
 
     // Removing one leaves the others exactly as they were.
     ctx.getPeerList().remove(clients.getFirst());

@@ -183,13 +183,21 @@ public class ConnectionReaderThread implements Runnable {
        * Lets remove this peer from our peerlist if it is present, note that an incoming connection
        * is not in our peerlist
        */
-      if (peerInHandshake.getPeer() != null) {
-        // PeerList.remove(peerInHandshake.getPeer());
-        boolean b = peerList.removeIpPort(peerInHandshake.ip, peerInHandshake.port);
+      Peer self = peerInHandshake.getPeer();
+      if (self != null) {
+        // Remove exactly the peer object we dialled, not "whoever owns the announced address"
+        // (TD214). This branch runs on the plaintext part of the handshake: the ip is established
+        // by TCP, but the announced port and identity are whatever the far side chose to send. The
+        // old removeIpPort(ip, port) evicted the current owner of that address from all three
+        // indices without a value check, so a host sharing our peer's ip -- same NAT, a co-located
+        // container, a shared exit -- could have that peer dropped from our peer list by echoing
+        // our own identity and naming its port. We have the object we dialled right here, and it
+        // is the only thing we want gone: it is an address of our own.
+        boolean b = peerList.removeExact(self);
         logger.debug(
             "removed our own address {}:{} from the peer list: {}",
-            peerInHandshake.ip,
-            peerInHandshake.port,
+            self.getIp(),
+            self.getPort(),
             b);
       }
       return false;
