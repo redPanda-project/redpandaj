@@ -15,6 +15,7 @@ import java.io.UnsupportedEncodingException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -205,7 +206,14 @@ public class ListenConsole extends Thread {
       } else if (readLine.equals("alloc")) {
         System.out.println("allocating buffers by pool");
 
-        ByteBufferPool.returnObject(ByteBufferPool.borrowObject(1024 * 1024 * 4));
+        ByteBuffer allocated = ByteBufferPool.borrowObject(1024 * 1024 * 4);
+        if (allocated == null) {
+          // TD186: returnObject() reads capacity() straight off the argument, so a failed
+          // borrow NPEd this diagnostic console command.
+          System.out.println("the pool could not hand out a buffer");
+        } else {
+          ByteBufferPool.returnObject(allocated);
+        }
 
       } else if (readLine.equals("a")) {
         System.out.println("add ip:port");

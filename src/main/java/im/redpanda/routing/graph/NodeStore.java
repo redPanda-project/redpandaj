@@ -1,6 +1,7 @@
 package im.redpanda.routing.graph;
 
 import im.redpanda.core.LocalSettings;
+import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.ops.Log;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import lombok.Getter;
@@ -94,7 +96,17 @@ public class NodeStore {
    */
   private final Object lifecycleLock = new Object();
 
-  private boolean closed;
+  /**
+   * Volatile, because {@link #liveStore()} reads it <em>outside</em> {@link #lifecycleLock} on the
+   * cache hot path — see the note there.
+   */
+  private volatile boolean closed;
+
+  /**
+   * One report per store for the "closed and never replaced" case, see {@link
+   * #reportNoLiveStore()}.
+   */
+  private final AtomicBoolean reportedNoLiveStore = new AtomicBoolean();
 
   /**
    * Test seam: runs between the flush steps of {@link #saveToDiskLocked()}, i.e. while the save
@@ -259,8 +271,99 @@ public class NodeStore {
     localSettings.setNodeGraphLock(readWriteLock.readLock());
   }
 
+  /**
+   * The store a caller should actually work on: {@code this} while it is open, otherwise the
+   * successor that {@link #saveToDisk()}'s recovery installed in the {@link ServerContext}.
+   *
+   * <p>TD215: the store swap in the recovery path is not atomic with respect to threads that
+   * already hold a {@code NodeStore} reference. {@code Node}'s constructor re-reads {@code
+   * serverContext.getNodeStore()} for every access, but {@code PeerPerformanceTestGarlicMessageJob}
+   * deliberately resolves the store <em>once</em> (it must lock and unlock the same lock object),
+   * and any future caller may do the same. Those references keep pointing at the closed
+   * predecessor, whose MapDB tiers throw {@code IllegalAccessError: Store was closed} on the next
+   * access — {@link #get(KademliaId)} turned that into a spurious "corrupt cache" diagnosis plus an
+   * {@code onDisk.clear()} on a closed tier, and {@link #put(KademliaId, Node)} propagated it into
+   * {@code new Node(...)}, i.e. onto the inbound-connection path.
+   *
+   * <p><b>Deliberately lock-free on the fast path.</b> {@link #lifecycleLock} is held by {@link
+   * #saveToDisk()} for the whole flush, and on the recovery path also across {@code close()}, the
+   * cache-file delete and a full three-tier rebuild including the mmap. {@code get()}/{@code put()}
+   * run on the NIO selector thread ({@code ConnectionHandler.setupConnection} → {@code
+   * Node.getByKademliaId} → {@code new Node(...)}) and on the reader threads, so reading {@link
+   * #closed} under that lock would stall every inbound handshake for the duration of a flush (T149
+   * review finding). Hence the volatile read.
+   *
+   * <p>The one case that does wait is a store that is closed but <em>still</em> installed in the
+   * context: that is either shutdown (no successor is coming) or the window inside the recovery
+   * between {@code close()} and {@code setNodeStore()}, and telling the two apart means waiting for
+   * the very lock the recovery holds. Rare by construction and never the hot path.
+   *
+   * <p>Exactly one hop, never back to this instance. A successor that is itself already closed (two
+   * failing flushes in a row) is answered with {@code null} rather than chased further.
+   *
+   * <p>Residual check-then-act window: a store that is open when it is returned here can be closed
+   * before the caller reaches its tiers. The three accessors below catch MapDB's {@code
+   * IllegalAccessError} for exactly that case and retry once.
+   *
+   * @return the live store, or {@code null} when there is none — then a cache write is dropped and
+   *     a read answers {@code null}.
+   */
+  private NodeStore liveStore() {
+    if (!closed) {
+      return this;
+    }
+    NodeStore live = serverContext.getNodeStore();
+    if (live == this) {
+      synchronized (lifecycleLock) {
+        live = serverContext.getNodeStore();
+      }
+    }
+    if (live == null || live == this || live.closed) {
+      return null;
+    }
+    return live;
+  }
+
+  /**
+   * A cache access found no open store at all.
+   *
+   * <p>During shutdown that is expected — job and reader threads keep running for a moment after
+   * {@code Server.shutdown()} closed the store — so it stays a debug line. Outside shutdown it
+   * means the recovery's file-backed rebuild <em>and</em> its memory-only fallback both threw: the
+   * node then silently treats every peer as unknown for the rest of the process, and the only trace
+   * used to be the one earlier exception (T149 review finding). Reported once per store instance so
+   * a busy node neither spams the log nor Sentry.
+   */
+  private void reportNoLiveStore() {
+    if (Server.isShuttingDown()) {
+      logger.debug("node cache access after shutdown closed the store, dropping it");
+      return;
+    }
+    if (reportedNoLiveStore.compareAndSet(false, true)) {
+      logger.warn("the node store is closed and was not replaced, every cache access is a no-op");
+      Log.sentry("node store closed without a replacement, every cache access is dropped");
+    }
+  }
+
   public void put(KademliaId kademliaId, Node node) {
-    onHeap.put(kademliaId, node);
+    NodeStore live = liveStore();
+    if (live == null) {
+      reportNoLiveStore();
+      return;
+    }
+    try {
+      live.onHeap.put(kademliaId, node);
+    } catch (IllegalAccessError closedUnderUs) {
+      // "Store was closed": the store was open when liveStore() resolved it and was closed before
+      // this line ran. See liveStore()'s note on the check-then-act window. Exactly one retry —
+      // the close has happened by now, so this resolves to the successor.
+      NodeStore retry = live.liveStore();
+      if (retry == null) {
+        reportNoLiveStore();
+        return;
+      }
+      retry.onHeap.put(kademliaId, node);
+    }
   }
 
   /**
@@ -277,21 +380,49 @@ public class NodeStore {
    * old code would have NPEd inside the catch block instead of returning null.
    */
   public Node get(KademliaId kademliaId) {
+    NodeStore live = liveStore();
+    if (live == null) {
+      reportNoLiveStore();
+      return null;
+    }
     try {
-      return onHeap.get(kademliaId);
+      return live.onHeap.get(kademliaId);
+    } catch (IllegalAccessError closedUnderUs) {
+      // Closed between liveStore() and this line, see put(). Not a corrupt cache — do NOT fall
+      // into the branch below, which would clear a perfectly good on-disk tier.
+      NodeStore retry = live.liveStore();
+      if (retry == null) {
+        reportNoLiveStore();
+        return null;
+      }
+      return retry.onHeap.get(kademliaId);
     } catch (Exception e) {
       logger.warn(
           "could not read node {} from the node cache, dropping the on-disk tier", kademliaId, e);
       Log.sentry(e);
-      if (onDisk != null) {
-        onDisk.clear();
+      if (live.onDisk != null) {
+        live.onDisk.clear();
       }
       return null;
     }
   }
 
   public void remove(KademliaId kademliaId) {
-    onHeap.remove(kademliaId);
+    NodeStore live = liveStore();
+    if (live == null) {
+      reportNoLiveStore();
+      return;
+    }
+    try {
+      live.onHeap.remove(kademliaId);
+    } catch (IllegalAccessError closedUnderUs) {
+      NodeStore retry = live.liveStore();
+      if (retry == null) {
+        reportNoLiveStore();
+        return;
+      }
+      retry.onHeap.remove(kademliaId);
+    }
   }
 
   public void saveToDisk() {
@@ -382,10 +513,12 @@ public class NodeStore {
     }
   }
 
+  /**
+   * Plain volatile read: must not wait for an in-flight {@link #saveToDisk()}, see {@link
+   * #liveStore()}.
+   */
   boolean isClosed() {
-    synchronized (lifecycleLock) {
-      return closed;
-    }
+    return closed;
   }
 
   /**
@@ -415,16 +548,38 @@ public class NodeStore {
   }
 
   /**
-   * Writes all to disk and then reads the size from the disk db.
+   * Flushes the cache and returns the number of entries in the lowest tier the store has — the
+   * on-disk tier, or the on-heap one for a memory-only store.
    *
-   * @return
+   * <p>TD212: this used to read {@code this.onDisk} after the {@code saveToDisk()} above, which is
+   * exactly the call that can replace this store. On the recovery path {@code this} is the closed
+   * predecessor by the time the read happens, so the size read threw instead of answering. It now
+   * reads the tier of the store that is live afterwards (see {@link #liveStore()}); after a
+   * recovery that is a freshly built one, so the honest answer is the size of the rebuilt cache,
+   * not of the cache that was just thrown away.
    */
   public int size() {
-    if (onDisk == null) {
-      return onHeap.size();
-    }
     saveToDisk();
-    return onDisk.size();
+    NodeStore live = liveStore();
+    if (live == null) {
+      reportNoLiveStore();
+      return 0;
+    }
+    if (live != this) {
+      // The flush above ran on this store and then replaced it, so the successor's own in-memory
+      // tiers have not been flushed yet — honour the "flush, then count" contract for it as well
+      // (T149 review finding). If that flush recovers too, re-resolve once: two hops, no recursion.
+      live.saveToDisk();
+      live = live.liveStore();
+      if (live == null) {
+        reportNoLiveStore();
+        return 0;
+      }
+    }
+    if (live.onDisk == null) {
+      return live.onHeap.size();
+    }
+    return live.onDisk.size();
   }
 
   public void maintainNodes() {
@@ -526,8 +681,15 @@ public class NodeStore {
     int currentNodeCount = nodeGraph.vertexSet().size();
 
     if (currentNodeCount < MAX_NODES_FOR_GRAPH) {
+      // Through liveStore() like the accessors above: maintainNodes() does not run under
+      // lifecycleLock, so a recovery can close this store mid-tick and onHeap.entrySet() would
+      // throw under the graph write lock (T149 review finding).
+      NodeStore live = liveStore();
+      if (live == null) {
+        return;
+      }
 
-      ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList<>(onHeap.entrySet());
+      ArrayList<Map.Entry<KademliaId, Node>> entries = new ArrayList<>(live.onHeap.entrySet());
 
       Collections.sort(entries, Comparator.comparingInt(a -> -a.getValue().getScore()));
 
@@ -660,7 +822,11 @@ public class NodeStore {
   }
 
   public void printBlacklist() {
-    for (Object value : onHeap.getValues()) {
+    NodeStore live = liveStore();
+    if (live == null) {
+      return;
+    }
+    for (Object value : live.onHeap.getValues()) {
       Node node = (Node) value;
       if (node.isBlacklisted()) {
         System.out.println(node);
@@ -695,7 +861,11 @@ public class NodeStore {
   }
 
   public void clearNodeBlacklist() {
-    for (Object value : onHeap.getValues()) {
+    NodeStore live = liveStore();
+    if (live == null) {
+      return;
+    }
+    for (Object value : live.onHeap.getValues()) {
       Node node = (Node) value;
       node.resetBlacklisted();
       node.setGmTestsSuccessful(0);

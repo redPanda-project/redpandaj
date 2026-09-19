@@ -696,6 +696,18 @@ public class ConnectionHandler extends Thread {
 
             // a v23 GCM frame for a single byte needs 33 bytes, so borrow a bit more
             ByteBuffer byteBuffer = ByteBufferPool.borrowObject(64);
+            if (byteBuffer == null) {
+              // TD186: a failed borrow (the pool blocks when it is merely exhausted, so null
+              // means a factory failure or a failed replacement of an invalid buffer) used to NPE
+              // inside encrypt() and surface as the generic "Handshake failed with throwable"
+              // Sentry error. Without the PING the peer never completes the handshake anyway, so
+              // drop the half-open connection cleanly.
+              logger.warn(
+                  "no buffer available to send the handshake PING, dropping the connection");
+              key.cancel();
+              peerInHandshake.getSocketChannel().close();
+              return;
+            }
 
             peerInHandshake.getPeerChiperStreams().encrypt(bytesSendToPing, byteBuffer);
 
@@ -908,6 +920,15 @@ public class ConnectionHandler extends Thread {
     System.out.println("received first encrypted command...");
 
     ByteBuffer tempHandshakeReadBuffer = ByteBufferPool.borrowObject(64);
+    if (tempHandshakeReadBuffer == null) {
+      // TD186: both decrypt() below and the clear() in the finally block dereferenced this
+      // unconditionally. The frame cannot be decrypted without a plaintext buffer and dropping it
+      // would desync the GCM receive counter, so the handshake ends here.
+      logger.warn(
+          "no buffer available to decrypt the first encrypted command, dropping the handshake");
+      peerInHandshake.getSocketChannel().close();
+      return;
+    }
 
     try {
       peerInHandshake.getPeerChiperStreams().decrypt(cipherText, tempHandshakeReadBuffer);
@@ -971,6 +992,16 @@ public class ConnectionHandler extends Thread {
     try {
       if (peer.readBuffer == null) {
         peer.readBuffer = ByteBufferPool.borrowObject(tempHandshakeReadBuffer.remaining());
+        if (peer.readBuffer == null) {
+          // TD186: the put() below dereferenced this unconditionally. These are already-decrypted
+          // plaintext bytes of the new connection; keeping the connection without them would
+          // misparse the stream (see the ordering note above), so tear it down instead of NPEing
+          // on the selector thread. disconnect() takes the same reentrant writeBufferLock.
+          logger.warn(
+              "no buffer available for the handshake leftovers, disconnecting {}", peer.getIp());
+          peer.disconnect("no plaintext buffer available for the handshake leftovers");
+          return;
+        }
       }
       peer.readBuffer.put(tempHandshakeReadBuffer);
     } finally {
