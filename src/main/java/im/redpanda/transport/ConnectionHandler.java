@@ -1005,14 +1005,6 @@ public class ConnectionHandler extends Thread {
    * requirement — no unregistered, still-reading orphan peer survives — and satisfies it more
    * directly than before: the duplicate never adopts the socket in the first place.
    *
-   * <p><b>Address adoption (TD213).</b> The registration goes through {@link
-   * PeerList#addFromCompletedHandshake} rather than {@code add()}, because a completed handshake is
-   * the strongest evidence this node ever has for an address, and a peer we are talking to should
-   * not stay address-less forever. It does not take an address from anybody: it only fills a gap,
-   * which is what a peer that lost the contested-address branch (the testnet auto-updater uploader
-   * restarting with a fresh identity, "Connected successfully to null:0") needs to get its address
-   * back once the stale peer is reaped.
-   *
    * <p>Lock order: the peer list write lock is taken first and released again, then the target
    * peer's {@code writeBufferLock} — the two are no longer nested at all, so the inversion hazard
    * documented on {@link PeerList} ("Lock order") cannot arise here.
@@ -1033,9 +1025,7 @@ public class ConnectionHandler extends Thread {
      */
     Peer registered;
     try {
-      registered =
-          peerList.addFromCompletedHandshake(
-              peerOrigin, peerInHandshake.ip, peerInHandshake.getPort(), PEERLIST_LOCK_TIMEOUT_MS);
+      registered = peerList.add(peerOrigin, PEERLIST_LOCK_TIMEOUT_MS);
     } catch (PeerList.PeerListBusyException e) {
       // T87 safety net. The selector thread is the single thread that accepts new sockets and
       // services the reads and writes of every existing connection, so parking it here does not

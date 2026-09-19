@@ -185,20 +185,37 @@ public class ConnectionReaderThread implements Runnable {
        */
       Peer self = peerInHandshake.getPeer();
       if (self != null) {
-        // Remove exactly the peer object we dialled, not "whoever owns the announced address"
-        // (TD214). This branch runs on the plaintext part of the handshake: the ip is established
-        // by TCP, but the announced port and identity are whatever the far side chose to send. The
-        // old removeIpPort(ip, port) evicted the current owner of that address from all three
-        // indices without a value check, so a host sharing our peer's ip -- same NAT, a co-located
+        // Act on the peer object we dialled, not on "whoever owns the announced address" (TD214).
+        // This branch runs on the plaintext part of the handshake: the ip is established by TCP,
+        // but the announced port and identity are whatever the far side chose to send. The old
+        // removeIpPort(ip, port) evicted the current owner of that address from all three indices
+        // without a value check, so a host sharing our peer's ip -- same NAT, a co-located
         // container, a shared exit -- could have that peer dropped from our peer list by echoing
-        // our own identity and naming its port. We have the object we dialled right here, and it
-        // is the only thing we want gone: it is an address of our own.
-        boolean b = peerList.removeExact(self);
+        // our own identity and naming its port.
+        //
+        // What we have actually learned is about one address: the thing we dialled answers with
+        // our own identity, so that address is not a peer. How much of the dialled object that
+        // costs depends on what else it is:
+        //
+        //  - no KademliaId: the object *is* the address (a seed entry, a gossiped ip:port, a
+        //    restored PeerSaveable). Nothing else about it is worth keeping, so it goes.
+        //  - a KademliaId: the object is a node we track, and an identity echo is not evidence
+        //    about that node. Dropping it would throw away its registration and its keyed NodeId
+        //    on an unauthenticated echo of a public id -- and since ACTIVATE_ENCRYPTION carries a
+        //    bare, unsigned ephemeral X25519 key, anyone who knows a node's public key can get
+        //    this far as that node, so it is remotely triggerable. Only the address goes; the peer
+        //    stays registered without connection details, which PeerList explicitly allows.
+        boolean wholePeer = self.getKademliaId() == null;
+        if (wholePeer) {
+          peerList.removeExact(self);
+        } else {
+          peerList.clearConnectionDetails(self);
+        }
         logger.debug(
-            "removed our own address {}:{} from the peer list: {}",
-            self.getIp(),
-            self.getPort(),
-            b);
+            "dropped our own address {}:{} from the peer list (whole peer: {})",
+            peerInHandshake.ip,
+            peerInHandshake.port,
+            wholePeer);
       }
       return false;
     }

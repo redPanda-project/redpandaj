@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -24,19 +25,27 @@ import org.junit.jupiter.api.Test;
  * dropped from our peer list by echoing our own {@code KademliaId} back at us and naming the
  * victim's port. T150b narrowed the reachable set to dialable addresses; it did not close the hole.
  *
- * <p>The caller has the {@link Peer} object it dialled and that object is the only thing it wants
- * gone, so it uses {@link PeerList#removeExact(Peer)} now, and no removal-by-address exists at all
- * any more ({@link PeerList#getByAddress(String, int)} is the read-only replacement).
+ * <p>The caller has the {@link Peer} object it dialled, so it acts on that object now and no
+ * removal-by-address exists at all any more ({@link PeerList#getByAddress(String, int)} is the
+ * read-only replacement). What it learned is about one address, so how much of the dialled object
+ * it costs depends on what else that object is: an id-less dial target <em>is</em> the address and
+ * goes entirely ({@link PeerList#removeExact(Peer)}), while a peer that carries a {@link
+ * KademliaId} only loses its connection details ({@code clearConnectionDetails}) — an identity echo
+ * is not evidence about the node behind that identity, and dropping its registration and its keyed
+ * {@link NodeId} on it would be remotely triggerable in the same way.
  *
  * <p><b>TD213.</b> When two identities claim one dialable address and the sitting peer is live, the
  * newcomer is registered without an address — even when the newcomer is the peer whose connection
  * is being established (on the testnet: the auto-updater uploader restarting with a fresh identity,
- * "Connected successfully to null:0"). It still is, deliberately: a completed handshake proves we
- * can talk to a socket, not that the listening port the far side announced belongs to it, and
- * handing the address over on that evidence would recreate the very eviction primitive TD214
- * removes, for co-located hosts. What was wrong is that the address was then lost <em>forever</em>,
- * because nothing in this class ever filled an address back onto an already registered peer. It is
- * filled in now, on the next completed handshake after the address stops being owned.
+ * "Connected successfully to null:0"). The tests at the bottom pin that it stays that way, and why:
+ * a completed handshake shows we can talk to a socket, not that the <em>listening</em> port the far
+ * side announced belongs to it, and the identity on a connection is not proven at all — {@code
+ * ACTIVATE_ENCRYPTION} carries a bare, unsigned ephemeral X25519 key and the session secret is
+ * ephemeral-to-ephemeral, with the public static verify keys used only as HKDF salt. So anyone who
+ * knows a node's public key can complete a handshake as that node, and filling an address onto a
+ * registered identity on that evidence would hand an attacker an address that then spreads through
+ * {@code PeerExchangeHandler}, is persisted by {@code Saver} and dialled by {@code
+ * OutboundHandler}. Repairing the lost address belongs behind a real proof of identity (TD178).
  */
 class PeerListAddressEvictionTest {
 
@@ -147,6 +156,32 @@ class PeerListAddressEvictionTest {
   }
 
   /**
+   * The dialled object carries an identity: only its address goes, the registration and the keyed
+   * {@link NodeId} survive. Full removal on an unauthenticated echo of our public id would be a
+   * remotely triggerable way to un-register a node we track.
+   */
+  @Test
+  void aSelfConnectThroughAnIdentifiedPeerOnlyCostsThatPeerItsAddress() throws Exception {
+    NodeId dialledId = NodeId.generateWithSimpleKey();
+    Peer dialled = new Peer(SHARED_IP, ATTACKER_PORT, dialledId);
+    peerList.add(dialled);
+
+    try (SocketChannel channel = SocketChannel.open()) {
+      PeerInHandshake outbound = new PeerInHandshake(SHARED_IP, dialled, channel);
+      ConnectionReaderThread.parseHandshake(
+          ctx, outbound, handshake(ctx.getOwnNodeId().getBytes(), ATTACKER_PORT));
+    }
+
+    assertThat(peerList.get(dialledId.getKademliaId()))
+        .as("the peer stays registered under its identity")
+        .isSameAs(dialled);
+    assertThat(dialled.getNodeId().hasKey()).as("and keeps its keys").isTrue();
+    assertThat(peerList.snapshot()).contains(dialled);
+    assertThat(dialled.getIp()).as("but the address is gone").isNull();
+    assertThat(peerList.getByAddress(SHARED_IP, ATTACKER_PORT)).isNull();
+  }
+
+  /**
    * An inbound self-connect has no {@link Peer} at all ({@code PeerInHandshake.getPeer() == null}),
    * so nothing is removed — unchanged, and pinned here because the removal is now driven by that
    * object rather than by an address.
@@ -182,13 +217,23 @@ class PeerListAddressEvictionTest {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // TD213: the address a connected peer never got.
+  // TD213: the address a connected peer does not get, and why it stays that way.
   // ---------------------------------------------------------------------------------------------
 
   /**
    * A live sitting peer keeps its address even against the peer whose connection is being
-   * established. This is the guard that keeps TD214's eviction primitive from coming back in
-   * through the front door: the announced listening port is not proven by the connection.
+   * established, and the newcomer is registered without one. This is the guard that keeps TD214's
+   * eviction primitive from coming back in through the front door.
+   *
+   * <p>TD213 asked for the newcomer — the peer we are demonstrably talking to — to keep or regain
+   * the address. It must not, and the reason is the same missing proof twice over: a completed
+   * handshake shows we can talk to a socket, not that the <em>listening</em> port the far side
+   * announced belongs to it; and the identity on a connection is not proven at all, because {@code
+   * ACTIVATE_ENCRYPTION} carries a bare, unsigned ephemeral X25519 key and the session secret is
+   * ephemeral-to-ephemeral (the static verify keys are HKDF salt, and they are public). Filling an
+   * address in on that evidence would hand an attacker the address of an identity it does not own,
+   * which then spreads through {@code PeerExchangeHandler}, is persisted by {@code Saver} and
+   * dialled by {@code OutboundHandler}. The repair belongs behind a real proof of identity (TD178).
    */
   @Test
   void aLiveSittingPeerKeepsItsAddressAgainstAnEstablishedConnection() {
@@ -199,116 +244,50 @@ class PeerListAddressEvictionTest {
 
     NodeId newcomerId = NodeId.generateWithSimpleKey();
     Peer newcomer = new Peer(SHARED_IP, VICTIM_PORT, newcomerId);
-    assertThat(peerList.addFromCompletedHandshake(newcomer, SHARED_IP, VICTIM_PORT, 1_000))
+    assertThat(peerList.add(newcomer, 1_000))
         .as("a fresh identity is registered as itself")
         .isNull();
 
     assertThat(sitting.getIp()).isEqualTo(SHARED_IP);
     assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT)).isSameAs(sitting);
-    assertThat(newcomer.getIp()).as("the newcomer gives the address up, as before").isNull();
+    assertThat(newcomer.getIp()).as("the newcomer gives the address up").isNull();
     assertThat(peerList.get(newcomerId.getKademliaId()))
         .as("but it is registered, and it owns the connection")
         .isSameAs(newcomer);
   }
 
   /**
-   * TD213 itself: once the stale peer is gone, the next completed handshake gives the peer we are
-   * talking to its address back. It used to stay {@code null:0} for the lifetime of the object,
-   * because nothing ever filled an address onto an already registered peer.
-   *
-   * <p>The second handshake continues on the <em>registered</em> object, which is exactly why the
-   * announced address has to be passed alongside it: {@code ConnectionReaderThread.parseHandshake}
-   * resolves a known identity through {@code PeerList.get(KademliaId)}, and that object is the one
-   * whose ip is null.
+   * The same for a dial in flight: an address is not taken out from under a running connection
+   * attempt either.
    */
   @Test
-  void afterTheStalePeerIsGoneTheEstablishedConnectionGetsItsAddress() {
-    Peer stale = new Peer(SHARED_IP, VICTIM_PORT, NodeId.generateWithSimpleKey());
-    stale.setConnected(true);
-    peerList.add(stale);
+  void aPeerBeingDialledKeepsItsAddress() {
+    Peer dialling = new Peer(SHARED_IP, VICTIM_PORT, NodeId.generateWithSimpleKey());
+    dialling.isConnecting = true;
+    peerList.add(dialling);
 
-    NodeId uploaderId = NodeId.generateWithSimpleKey();
-    Peer uploader = new Peer(SHARED_IP, VICTIM_PORT, uploaderId);
-    peerList.addFromCompletedHandshake(uploader, SHARED_IP, VICTIM_PORT, 1_000);
-    assertThat(uploader.getIp()).as("lost the contested address, as before").isNull();
+    Peer newcomer = new Peer(SHARED_IP, VICTIM_PORT, NodeId.generateWithSimpleKey());
+    peerList.add(newcomer, 1_000);
 
-    // The stale peer is reaped (PeerJobs / a disconnect that removes it).
-    assertThat(peerList.remove(stale)).isTrue();
+    assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT)).isSameAs(dialling);
+    assertThat(newcomer.getIp()).isNull();
+  }
+
+  /**
+   * A registered, address-less peer stays address-less: nothing fills an address in from a
+   * completed handshake, so no identity can be pointed at an address it did not prove (TD178).
+   */
+  @Test
+  void anAddressLessPeerIsNotGivenAnAddressByAConnection() {
+    NodeId id = NodeId.generateWithSimpleKey();
+    Peer addressLess = new Peer(null, 0, id);
+    peerList.add(addressLess);
+
+    // What a handshake from that identity looks like to the peer list: same object, and the
+    // announced address only exists on the PeerInHandshake.
+    assertThat(peerList.add(addressLess, 1_000)).isSameAs(addressLess);
+
+    assertThat(addressLess.getIp()).isNull();
     assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT)).isNull();
-
-    // The uploader reconnects. parseHandshake resolves the identity and continues on the
-    // registered, address-less object; the announced address comes from the handshake.
-    assertThat(peerList.addFromCompletedHandshake(uploader, SHARED_IP, VICTIM_PORT, 1_000))
-        .as("the registered object answers for its own identity")
-        .isSameAs(uploader);
-
-    assertThat(uploader.getIp()).isEqualTo(SHARED_IP);
-    assertThat(uploader.getPort()).isEqualTo(VICTIM_PORT);
-    assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT))
-        .as("and it is the registered owner of the address")
-        .isSameAs(uploader);
-    assertThat(peerList.snapshot()).containsOnlyOnce(uploader);
-  }
-
-  /**
-   * The adoption fills a gap and nothing more: an address another peer owns is never taken, not
-   * even by the peer whose connection just completed. Without this guard TD214's eviction is back,
-   * for every host that shares an ip with a peer we know.
-   */
-  @Test
-  void anEstablishedConnectionNeverTakesAnAddressSomebodyElseOwns() {
-    NodeId ownerId = NodeId.generateWithSimpleKey();
-    Peer owner = new Peer(SHARED_IP, VICTIM_PORT, ownerId);
-    peerList.add(owner);
-
-    // A peer of ours with no address at all — the state clearConnectionDetails leaves behind.
-    NodeId claimantId = NodeId.generateWithSimpleKey();
-    Peer claimant = new Peer(null, 0, claimantId);
-    peerList.add(claimant);
-
-    peerList.addFromCompletedHandshake(claimant, SHARED_IP, VICTIM_PORT, 1_000);
-
-    assertThat(claimant.getIp()).as("the address is owned, so it is not adopted").isNull();
-    assertThat(owner.getIp()).isEqualTo(SHARED_IP);
-    assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT)).isSameAs(owner);
-  }
-
-  /**
-   * And it never overwrites an address a peer already has. The announced address is unproven (the
-   * identity comes from the plaintext handshake), so refreshing a good address with it would let
-   * anyone we talk to make another node undialable for us — that move belongs behind the first
-   * encrypted PING and is tracked separately (TD178).
-   */
-  @Test
-  void anEstablishedConnectionNeverOverwritesAnAddressItAlreadyHas() {
-    NodeId id = NodeId.generateWithSimpleKey();
-    Peer peer = new Peer("203.0.113.7", 59558, id);
-    peerList.add(peer);
-
-    peerList.addFromCompletedHandshake(peer, SHARED_IP, VICTIM_PORT, 1_000);
-
-    assertThat(peer.getIp()).isEqualTo("203.0.113.7");
-    assertThat(peer.getPort()).isEqualTo(59558);
-    assertThat(peerList.getByAddress("203.0.113.7", 59558)).isSameAs(peer);
-    assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT))
-        .as("the announced address is not keyed for it either")
-        .isNull();
-  }
-
-  /**
-   * An undialable announced address is not adopted: port 0 is the <em>listening</em> port a light
-   * client does not have, so it would leave the peer addressed but still undialable, in the shared
-   * {@code "<ip>:0"} bucket (T150/TD183).
-   */
-  @Test
-  void anUndialableAnnouncedAddressIsNotAdopted() {
-    NodeId id = NodeId.generateWithSimpleKey();
-    Peer lightClient = new Peer(null, 0, id);
-    peerList.add(lightClient);
-
-    peerList.addFromCompletedHandshake(lightClient, SHARED_IP, 0, 1_000);
-
-    assertThat(lightClient.getIp()).isNull();
-    assertThat(peerList.getByAddress(SHARED_IP, 0)).isNull();
   }
 }
