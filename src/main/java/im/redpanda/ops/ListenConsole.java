@@ -208,8 +208,8 @@ public class ListenConsole extends Thread {
 
         ByteBuffer allocated = ByteBufferPool.borrowObject(1024 * 1024 * 4);
         if (allocated == null) {
-          // TD186: returnObject() reads capacity() straight off the argument, so an exhausted
-          // pool NPEd this diagnostic console command.
+          // TD186: returnObject() reads capacity() straight off the argument, so a failed
+          // borrow NPEd this diagnostic console command.
           System.out.println("the pool could not hand out a buffer");
         } else {
           ByteBufferPool.returnObject(allocated);

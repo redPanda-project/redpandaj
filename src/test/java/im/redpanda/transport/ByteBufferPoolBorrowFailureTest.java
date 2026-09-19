@@ -24,14 +24,18 @@ import org.junit.jupiter.api.Test;
  * after one failed replacement of an invalid buffer. Five call sites dereferenced the result
  * immediately ({@link Peer#decryptInputData}, three in {@link ConnectionHandler}, one in {@code
  * ListenConsole}), plus the one in {@link ConnectionReaderThread#readConnection} found alongside
- * them, so an exhausted pool turned into an NPE on the selector or reader thread instead of a clean
+ * them, so a failed borrow turned into an NPE on the selector or reader thread instead of a clean
  * failure of the operation.
  *
- * <p>The null is produced through the real path rather than through a test hook: the pool is capped
- * at zero objects per key with {@code blockWhenExhausted=false} and its idle buffers are destroyed,
- * so {@code pool.borrowObject} throws "Pool exhausted" for every size class. The pool is a JVM-wide
- * static, hence the save/restore around each test — surefire runs the tests of one fork
- * sequentially, so no other test observes the capped pool.
+ * <p>The null is produced through the real code path rather than through a test hook. Two harnesses
+ * are needed, because {@code init()} leaves commons-pool's {@code blockWhenExhausted} at its
+ * default: a pool that is merely at its per-key limit <em>blocks</em> in production, it does not
+ * answer null (T149 review finding — the production null sources are a factory failure and a failed
+ * replacement of an invalid buffer). So {@link #exhaustPool()} caps the pool at zero objects per
+ * key with {@code blockWhenExhausted=false} to reach the guards, and {@code
+ * borrowObject_whenTheReplacementOfAnInvalidBufferFails_returnsNull} drives the realistic source
+ * end to end. The pool is a JVM-wide static, hence the save/restore around each test — surefire
+ * runs the tests of one fork sequentially, so no other test observes the capped pool.
  */
 class ByteBufferPoolBorrowFailureTest {
 
@@ -80,6 +84,36 @@ class ByteBufferPoolBorrowFailureTest {
     // Without this a borrow would be served from the idle deque and never reach the capped
     // creation path.
     pool.clear();
+  }
+
+  /**
+   * The production null source: {@code borrowObject} finds an <em>idle</em> buffer whose position
+   * is not 0, invalidates it, borrows a replacement — and gives up with null when that replacement
+   * fails too (the infinite-retry fix from #361).
+   *
+   * <p>An idle buffer can only be dirty because someone wrote into it <em>after</em> returning it
+   * (the factory's {@code passivateObject} normalizes every clean return) — i.e. the
+   * stale-reference / double-return class of bug this pool has produced before
+   * (REDPANDAJ-2E8/2ED/2EF). That is what is reproduced here.
+   */
+  @Test
+  void borrowObject_whenTheReplacementOfAnInvalidBufferFails_returnsNull() {
+    GenericKeyedObjectPool<Integer, ByteBuffer> pool = ByteBufferPool.getPool();
+
+    ByteBuffer pooled = ByteBufferPool.borrowObject(1024);
+    assertThat(pooled).isNotNull();
+    ByteBufferPool.returnObject(pooled);
+    // A stale reference writes into the buffer while it sits idle in the pool.
+    pooled.putInt(7);
+
+    // No pool.clear() here: the dirty buffer has to survive as the idle object that is handed out.
+    // testOnBorrow is off, so the pool's own validateObject never sees it.
+    pool.setBlockWhenExhausted(false);
+    pool.setMaxTotalPerKey(0);
+
+    assertThat(ByteBufferPool.borrowObject(1024))
+        .as("the invalid buffer is invalidated and the replacement borrow cannot succeed")
+        .isNull();
   }
 
   @Test
@@ -190,8 +224,12 @@ class ByteBufferPoolBorrowFailureTest {
       remoteSide.write(out);
     }
 
+    // Unstarted: the public constructor spawns a virtual thread that polls the static
+    // ConnectionHandler.peersToReadAndParse and shares this instance's myReaderBuffer, which would
+    // race the assertion below (T149 review finding).
     ConnectionReaderThread reader =
-        new ConnectionReaderThread(new ServerContext(), ConnectionReaderThread.STD_TIMEOUT);
+        ConnectionReaderThread.newUnstartedForTest(
+            new ServerContext(), ConnectionReaderThread.STD_TIMEOUT);
 
     exhaustPool();
 

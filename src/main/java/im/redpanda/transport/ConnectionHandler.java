@@ -697,9 +697,11 @@ public class ConnectionHandler extends Thread {
             // a v23 GCM frame for a single byte needs 33 bytes, so borrow a bit more
             ByteBuffer byteBuffer = ByteBufferPool.borrowObject(64);
             if (byteBuffer == null) {
-              // TD186: an exhausted pool used to NPE inside encrypt() and surface as the generic
-              // "Handshake failed with throwable" Sentry error. Without the PING the peer never
-              // completes the handshake anyway, so drop the half-open connection cleanly.
+              // TD186: a failed borrow (the pool blocks when it is merely exhausted, so null
+              // means a factory failure or a failed replacement of an invalid buffer) used to NPE
+              // inside encrypt() and surface as the generic "Handshake failed with throwable"
+              // Sentry error. Without the PING the peer never completes the handshake anyway, so
+              // drop the half-open connection cleanly.
               logger.warn(
                   "no buffer available to send the handshake PING, dropping the connection");
               key.cancel();

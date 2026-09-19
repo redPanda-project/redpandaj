@@ -13,6 +13,9 @@ import java.nio.file.Path;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -245,11 +248,140 @@ class NodeStoreClosedStoreTest {
             })
         .doesNotThrowAnyException();
     assertThat(fallback.get(fresh.getKademliaId())).isNotNull();
-    assertThat(fallback.size()).as("a memory-only store sizes its on-heap tier").isNotNegative();
+    // The cache CONTENTS do not survive a recovery -- the on-disk file was deleted as corrupt and
+    // the tiers are new -- so `known` is legitimately gone from the cache and only the routing
+    // graph is carried over (see below). What must hold is the exact count: a memory-only store has
+    // no on-disk tier, so size() reports the on-heap one, and that holds the one node written after
+    // the swap. "Non-negative" would have passed for a store that silently lost everything.
+    assertThat(fallback.size()).as("a memory-only store sizes its on-heap tier").isEqualTo(1);
+    assertThat(cachePath)
+        .as("still the directory, so no file-backed tier was opened -- this is the fallback")
+        .isDirectory();
 
     // Same graph and lock object, so LocalSettings' registered read lock still guards the graph
     // the successor mutates (see NodeStore#takeOverGraphGuardFrom).
     assertThat(fallback.getNodeGraph()).isSameAs(graphBefore);
     assertThat(fallback.getReadWriteLock()).isSameAs(lockBefore);
+  }
+
+  /**
+   * The regression test for the T149 review's HIGH finding. {@code saveToDisk()} holds {@code
+   * lifecycleLock} for the whole flush — and on the recovery path across {@code close()}, the file
+   * delete and a full three-tier rebuild. The first version of {@code liveStore()} read the {@code
+   * closed} flag under that lock, which put the 15-minute flush straight onto the
+   * inbound-connection path: {@code ConnectionHandler.setupConnection} → {@code
+   * Node.getByKademliaId} → {@code get()} would have waited for it, i.e. no new handshake completes
+   * while a save runs.
+   *
+   * <p>Deterministic via the existing {@code betweenFlushStepsForTest} seam: the save is parked
+   * inside the lock on a latch, so the reader either returns immediately or it is blocked — no
+   * timing luck involved. The only wall-clock waits are the bounded joins of a negative assertion.
+   */
+  @Test
+  void get_whileASaveHoldsTheLifecycleLock_doesNotBlock() throws Exception {
+    firstStore = NodeStore.buildWithDiskCache(serverContext);
+    serverContext.setNodeStore(firstStore);
+
+    NodeId nodeId = new NodeId();
+    firstStore.put(nodeId.getKademliaId(), unregisteredNode(nodeId));
+
+    CountDownLatch saveIsInsideTheLock = new CountDownLatch(1);
+    CountDownLatch readerIsDone = new CountDownLatch(1);
+    NodeStore.betweenFlushStepsForTest =
+        () -> {
+          saveIsInsideTheLock.countDown();
+          try {
+            readerIsDone.await(10, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        };
+
+    Thread saver = new Thread(firstStore::saveToDisk, "t149-saver");
+    try {
+      saver.start();
+      assertThat(saveIsInsideTheLock.await(10, TimeUnit.SECONDS))
+          .as("the save must have reached the seam, i.e. it holds lifecycleLock")
+          .isTrue();
+
+      AtomicReference<Object> read = new AtomicReference<>();
+      AtomicReference<Throwable> failed = new AtomicReference<>();
+      Thread reader =
+          new Thread(
+              () -> {
+                try {
+                  read.set(firstStore.get(nodeId.getKademliaId()));
+                } catch (Throwable t) {
+                  failed.set(t);
+                }
+              },
+              "t149-reader");
+      reader.start();
+      reader.join(2000);
+
+      assertThat(reader.isAlive())
+          .as("get() must not wait for an in-flight saveToDisk() -- it is on the handshake path")
+          .isFalse();
+      assertThat(failed.get()).isNull();
+      // The flush pushed the entry down a tier, so the instance differs -- but it must still be
+      // found through the overflow loader.
+      assertThat(read.get()).isNotNull();
+    } finally {
+      readerIsDone.countDown();
+      NodeStore.betweenFlushStepsForTest = null;
+      saver.join(10_000);
+    }
+  }
+
+  /**
+   * The TD215 scenario as it actually happens: a thread hammering a cached reference while the
+   * recovery swaps the store underneath it. Covers both the resolution through {@link
+   * NodeStore#liveStore()} and its residual check-then-act window (which the accessors answer with
+   * one retry) — that window cannot be hit deterministically without another production seam, so
+   * this is a bounded stress run whose only failure mode is an escaping throwable.
+   */
+  @Test
+  void put_concurrentWithTheRecovery_neverLetsAThrowableEscape() throws Exception {
+    firstStore = NodeStore.buildWithDiskCache(serverContext);
+    serverContext.setNodeStore(firstStore);
+
+    NodeId toFlush = new NodeId();
+    firstStore.put(toFlush.getKademliaId(), unregisteredNode(toFlush));
+
+    CountDownLatch writerIsWarm = new CountDownLatch(1);
+    AtomicReference<Throwable> failed = new AtomicReference<>();
+    Thread writer =
+        new Thread(
+            () -> {
+              try {
+                for (int i = 0; i < 4000; i++) {
+                  // A 20-character id, which is what KademliaId(String) requires, and no keypair
+                  // generation.
+                  NodeId id = new NodeId(new KademliaId(String.format("%020d", i)));
+                  firstStore.put(id.getKademliaId(), unregisteredNode(id));
+                  firstStore.get(id.getKademliaId());
+                  if (i == 20) {
+                    writerIsWarm.countDown();
+                  }
+                }
+              } catch (Throwable t) {
+                failed.set(t);
+              } finally {
+                writerIsWarm.countDown();
+              }
+            },
+            "t149-writer");
+    writer.start();
+    assertThat(writerIsWarm.await(10, TimeUnit.SECONDS)).isTrue();
+
+    firstStore.breakDiskTierForTest();
+    firstStore.saveToDisk();
+
+    writer.join(30_000);
+    assertThat(writer.isAlive()).isFalse();
+    assertThat(failed.get())
+        .as("a cached NodeStore reference must survive the swap without throwing")
+        .isNull();
+    assertThat(serverContext.getNodeStore()).isNotSameAs(firstStore);
   }
 }

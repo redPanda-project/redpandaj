@@ -77,11 +77,28 @@ public class ConnectionReaderThread implements Runnable {
    * @param timeout
    */
   public ConnectionReaderThread(ServerContext serverContext, int timeout) {
+    this(serverContext, timeout, true);
+  }
+
+  private ConnectionReaderThread(ServerContext serverContext, int timeout, boolean startThread) {
     this.serverContext = serverContext;
     this.timeout = timeout;
     this.inboundProcessor = new InboundCommandProcessor(serverContext);
-    Log.putStd("########################## spawned new connectionReaderThread!!!!");
-    Thread.ofVirtual().name("ReaderThread").start(this);
+    if (startThread) {
+      Log.putStd("########################## spawned new connectionReaderThread!!!!");
+      Thread.ofVirtual().name("ReaderThread").start(this);
+    }
+  }
+
+  /**
+   * Test seam: a reader that is NOT started, for tests that drive {@link #readConnection(Peer)}
+   * directly. The public constructor starts a virtual thread that polls the <b>static</b> {@code
+   * ConnectionHandler.peersToReadAndParse} and uses this instance's {@link #myReaderBuffer}, so a
+   * test asserting on that buffer would race its own reader thread — and with surefire's {@code
+   * reuseForks} such a thread can outlive the test that created it (T149 review finding).
+   */
+  static ConnectionReaderThread newUnstartedForTest(ServerContext serverContext, int timeout) {
+    return new ConnectionReaderThread(serverContext, timeout, false);
   }
 
   public static void init(ServerContext serverContext) {
