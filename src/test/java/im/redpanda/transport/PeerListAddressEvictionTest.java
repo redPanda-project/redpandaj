@@ -25,14 +25,13 @@ import org.junit.jupiter.api.Test;
  * dropped from our peer list by echoing our own {@code KademliaId} back at us and naming the
  * victim's port. T150b narrowed the reachable set to dialable addresses; it did not close the hole.
  *
- * <p>The caller has the {@link Peer} object it dialled, so it acts on that object now and no
+ * <p>The caller has the {@link Peer} object it dialled, so it acts on that object now — {@link
+ * PeerList#removeExact(Peer)}, which is value-checked and touches nothing else — and no
  * removal-by-address exists at all any more ({@link PeerList#getByAddress(String, int)} is the
- * read-only replacement). What it learned is about one address, so how much of the dialled object
- * it costs depends on what else that object is: an id-less dial target <em>is</em> the address and
- * goes entirely ({@link PeerList#removeExact(Peer)}), while a peer that carries a {@link
- * KademliaId} only loses its connection details ({@code clearConnectionDetails}) — an identity echo
- * is not evidence about the node behind that identity, and dropping its registration and its keyed
- * {@link NodeId} on it would be remotely triggerable in the same way.
+ * read-only replacement). Keeping a keyed peer and dropping only its address was tried and
+ * withdrawn in review: it does not keep the peer, it only delays its removal by one {@code
+ * PeerJobs} pass, because a peer that is neither dialable, connected nor connecting is evicted by
+ * {@code evictUndialableDisconnectedPeers} — by {@link KademliaId}.
  *
  * <p><b>TD213.</b> When two identities claim one dialable address and the sitting peer is live, the
  * newcomer is registered without an address — even when the newcomer is the peer whose connection
@@ -101,6 +100,7 @@ class PeerListAddressEvictionTest {
     // The peer we dialled: the attacker's own address, a different port behind the same ip.
     Peer dialled = new Peer(SHARED_IP, ATTACKER_PORT);
     peerList.add(dialled);
+    assertThat(OutboundHandler.claimForDial(dialled)).isTrue();
 
     try (SocketChannel channel = SocketChannel.open()) {
       PeerInHandshake outbound = new PeerInHandshake(SHARED_IP, dialled, channel);
@@ -129,6 +129,7 @@ class PeerListAddressEvictionTest {
         .as("the peer we dialled is the one that goes")
         .doesNotContain(dialled);
     assertThat(peerList.getByAddress(SHARED_IP, ATTACKER_PORT)).isNull();
+    assertThat(dialled.isConnecting).as("and its dial is no longer pending").isFalse();
   }
 
   /**
@@ -156,29 +157,47 @@ class PeerListAddressEvictionTest {
   }
 
   /**
-   * The dialled object carries an identity: only its address goes, the registration and the keyed
-   * {@link NodeId} survive. Full removal on an unauthenticated echo of our public id would be a
-   * remotely triggerable way to un-register a node we track.
+   * The dialled object carries an identity, and a keyed live victim shares its ip: the dialled
+   * object goes, the victim is untouched in all three indices, and the abandoned dial is cleared.
+   *
+   * <p>The dial state is set the way production sets it ({@code OutboundHandler.claimForDial}), not
+   * by hand, so the test sees what {@code PeerJobs} would see afterwards: a peer left {@code
+   * isConnecting} is counted by the connection budget and then timed out, which is what made the
+   * gentler "clear only the address" variant pointless (review finding).
    */
   @Test
-  void aSelfConnectThroughAnIdentifiedPeerOnlyCostsThatPeerItsAddress() throws Exception {
+  void aSelfConnectThroughAnIdentifiedPeerDropsThatPeerAndClearsTheDial() throws Exception {
+    NodeId victimId = NodeId.generateWithSimpleKey();
+    Peer victim = new Peer(SHARED_IP, VICTIM_PORT, victimId);
+    victim.setConnected(true);
+    peerList.add(victim);
+
     NodeId dialledId = NodeId.generateWithSimpleKey();
     Peer dialled = new Peer(SHARED_IP, ATTACKER_PORT, dialledId);
     peerList.add(dialled);
+    assertThat(OutboundHandler.claimForDial(dialled)).as("this is how a dial starts").isTrue();
 
     try (SocketChannel channel = SocketChannel.open()) {
       PeerInHandshake outbound = new PeerInHandshake(SHARED_IP, dialled, channel);
       ConnectionReaderThread.parseHandshake(
-          ctx, outbound, handshake(ctx.getOwnNodeId().getBytes(), ATTACKER_PORT));
+          ctx, outbound, handshake(ctx.getOwnNodeId().getBytes(), VICTIM_PORT));
     }
 
+    assertThat(peerList.get(victimId.getKademliaId()))
+        .as("the victim must survive a self-connect through an identified peer too")
+        .isSameAs(victim);
+    assertThat(peerList.getByAddress(SHARED_IP, VICTIM_PORT)).isSameAs(victim);
+    assertThat(peerList.snapshot()).contains(victim);
+    assertThat(victim.getIp()).isEqualTo(SHARED_IP);
+
     assertThat(peerList.get(dialledId.getKademliaId()))
-        .as("the peer stays registered under its identity")
-        .isSameAs(dialled);
-    assertThat(dialled.getNodeId().hasKey()).as("and keeps its keys").isTrue();
-    assertThat(peerList.snapshot()).contains(dialled);
-    assertThat(dialled.getIp()).as("but the address is gone").isNull();
+        .as("the peer we dialled is gone from the identity index")
+        .isNull();
     assertThat(peerList.getByAddress(SHARED_IP, ATTACKER_PORT)).isNull();
+    assertThat(peerList.snapshot()).doesNotContain(dialled);
+    assertThat(dialled.isConnecting)
+        .as("and the abandoned dial is cleared, so nothing counts it as a pending connection")
+        .isFalse();
   }
 
   /**

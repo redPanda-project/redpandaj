@@ -743,10 +743,33 @@ public class PeerList {
     }
   }
 
+  /**
+   * Takes a peer's address away: out of the address map and off the peer object.
+   *
+   * <p>Both halves under one write lock (Copilot review, PR #369). They used to be two separate
+   * critical sections with a gap in between, and the map is keyed by the peer's own ip and port, so
+   * anything that ran in that gap saw a peer that still claimed an address it no longer owned. The
+   * concrete damage: {@link #adoptAddress} decides under the lock whether a key is free and then
+   * installs {@code owner} under it — if the clear's field write lands after that, the map points
+   * at a peer whose ip is null, and no removal can ever take that entry out again, because {@link
+   * #removeIpPortMapping} computes the key from the peer's (now null) ip. Ordered the other way
+   * round, the freshly adopted address is silently dropped instead.
+   *
+   * <p>{@link Peer#removeIpAndPort()} is two field writes, so holding the lock across it does not
+   * violate the "never block while holding this lock" rule documented on this class.
+   *
+   * @param peer the peer that loses its connection details
+   */
   public void clearConnectionDetails(Peer peer) {
     Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
-    removeIpPortOnly(peer);
-    peer.removeIpAndPort();
+    readWriteLock.writeLock().lock();
+    try {
+      // Re-enters the lock; kept as the single mutation point for address-map removals.
+      removeIpPortOnly(peer);
+      peer.removeIpAndPort();
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
   }
 
   private void initBlacklist() {
