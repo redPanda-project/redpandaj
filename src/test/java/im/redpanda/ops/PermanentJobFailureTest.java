@@ -41,7 +41,9 @@ class PermanentJobFailureTest {
     }
 
     @Override
-    public void init() {}
+    public void init() {
+      // nothing to set up for this test job
+    }
 
     @Override
     public void work() {
@@ -101,7 +103,9 @@ class PermanentJobFailureTest {
     }
 
     @Override
-    public void init() {}
+    public void init() {
+      // nothing to set up for this test job
+    }
 
     @Override
     public void work() {
@@ -162,7 +166,9 @@ class PermanentJobFailureTest {
     Job job =
         new Job(CONTEXT, 25L, true) {
           @Override
-          public void init() {}
+          public void init() {
+            // nothing to set up for this test job
+          }
 
           @Override
           public void work() {

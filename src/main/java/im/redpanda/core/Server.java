@@ -117,23 +117,36 @@ public class Server {
    *       the job thread in the middle of {@code savePeers} or {@code NodeStore.close()}.
    * </ul>
    *
+   * <p>The 500 ms grace period runs before the monitor is taken, so it is not held across a sleep;
+   * a caller arriving after a completed shutdown skips it entirely and returns at once.
+   *
    * <p>{@link #setShuttingDown(boolean)} resets the guard, so a test harness that starts and stops
    * several nodes in one JVM keeps working ({@code TestNodeLauncher.configureSettings()}).
    */
   public static void shutdown(ServerContext serverContext) {
+    if (hasShutdownCompleted()) {
+      log.info("shutdown already completed, skipping this call");
+      return;
+    }
+
+    // Signal, then let the other threads notice it -- both OUTSIDE the monitor. A Thread.sleep()
+    // inside a synchronized block holds the monitor for the whole grace period (java:S2276), and
+    // the grace period is about the shuttingDown signal, not about the persisting below.
+    Server.shuttingDown = true;
+
+    try {
+      Thread.sleep(500);
+    } catch (InterruptedException e) {
+      log.warn("Interrupted during shutdown", e);
+      Thread.currentThread().interrupt();
+    }
+
     synchronized (SHUTDOWN_LOCK) {
+      // re-checked under the monitor: a shutdown may have completed while this caller was in the
+      // grace period above, or while it was waiting here for one in flight
       if (shutdownCompleted) {
         log.info("shutdown already completed, skipping this call");
         return;
-      }
-
-      Server.shuttingDown = true;
-
-      try {
-        Thread.sleep(500);
-      } catch (InterruptedException e) {
-        log.warn("Interrupted during shutdown", e);
-        Thread.currentThread().interrupt();
       }
 
       Saver.savePeers(serverContext.getPeerList());
@@ -143,6 +156,12 @@ public class Server {
       // Last statement on purpose: a shutdown that threw did NOT persist everything, and the
       // caller that follows (the JVM hook after ServerRestartJob's System.exit) is the retry.
       shutdownCompleted = true;
+    }
+  }
+
+  private static boolean hasShutdownCompleted() {
+    synchronized (SHUTDOWN_LOCK) {
+      return shutdownCompleted;
     }
   }
 
