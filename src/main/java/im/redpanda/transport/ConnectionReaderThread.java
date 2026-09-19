@@ -410,6 +410,16 @@ public class ConnectionReaderThread implements Runnable {
 
       if (peer.readBuffer == null) {
         peer.readBuffer = ByteBufferPool.borrowObject(myReaderBuffer.position());
+        if (peer.readBuffer == null) {
+          // TD186 (same class as the guarded sites in ConnectionHandler): without a plaintext
+          // buffer decryptInputData() below NPEs on readBuffer.remaining(). The ciphertext in
+          // myReaderBuffer has to go: leaving it would prefix it onto the bytes of the next peer
+          // this reader thread services (see assertReaderBufferReadyForNextRead), and dropping it
+          // silently desyncs the GCM receive counter of this connection -- so disconnect.
+          myReaderBuffer.clear();
+          peer.disconnect("no plaintext buffer available from the ByteBufferPool");
+          return read;
+        }
       }
 
       // Decrypt all bytes from myReaderBuffer (ciphertext) to peer.readBuffer (plaintext).

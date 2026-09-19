@@ -463,6 +463,14 @@ public class Peer implements Comparable<Peer> {
         }
         Log.put("get new readBuffer with size: %s".formatted(newSize), 5);
         ByteBuffer newBuffer = ByteBufferPool.borrowObject(newSize);
+        if (newBuffer == null) {
+          // TD186: borrowObject returns null when the pool cannot hand out a buffer at all.
+          // The arraycopy below dereferenced it right away, so an exhausted pool became an NPE
+          // out of the read path instead of a protocol failure the caller already handles by
+          // dropping the connection. The old buffer is untouched, so nothing leaks here.
+          throw new PeerProtocolException(
+              "no buffer of size %s available to grow the read buffer".formatted(newSize));
+        }
 
         System.arraycopy(readBuffer.array(), 0, newBuffer.array(), 0, readBuffer.array().length);
         newBuffer.position(readBuffer.position());

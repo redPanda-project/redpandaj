@@ -259,8 +259,44 @@ public class NodeStore {
     localSettings.setNodeGraphLock(readWriteLock.readLock());
   }
 
+  /**
+   * The store a caller should actually work on: {@code this} while it is open, otherwise the
+   * successor that {@link #saveToDisk()}'s recovery installed in the {@link ServerContext}.
+   *
+   * <p>TD215: the store swap in the recovery path is not atomic with respect to threads that
+   * already hold a {@code NodeStore} reference. {@code Node}'s constructor re-reads {@code
+   * serverContext.getNodeStore()} for every access, but {@code PeerPerformanceTestGarlicMessageJob}
+   * deliberately resolves the store <em>once</em> (it must lock and unlock the same lock object),
+   * and any future caller may do the same. Those references keep pointing at the closed
+   * predecessor, whose MapDB tiers throw {@code IllegalAccessError: Store was closed} on the next
+   * access — {@link #get(KademliaId)} turned that into a spurious "corrupt cache" diagnosis plus an
+   * {@code onDisk.clear()} on a closed tier, and {@link #put(KademliaId, Node)} propagated it into
+   * {@code new Node(...)}, i.e. onto the inbound-connection path.
+   *
+   * <p>Exactly one hop, never back to this instance: the successor is by construction a different,
+   * open object, so the tier accesses in the callers below cannot recurse.
+   *
+   * @return the live store, or {@code null} when there is none — shutdown closed the store and did
+   *     not replace it, and then a cache write is simply dropped.
+   */
+  private NodeStore liveStore() {
+    if (!isClosed()) {
+      return this;
+    }
+    NodeStore live = serverContext.getNodeStore();
+    if (live == null || live == this || live.isClosed()) {
+      return null;
+    }
+    return live;
+  }
+
   public void put(KademliaId kademliaId, Node node) {
-    onHeap.put(kademliaId, node);
+    NodeStore live = liveStore();
+    if (live == null) {
+      logger.debug("dropping the node cache write for {}: no open store", kademliaId);
+      return;
+    }
+    live.onHeap.put(kademliaId, node);
   }
 
   /**
@@ -277,21 +313,29 @@ public class NodeStore {
    * old code would have NPEd inside the catch block instead of returning null.
    */
   public Node get(KademliaId kademliaId) {
+    NodeStore live = liveStore();
+    if (live == null) {
+      return null;
+    }
     try {
-      return onHeap.get(kademliaId);
+      return live.onHeap.get(kademliaId);
     } catch (Exception e) {
       logger.warn(
           "could not read node {} from the node cache, dropping the on-disk tier", kademliaId, e);
       Log.sentry(e);
-      if (onDisk != null) {
-        onDisk.clear();
+      if (live.onDisk != null) {
+        live.onDisk.clear();
       }
       return null;
     }
   }
 
   public void remove(KademliaId kademliaId) {
-    onHeap.remove(kademliaId);
+    NodeStore live = liveStore();
+    if (live == null) {
+      return;
+    }
+    live.onHeap.remove(kademliaId);
   }
 
   public void saveToDisk() {
@@ -415,16 +459,26 @@ public class NodeStore {
   }
 
   /**
-   * Writes all to disk and then reads the size from the disk db.
+   * Flushes the cache and returns the number of entries in the lowest tier the store has — the
+   * on-disk tier, or the on-heap one for a memory-only store.
    *
-   * @return
+   * <p>TD212: this used to read {@code this.onDisk} after the {@code saveToDisk()} above, which is
+   * exactly the call that can replace this store. On the recovery path {@code this} is the closed
+   * predecessor by the time the read happens, so the size read threw instead of answering. It now
+   * reads the tier of the store that is live afterwards (see {@link #liveStore()}); after a
+   * recovery that is a freshly built one, so the honest answer is the size of the rebuilt cache,
+   * not of the cache that was just thrown away.
    */
   public int size() {
-    if (onDisk == null) {
-      return onHeap.size();
-    }
     saveToDisk();
-    return onDisk.size();
+    NodeStore live = liveStore();
+    if (live == null) {
+      return 0;
+    }
+    if (live.onDisk == null) {
+      return live.onHeap.size();
+    }
+    return live.onDisk.size();
   }
 
   public void maintainNodes() {
