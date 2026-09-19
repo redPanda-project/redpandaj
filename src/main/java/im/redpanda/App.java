@@ -121,8 +121,16 @@ public class App {
                 final String orgName = Thread.currentThread().getName();
                 Thread.currentThread().setName(orgName + " - shutdownhook");
                 logger.info("started shutdownhook...");
-                Server.shutdown(serverContext);
-                logger.info("shutdownhook done");
+                try {
+                  Server.shutdown(serverContext);
+                  logger.info("shutdownhook done");
+                } finally {
+                  // TD222: log4j's own shutdown hook is disabled in log4j2.xml, so the logging
+                  // configuration stays alive for the whole shutdown (it used to be stopped ~2 ms
+                  // into this hook, which swallowed every line Server.shutdown() logged). Stopping
+                  // the context here, as the very last action, is what replaces it.
+                  LogManager.shutdown();
+                }
               }
             });
 

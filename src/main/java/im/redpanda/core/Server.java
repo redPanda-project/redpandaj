@@ -31,6 +31,21 @@ public class Server {
 
   public static final String MAGIC = "k3gV";
   private static volatile boolean shuttingDown = false;
+
+  /**
+   * Serializes {@link #shutdown(ServerContext)} and carries the "already done" state.
+   *
+   * <p>Separate from {@link #shuttingDown}, which is the "stop doing work" signal every other
+   * thread polls and which callers may set themselves <i>before</i> calling shutdown ({@code
+   * TestNodeLauncher}) — folding the two together would turn such a shutdown into a no-op.
+   */
+  private static final Object SHUTDOWN_LOCK = new Object();
+
+  /**
+   * Guarded by {@link #SHUTDOWN_LOCK}. Set only after the shutdown work completed without error.
+   */
+  private static boolean shutdownCompleted = false;
+
   private static final AtomicInteger outBytes = new AtomicInteger(0);
   private static final AtomicInteger inBytes = new AtomicInteger(0);
   private ConnectionHandler connectionHandler;
@@ -74,7 +89,49 @@ public class Server {
     new NodeStoreMaintainJob(serverContext).start();
   }
 
+  /**
+   * Persists the node's state and closes the {@code NodeStore}. Idempotent (TD223): the work runs
+   * once, a call arriving after it completed returns immediately, and a call arriving while it is
+   * in flight waits for it.
+   *
+   * <p>A job-triggered restart calls this twice: {@code ServerRestartJob.work()} calls it and its
+   * following {@code System.exit(0)} runs the JVM shutdown hook of {@code App}, which calls it
+   * again — a second {@code savePeers} plus {@code localSettings.save} against an already closed
+   * store, on a node that is on its way out. {@code ListenConsole}'s {@code e} command does the
+   * same. The guard sits here rather than in the callers because every call site pairs up with a
+   * hook that always runs on {@code System.exit}, and none of them may simply drop its call: the
+   * E2E harness {@code TestNodeLauncher} goes through a wrapper of its own that both its JVM hook
+   * and its {@code startNode} path invoke (guarded there by a separate {@code AtomicBoolean}), so
+   * removing the direct call from a caller here would only move the same problem one level up.
+   *
+   * <p>Two details the guard has to get right (both from the adversarial review of this PR):
+   *
+   * <ul>
+   *   <li>A shutdown that <b>threw</b> does not count as done — {@code shutdownCompleted} is set
+   *       after the last step, so a caller arriving later still attempts the save and the close. A
+   *       plain "claimed" flag would have turned e.g. a failing {@code savePeers} (full disk) into
+   *       a node that never closes MapDB and never saves its settings.
+   *   <li>A caller arriving <b>while</b> a shutdown is in flight waits for it instead of returning
+   *       at once — that is what the monitor is for. Otherwise a SIGTERM during {@code
+   *       ServerRestartJob}'s shutdown would let the JVM halt as soon as the hook returns, killing
+   *       the job thread in the middle of {@code savePeers} or {@code NodeStore.close()}.
+   * </ul>
+   *
+   * <p>The 500 ms grace period runs before the monitor is taken, so it is not held across a sleep;
+   * a caller arriving after a completed shutdown skips it entirely and returns at once.
+   *
+   * <p>{@link #setShuttingDown(boolean)} resets the guard, so a test harness that starts and stops
+   * several nodes in one JVM keeps working ({@code TestNodeLauncher.configureSettings()}).
+   */
   public static void shutdown(ServerContext serverContext) {
+    if (hasShutdownCompleted()) {
+      log.info("shutdown already completed, skipping this call");
+      return;
+    }
+
+    // Signal, then let the other threads notice it -- both OUTSIDE the monitor. A Thread.sleep()
+    // inside a synchronized block holds the monitor for the whole grace period (java:S2276), and
+    // the grace period is about the shuttingDown signal, not about the persisting below.
     Server.shuttingDown = true;
 
     try {
@@ -84,9 +141,28 @@ public class Server {
       Thread.currentThread().interrupt();
     }
 
-    Saver.savePeers(serverContext.getPeerList());
-    serverContext.getNodeStore().close();
-    serverContext.getLocalSettings().save(serverContext.getPort());
+    synchronized (SHUTDOWN_LOCK) {
+      // re-checked under the monitor: a shutdown may have completed while this caller was in the
+      // grace period above, or while it was waiting here for one in flight
+      if (shutdownCompleted) {
+        log.info("shutdown already completed, skipping this call");
+        return;
+      }
+
+      Saver.savePeers(serverContext.getPeerList());
+      serverContext.getNodeStore().close();
+      serverContext.getLocalSettings().save(serverContext.getPort());
+
+      // Last statement on purpose: a shutdown that threw did NOT persist everything, and the
+      // caller that follows (the JVM hook after ServerRestartJob's System.exit) is the retry.
+      shutdownCompleted = true;
+    }
+  }
+
+  private static boolean hasShutdownCompleted() {
+    synchronized (SHUTDOWN_LOCK) {
+      return shutdownCompleted;
+    }
   }
 
   public void start() {
@@ -97,8 +173,17 @@ public class Server {
     return shuttingDown;
   }
 
+  /**
+   * Sets the "stop doing work" signal. Clearing it also re-arms {@link #shutdown(ServerContext)},
+   * which is how a single JVM can run several node lifecycles in sequence (tests).
+   */
   public static void setShuttingDown(boolean shuttingDown) {
     Server.shuttingDown = shuttingDown;
+    if (!shuttingDown) {
+      synchronized (SHUTDOWN_LOCK) {
+        shutdownCompleted = false;
+      }
+    }
   }
 
   public static int getOutBytes() {

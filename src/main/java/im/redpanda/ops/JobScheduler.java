@@ -3,6 +3,7 @@ package im.redpanda.ops;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 public class JobScheduler extends ScheduledThreadPoolExecutor {
@@ -23,12 +24,72 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
     super(corePoolSize, threadFactory);
   }
 
+  /**
+   * Fraction of the period the first tick of a job is spread over: the initial delay is {@code
+   * period + U[0, period / INITIAL_DELAY_JITTER_DIVISOR]}. 10 keeps the first tick within 110% of
+   * the configured period, which is small enough that no caller's timing expectation changes.
+   */
+  static final long INITIAL_DELAY_JITTER_DIVISOR = 10;
+
+  /**
+   * Schedules {@code runnable} every {@code delayInMS}, with the first tick exactly that far off.
+   */
   public static ScheduledFuture<?> insert(Runnable runnable, long delayInMS) {
+    return insert(runnable, delayInMS, false);
+  }
+
+  /**
+   * Schedules {@code runnable} every {@code delayInMS}.
+   *
+   * @param jitterInitialDelay whether the FIRST tick may be spread inside {@link
+   *     #initialDelayWithJitter} (TD224). Only recurring permanent jobs want that. A one-shot job
+   *     ({@code skipImminentRun}) must not get it: for those the delay <b>is</b> the deadline of
+   *     their single run and its distribution is part of their contract — {@code
+   *     OhAnnounceJob.SingleAnnounceJob}, {@code OhResolveJob.DelayedSearchJob} and {@code
+   *     RecordLookupJob.DelayedSearchJob} sample it uniformly from a documented {@code [0, max]},
+   *     and adding up to 10% would push it past that bound and skew the distribution (Copilot
+   *     review of this PR).
+   */
+  public static ScheduledFuture<?> insert(
+      Runnable runnable, long delayInMS, boolean jitterInitialDelay) {
     // scheduleWithFixedDelay rejects a period <= 0. Jittered delays sampled
     // from [0, n] (e.g. OhResolveJob.DelayedSearchJob) can legitimately hit 0,
     // which must mean "as soon as possible", not an IllegalArgumentException.
     long delay = Math.max(1, delayInMS);
-    return jobScheduler.scheduleWithFixedDelay(runnable, delay, delay, TimeUnit.MILLISECONDS);
+    long initialDelay = jitterInitialDelay ? initialDelayWithJitter(delay) : delay;
+    return jobScheduler.scheduleWithFixedDelay(
+        runnable, initialDelay, delay, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Initial delay for a job of the given period, jittered (TD224).
+   *
+   * <p>All permanent jobs used to be inserted with {@code initialDelay == period} within a few
+   * milliseconds of each other, and their periods are multiples of one another (5 / 15 / 60 min).
+   * Every hourly {@code ServerRestartJob} tick was therefore also a {@code SaveJobs} and {@code
+   * NodeStoreMaintainJob} tick — permanently, for the whole life of the process. That is what
+   * turned the {@code saveToDisk()}/{@code close()} race of TD221 (REDPANDAJ-2EZ) from a rare
+   * coincidence into a certainty: all three testnet restarts of the night of 2026-09-05 landed on a
+   * save tick (01:46:18, 02:46:18, 22:46:38).
+   *
+   * <p>Offsetting only the first tick is enough, because {@code scheduleWithFixedDelay} counts
+   * every following period from the end of the previous run: the whole tick series of a job is
+   * shifted by its jitter. Jitter (rather than a fixed offset per job) keeps the property
+   * independent of the order in which {@code App} happens to start the jobs, and makes two jobs
+   * whose periods are multiples of each other collide only for the width of the race window instead
+   * of always.
+   *
+   * <p>Not {@link java.security.SecureRandom}: this is scheduling noise, nothing here is a secret.
+   */
+  static long initialDelayWithJitter(long period) {
+    long span = period / INITIAL_DELAY_JITTER_DIVISOR;
+    if (span <= 0 || period > Long.MAX_VALUE - span) {
+      // sub-divisor periods (e.g. the 1 ms clamp above) have no room to jitter in, and a period
+      // close to Long.MAX_VALUE must not overflow into a negative delay -- scheduleWithFixedDelay
+      // treats that as "run immediately", i.e. the exact opposite of what such a period means
+      return period;
+    }
+    return period + ThreadLocalRandom.current().nextLong(span + 1);
   }
 
   @Override

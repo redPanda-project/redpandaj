@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Configuration status="info">
+<!-- shutdownHook="disable" (TD222): with log4j's own JVM shutdown hook enabled it stopped the
+     logging configuration ~2 ms after our application hook started, so every line logged inside
+     Server.shutdown() was dropped - the "NodeStore may be broken" WARN of REDPANDAJ-2EZ never
+     reached the journal and "shutdownhook done" never appeared. Only Sentry saw the event. The
+     logger context is now stopped explicitly as the last statement of App's shutdown hook
+     (LogManager.shutdown()); appenders flush per event (immediateFlush defaults to true), so
+     nothing is buffered between the two. -->
+<Configuration status="info" shutdownHook="disable">
     <Properties>
         <Property name="logdir">data</Property>
         <Property name="layout">%d [%t] %-5level %logger - %m%n</Property>

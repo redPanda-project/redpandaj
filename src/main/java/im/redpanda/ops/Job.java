@@ -17,6 +17,15 @@ public abstract class Job implements Runnable {
 
   int jobId = -1;
   private int runCounter = 0;
+
+  /**
+   * Consecutive failed {@link #work()} runs of this job, reset by the first run that does not
+   * throw. Only used to bound the reporting of a permanently failing job (see {@link
+   * #handleWorkFailure}); package-private so {@code PermanentJobFailureTest} can assert the
+   * bounding and the reset without parsing log output.
+   */
+  int consecutiveWorkFailures = 0;
+
   private ScheduledFuture<?> future;
   private boolean done = false;
   protected boolean initilized = false;
@@ -77,13 +86,81 @@ public abstract class Job implements Runnable {
     try {
       work();
     } catch (Throwable e) {
-      e.printStackTrace();
-      Log.sentry(e);
-      done();
+      handleWorkFailure(e);
       return;
     }
+
+    noteWorkSuccess();
     // count after doing the work, since the first start of the job is immediately
 
+  }
+
+  /**
+   * Reports a failed {@link #work()} and decides whether the job is over.
+   *
+   * <p>TD225: a throw out of a <b>permanent</b> job's {@code work()} must not end that job. {@link
+   * #done()} cancels the {@code ScheduledFuture}, so a single failing tick used to stop the job for
+   * the rest of the process — one Sentry event and then silence. For {@code SaveJobs} that meant
+   * the 15-minute autosave of {@code LocalSettings}, the node cache and the peers file never ran
+   * again (found while reviewing #367, where {@code NodeStore.saveToDisk()} can throw if both the
+   * disk-backed and the memory-only rebuild fail). A permanent job keeps its schedule and retries
+   * on the next tick; a non-permanent job keeps the old behaviour, because for it a failed {@code
+   * work()} has no later tick to recover in and it would otherwise be retried forever.
+   *
+   * <p>The reporting itself is wrapped, because {@code ScheduledThreadPoolExecutor} cancels a
+   * periodic task whose {@code run()} throws: letting a failure of {@code Log.sentry} (e.g. its
+   * {@code rating} counter not initialised because {@code Log.init} never ran) escape would
+   * silently stop the very job this method is trying to keep alive.
+   */
+  private void handleWorkFailure(Throwable e) {
+    consecutiveWorkFailures++;
+    if (shouldReportFailure(consecutiveWorkFailures)) {
+      try {
+        e.printStackTrace(); // NOSONAR (java:S4507): controlled console output, mirrors init()
+        Log.sentry(e);
+      } catch (Throwable reportingFailure) {
+        reportingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+      }
+    }
+    if (!permanent) {
+      done();
+    }
+  }
+
+  /**
+   * Ends a failure streak: the counter is what bounds the reporting, so it has to be reset by the
+   * first run that works, and the recovery is worth one line. Wrapped for the same reason as the
+   * failure reporting — a throw here would escape {@code run()} and let {@code
+   * ScheduledThreadPoolExecutor} cancel the job.
+   */
+  private void noteWorkSuccess() {
+    if (consecutiveWorkFailures == 0) {
+      return;
+    }
+    int failures = consecutiveWorkFailures;
+    consecutiveWorkFailures = 0;
+    try {
+      Log.putStd(
+          "job "
+              + this.getClass().getName()
+              + " recovered after "
+              + failures
+              + " consecutive failures");
+    } catch (Throwable loggingFailure) {
+      loggingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+    }
+  }
+
+  /**
+   * Keeping a permanently failing job alive must not turn "one Sentry event and then silence" into
+   * an unbounded event stream (adversarial review of this PR): a permanent job with a short period
+   * that throws on every tick would otherwise print a stack trace and raise a Sentry event several
+   * times per second, burying every other issue. The first three failures of a streak are reported
+   * (the interesting ones — the first one carries the cause), then every hundredth, so a persistent
+   * failure stays visible without dominating the journal.
+   */
+  private static boolean shouldReportFailure(int consecutiveFailures) {
+    return consecutiveFailures <= 3 || consecutiveFailures % 100 == 0;
   }
 
   /**
@@ -112,7 +189,7 @@ public abstract class Job implements Runnable {
     serverContext.getJobRegistry().registerWithFreshId(this);
 
     // run delayed recurrent
-    future = JobScheduler.insert(this, reRunDelay);
+    future = JobScheduler.insert(this, reRunDelay, jittersInitialDelay());
 
     // run immediately
     JobScheduler.runNow(this);
@@ -165,7 +242,18 @@ public abstract class Job implements Runnable {
     }
     this.reRunDelay = newDelay;
     future.cancel(false);
-    future = JobScheduler.insert(this, reRunDelay);
+    future = JobScheduler.insert(this, reRunDelay, jittersInitialDelay());
+  }
+
+  /**
+   * Whether this job's first tick may be spread by {@link JobScheduler}'s jitter (TD224). Only the
+   * recurring permanent jobs need it — they are the ones that all start within the same millisecond
+   * with periods that are multiples of each other. A one-shot job ({@code skipImminentRun}) is
+   * excluded: its delay is the deadline of its single run, sampled from a documented range by the
+   * caller, and must not be stretched (Copilot review of this PR).
+   */
+  private boolean jittersInitialDelay() {
+    return permanent && !skipImminentRun;
   }
 
   public long getReRunDelay() {

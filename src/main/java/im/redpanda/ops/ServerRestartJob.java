@@ -45,7 +45,15 @@ public class ServerRestartJob extends Job {
       }
     }
 
-    Server.shutdown(serverContext);
-    System.exit(0);
+    // System.exit in a finally: the restart is the point of this job, and since TD225 a throw out
+    // of work() no longer ends a permanent job -- without the finally, a failing shutdown (full
+    // disk, an unreadable store) would leave the process running with shuttingDown already set,
+    // i.e. a node that does no I/O and only restarts an hour later. Exiting anyway also gives the
+    // JVM hook its retry at the save, since Server.shutdown() only marks itself done on success.
+    try {
+      Server.shutdown(serverContext);
+    } finally {
+      System.exit(0);
+    }
   }
 }
