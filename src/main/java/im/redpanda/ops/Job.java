@@ -17,6 +17,15 @@ public abstract class Job implements Runnable {
 
   int jobId = -1;
   private int runCounter = 0;
+
+  /**
+   * Consecutive failed {@link #work()} runs of this job, reset by the first run that does not
+   * throw. Only used to bound the reporting of a permanently failing job (see {@link
+   * #handleWorkFailure}); package-private so {@code PermanentJobFailureTest} can assert the
+   * bounding and the reset without parsing log output.
+   */
+  int consecutiveWorkFailures = 0;
+
   private ScheduledFuture<?> future;
   private boolean done = false;
   protected boolean initilized = false;
@@ -80,6 +89,8 @@ public abstract class Job implements Runnable {
       handleWorkFailure(e);
       return;
     }
+
+    noteWorkSuccess();
     // count after doing the work, since the first start of the job is immediately
 
   }
@@ -102,15 +113,54 @@ public abstract class Job implements Runnable {
    * silently stop the very job this method is trying to keep alive.
    */
   private void handleWorkFailure(Throwable e) {
-    try {
-      e.printStackTrace(); // NOSONAR (java:S4507): controlled console output, mirrors init()
-      Log.sentry(e);
-    } catch (Throwable reportingFailure) {
-      reportingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+    consecutiveWorkFailures++;
+    if (shouldReportFailure(consecutiveWorkFailures)) {
+      try {
+        e.printStackTrace(); // NOSONAR (java:S4507): controlled console output, mirrors init()
+        Log.sentry(e);
+      } catch (Throwable reportingFailure) {
+        reportingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+      }
     }
     if (!permanent) {
       done();
     }
+  }
+
+  /**
+   * Ends a failure streak: the counter is what bounds the reporting, so it has to be reset by the
+   * first run that works, and the recovery is worth one line. Wrapped for the same reason as the
+   * failure reporting — a throw here would escape {@code run()} and let {@code
+   * ScheduledThreadPoolExecutor} cancel the job.
+   */
+  private void noteWorkSuccess() {
+    if (consecutiveWorkFailures == 0) {
+      return;
+    }
+    int failures = consecutiveWorkFailures;
+    consecutiveWorkFailures = 0;
+    try {
+      Log.putStd(
+          "job "
+              + this.getClass().getName()
+              + " recovered after "
+              + failures
+              + " consecutive failures");
+    } catch (Throwable loggingFailure) {
+      loggingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+    }
+  }
+
+  /**
+   * Keeping a permanently failing job alive must not turn "one Sentry event and then silence" into
+   * an unbounded event stream (adversarial review of this PR): a permanent job with a short period
+   * that throws on every tick would otherwise print a stack trace and raise a Sentry event several
+   * times per second, burying every other issue. The first three failures of a streak are reported
+   * (the interesting ones — the first one carries the cause), then every hundredth, so a persistent
+   * failure stays visible without dominating the journal.
+   */
+  private static boolean shouldReportFailure(int consecutiveFailures) {
+    return consecutiveFailures <= 3 || consecutiveFailures % 100 == 0;
   }
 
   /**

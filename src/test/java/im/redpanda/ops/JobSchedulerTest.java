@@ -3,9 +3,12 @@ package im.redpanda.ops;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class JobSchedulerTest {
@@ -37,12 +40,41 @@ class JobSchedulerTest {
     }
   }
 
+  /**
+   * The jitter has to be wired into {@code insert()}, not merely exist as a helper: reverting
+   * {@code insert()} to {@code scheduleWithFixedDelay(delay, delay, ...)} would keep every other
+   * test in this class green (adversarial review of this PR). {@code getDelay()} returns the
+   * remaining delay, so anything above the bare period can only come from the jitter.
+   */
+  @Test
+  void insertAppliesTheJitterToTheFirstTick() {
+    List<ScheduledFuture<?>> futures = new ArrayList<>();
+    try {
+      boolean sawJitteredFirstTick = false;
+      for (int i = 0; i < 50 && !sawJitteredFirstTick; i++) {
+        ScheduledFuture<?> future = JobScheduler.insert(() -> {}, SERVER_RESTART_PERIOD_MS);
+        futures.add(future);
+        sawJitteredFirstTick = future.getDelay(TimeUnit.MILLISECONDS) > SERVER_RESTART_PERIOD_MS;
+      }
+      assertThat(sawJitteredFirstTick).isTrue();
+    } finally {
+      futures.forEach(future -> future.cancel(false));
+    }
+  }
+
   /** A period too small to jitter in (the 1 ms clamp of insert()) must be handed through as is. */
   @Test
   void tinyPeriodsAreNotJittered() {
     assertThat(JobScheduler.initialDelayWithJitter(1L)).isEqualTo(1L);
     assertThat(JobScheduler.initialDelayWithJitter(9L)).isEqualTo(9L);
     assertThat(JobScheduler.initialDelayWithJitter(10L)).isBetween(10L, 11L);
+  }
+
+  /** A period near {@code Long.MAX_VALUE} must not overflow into a negative (= immediate) delay. */
+  @Test
+  void hugePeriodsAreNotJitteredIntoAnOverflow() {
+    assertThat(JobScheduler.initialDelayWithJitter(Long.MAX_VALUE)).isEqualTo(Long.MAX_VALUE);
+    assertThat(JobScheduler.initialDelayWithJitter(Long.MAX_VALUE - 1)).isPositive();
   }
 
   /** The jitter has to actually vary — a constant offset would keep every job in lockstep. */

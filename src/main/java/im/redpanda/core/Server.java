@@ -16,7 +16,6 @@ import java.security.Security;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,12 +33,18 @@ public class Server {
   private static volatile boolean shuttingDown = false;
 
   /**
-   * Whether {@link #shutdown(ServerContext)} has already done its work in this process. Separate
-   * from {@link #shuttingDown}, which is the "stop doing work" signal every other thread polls and
-   * which callers may set themselves <i>before</i> calling shutdown ({@code TestNodeLauncher}) —
-   * folding the two together would turn such a shutdown into a no-op.
+   * Serializes {@link #shutdown(ServerContext)} and carries the "already done" state.
+   *
+   * <p>Separate from {@link #shuttingDown}, which is the "stop doing work" signal every other
+   * thread polls and which callers may set themselves <i>before</i> calling shutdown ({@code
+   * TestNodeLauncher}) — folding the two together would turn such a shutdown into a no-op.
    */
-  private static final AtomicBoolean shutdownRan = new AtomicBoolean(false);
+  private static final Object SHUTDOWN_LOCK = new Object();
+
+  /**
+   * Guarded by {@link #SHUTDOWN_LOCK}. Set only after the shutdown work completed without error.
+   */
+  private static boolean shutdownCompleted = false;
 
   private static final AtomicInteger outBytes = new AtomicInteger(0);
   private static final AtomicInteger inBytes = new AtomicInteger(0);
@@ -85,8 +90,9 @@ public class Server {
   }
 
   /**
-   * Persists the node's state and closes the {@code NodeStore}. Idempotent (TD223): only the first
-   * call does the work, every later one returns immediately.
+   * Persists the node's state and closes the {@code NodeStore}. Idempotent (TD223): the work runs
+   * once, a call arriving after it completed returns immediately, and a call arriving while it is
+   * in flight waits for it.
    *
    * <p>A job-triggered restart calls this twice: {@code ServerRestartJob.work()} calls it and its
    * following {@code System.exit(0)} runs the JVM shutdown hook of {@code App}, which calls it
@@ -96,27 +102,46 @@ public class Server {
    * the hook (which always runs on {@code System.exit}) and neither of the other two may simply
    * drop its call: {@code TestNodeLauncher} has no such hook and would then never save at all.
    *
+   * <p>Two details the guard has to get right (both from the adversarial review of this PR):
+   *
+   * <ul>
+   *   <li>A shutdown that <b>threw</b> does not count as done — {@code shutdownCompleted} is set
+   *       after the last step, so a caller arriving later still attempts the save and the close. A
+   *       plain "claimed" flag would have turned e.g. a failing {@code savePeers} (full disk) into
+   *       a node that never closes MapDB and never saves its settings.
+   *   <li>A caller arriving <b>while</b> a shutdown is in flight waits for it instead of returning
+   *       at once — that is what the monitor is for. Otherwise a SIGTERM during {@code
+   *       ServerRestartJob}'s shutdown would let the JVM halt as soon as the hook returns, killing
+   *       the job thread in the middle of {@code savePeers} or {@code NodeStore.close()}.
+   * </ul>
+   *
    * <p>{@link #setShuttingDown(boolean)} resets the guard, so a test harness that starts and stops
    * several nodes in one JVM keeps working ({@code TestNodeLauncher.configureSettings()}).
    */
   public static void shutdown(ServerContext serverContext) {
-    if (!shutdownRan.compareAndSet(false, true)) {
-      log.info("shutdown already ran, skipping the second call");
-      return;
+    synchronized (SHUTDOWN_LOCK) {
+      if (shutdownCompleted) {
+        log.info("shutdown already completed, skipping this call");
+        return;
+      }
+
+      Server.shuttingDown = true;
+
+      try {
+        Thread.sleep(500);
+      } catch (InterruptedException e) {
+        log.warn("Interrupted during shutdown", e);
+        Thread.currentThread().interrupt();
+      }
+
+      Saver.savePeers(serverContext.getPeerList());
+      serverContext.getNodeStore().close();
+      serverContext.getLocalSettings().save(serverContext.getPort());
+
+      // Last statement on purpose: a shutdown that threw did NOT persist everything, and the
+      // caller that follows (the JVM hook after ServerRestartJob's System.exit) is the retry.
+      shutdownCompleted = true;
     }
-
-    Server.shuttingDown = true;
-
-    try {
-      Thread.sleep(500);
-    } catch (InterruptedException e) {
-      log.warn("Interrupted during shutdown", e);
-      Thread.currentThread().interrupt();
-    }
-
-    Saver.savePeers(serverContext.getPeerList());
-    serverContext.getNodeStore().close();
-    serverContext.getLocalSettings().save(serverContext.getPort());
   }
 
   public void start() {
@@ -134,7 +159,9 @@ public class Server {
   public static void setShuttingDown(boolean shuttingDown) {
     Server.shuttingDown = shuttingDown;
     if (!shuttingDown) {
-      shutdownRan.set(false);
+      synchronized (SHUTDOWN_LOCK) {
+        shutdownCompleted = false;
+      }
     }
   }
 

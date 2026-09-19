@@ -62,8 +62,10 @@ public class JobScheduler extends ScheduledThreadPoolExecutor {
    */
   static long initialDelayWithJitter(long period) {
     long span = period / INITIAL_DELAY_JITTER_DIVISOR;
-    if (span <= 0) {
-      // sub-divisor periods (e.g. the 1 ms clamp above) have no room to jitter in
+    if (span <= 0 || period > Long.MAX_VALUE - span) {
+      // sub-divisor periods (e.g. the 1 ms clamp above) have no room to jitter in, and a period
+      // close to Long.MAX_VALUE must not overflow into a negative delay -- scheduleWithFixedDelay
+      // treats that as "run immediately", i.e. the exact opposite of what such a period means
       return period;
     }
     return period + ThreadLocalRandom.current().nextLong(span + 1);
