@@ -28,6 +28,10 @@ import org.junit.jupiter.api.Test;
  * slot. The key is the address itself now, and the last removal path that still removed by key
  * instead of by peer ({@code removeIpPortOnly}, used by {@code clearConnectionDetails}) is
  * value-checked like the other two.
+ *
+ * <p>Since TD214 there is no removal by address left at all: {@code removeIpPort(String, int)} is
+ * gone and {@link PeerList#getByAddress(String, int)} is the read-only observation that replaced it
+ * here. {@link PeerListAddressEvictionTest} covers why.
  */
 class PeerListIpPortConsistencyTest {
 
@@ -61,7 +65,7 @@ class PeerListIpPortConsistencyTest {
 
   /**
    * The same for {@code removeByObject}, the path a peer without a {@link KademliaId} takes. {@code
-   * removeIpPort} is the observation: it resolves through the ip+port map, so it can only still
+   * getByAddress} is the observation: it resolves through the ip+port map, so it can only still
    * find something if the removal left the entry behind.
    */
   @Test
@@ -73,9 +77,9 @@ class PeerListIpPortConsistencyTest {
 
     assertThat(peerList.remove(anonymous)).isTrue();
 
-    assertThat(peerList.removeIpPort("127.0.0.1", 0))
+    assertThat(peerList.getByAddress("127.0.0.1", 0))
         .as("removeByObject must take the ip+port entry with it")
-        .isFalse();
+        .isNull();
   }
 
   /**
@@ -85,9 +89,10 @@ class PeerListIpPortConsistencyTest {
    * <p>Every inbound light client from one ip announces port 0, so they used to share the key
    * {@code "127.0.0.1:0"} with the last {@code add} owning it. Port 0 is not an address, and the
    * shared bucket was both useless (nothing may resolve identity or ownership through it) and
-   * dangerous ({@link PeerList#removeIpPort(String, int)} evicts whoever the key points at, from
-   * all three indices and without a value check). {@code addPeer} therefore only keys peers with a
-   * dialable address, and {@code removeIpPort} refuses a port-0 lookup outright.
+   * dangerous (the removal-by-address path evicted whoever the key pointed at, from all three
+   * indices and without a value check). {@code addPeer} therefore only keys peers with a dialable
+   * address, that removal path is gone (TD214), and {@link PeerList#getByAddress(String, int)}
+   * refuses a port-0 lookup outright.
    *
    * <p>The removal that used to be at risk here is unaffected: alice's removal takes alice, and bob
    * keeps his registration.
@@ -101,9 +106,9 @@ class PeerListIpPortConsistencyTest {
     peerList.add(alice);
     peerList.add(bob);
 
-    assertThat(peerList.removeIpPort("127.0.0.1", 0))
+    assertThat(peerList.getByAddress("127.0.0.1", 0))
         .as("no light client may be reachable — let alone evictable — through \"<ip>:0\"")
-        .isFalse();
+        .isNull();
 
     peerList.remove(alice);
 
@@ -165,8 +170,8 @@ class PeerListIpPortConsistencyTest {
    * announces its own ip and port there, the colliding entry was remote-controllable. Under the old
    * key, adding {@code b} silently took over {@code a}'s slot, so the map answered every question
    * about {@code a}'s address with {@code b}: {@code add()} refused to register a new peer for
-   * {@code a}'s address (it returned {@code b} as the pre-existing one), and {@code removeIpPort}
-   * on {@code a}'s address cascaded a full removal onto {@code b}, a live peer at an entirely
+   * {@code a}'s address (it returned {@code b} as the pre-existing one), and the removal-by-address
+   * path on {@code a}'s address cascaded a full removal onto {@code b}, a live peer at an entirely
    * different address.
    */
   @Test
@@ -185,16 +190,19 @@ class PeerListIpPortConsistencyTest {
         .as("a's address must resolve to a, not to the peer that merely hashed to the same key")
         .isSameAs(a);
 
-    // removeIpPort cascades: it drops whatever the address map points at from all three
-    // structures. Removing a must therefore leave b completely untouched.
-    assertThat(peerList.removeIpPort(COLLIDING_IP_A, COLLIDING_PORT_A)).isTrue();
+    // Each address must resolve to the peer that actually lives there, and removing a must leave
+    // b completely untouched.
+    assertThat(peerList.getByAddress(COLLIDING_IP_A, COLLIDING_PORT_A)).isSameAs(a);
+    assertThat(peerList.getByAddress(COLLIDING_IP_B, COLLIDING_PORT_B)).isSameAs(b);
+    assertThat(peerList.removeExact(a)).isTrue();
     assertThat(peerList.get(a.getKademliaId())).isNull();
+    assertThat(peerList.getByAddress(COLLIDING_IP_A, COLLIDING_PORT_A)).isNull();
     assertThat(peerList.get(b.getKademliaId()))
         .as("removing a must not evict b, which only shared the old hash key")
         .isSameAs(b);
-    assertThat(peerList.removeIpPort(COLLIDING_IP_B, COLLIDING_PORT_B))
+    assertThat(peerList.getByAddress(COLLIDING_IP_B, COLLIDING_PORT_B))
         .as("b must still be reachable through its own address")
-        .isTrue();
+        .isSameAs(b);
   }
 
   /**
@@ -221,10 +229,10 @@ class PeerListIpPortConsistencyTest {
 
     peerList.clearConnectionDetails(alice);
 
-    assertThat(peerList.removeIpPort("10.0.0.7", 59558))
+    assertThat(peerList.getByAddress("10.0.0.7", 59558))
         .as("bob's ip+port mapping must survive alice's clearConnectionDetails")
-        .isTrue();
-    assertThat(peerList.get(bob.getKademliaId())).isNull();
+        .isSameAs(bob);
+    assertThat(peerList.get(bob.getKademliaId())).isSameAs(bob);
   }
 
   /** {@code removeIpPortOnly} reports whether it removed <em>this</em> peer's mapping. */

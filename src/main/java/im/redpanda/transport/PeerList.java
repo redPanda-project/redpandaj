@@ -78,8 +78,8 @@ public class PeerList {
    * collide, and so does every pair whose ip hashes differ by exactly the port difference. A
    * colliding peer took over the slot of a live one, which made {@link #addLocked} answer with the
    * wrong peer (and, for a peer without a {@link NodeId}, refuse to register the new one at all)
-   * and let {@link #removeIpPort} cascade a full removal onto an innocent peer at a completely
-   * different address (TD027).
+   * and let the removal-by-address path cascade a full removal onto an innocent peer at a
+   * completely different address (TD027; that path is gone since TD214, see {@link #getByAddress}).
    *
    * <p>Only peers that have an ip are in here — see {@link #addPeer}. Peers without connection
    * details are explicitly allowed in the peer list, and there is no address to key them by.
@@ -249,6 +249,26 @@ public class PeerList {
           // flight, so the claim is wrong or stale. Register the newcomer without connection
           // details — this class explicitly allows peers without them — instead of letting anyone
           // take the address out from under a live peer or a running connection attempt.
+          //
+          // The newcomer may well be the peer whose connection is being established (TD213: the
+          // testnet auto-updater uploader restarting with a fresh identity, logged as "Connected
+          // successfully to null:0"), and it still loses the address. That is deliberate on two
+          // counts.
+          //
+          // First, a completed handshake proves we can talk to that *socket*; it does not prove
+          // that the *listening* port the newcomer announced is its own. Handing the address over
+          // on that evidence would let any inbound connection from a co-located host (same NAT,
+          // same ip) strip a live peer's address — the same eviction primitive TD214 removes.
+          //
+          // Second, the address is then lost until this peer object is reaped, and it cannot be
+          // filled back in here either: the identity behind a connection is not proven at all
+          // (ACTIVATE_ENCRYPTION carries a bare, unsigned ephemeral X25519 key and the session
+          // secret is ephemeral-to-ephemeral, with the *public* static verify keys used only as
+          // HKDF salt), so anyone who knows a node's public key can complete a handshake as that
+          // node. Filling an address onto a registered identity on that evidence hands an attacker
+          // the address of an identity it does not own — which then spreads through
+          // PeerExchangeHandler, is persisted by Saver and dialled by OutboundHandler. That repair
+          // belongs behind a real proof of identity (TD178); it is not safe to do here.
           peer.removeIpAndPort();
         } else {
           // This is the case the javadoc above describes ("The (ip,port) will then be removed from
@@ -289,12 +309,13 @@ public class PeerList {
       // light client has none -- so keying it put every light client from one ip into a single
       // shared "<ip>:0" bucket that the last one to connect silently took over.
       //
-      // Nothing reads that bucket for ownership any more (addLocked and adoptAddress skip it), so
-      // leaving it filled would be dead state with teeth: removeIpPort(String,int) evicts whoever
-      // the key points at, from all three indices and without a value check, and its caller in
-      // ConnectionReaderThread runs on a plaintext, not-yet-proven handshake. A peer sharing an ip
-      // with a live light client could therefore have that client evicted while its socket was
-      // still open. No entry, no eviction.
+      // Nothing reads that bucket for ownership any more (addLocked and adoptAddress skip
+      // it), so leaving it filled would be dead state: an entry nothing may resolve through. It
+      // used to be dead state with teeth, because removeIpPort(String,int) evicted whoever the key
+      // pointed at, from all three indices and without a value check, on a plaintext handshake
+      // (TD214) -- that method no longer exists, and no removal path is keyed by an address any
+      // more. (addLocked's contested-address branch can still take an address off a peer, but it
+      // acts on a Peer object and its map removal is value-checked.)
       if (peer.isDialable()) {
         peerlistIpPort.put(ipPortKey(peer), peer);
       }
@@ -418,30 +439,39 @@ public class PeerList {
   }
 
   /**
-   * Completely removes the Peer from all Lists by Ip and Port.
+   * The peer that currently owns an address, or {@code null} if nobody does.
    *
-   * @param ip
-   * @param port
-   * @return
+   * <p>Read-only on purpose. This replaced {@code removeIpPort(String, int)} (TD214), which was the
+   * last removal path that was not value-checked: it evicted whoever the address key pointed at
+   * from all three indices, and its only production caller was the self-connect branch of {@code
+   * ConnectionReaderThread.parseHandshake} — driven by the <em>plaintext</em>, not-yet-proven part
+   * of a handshake, in which the announced port and identity are attacker-chosen and only the ip is
+   * established by TCP. A host sharing an ip with a known peer (same NAT, a co-located container, a
+   * shared exit) could therefore have that peer removed from the peer list by announcing its port.
+   * T150b narrowed this to dialable addresses; it did not close it. The caller wants its own dial
+   * target gone and has the {@link Peer} object for it, so it uses {@link #removeExact(Peer)} now
+   * and no removal-by-address exists any more.
+   *
+   * <p>Deliberately no "that address cannot be keyed anyway" precondition: only dialable addresses
+   * are ever put into the map ({@link #addPeer}), and a lookup that short-circuits on a port-0
+   * address cannot observe that — it would answer {@code null} whether the map is clean or not, so
+   * the T150/TD183 assertions that use it would hold vacuously. It reads the map.
+   *
+   * @param ip the ip of the address, may be null
+   * @param port the port of the address
+   * @return the owner of {@code ip:port}, or {@code null} if nobody is keyed under it
    */
-  public boolean removeIpPort(String ip, int port) {
-    if (ip == null || port <= 0) {
-      // Only dialable addresses are keyed (see addPeer), so a port-0 lookup can only ever hit a
-      // leftover from an older build -- and this method removes without a value check, so it must
-      // not act on an address that does not identify a peer (T150/TD183).
-      return false;
+  @Nullable
+  public Peer getByAddress(String ip, int port) {
+    if (ip == null) {
+      // No address to look up, and "null:0" must not become a key anyone can probe.
+      return null;
     }
-    readWriteLock.writeLock().lock();
+    readWriteLock.readLock().lock();
     try {
-      Peer peer = peerlistIpPort.remove(ipPortKey(ip, port));
-      if (peer == null) {
-        return false;
-      }
-      peerHashMap.remove(peer.getKademliaId());
-      peerArrayList.remove(peer);
-      return true;
+      return peerlistIpPort.get(ipPortKey(ip, port));
     } finally {
-      readWriteLock.writeLock().unlock();
+      readWriteLock.readLock().unlock();
     }
   }
 
@@ -453,7 +483,8 @@ public class PeerList {
    * value-checked: an address does not identify a peer (see {@link #peerlistIpPort}), so removing
    * by address alone evicted whichever peer happened to own that key — the very mistake the other
    * two removal paths were fixed for in T88, left behind on this one (TD027). Its caller {@link
-   * #clearConnectionDetails} always has the peer.
+   * #clearConnectionDetails} always has the peer, and since TD214 every removal path in this class
+   * works this way: no API removes a peer, or a peer's mapping, by naming an address.
    *
    * @param peer the peer whose address mapping should go
    * @return true if this peer's own mapping was removed, false if it did not own one
@@ -712,10 +743,33 @@ public class PeerList {
     }
   }
 
+  /**
+   * Takes a peer's address away: out of the address map and off the peer object.
+   *
+   * <p>Both halves under one write lock (Copilot review, PR #369). They used to be two separate
+   * critical sections with a gap in between, and the map is keyed by the peer's own ip and port, so
+   * anything that ran in that gap saw a peer that still claimed an address it no longer owned. The
+   * concrete damage: {@link #adoptAddress} decides under the lock whether a key is free and then
+   * installs {@code owner} under it — if the clear's field write lands after that, the map points
+   * at a peer whose ip is null, and no removal can ever take that entry out again, because {@link
+   * #removeIpPortMapping} computes the key from the peer's (now null) ip. Ordered the other way
+   * round, the freshly adopted address is silently dropped instead.
+   *
+   * <p>{@link Peer#removeIpAndPort()} is two field writes, so holding the lock across it does not
+   * violate the "never block while holding this lock" rule documented on this class.
+   *
+   * @param peer the peer that loses its connection details
+   */
   public void clearConnectionDetails(Peer peer) {
     Log.put("clearing peer: " + peer.getIp() + ":" + peer.getPort(), 50);
-    removeIpPortOnly(peer);
-    peer.removeIpAndPort();
+    readWriteLock.writeLock().lock();
+    try {
+      // Re-enters the lock; kept as the single mutation point for address-map removals.
+      removeIpPortOnly(peer);
+      peer.removeIpAndPort();
+    } finally {
+      readWriteLock.writeLock().unlock();
+    }
   }
 
   private void initBlacklist() {

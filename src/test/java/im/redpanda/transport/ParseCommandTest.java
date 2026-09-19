@@ -10,6 +10,8 @@ import im.redpanda.proto.SendPeerList;
 import im.redpanda.updater.Updater;
 import java.nio.ByteBuffer;
 import java.security.Security;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -201,6 +203,7 @@ public class ParseCommandTest {
 
     int startingPeerListSize = peerList.size();
 
+    List<Peer> added = new ArrayList<>();
     int i = 0;
     for (i = 0; i < peersToTest; i++) {
       // T86: port i + 1, not i, because port 0 is not a dialable address; and a real IP
@@ -210,6 +213,7 @@ public class ParseCommandTest {
       testpeer1.setNodeId(new NodeId());
       testpeer1.setConnected(true);
       peerList.add(testpeer1);
+      added.add(testpeer1);
     }
 
     Peer me = getPeerForDebug();
@@ -259,9 +263,9 @@ public class ParseCommandTest {
 
     assertThat(writeBuffer.remaining()).isZero();
 
-    // cleanup
-    for (i = 0; i < peersToTest; i++) {
-      peerList.removeIpPort("203.0.113." + i, i + 1);
+    // cleanup -- by peer, the only removal this class offers (TD214)
+    for (Peer testpeer : added) {
+      peerList.removeExact(testpeer);
     }
 
     assertThat(startingPeerListSize).isEqualTo(peerList.size());

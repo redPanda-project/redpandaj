@@ -3,6 +3,7 @@ package im.redpanda.transport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import im.redpanda.core.ServerContext;
@@ -118,13 +119,23 @@ class PeerListTest {
   }
 
   @Test
-  void removeIpPort() {
+  void getByAddress() {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
 
     PeerList peerList = serverContext.getPeerList();
-    peerList.add(new Peer("127.0.0.1", 50558));
-    peerList.removeIpPort("127.0.0.1", 50558);
+    Peer peer = new Peer("127.0.0.1", 50558);
+    peerList.add(peer);
+
+    assertEquals(peer, peerList.getByAddress("127.0.0.1", 50558));
+    assertNull(peerList.getByAddress("127.0.0.1", 50559));
+    assertNull(peerList.getByAddress(null, 50558));
+    // Not a dialable address, so it is not keyed at all (T150/TD183).
+    assertNull(peerList.getByAddress("127.0.0.1", 0));
+
+    // The only way to remove a peer is to name the peer (TD214).
+    assertTrue(peerList.removeExact(peer));
     assertEquals(0, peerList.size());
+    assertNull(peerList.getByAddress("127.0.0.1", 50558));
   }
 
   @Test
