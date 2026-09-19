@@ -16,6 +16,7 @@ import java.security.Security;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,15 @@ public class Server {
 
   public static final String MAGIC = "k3gV";
   private static volatile boolean shuttingDown = false;
+
+  /**
+   * Whether {@link #shutdown(ServerContext)} has already done its work in this process. Separate
+   * from {@link #shuttingDown}, which is the "stop doing work" signal every other thread polls and
+   * which callers may set themselves <i>before</i> calling shutdown ({@code TestNodeLauncher}) —
+   * folding the two together would turn such a shutdown into a no-op.
+   */
+  private static final AtomicBoolean shutdownRan = new AtomicBoolean(false);
+
   private static final AtomicInteger outBytes = new AtomicInteger(0);
   private static final AtomicInteger inBytes = new AtomicInteger(0);
   private ConnectionHandler connectionHandler;
@@ -74,7 +84,27 @@ public class Server {
     new NodeStoreMaintainJob(serverContext).start();
   }
 
+  /**
+   * Persists the node's state and closes the {@code NodeStore}. Idempotent (TD223): only the first
+   * call does the work, every later one returns immediately.
+   *
+   * <p>A job-triggered restart calls this twice: {@code ServerRestartJob.work()} calls it and its
+   * following {@code System.exit(0)} runs the JVM shutdown hook of {@code App}, which calls it
+   * again — a second {@code savePeers} plus {@code localSettings.save} against an already closed
+   * store, on a node that is on its way out. {@code ListenConsole}'s {@code e} command does the
+   * same. The guard sits here rather than in the callers because all three call sites pair up with
+   * the hook (which always runs on {@code System.exit}) and neither of the other two may simply
+   * drop its call: {@code TestNodeLauncher} has no such hook and would then never save at all.
+   *
+   * <p>{@link #setShuttingDown(boolean)} resets the guard, so a test harness that starts and stops
+   * several nodes in one JVM keeps working ({@code TestNodeLauncher.configureSettings()}).
+   */
   public static void shutdown(ServerContext serverContext) {
+    if (!shutdownRan.compareAndSet(false, true)) {
+      log.info("shutdown already ran, skipping the second call");
+      return;
+    }
+
     Server.shuttingDown = true;
 
     try {
@@ -97,8 +127,15 @@ public class Server {
     return shuttingDown;
   }
 
+  /**
+   * Sets the "stop doing work" signal. Clearing it also re-arms {@link #shutdown(ServerContext)},
+   * which is how a single JVM can run several node lifecycles in sequence (tests).
+   */
   public static void setShuttingDown(boolean shuttingDown) {
     Server.shuttingDown = shuttingDown;
+    if (!shuttingDown) {
+      shutdownRan.set(false);
+    }
   }
 
   public static int getOutBytes() {

@@ -70,6 +70,23 @@ public class ConnectionReaderThread implements Runnable {
   private int peekedAndFound = 0;
   private int lastThreadSize = 1;
 
+  /*
+   * Phase timings of the most recent readConnection() call, in nanoseconds (TD226). The watchdog in
+   * run() used to report one lumped number for "socket read + decrypt + dispatch (includes time
+   * blocked on locks)", which is why REDPANDAJ-2DQ (2029 events since 2026-07-12) could never be
+   * attributed: a slow aarch64 decrypt, a lock the reader waits on and a real stall all look the
+   * same. Split per phase, the next event says which one burned the time.
+   *
+   * Plain fields, no synchronisation: they are written and read only by this reader thread (the
+   * dedicated virtual thread this instance runs on), exactly like myReaderBuffer above. Every
+   * readConnection() resets them, so an early return leaves zeros behind instead of the previous
+   * cycle's values.
+   */
+  private long lastReadNanos;
+  private long lastLockWaitNanos;
+  private long lastDecryptNanos;
+  private long lastDispatchNanos;
+
   /**
    * Timeout in seconds for polling for new work to do.
    *
@@ -315,7 +332,13 @@ public class ConnectionReaderThread implements Runnable {
     // that the bytes in myReaderBuffer belong to the OLD connection (REDPANDAJ-2EF/2EE).
     SocketChannel channel = peer.getSocketChannel();
 
+    lastReadNanos = 0L;
+    lastLockWaitNanos = 0L;
+    lastDecryptNanos = 0L;
+    lastDispatchNanos = 0L;
+
     int read = -2;
+    long readStartNanos = System.nanoTime();
     try {
       read = channel.read(myReaderBuffer);
       Log.put("!!read bytes: " + read, 200);
@@ -343,6 +366,8 @@ public class ConnectionReaderThread implements Runnable {
         peer.disconnect("could not read...");
       }
       return 0;
+    } finally {
+      lastReadNanos = System.nanoTime() - readStartNanos;
     }
 
     if (read == -2) {
@@ -397,7 +422,9 @@ public class ConnectionReaderThread implements Runnable {
     // makes this thread the exclusive owner for the whole parse: disconnect() only returns what
     // is stored in the field, so it can no longer touch the buffer we are working on.
     ByteBuffer claimedReadBuffer;
+    long lockStartNanos = System.nanoTime();
     peer.getWriteBufferLock().lock();
+    lastLockWaitNanos = System.nanoTime() - lockStartNanos;
     try {
       // If the connection we read from is gone or was replaced by a re-handshake, the bytes in
       // myReaderBuffer belong to the OLD connection: decrypting them with the new cipher streams
@@ -416,6 +443,7 @@ public class ConnectionReaderThread implements Runnable {
       // decryptInputData() takes the same lock (reentrant) and may grow the buffer: it returns
       // the old, too-small instance to the ByteBufferPool and stores a larger one in
       // peer.readBuffer, so the field must only be read AFTER decrypting (REDPANDAJ-2DT/2DV).
+      long decryptStartNanos = System.nanoTime();
       try {
         peer.decryptInputData(myReaderBuffer);
       } catch (PeerProtocolException e) {
@@ -433,6 +461,8 @@ public class ConnectionReaderThread implements Runnable {
         // relying on the invariant guard further down to notice (TD009 / T53 review follow-up).
         myReaderBuffer.clear();
         throw e;
+      } finally {
+        lastDecryptNanos = System.nanoTime() - decryptStartNanos;
       }
 
       claimedReadBuffer = peer.readBuffer;
@@ -441,6 +471,7 @@ public class ConnectionReaderThread implements Runnable {
       peer.getWriteBufferLock().unlock();
     }
 
+    long dispatchStartNanos = System.nanoTime();
     try {
       // Parse commands WITHOUT holding writeBufferLock: loopCommands can run long and its
       // handlers take the lock themselves (writeBuffer replies) or call disconnect(); holding
@@ -448,6 +479,7 @@ public class ConnectionReaderThread implements Runnable {
       // buffer is exclusively ours, so no lock is needed for it.
       inboundProcessor.loopCommands(peer, claimedReadBuffer, true);
     } finally {
+      lastDispatchNanos = System.nanoTime() - dispatchStartNanos;
       // Return or restore the claimed buffer under the lock (pairs with the claim above and
       // with the other owners of the field: Peer.decryptInputData(), Peer.disconnect() and
       // ConnectionHandler.copyRemainingReadBytesToPeerBuffer() all serialize on it —
@@ -731,16 +763,54 @@ public class ConnectionReaderThread implements Runnable {
         // peer.lastCommand reflects the last command parsed in this read batch, which is the
         // stalling one only if a single command was processed; if several commands were parsed
         // in one read(), an earlier one in the same batch may be the culprit.
+        //
+        // TD226: the phases are reported separately now (see the fields at the top of the class).
+        // Sentry has 2029 of these events since 2026-07-12 and 43% of them come from the two x86
+        // nodes, so "the aarch64 Raspi is slow at decrypt" cannot be the whole story; the split is
+        // what decides between decrypt cost, lock wait and a real stall on the next occurrence.
         Log.sentry(
-            ("read cycle took over 5 seconds: %d ms (socket read + decrypt + dispatch, includes"
-                    + " time blocked on locks), last parsed command byte: %d, peer: %s")
-                .formatted(diff, Byte.toUnsignedInt(peer.lastCommand), peer));
+            slowReadCycleMessage(
+                diff,
+                TimeUnit.NANOSECONDS.toMillis(lastReadNanos),
+                TimeUnit.NANOSECONDS.toMillis(lastLockWaitNanos),
+                TimeUnit.NANOSECONDS.toMillis(lastDecryptNanos),
+                TimeUnit.NANOSECONDS.toMillis(lastDispatchNanos),
+                Byte.toUnsignedInt(peer.lastCommand),
+                String.valueOf(peer)));
       }
 
       ConnectionHandler.doneRead.add(peer);
 
       ConnectionHandler.selector.wakeup();
     }
+  }
+
+  /**
+   * The watchdog line of a read cycle that took longer than 5 s, split per phase (TD226).
+   *
+   * <p>{@code read} is the {@code channel.read()} itself, {@code lockWait} the wait for the peer's
+   * {@code writeBufferLock} that guards the plaintext buffer, {@code decrypt} the GCM decrypt of
+   * the bytes just read and {@code dispatch} the parsing and handling of every command in them —
+   * the phase that contains the peer-list and NodeStore read locks the handlers take, i.e. the one
+   * that carried the lock starvation of TD026/#293. The four numbers do not have to add up to the
+   * total: the remainder is the unmeasured glue (buffer borrow from the pool, the invariant check,
+   * the restore of the claimed buffer).
+   *
+   * <p>Static and string-typed so the format can be pinned by a unit test without a live socket.
+   */
+  static String slowReadCycleMessage(
+      long totalMs,
+      long readMs,
+      long lockWaitMs,
+      long decryptMs,
+      long dispatchMs,
+      int lastCommandByte,
+      String peer) {
+    return ("read cycle took over 5 seconds: %d ms total (socket read %d ms, readBuffer lock wait"
+            + " %d ms, decrypt %d ms, dispatch %d ms — the dispatch phase includes the time its"
+            + " handlers spend blocked on the peer-list and NodeStore locks), last parsed command"
+            + " byte: %d, peer: %s")
+        .formatted(totalMs, readMs, lockWaitMs, decryptMs, dispatchMs, lastCommandByte, peer);
   }
 
   private boolean killThreadIfMaxThreadsReached() {

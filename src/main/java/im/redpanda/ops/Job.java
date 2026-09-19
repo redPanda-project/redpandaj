@@ -77,13 +77,40 @@ public abstract class Job implements Runnable {
     try {
       work();
     } catch (Throwable e) {
-      e.printStackTrace();
-      Log.sentry(e);
-      done();
+      handleWorkFailure(e);
       return;
     }
     // count after doing the work, since the first start of the job is immediately
 
+  }
+
+  /**
+   * Reports a failed {@link #work()} and decides whether the job is over.
+   *
+   * <p>TD225: a throw out of a <b>permanent</b> job's {@code work()} must not end that job. {@link
+   * #done()} cancels the {@code ScheduledFuture}, so a single failing tick used to stop the job for
+   * the rest of the process — one Sentry event and then silence. For {@code SaveJobs} that meant
+   * the 15-minute autosave of {@code LocalSettings}, the node cache and the peers file never ran
+   * again (found while reviewing #367, where {@code NodeStore.saveToDisk()} can throw if both the
+   * disk-backed and the memory-only rebuild fail). A permanent job keeps its schedule and retries
+   * on the next tick; a non-permanent job keeps the old behaviour, because for it a failed {@code
+   * work()} has no later tick to recover in and it would otherwise be retried forever.
+   *
+   * <p>The reporting itself is wrapped, because {@code ScheduledThreadPoolExecutor} cancels a
+   * periodic task whose {@code run()} throws: letting a failure of {@code Log.sentry} (e.g. its
+   * {@code rating} counter not initialised because {@code Log.init} never ran) escape would
+   * silently stop the very job this method is trying to keep alive.
+   */
+  private void handleWorkFailure(Throwable e) {
+    try {
+      e.printStackTrace(); // NOSONAR (java:S4507): controlled console output, mirrors init()
+      Log.sentry(e);
+    } catch (Throwable reportingFailure) {
+      reportingFailure.printStackTrace(); // NOSONAR (java:S4507): last-resort diagnostics
+    }
+    if (!permanent) {
+      done();
+    }
   }
 
   /**
