@@ -7,10 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,6 +71,62 @@ class WireRegistryTest {
     assertTrue(
         section(registry, "## Top-level commands").contains("| `FLASCHENPOST_V2` | 142 | `0x8E` |"),
         "top-level command FLASCHENPOST_V2 = 142 missing from rendered registry");
+  }
+
+  /**
+   * TD092: {@link WireRegistry} renders only {@link WireCommand}-marked constants of {@link
+   * Command}. Every byte constant there must carry the marker - otherwise a forgotten marker would
+   * silently drop a real command from the registry, and a non-command byte would have no reason to
+   * live in {@link Command} at all.
+   */
+  @Test
+  void everyByteConstantInCommandIsMarkedAsWireCommand() {
+    List<String> unmarked =
+        Arrays.stream(Command.class.getDeclaredFields())
+            .filter(WireRegistryTest::isPublicStaticFinalByte)
+            .filter(f -> !f.isAnnotationPresent(WireCommand.class))
+            .map(Field::getName)
+            .toList();
+    assertTrue(
+        unmarked.isEmpty(),
+        "public static final byte constants in Command without @WireCommand: "
+            + unmarked
+            + " - mark wire commands with @WireCommand and move non-command bytes elsewhere");
+  }
+
+  /** TD092: each marked constant must actually land in the top-level command table. */
+  @Test
+  void everyMarkedWireCommandIsRendered() throws Exception {
+    String topLevel =
+        section(
+            WireRegistry.render(projectDir().resolve(WireRegistry.PROTO_DIR)),
+            "## Top-level commands");
+    List<Field> marked =
+        Arrays.stream(Command.class.getDeclaredFields())
+            .filter(f -> f.isAnnotationPresent(WireCommand.class))
+            .toList();
+    assertFalse(marked.isEmpty(), "no @WireCommand constants found in Command");
+    for (Field field : marked) {
+      assertTrue(
+          isPublicStaticFinalByte(field),
+          "@WireCommand must only mark public static final byte constants: " + field.getName());
+      int value = Byte.toUnsignedInt(field.getByte(null));
+      String row =
+          String.format(Locale.ROOT, "| `%s` | %d | `0x%02X` |", field.getName(), value, value);
+      assertTrue(topLevel.contains(row), "marked wire command missing from registry: " + row);
+    }
+    assertEquals(
+        marked.size(),
+        topLevel.lines().filter(l -> l.startsWith("| `")).count(),
+        "top-level command table must list exactly the @WireCommand constants");
+  }
+
+  private static boolean isPublicStaticFinalByte(Field field) {
+    int mods = field.getModifiers();
+    return field.getType() == byte.class
+        && Modifier.isPublic(mods)
+        && Modifier.isStatic(mods)
+        && Modifier.isFinal(mods);
   }
 
   /**

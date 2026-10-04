@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -85,12 +86,14 @@ public final class WireRegistry {
 
     sb.append("## Top-level commands (`im.redpanda.core.Command`)\n\n");
     sb.append("First byte of every frame on a peer connection.\n\n");
-    appendCommandTable(sb, byteConstants(Command.class, ""));
+    appendCommandTable(
+        sb, byteConstants(Command.class, f -> f.isAnnotationPresent(WireCommand.class)));
 
     sb.append("\n## Garlic layer commands (`im.redpanda.routing.FlaschenpostV2`)\n\n");
     sb.append(
         "First byte of a decrypted garlic layer, inside a `FLASCHENPOST_V2` (142) packet.\n\n");
-    appendCommandTable(sb, byteConstants(FlaschenpostV2.class, "CMD_"));
+    appendCommandTable(
+        sb, byteConstants(FlaschenpostV2.class, f -> f.getName().startsWith("CMD_")));
 
     sb.append("\n## Protobuf definitions (`").append(PROTO_DIR).append("`)\n\n");
     appendProtoTable(sb, protoDir);
@@ -158,11 +161,12 @@ public final class WireRegistry {
    * <p>Throws when two constants share a byte value - that is a protocol bug the registry must not
    * paper over by rendering two innocuous-looking rows.
    *
-   * @param namePrefix only fields whose name starts with this prefix are collected. {@link Command}
-   *     is passed "" because it holds nothing but command bytes (see its class comment); {@link
-   *     FlaschenpostV2} needs "CMD_" because it also carries {@code VERSION} and size constants.
+   * @param isCommand positive selector on top of the modifier/type check. {@link Command} selects
+   *     the {@link WireCommand}-marked constants (an unmarked byte there fails {@code
+   *     WireRegistryTest}); {@link FlaschenpostV2} selects the {@code CMD_} prefix because it also
+   *     carries {@code VERSION} and size constants.
    */
-  private static List<ByteConstant> byteConstants(Class<?> owner, String namePrefix) {
+  private static List<ByteConstant> byteConstants(Class<?> owner, Predicate<Field> isCommand) {
     List<ByteConstant> constants = new ArrayList<>();
     for (Field field : owner.getDeclaredFields()) {
       int mods = field.getModifiers();
@@ -170,7 +174,7 @@ public final class WireRegistry {
           || !Modifier.isPublic(mods)
           || !Modifier.isStatic(mods)
           || !Modifier.isFinal(mods)
-          || !field.getName().startsWith(namePrefix)) {
+          || !isCommand.test(field)) {
         continue;
       }
       try {
