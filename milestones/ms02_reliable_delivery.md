@@ -18,7 +18,7 @@ Mailbox von index-basiertem PoC auf sequence-basierte Queue umstellen. Delete-af
 | Component | File | Status |
 |-----------|------|--------|
 | Mailbox store | `OutboundMailboxStore.java` | Done — sequence-based BTreeMap, deleteUpTo(), overflow flag |
-| Handle lifecycle | `OutboundHandleStore.java` | Done — cleanupExpired() inkl. Mailbox-Cleanup (10-min-Job) |
+| Handle lifecycle | `OutboundHandleStore.java` (Cleanup heute in `OutboundStore.java` / `OutboundCleanupJob.java`) | Done — cleanupExpired() inkl. Mailbox-Cleanup (10-min-Job; heute `OutboundStore.cleanupExpiredHandles()`) |
 | Fetch pagination | `outbound.proto` → `FetchRequest.cursor` | Done — cursor = sequence_id, AckFetch implementiert |
 
 ## Spec
