@@ -133,6 +133,20 @@ class NodeIdTest {
   }
 
   @Test
+  void defaultConstructorGrindsHashCashUnlessSkipPropertyIsSet() {
+    // Surefire sets the skip property for speed (pom.xml); a real node never sets it.
+    assertEquals("true", System.getProperty(NodeId.HASHCASH_SKIP_PROPERTY));
+    String previous = System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, "false");
+    try {
+      for (int i = 0; i < 5; i++) {
+        assertTrue(new NodeId().checkValid());
+      }
+    } finally {
+      System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, previous);
+    }
+  }
+
+  @Test
   void checkValidEnforcesLeadingZeroBitsOfDoubleSha256() {
     // generate until we find one valid and one invalid identity (PoW skipped only in ctor loop)
     boolean foundValid = false;

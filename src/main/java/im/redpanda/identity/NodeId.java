@@ -2,7 +2,6 @@ package im.redpanda.identity;
 
 import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.identity.crypt.Sha256Hash;
-import im.redpanda.identity.crypt.Utils;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -50,6 +49,13 @@ public class NodeId {
   /** HashCash: required leading zero bits of SHA256d(verifyKey) — Tier 0. */
   public static final int POW_MIN_LEADING_ZERO_BITS = 8;
 
+  /**
+   * System property that skips the HashCash proof of work in {@link #NodeId()} (default off). Set
+   * by the Surefire configuration in pom.xml so unit tests do not grind keys; never set it on a
+   * real node.
+   */
+  public static final String HASHCASH_SKIP_PROPERTY = "redpanda.hashcash.skip";
+
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private Ed25519PrivateKeyParameters signingKey;
@@ -77,7 +83,7 @@ public class NodeId {
 
   /**
    * Generates a new NodeId with a fresh random dual keypair satisfying the HashCash requirement
-   * (skipped in unit tests for speed, as before).
+   * (skipped when {@link #HASHCASH_SKIP_PROPERTY} is {@code true}, i.e. in unit tests).
    */
   public NodeId() {
     while (true) {
@@ -87,7 +93,7 @@ public class NodeId {
       this.encryptionKey = candidate.encryptionKey;
       this.encryptionPubKey = candidate.encryptionPubKey;
 
-      if (Utils.isJUnitTest() || checkValid()) {
+      if (Boolean.getBoolean(HASHCASH_SKIP_PROPERTY) || checkValid()) {
         break;
       }
     }

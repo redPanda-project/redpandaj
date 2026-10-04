@@ -286,6 +286,10 @@
                     <reuseForks>true</reuseForks>
                     <forkCount>8</forkCount>
                     <argLine>@{argLine} -Dredpanda.android.update.file=${project.build.directory}/android-${surefire.forkNumber}.apk</argLine>
+                    <systemPropertyVariables>
+                        <!-- NodeId() skips the HashCash proof of work in tests (TD176) -->
+                        <redpanda.hashcash.skip>true</redpanda.hashcash.skip>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>
