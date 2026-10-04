@@ -8,6 +8,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
@@ -161,6 +162,35 @@ class BoundedContextArchitectureTest {
             .because(
                 "the drivers reach into transport and routing; a context depending on them would"
                     + " turn ops.driver into the next cycle hub (TD173)");
+
+    rule.check(productionClasses);
+  }
+
+  /**
+   * TD174: the persisted composition-root state and its codec helpers must not know any context
+   * beyond the shared leaves. Until T136 {@code LocalSettings} encoded the routing node graph
+   * itself ({@code core -> routing.graph}); the graph now has its own file in {@code
+   * routing.graph}. {@code ServerContext}/{@code Server} stay the accepted hub (TD173 remainder).
+   */
+  @Test
+  void persistedSettingsDoNotDependOnAnyContext() {
+    String stateHelpers = "im\\.redpanda\\.core\\.(LocalSettings|StateFormat|NodeIdCodec)(\\$.*)?";
+    String opsLeaves = "im\\.redpanda\\.ops\\.(Settings|SystemUpTimeData|Log)(\\$.*)?";
+    ArchRule rule =
+        noClasses()
+            .that()
+            .haveNameMatching(stateHelpers)
+            .should()
+            .dependOnClassesThat(
+                resideInAPackage("im.redpanda..")
+                    .and(not(resideInAnyPackage("im.redpanda.identity..")))
+                    .and(not(HasName.Predicates.nameMatching(stateHelpers)))
+                    .and(not(HasName.Predicates.nameMatching(opsLeaves))))
+            .because(
+                "the node graph is persisted by routing.graph.NodeGraphFile, not by the settings"
+                    + " (TD174); the state helpers may only use each other, identity and the ops"
+                    + " leaves they need - not the ServerContext hub, through which every context"
+                    + " is reachable");
 
     rule.check(productionClasses);
   }

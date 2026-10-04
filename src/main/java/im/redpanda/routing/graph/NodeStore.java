@@ -1,6 +1,5 @@
 package im.redpanda.routing.graph;
 
-import im.redpanda.core.LocalSettings;
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
@@ -134,10 +133,10 @@ public class NodeStore {
 
     if (replacing != null) {
       nodeStore.takeOverGraphGuardFrom(replacing);
-    } else if (serverContext.getLocalSettings() == null) {
-      logger.warn("could not restore nodeGraph from local settings, starting with an empty graph");
     } else {
-      nodeStore.adoptGraphOf(serverContext.getLocalSettings());
+      // Nothing else can see the graph yet, so the load (and a pre-T136 migration) needs no lock.
+      nodeStore.nodeGraph =
+          NodeGraphFile.load(serverContext.getPort(), serverContext.getLocalSettings());
     }
 
     try {
@@ -217,11 +216,9 @@ public class NodeStore {
 
     if (replacing != null) {
       nodeStore.takeOverGraphGuardFrom(replacing);
-    } else if (serverContext.getLocalSettings() == null) {
-      Log.put("warning, could not restore nodeGraph from local settings....", 5);
-    } else {
-      nodeStore.adoptGraphOf(serverContext.getLocalSettings());
     }
+    // A fresh memory-only store (tests, buildDefaultServerContext) starts with an empty graph and
+    // does not read the graph file: nothing about it is meant to outlive the process.
 
     try {
       nodeStore.dbonHeap = DBMaker.heapDB().make();
@@ -246,12 +243,11 @@ public class NodeStore {
   /**
    * Makes this store the successor of {@code previous}: same graph object, same lock object.
    *
-   * <p>The lock matters more than the graph. {@code LocalSettings} holds the read lock it was
-   * handed at startup and serializes the graph under it, while jobs that cached a {@code NodeStore}
-   * reference mutate the very same graph under their store's write lock. Handing {@code
-   * LocalSettings} a <em>different</em> lock mid-flight would leave a mutator and the serializer
-   * holding two unrelated locks over one graph — so the successor keeps the predecessor's lock
-   * instead, and no re-registration happens at all (Sonnet review, T150). It is also why the
+   * <p>The lock matters more than the graph. Jobs that cached a {@code NodeStore} reference mutate
+   * the graph under their store's write lock, while {@link #saveGraph()} — on whichever store is
+   * live — serializes it under the read lock. A successor with a <em>different</em> lock would
+   * leave a mutator and the serializer holding two unrelated locks over one graph — so the
+   * successor keeps the predecessor's lock instead (Sonnet review, T150). It is also why the
    * recovery does not start from an empty graph: the vertices the DHT jobs hold references to must
    * stay in it ("no such vertex in graph", deploy #9).
    */
@@ -261,14 +257,17 @@ public class NodeStore {
   }
 
   /**
-   * Takes over the persisted graph of {@code localSettings} as the live graph and hands the
-   * settings the read lock that guards it. From here on both sides agree on how the graph is
-   * protected: this store mutates it under {@link #readWriteLock}'s write lock (REDPANDAJ-2DW) and
-   * {@code LocalSettings.save()} serializes it under the read lock.
+   * Writes the node graph to {@code data/nodeGraph<port>.json} (T136/TD174, see {@link
+   * NodeGraphFile}). Encodes under the read lock of {@link #readWriteLock}; never call it while
+   * holding the write lock. Works on a closed store too — the graph is plain memory, not a cache
+   * tier — which is what {@code Server.shutdown()} relies on.
    */
-  private void adoptGraphOf(LocalSettings localSettings) {
-    nodeGraph = localSettings.getNodeGraph();
-    localSettings.setNodeGraphLock(readWriteLock.readLock());
+  public void saveGraph() {
+    NodeGraphFile.save(
+        serverContext.getPort(),
+        nodeGraph,
+        readWriteLock.readLock(),
+        serverContext.getLocalSettings());
   }
 
   /**
