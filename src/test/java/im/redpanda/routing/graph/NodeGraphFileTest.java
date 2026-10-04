@@ -217,23 +217,43 @@ class NodeGraphFileTest {
   }
 
   /**
-   * After a rollback to a pre-T136 build and forward again, the graph embedded in the settings is
-   * the newer one: it wins over the (stale) graph file and replaces it.
+   * Once a graph file exists it wins: the settings file may still carry an older embedded graph
+   * (not rewritten yet after the migration, or written back by the standalone Updater), and that
+   * copy is dropped instead of overwriting the newer file (Opus review of #380).
    */
   @Test
-  void embeddedGraphWinsOverAnExistingGraphFile() throws Exception {
+  void existingGraphFileWinsOverAnEmbeddedGraph() throws Exception {
     ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    DefaultDirectedWeightedGraph<Node, NodeEdge> stale =
+    DefaultDirectedWeightedGraph<Node, NodeEdge> current =
         new DefaultDirectedWeightedGraph<>(NodeEdge.class);
-    stale.addVertex(new Node(serverContext, new NodeId()));
-    NodeGraphFile.save(PORT, stale, null, null);
+    Node only = new Node(serverContext, new NodeId());
+    current.addVertex(only);
+    NodeGraphFile.save(PORT, current, null, null);
 
-    byte[] fixture = readFixture();
-    Files.write(LocalSettings.settingsFile(PORT).toPath(), fixture);
+    Files.write(LocalSettings.settingsFile(PORT).toPath(), readFixture());
     LocalSettings settings = LocalSettings.load(PORT);
+    assertThat(settings.pendingLegacyNodeGraph()).isNotNull();
 
-    assertGraphIsTheFixtureGraph(NodeGraphFile.load(PORT, settings), fixtureNodeIds(fixture));
-    assertGraphIsTheFixtureGraph(NodeGraphFile.load(PORT, null), fixtureNodeIds(fixture));
+    DefaultDirectedWeightedGraph<Node, NodeEdge> loaded = NodeGraphFile.load(PORT, settings);
+
+    assertThat(loaded.vertexSet()).containsExactly(only);
+    assertThat(settings.pendingLegacyNodeGraph()).isNull();
+  }
+
+  /**
+   * Rollback safety, decoder side: a pre-T136 build decodes the settings' {@code nodeGraph} member
+   * with this very codec and generates a NEW identity if that throws. The placeholder written since
+   * T136 must stay decodable (Opus review of #380).
+   */
+  @Test
+  void settingsPlaceholderIsDecodableByTheGraphCodec() throws Exception {
+    new LocalSettings().save(PORT);
+    JsonObject settingsJson =
+        JsonParser.parseString(Files.readString(LocalSettings.settingsFile(PORT).toPath()))
+            .getAsJsonObject();
+
+    assertThat(NodeGraphCodec.fromJson(settingsJson.getAsJsonObject("nodeGraph")).vertexSet())
+        .isEmpty();
   }
 
   /** The graph is soft state: an unreadable file means an empty graph, not a failed start. */

@@ -8,6 +8,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
@@ -173,24 +174,23 @@ class BoundedContextArchitectureTest {
    */
   @Test
   void persistedSettingsDoNotDependOnAnyContext() {
+    String stateHelpers = "im\\.redpanda\\.core\\.(LocalSettings|StateFormat|NodeIdCodec)(\\$.*)?";
+    String opsLeaves = "im\\.redpanda\\.ops\\.(Settings|SystemUpTimeData|Log)(\\$.*)?";
     ArchRule rule =
         noClasses()
             .that()
-            .haveFullyQualifiedName("im.redpanda.core.LocalSettings")
-            .or()
-            .haveFullyQualifiedName("im.redpanda.core.StateFormat")
-            .or()
-            .haveFullyQualifiedName("im.redpanda.core.NodeIdCodec")
+            .haveNameMatching(stateHelpers)
             .should()
             .dependOnClassesThat(
                 resideInAPackage("im.redpanda..")
-                    .and(
-                        not(
-                            resideInAnyPackage(
-                                "im.redpanda.core", "im.redpanda.ops", "im.redpanda.identity.."))))
+                    .and(not(resideInAnyPackage("im.redpanda.identity..")))
+                    .and(not(HasName.Predicates.nameMatching(stateHelpers)))
+                    .and(not(HasName.Predicates.nameMatching(opsLeaves))))
             .because(
                 "the node graph is persisted by routing.graph.NodeGraphFile, not by the settings"
-                    + " (TD174); state helpers every context uses must not close a cycle");
+                    + " (TD174); the state helpers may only use each other, identity and the ops"
+                    + " leaves they need - not the ServerContext hub, through which every context"
+                    + " is reachable");
 
     rule.check(productionClasses);
   }

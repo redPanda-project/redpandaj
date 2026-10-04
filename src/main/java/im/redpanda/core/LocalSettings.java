@@ -123,9 +123,8 @@ public class LocalSettings {
       StateFormat.writeAtomically(settingsFile(port), tmpSettingsFile(port), encoded);
     } catch (IOException | RuntimeException ex) {
       // RuntimeException as well: unlike the removed object stream, which reported a broken object
-      // graph as a NotSerializableException, the encoder throws unchecked (a vertex that is not a
-      // Node, a ConcurrentModificationException, ...). Losing one save must never take the file
-      // that holds the identity with it.
+      // graph as a NotSerializableException, the JSON encoder throws unchecked. Losing one save
+      // must never take the file that holds the identity with it.
       log.info("error saving local settings", ex);
     }
   }

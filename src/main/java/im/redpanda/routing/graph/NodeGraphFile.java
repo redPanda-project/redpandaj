@@ -22,12 +22,15 @@ import org.jgrapht.graph.DefaultDirectedWeightedGraph;
  * state depend on this package. Same JSON mapping as before ({@link NodeGraphCodec}), now in its
  * own file under its own header.
  *
- * <p><b>Migration:</b> a settings file written before T136 still carries the graph. {@link
- * #load(int, LocalSettings)} prefers that embedded graph, writes it into this file right away, and
- * only once that write succeeded tells the settings to drop it — so a crash at any point leaves the
- * graph in at least one of the two files. The embedded graph wins over an existing graph file on
- * purpose: it can only be non-empty if a pre-T136 build wrote it, i.e. after a rollback, and then
- * it is the newer one.
+ * <p><b>Migration:</b> a settings file written before T136 still carries the graph. When there is
+ * no graph file yet, {@link #load(int, LocalSettings)} takes that embedded graph, writes it into
+ * this file right away, and only once that write succeeded tells the settings to drop it — so a
+ * crash at any point leaves the graph in at least one of the two files. Once a graph file exists it
+ * always wins and a still-embedded graph is dropped: the settings file can lag behind (it is only
+ * rewritten at the next settings save, and the standalone {@code Updater} writes a pending embedded
+ * graph back verbatim), so the embedded copy is never known to be the newer one. After a rollback
+ * to a pre-T136 build and forward again, the node therefore resumes from the graph it had before
+ * the rollback — soft state, rebuilt from the network either way.
  */
 public final class NodeGraphFile {
 
@@ -58,16 +61,23 @@ public final class NodeGraphFile {
   }
 
   /**
-   * Loads the node graph of {@code port}: the one still embedded in a pre-T136 {@code settings}
-   * file if there is one (migrating it), otherwise the graph file, otherwise an empty graph. Never
+   * Loads the node graph of {@code port}: the graph file if there is one, otherwise the graph still
+   * embedded in a pre-T136 {@code settings} file (migrating it), otherwise an empty graph. Never
    * throws: the graph is soft state the node rebuilds from the network, so an unreadable file is
    * logged and replaced at the next save.
    *
    * @param settings the node's settings, or {@code null}
    */
   static DefaultDirectedWeightedGraph<Node, NodeEdge> load(int port, LocalSettings settings) {
+    File file = file(port);
     JsonObject legacy = settings == null ? null : settings.pendingLegacyNodeGraph();
-    if (legacy != null) {
+    if (legacy != null && file.exists()) {
+      logger.info(
+          "{} exists, ignoring the node graph still embedded in {}",
+          file,
+          LocalSettings.settingsFile(port));
+      settings.dropLegacyNodeGraph();
+    } else if (legacy != null) {
       try {
         DefaultDirectedWeightedGraph<Node, NodeEdge> graph = NodeGraphCodec.fromJson(legacy);
         if (save(port, graph, null, settings)) {
@@ -88,7 +98,6 @@ public final class NodeGraphFile {
       }
     }
 
-    File file = file(port);
     if (!file.exists()) {
       logger.info("no node graph file at {}, starting with an empty graph", file);
       return new DefaultDirectedWeightedGraph<>(NodeEdge.class);
