@@ -1,7 +1,9 @@
-package im.redpanda.ops;
+package im.redpanda.ops.driver;
 
 import im.redpanda.core.Server;
 import im.redpanda.core.ServerContext;
+import im.redpanda.ops.Log;
+import im.redpanda.ops.Settings;
 import im.redpanda.routing.PeerPerformanceTestGarlicMessageJob;
 import im.redpanda.routing.graph.GraphAdjacentMatrixPrinter;
 import im.redpanda.routing.graph.Node;

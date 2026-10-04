@@ -44,7 +44,8 @@ class BoundedContextArchitectureTest {
     "im.redpanda.dht.nodeinfo", // N-DHT record schema
     "im.redpanda.identity", // N-IDENTITY
     "im.redpanda.identity.crypt", // N-IDENTITY supporting library
-    "im.redpanda.ops", // N-OPS
+    "im.redpanda.ops", // N-OPS leaf utilities (Log, Settings, Job, JobScheduler, ...)
+    "im.redpanda.ops.driver", // N-OPS drivers that reach into other contexts (console, autosave)
     "im.redpanda.updater", // N-UPDATER
     "im.redpanda.crypt.legacy", // frozen serialization tombstone, see LegacyNodeId
     "im.redpanda.proto", // generated, java_package of commands.proto
@@ -104,6 +105,27 @@ class BoundedContextArchitectureTest {
             .because(
                 "NodeId/KademliaId/crypt are used by every other context, so identity must not"
                     + " depend on any of them");
+
+    rule.check(productionClasses);
+  }
+
+  @Test
+  void opsUtilitiesDependOnlyOnCoreAndIdentity() {
+    ArchRule rule =
+        noClasses()
+            .that()
+            .resideInAPackage("im.redpanda.ops")
+            .should()
+            .dependOnClassesThat(
+                resideInAPackage("im.redpanda..")
+                    .and(
+                        not(
+                            resideInAnyPackage(
+                                "im.redpanda.ops", "im.redpanda.core", "im.redpanda.identity.."))))
+            .because(
+                "every context logs, reads settings and schedules jobs through ops, so an edge"
+                    + " from ops into a context (or into the composition root App) is a package"
+                    + " cycle (TD173); drivers that need other contexts live in ops.driver");
 
     rule.check(productionClasses);
   }
