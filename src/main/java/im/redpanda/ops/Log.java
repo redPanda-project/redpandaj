@@ -29,7 +29,7 @@ public class Log {
    * initialised. Lives here rather than in {@code App} so that ops, a leaf every context logs
    * through, does not depend on the composition root (TD173).
    */
-  public static boolean sentryAllowed = false;
+  public static volatile boolean sentryAllowed = false;
 
   private static AtomicInteger rating;
 
