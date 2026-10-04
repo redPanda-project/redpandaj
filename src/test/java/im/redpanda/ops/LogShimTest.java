@@ -26,6 +26,14 @@ class LogShimTest {
   private static final String LOG_LOGGER_NAME = Log.class.getName();
 
   private final List<LogEvent> events = new CopyOnWriteArrayList<>();
+
+  /**
+   * TD105: {@link Log} is a process-wide logger, and threads left running by other test classes in
+   * the same surefire fork (e.g. a {@code ConnectionReaderThread} logging {@code threads now: N})
+   * log through it while these tests run. Only events from the test thread itself are captured.
+   */
+  private volatile long testThreadId;
+
   private LoggerContext context;
   private CapturingAppender appender;
 
@@ -36,12 +44,16 @@ class LogShimTest {
 
     @Override
     public void append(LogEvent event) {
+      if (event.getThreadId() != testThreadId) {
+        return;
+      }
       events.add(event.toImmutable());
     }
   }
 
   @BeforeEach
   void setUp() {
+    testThreadId = Thread.currentThread().threadId();
     context = (LoggerContext) LogManager.getContext(false);
     appender = new CapturingAppender();
     appender.start();

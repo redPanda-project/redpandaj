@@ -8,6 +8,10 @@ import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.CyclicBarrier;
@@ -15,11 +19,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mapdb.DB;
+import org.mapdb.DBException;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
+import org.mapdb.StoreTx;
 
 /**
  * T109: the handle registry and the mailboxes are one transactional store. These tests pin the two
@@ -225,6 +232,157 @@ class OutboundStoreTest {
     } finally {
       reopened.close();
     }
+  }
+
+  /**
+   * TD112: the two tests above throw <i>around</i> the store calls, after every map write has
+   * returned. Here the failure comes from <i>inside</i> a MapDB write: the last write of {@code
+   * addMessage} (the persisted sequence watermark) reaches MapDB and then throws, after the method
+   * has already speculatively advanced the sequence projection, added to the byte projection and
+   * written the item. The rollback has to undo the uncommitted MapDB writes and {@code
+   * rebuildProjections()} has to bring the counters back to the committed state. Unlike the tests
+   * above, the failure hits the outermost transaction before {@code markDirty()} ran, so a rollback
+   * that wrongly depended on the dirty flag would leave the item behind.
+   */
+  @Test
+  void depositFailingInsideAMapDbWrite_rollsBackItemsAndProjections() throws Exception {
+    String path = dbPath();
+    OutboundStore store = OutboundStore.fileBacked(path);
+    long usedBytes;
+    try {
+      store.handles().put(OH_A, handle(System.currentTimeMillis(), 60_000));
+      store.mailbox().addMessage(OH_A, msg("m1"));
+      usedBytes = store.mailbox().usedBytes(OH_A);
+
+      AtomicBoolean failNextPut = new AtomicBoolean(true);
+      injectFailure(
+          store.mailbox(),
+          OutboundMailboxStore.class.getDeclaredField("seqCountersPersisted"),
+          Map.class,
+          "put",
+          true,
+          failNextPut);
+
+      assertThatThrownBy(() -> store.mailbox().addMessage(OH_A, msg("m2")))
+          .isInstanceOf(DBException.class)
+          .hasMessage("injected MapDB failure in put");
+      assertThat(failNextPut).as("the failure was injected inside the deposit").isFalse();
+
+      // The item write and both projection updates that ran before the failure are gone.
+      assertThat(store.mailbox().fetchMessages(OH_A, 10, 0))
+          .extracting(MailItem::getSequenceId)
+          .containsExactly(1L);
+      assertThat(store.mailbox().usedBytes(OH_A)).isEqualTo(usedBytes);
+      assertThat(store.mailbox().lastAssignedSeq(OH_A)).isEqualTo(1L);
+      // The rebuilt sequence projection hands out the id the failed deposit had taken.
+      store.mailbox().addMessage(OH_A, msg("m2-retry"));
+      assertThat(store.mailbox().fetchMessages(OH_A, 10, 1).get(0).getSequenceId()).isEqualTo(2L);
+    } finally {
+      store.close();
+    }
+
+    OutboundStore reopened = OutboundStore.fileBacked(path);
+    try {
+      assertThat(reopened.mailbox().fetchMessages(OH_A, 10, 0))
+          .extracting(item -> item.getPayload().toStringUtf8())
+          .containsExactly("m1", "m2-retry");
+      assertThat(reopened.mailbox().lastAssignedSeq(OH_A)).isEqualTo(2L);
+    } finally {
+      reopened.close();
+    }
+  }
+
+  /**
+   * TD112, commit half: the deposit itself completes (item, watermark and both projections are
+   * written), then {@code DB.commit()} fails. The transaction must roll the uncommitted writes back
+   * and rebuild the projections exactly as for a failing write.
+   */
+  @Test
+  void depositFailingInsideCommit_rollsBackItemsAndProjections() throws Exception {
+    String path = dbPath();
+    OutboundStore store = OutboundStore.fileBacked(path);
+    long usedBytes;
+    try {
+      store.handles().put(OH_A, handle(System.currentTimeMillis(), 60_000));
+      store.mailbox().addMessage(OH_A, msg("m1"));
+      usedBytes = store.mailbox().usedBytes(OH_A);
+
+      AtomicBoolean failNextCommit = new AtomicBoolean(true);
+      DB db = (DB) readField(OutboundStore.class, store, "db");
+      Field storeField = DB.class.getDeclaredField("store");
+      injectFailure(db, storeField, StoreTx.class, "commit", false, failNextCommit);
+
+      assertThatThrownBy(() -> store.mailbox().addMessage(OH_A, msg("m2")))
+          .isInstanceOf(DBException.class)
+          .hasMessage("injected MapDB failure in commit");
+      assertThat(failNextCommit).as("the failure was injected into the commit").isFalse();
+
+      assertThat(store.mailbox().fetchMessages(OH_A, 10, 0))
+          .extracting(MailItem::getSequenceId)
+          .containsExactly(1L);
+      assertThat(store.mailbox().usedBytes(OH_A)).isEqualTo(usedBytes);
+      assertThat(store.mailbox().lastAssignedSeq(OH_A)).isEqualTo(1L);
+      store.mailbox().addMessage(OH_A, msg("m2-retry"));
+      assertThat(store.mailbox().fetchMessages(OH_A, 10, 1).get(0).getSequenceId()).isEqualTo(2L);
+    } finally {
+      store.close();
+    }
+
+    OutboundStore reopened = OutboundStore.fileBacked(path);
+    try {
+      assertThat(reopened.mailbox().fetchMessages(OH_A, 10, 0))
+          .extracting(item -> item.getPayload().toStringUtf8())
+          .containsExactly("m1", "m2-retry");
+      assertThat(reopened.mailbox().lastAssignedSeq(OH_A)).isEqualTo(2L);
+    } finally {
+      reopened.close();
+    }
+  }
+
+  private static Object readField(Class<?> owner, Object target, String name) throws Exception {
+    Field field = owner.getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(target);
+  }
+
+  /**
+   * Replaces {@code field} of {@code target} (a MapDB map or store) with a proxy of {@code iface}
+   * that forwards every call to the original, except that the next call of {@code method} while
+   * {@code armed} is set throws a {@link DBException} — after the original ran ({@code
+   * afterDelegate}, a write that reached MapDB) or instead of it (a commit that never happened).
+   * Test-only reflection: no production seam is needed for either injection point.
+   */
+  private static void injectFailure(
+      Object target,
+      Field field,
+      Class<?> iface,
+      String method,
+      boolean afterDelegate,
+      AtomicBoolean armed)
+      throws Exception {
+    field.setAccessible(true);
+    Object delegate = field.get(target);
+    InvocationHandler handler =
+        (proxy, called, args) -> {
+          boolean fail = called.getName().equals(method) && armed.compareAndSet(true, false);
+          if (fail && !afterDelegate) {
+            throw new DBException("injected MapDB failure in " + method);
+          }
+          Object result;
+          try {
+            result = called.invoke(delegate, args);
+          } catch (InvocationTargetException e) {
+            throw e.getCause();
+          }
+          if (fail) {
+            throw new DBException("injected MapDB failure in " + method);
+          }
+          return result;
+        };
+    field.set(
+        target,
+        Proxy.newProxyInstance(
+            OutboundStoreTest.class.getClassLoader(), new Class<?>[] {iface}, handler));
   }
 
   @Test
