@@ -196,8 +196,9 @@ public final class UpdateTransfer {
         } catch (InterruptedException ignored) {
         }
       } finally {
-        logger.debug("{} download slot released, another peer may serve us now", artefact);
+        // unlock first: a throwing log call must not leave the slot held (TD134).
         updateDownloadLock.unlock();
+        logger.debug("{} download slot released, another peer may serve us now", artefact);
       }
     };
   }
