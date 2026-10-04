@@ -9,6 +9,8 @@ import im.redpanda.transport.Peer;
 import im.redpanda.transport.PeerTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class OutboundIntegrationTest {
 
@@ -151,6 +153,44 @@ class OutboundIntegrationTest {
         im.redpanda.outbound.v1.RevokeOhResponse.parseFrom(payload);
 
     assertEquals(im.redpanda.outbound.v1.Status.NOT_FOUND, res.getStatus());
+  }
+
+  /**
+   * T129 (TD148): a correctly signed register with an oh_id that is not exactly 20 bytes is
+   * rejected before rate-limit and signature check, and no handle is stored. 16 and 64 were the
+   * bounds of the pre-T129 range; no garlic deposit can reach such a mailbox.
+   */
+  @ParameterizedTest
+  @ValueSource(ints = {16, 19, 21, 32, 64})
+  void registerWithNon20ByteOhIdIsBadRequest(int length) throws Exception {
+    long now = System.currentTimeMillis();
+    long expires = now + 60000;
+    byte[] ohId = new byte[length];
+    new java.util.Random().nextBytes(ohId);
+    byte[] nonce = getRandomNonce();
+    RegisterOhRequest req =
+        RegisterOhRequest.newBuilder()
+            .setOhId(com.google.protobuf.ByteString.copyFrom(ohId))
+            .setOhAuthPublicKey(
+                com.google.protobuf.ByteString.copyFrom(clientNode.getVerifyKeyBytes()))
+            .setRequestedExpiresAt(expires)
+            .setTimestampMs(now)
+            .setNonce(com.google.protobuf.ByteString.copyFrom(nonce))
+            .setSignature(
+                com.google.protobuf.ByteString.copyFrom(signRegister(ohId, expires, now, nonce)))
+            .build();
+
+    service.handleRegister(peer, req);
+
+    PeerTestSupport.writeBuffer(peer).flip();
+    assertEquals(
+        im.redpanda.core.Command.OUTBOUND_REGISTER_OH_RES, PeerTestSupport.writeBuffer(peer).get());
+    byte[] payload = new byte[PeerTestSupport.writeBuffer(peer).getInt()];
+    PeerTestSupport.writeBuffer(peer).get(payload);
+    assertEquals(
+        im.redpanda.outbound.v1.Status.BAD_REQUEST,
+        im.redpanda.outbound.v1.RegisterOhResponse.parseFrom(payload).getStatus());
+    assertEquals(0, handleStore.listActiveOhIds(now).size());
   }
 
   // --- Helpers ---

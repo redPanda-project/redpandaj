@@ -5,6 +5,7 @@ import im.redpanda.identity.crypt.CryptoUtils;
 import im.redpanda.routing.FlaschenpostV2;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * MS06 return-path block: tells the depositing node where to send the {@code RoutingAck} (R-ACK).
@@ -45,9 +46,8 @@ public record ReturnPath(OhId ackOhId, byte[] ackSessionTag, List<Hop> hops) {
 
   /** Validates the wire-format invariants up front so {@link #serialize()} cannot fail late. */
   public ReturnPath {
-    if (!ackOhId.hasGarlicLength()) {
-      throw new IllegalArgumentException("invalid ack_oh_id length: " + ackOhId.length());
-    }
+    // ack_oh_id needs no length check: every OhId has the 20-byte garlic width (T129).
+    Objects.requireNonNull(ackOhId, "ackOhId");
     if (ackSessionTag.length != FlaschenpostV2.SESSION_TAG_LEN) {
       throw new IllegalArgumentException("invalid ack_session_tag length: " + ackSessionTag.length);
     }

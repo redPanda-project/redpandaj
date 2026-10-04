@@ -28,19 +28,27 @@ class OhIdTest {
   // --- Length rules ---
 
   @Test
-  void acceptsTheWholeDocumentedRange() {
-    for (int length = OhId.MIN_BYTES; length <= OhId.MAX_BYTES; length++) {
-      assertThat(OhId.fromBytes(bytes(length)).length()).isEqualTo(length);
-    }
+  void acceptsExactlyTwentyBytes() {
+    assertThat(OhId.fromBytes(bytes(20)).length()).isEqualTo(20);
+    assertThat(OhId.fromBytesOrNull(bytes(20))).isNotNull();
+    assertThat(OhId.fromByteString(ByteString.copyFrom(bytes(20))).length()).isEqualTo(20);
   }
 
   @Test
-  void rejectsLengthsOutsideTheRange() {
-    for (int length : new int[] {0, 1, OhId.MIN_BYTES - 1, OhId.MAX_BYTES + 1, 1024}) {
+  void rejectsEveryOtherLength() {
+    // T129 (TD148): 16 and 64 were the bounds of the pre-T129 range the outbound commands accepted
+    // although no garlic deposit could reach anything but a 20-byte mailbox.
+    for (int length : new int[] {0, 1, 16, 19, 21, 32, 64, 1024}) {
       assertThatThrownBy(() -> OhId.fromBytes(bytes(length)))
           .as("length %s", length)
           .isInstanceOf(IllegalArgumentException.class);
       assertThat(OhId.fromBytesOrNull(bytes(length))).as("length %s", length).isNull();
+      assertThat(OhId.fromByteStringOrNull(ByteString.copyFrom(bytes(length))))
+          .as("length %s", length)
+          .isNull();
+      assertThatThrownBy(() -> OhId.fromHex(Utils.bytesToHexString(bytes(length))))
+          .as("length %s", length)
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -52,13 +60,10 @@ class OhIdTest {
   }
 
   @Test
-  void garlicLengthIsTheKademliaIdWidthAndInsideTheGeneralRange() {
-    // The shared namespace TD094 describes: the fixed 20-byte garlic destination slot is a valid
-    // oh_id. If this ever stops holding, tryDepositToLocalOh and the CMD_DELIVER paths break.
-    assertThat(OhId.GARLIC_BYTES).isEqualTo(KademliaId.ID_LENGTH_BYTES);
-    assertThat(OhId.GARLIC_BYTES).isBetween(OhId.MIN_BYTES, OhId.MAX_BYTES);
-    assertThat(OhId.fromBytes(bytes(OhId.GARLIC_BYTES)).hasGarlicLength()).isTrue();
-    assertThat(OhId.fromBytes(bytes(OhId.MAX_BYTES)).hasGarlicLength()).isFalse();
+  void garlicLengthIsTheKademliaIdWidth() {
+    // The shared namespace TD094 describes: the fixed 20-byte garlic destination slot is the oh_id
+    // width. If this ever stops holding, tryDepositToLocalOh and the CMD_DELIVER paths break.
+    assertThat(OhId.GARLIC_BYTES).isEqualTo(KademliaId.ID_LENGTH_BYTES).isEqualTo(20);
   }
 
   // --- Hex round trip ---
@@ -73,14 +78,14 @@ class OhIdTest {
 
   @Test
   void hexRoundTrips() {
-    OhId ohId = OhId.fromBytes(bytes(24));
+    OhId ohId = OhId.fromBytes(bytes(OhId.GARLIC_BYTES));
     assertThat(OhId.fromHex(ohId.toHex())).isEqualTo(ohId);
     assertThat(OhId.fromHex(ohId.toHex()).toBytes()).isEqualTo(ohId.toBytes());
   }
 
   @Test
   void hexWithLeadingZeroByteRoundTrips() {
-    byte[] raw = bytes(OhId.MIN_BYTES);
+    byte[] raw = bytes(OhId.GARLIC_BYTES);
     raw[0] = 0;
     OhId ohId = OhId.fromBytes(raw);
     assertThat(ohId.toHex()).startsWith("00");
@@ -97,9 +102,9 @@ class OhIdTest {
     assertThatThrownBy(() -> OhId.fromHex("zz" + "0".repeat(38)))
         .isInstanceOf(IllegalArgumentException.class);
     // valid hex, but too short / too long for an oh_id
-    assertThatThrownBy(() -> OhId.fromHex("0".repeat(2 * (OhId.MIN_BYTES - 1))))
+    assertThatThrownBy(() -> OhId.fromHex("0".repeat(2 * (OhId.GARLIC_BYTES - 1))))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> OhId.fromHex("0".repeat(2 * (OhId.MAX_BYTES + 1))))
+    assertThatThrownBy(() -> OhId.fromHex("0".repeat(2 * (OhId.GARLIC_BYTES + 1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -109,7 +114,9 @@ class OhIdTest {
   void equalsAndHashCodeAreValueBased() {
     OhId a = OhId.fromBytes(bytes(20));
     OhId same = OhId.fromBytes(bytes(20));
-    OhId other = OhId.fromBytes(bytes(21));
+    byte[] otherRaw = bytes(20);
+    otherRaw[0] ^= 0x01;
+    OhId other = OhId.fromBytes(otherRaw);
 
     assertThat(a).isEqualTo(same).hasSameHashCodeAs(same);
     assertThat(a).isNotEqualTo(other);
