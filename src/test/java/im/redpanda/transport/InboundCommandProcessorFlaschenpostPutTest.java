@@ -266,11 +266,12 @@ class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
-   * When {@code oh_id} is absent and the content is a valid GarlicMessage with a destination that
-   * matches a registered OH, {@code tryDepositToLocalOh} deposits the message and returns early.
+   * T144/TD094: when {@code oh_id} is absent, a garlic-shaped payload whose 20-byte destination
+   * equals a registered OH is no longer deposited into that mailbox — the garlic destination is a
+   * node id and is never looked up as an oh_id (the removed shared-namespace fallback).
    */
   @Test
-  void flaschenpostPut_legacyPathDepositsViaGarlicMessageDestination() {
+  void flaschenpostPut_withoutOhId_doesNotDepositViaGarlicMessageDestination() {
     OhId ohId = sampleOhId();
     registerOh(ohId);
 
@@ -286,7 +287,7 @@ class InboundCommandProcessorFlaschenpostPutTest {
     byte[] gmBytes = new byte[gm.remaining()];
     gm.get(gmBytes);
 
-    // No oh_id set → handler will try tryDepositToLocalOh → deposit succeeds
+    // No oh_id set → garlic path only, the destination is not treated as an oh_id
     FlaschenpostPut putMsg = FlaschenpostPut.newBuilder().setContent(copyFrom(gmBytes)).build();
     byte[] putData = putMsg.toByteArray();
 
@@ -298,19 +299,16 @@ class InboundCommandProcessorFlaschenpostPutTest {
 
     assertEquals(1 + 4 + putData.length, consumed);
 
-    // Verify the message was deposited via the legacy tryDepositToLocalOh path
     List<MailItem> items = mailboxStore.fetchMessages(ohId, 10, 0);
-    assertEquals(1, items.size());
-    assertArrayEquals(gmBytes, items.get(0).getPayload().toByteArray());
+    assertEquals(0, items.size());
   }
 
   /**
-   * When {@code oh_id} is absent and content is too short for a GarlicMessage header, {@code
-   * tryDepositToLocalOh} returns false. The handler then falls through to GMParser which processes
-   * the valid ACK payload. This exercises the {@code content.length < headerLen} guard.
+   * When {@code oh_id} is absent and content is a short (9-byte) ACK frame, the handler hands it to
+   * GMParser, which processes the valid ACK payload without throwing.
    */
   @Test
-  void flaschenpostPut_withContentShorterThanGarlicHeader_tryDepositReturnsFalse() {
+  void flaschenpostPut_withContentShorterThanGarlicHeader_isParsedAsAck() {
     // ACK payload is 9 bytes, shorter than GarlicMessage header (25 bytes)
     byte[] ackBytes = buildAckPayload(33);
 

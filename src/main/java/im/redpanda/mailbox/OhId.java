@@ -29,12 +29,11 @@ import java.util.Arrays;
  * register a mailbox that no garlic deposit could ever reach. The light client has always
  * registered 20-byte ids, so the tightening is wire-invariant for conforming clients.
  *
- * <p>The same mailbox is addressable both through the garlic path and through a direct outbound
- * command. The consequence is the shared namespace TD094 describes — a 20-byte garlic <em>node</em>
- * destination is indistinguishable from a 20-byte oh_id, which is what {@code
- * MailboxDepositPolicy#tryDepositToLocalOh} exploits. This type makes that sharing visible (a
- * {@code KademliaId} does not silently become an {@code OhId} any more; the conversion has to be
- * written out) but does not yet remove it — that needs a wire change.
+ * <p>A 20-byte garlic <em>node</em> destination is byte-wise indistinguishable from a 20-byte
+ * oh_id, but the two are never mixed: a mailbox is only addressed through an explicit oh_id field
+ * (or a {@code CMD_DELIVER*} layer). T144 removed the last place that looked a garlic node
+ * destination up as an oh_id (the {@code tryDepositToLocalOh} fallback, TD094). A {@code
+ * KademliaId} does not silently become an {@code OhId}; the conversion has to be written out.
  *
  * <p>Instances are immutable: the byte array is copied in and copied out, and the hex form (the key
  * used by the mailbox stores) is computed once.
