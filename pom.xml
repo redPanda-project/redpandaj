@@ -17,7 +17,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
 
-        <bcprov.version>1.84</bcprov.version>
+        <bcprov.version>1.85</bcprov.version>
         <commons-text.version>1.15.0</commons-text.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <kotlin.version>2.4.10</kotlin.version>
