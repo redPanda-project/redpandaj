@@ -95,6 +95,27 @@ class SaverTest {
     assertNotNull(loadedPeers.get(dialable.getKademliaId()));
   }
 
+  /**
+   * T154a: a peer persisted under a seed's host name by an older node must not come back as a
+   * second, name-keyed object next to the resolved seed; the other entries still load.
+   */
+  @Test
+  void loadPeersSkipsPeersPersistedUnderAHostName() {
+    ArrayList<Peer> peers = new ArrayList<>();
+    Peer byName = new Peer("seed1.redpanda.im", 59558);
+    byName.setNodeId(new NodeId());
+    peers.add(byName);
+    Peer byIp = new Peer("5.75.137.166", 59558);
+    byIp.setNodeId(new NodeId());
+    peers.add(byIp);
+
+    Saver.savePeers(peers);
+
+    Map<KademliaId, Peer> loadedPeers = Saver.loadPeers();
+    assertEquals(1, loadedPeers.size());
+    assertNotNull(loadedPeers.get(byIp.getKademliaId()));
+  }
+
   @Test
   void savePeersSkipsPeerWithoutVerifyKey() {
     // Simulates the first-boot race: a bootstrap peer's KademliaId is known (e.g. from the DHT)

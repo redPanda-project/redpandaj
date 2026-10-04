@@ -104,7 +104,7 @@ chmod +x build.sh
 
 - Local state is stored in `./data/` (e.g., `data/localSettings<port>.json`). Since T117 it is written as explicit, versioned JSON — never as a Java object stream. Files from before T117 (`localSettings<port>.dat`) are neither read nor migrated: the node logs a warning, generates a fresh identity and re-bootstraps from the known nodes.
 - Default port: **59558** (`Settings.DEFAULT_PORT`); override with the `PORT` environment variable.
-- Bootstrap/known nodes default to the list in `Settings.knownNodes` and can be overridden without a rebuild via the system property `redpanda.knownNodes` or the environment variable `REDPANDA_KNOWN_NODES` (comma-separated `host:port` entries; blank values keep the defaults), e.g. `REDPANDA_KNOWN_NODES="5.75.137.166:59558,46.224.156.238:59558" java -jar redpanda.jar`.
+- Bootstrap/known nodes default to `seed1.redpanda.im:59558,seed2.redpanda.im:59558` (`Settings.knownNodes`) and can be overridden without a rebuild via the system property `redpanda.knownNodes` or the environment variable `REDPANDA_KNOWN_NODES` (comma-separated `host:port` entries, host names or IP literals; blank values keep the defaults, `none` disables bootstrapping), e.g. `REDPANDA_KNOWN_NODES="seed1.redpanda.im:59558,seed2.redpanda.im:59558" java -jar redpanda.jar`. Host names are resolved to IP addresses on every reseed; a name that does not resolve is skipped and retried after about 30 seconds.
 
 ---
 

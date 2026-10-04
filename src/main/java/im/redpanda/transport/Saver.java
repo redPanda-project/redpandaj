@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import im.redpanda.core.NodeIdCodec;
 import im.redpanda.core.StateFormat;
 import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.crypt.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -164,6 +165,15 @@ public class Saver {
         int retries = StateFormat.optInt(peerJson, "retries", 0);
         if (retries < 0) {
           throw new IOException("peer with a negative retry count: " + retries);
+        }
+        if (!Utils.isIpLiteral(ip.getAsString())) {
+          // T154a: the peer list matches addresses by string, so a peer persisted under a seed's
+          // host name (by a node that ran before OutboundHandler.addKnownNodes resolved names)
+          // never collapses onto the same node known by its IP and cannot be gossiped either. Drop
+          // just this entry; the configured seed comes back resolved on the next reseed and the
+          // identity with its first handshake.
+          log.info("not restoring peer {}:{}: not an IP literal", ip.getAsString(), port);
+          continue;
         }
         PeerSaveable saveable =
             new PeerSaveable(

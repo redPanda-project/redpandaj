@@ -108,8 +108,8 @@ class InboundCommandProcessorPeerListFilterTest {
   /**
    * A gossiped host name is resolved by {@code InetSocketAddress} at dial time, so it can point at
    * loopback or the LAN without the string-based locality rule ever seeing it. Rejected on ingest
-   * regardless of who sends it — configured seeds are a different, trusted path (see {@link
-   * #configuredSeedsMayStillUseHostNames()}).
+   * regardless of who sends it — configured seeds are a different, trusted path that resolves names
+   * itself (see {@code SettingsKnownNodesTest} and {@link OutboundHandlerKnownNodesTest}).
    */
   @Test
   void gossipedHostNames_areDropped() {
@@ -142,7 +142,8 @@ class InboundCommandProcessorPeerListFilterTest {
 
   @Test
   void weDoNotAdvertiseHostNames() {
-    ctx.getPeerList().add(connectedPeer("redpanda.im", 59559)); // as reseeding creates it
+    // reseeding resolves names since T154a, but a peer restored from an older save may carry one
+    ctx.getPeerList().add(connectedPeer("redpanda.im", 59559));
     ctx.getPeerList().add(connectedPeer("46.224.156.238", 59558));
 
     assertEquals(List.of("46.224.156.238:59558"), requestPeerListAsSeenBy(PUBLIC_PEER_IP));

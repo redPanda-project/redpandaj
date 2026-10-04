@@ -13,7 +13,7 @@ class SettingsKnownNodesTest {
    * shipping it as a bootstrap peer made every unconfigured node dial itself (T86). Local setups
    * pass their loopback seeds explicitly.
    */
-  private static final String[] DEFAULTS = {"195.201.25.223:59558", "redpanda.im:59559"};
+  private static final String[] DEFAULTS = {"seed1.redpanda.im:59558", "seed2.redpanda.im:59558"};
 
   @Test
   void defaultsDoNotContainLoopback() {
@@ -74,17 +74,26 @@ class SettingsKnownNodesTest {
   }
 
   /**
-   * Operator input is trusted and must keep working — the default seed list ships a name. Lived in
-   * {@code InboundCommandProcessorPeerListFilterTest} until T118 moved {@code Settings} into the
-   * ops context; it never tested the peer-list filter, only this parser.
+   * Operator input is trusted and must keep working — the default seed list consists of names
+   * (T154a). Lived in {@code InboundCommandProcessorPeerListFilterTest} until T118 moved {@code
+   * Settings} into the ops context; it never tested the peer-list filter, only this parser.
    */
   @Test
-  void configuredSeedsMayStillUseHostNames() {
+  void configuredSeedsMayUseHostNames() {
     assertArrayEquals(
-        new String[] {"redpanda.im:59559"}, Settings.parseKnownNodes("redpanda.im:59559"));
+        new String[] {"seed1.redpanda.im:59558", "my-host.example:1", "localhost:65535"},
+        Settings.parseKnownNodes("seed1.redpanda.im:59558, my-host.example:1,localhost:65535"));
     org.assertj.core.api.Assertions.assertThat(Settings.parseKnownNodes(null))
-        .as("the default seed list must keep its host name entry")
-        .contains("redpanda.im:59559");
+        .as("the default seeds are DNS names, so a seed can move without a release")
+        .containsExactly("seed1.redpanda.im:59558", "seed2.redpanda.im:59558");
+  }
+
+  @Test
+  void dropsMalformedHostNameEntries() {
+    assertArrayEquals(
+        new String[] {"seed2.redpanda.im:59558"},
+        Settings.parseKnownNodes(
+            "host:,:59558,host:abc,host:0,seed1.redpanda.im,seed2.redpanda.im:59558"));
   }
 
   /**
