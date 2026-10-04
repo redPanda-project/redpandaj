@@ -2,25 +2,14 @@ package im.redpanda.dht;
 
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
-import im.redpanda.identity.NodeId;
 import im.redpanda.identity.crypt.Base58;
-import im.redpanda.identity.crypt.Sha256Hash;
-import im.redpanda.identity.crypt.Utils;
-import im.redpanda.ops.JobScheduler;
 import im.redpanda.ops.Log;
 import im.redpanda.routing.graph.Node;
-import java.nio.ByteBuffer;
-import java.security.SecureRandom;
-import java.security.Security;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.TimeZone;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class KadStoreManager {
@@ -45,8 +34,6 @@ public class KadStoreManager {
    * entries past this age even below {@link #MIN_SIZE}, and {@code get()} never returns them.
    */
   private static final long MAX_KEEP_TIME = 1000L * 60L * 60L * 24L * 14L;
-
-  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   /**
    * The DHT store of <b>this</b> node. Instance state since T118: {@code entries}, its {@code
@@ -180,94 +167,6 @@ public class KadStoreManager {
     }
   }
 
-  public static void main(String[] args) {
-
-    Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-
-    // lets create a keypair for a DHT destination key, should be included in
-    // channel later
-
-    NodeId nodeId = new NodeId();
-
-    // lets calculate the destination
-    byte[] pubKey = nodeId.exportPublic();
-
-    System.out.println("pubkey len: " + pubKey.length);
-
-    Date date = new Date();
-    SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
-    dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-    System.out.println("UTC Date is: " + dateFormat.format(date));
-
-    byte[] dateStringBytes = dateFormat.format(date).getBytes();
-
-    ByteBuffer buffer = ByteBuffer.allocate(pubKey.length + dateStringBytes.length);
-    buffer.put(pubKey);
-    buffer.put(dateStringBytes);
-
-    Sha256Hash dhtKey = Sha256Hash.create(buffer.array());
-
-    System.out.println(
-        "" + Base58.encode(dhtKey.getBytes()) + " byteLen: " + dhtKey.getBytes().length);
-
-    KademliaId kademliaId = KademliaId.fromFirstBytes(dhtKey.getBytes());
-
-    // System.out.println("kadid: " + kademliaId.hexRepresentation());
-    // System.out.println("kadid: " + Utils.bytesToHexString(dhtKey.getBytes()));
-
-    System.out.println("kadid: " + kademliaId);
-
-    // random content
-    byte[] payload = new byte[1024];
-    SECURE_RANDOM.nextBytes(payload);
-
-    KadContent kadContent = new KadContent(nodeId.exportPublic(), payload);
-
-    kadContent.signWith(nodeId);
-
-    System.out.println(
-        "signature: "
-            + Utils.bytesToHexString(kadContent.getSignature())
-            + " len: "
-            + kadContent.getSignature().length);
-
-    // lets check the signature
-
-    System.out.println("verified: " + kadContent.verify());
-
-    // assoziate an command pointer to the job
-    HashMap<Integer, ScheduledFuture<?>> runningJobs = new HashMap<>();
-
-    final int pointer = SECURE_RANDOM.nextInt();
-
-    Job job = new Job(runningJobs, pointer);
-
-    ScheduledFuture<?> future = JobScheduler.insert(job, 500);
-    runningJobs.put(pointer, future);
-
-    try {
-      Thread.sleep(2000);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-
-    ScheduledFuture<?> scheduledFuture = runningJobs.get(pointer);
-
-    Job r = job;
-
-    boolean couldCancel = scheduledFuture.cancel(false);
-    System.out.println("cancel: " + couldCancel);
-
-    // if we are able to cancel the runnable, we have to transmit the new data to
-    // the runnable
-    if (couldCancel) {
-      r.setData("new data");
-      r.run();
-    }
-
-    System.out.println("asd");
-  }
-
   public void printStatus() {
     lock.lock();
     int totalBytes = 0;
@@ -317,38 +216,6 @@ public class KadStoreManager {
         size -= c.getContent().length;
         iterator.remove();
       }
-    }
-  }
-
-  static class Job implements Runnable {
-
-    HashMap<Integer, ScheduledFuture<?>> runningJobs;
-    private final Integer pointer;
-    private String data = null;
-
-    public Job(HashMap<Integer, ScheduledFuture<?>> runningJobs, Integer pointer) {
-      this.runningJobs = runningJobs;
-      this.pointer = pointer;
-    }
-
-    boolean done = false;
-    int timesRun = 0;
-
-    @Override
-    public void run() {
-
-      System.out.println("asdf " + data + " done: " + done);
-
-      if (done) {
-        ScheduledFuture<?> sf = runningJobs.remove(pointer);
-        sf.cancel(false);
-      }
-      timesRun++;
-    }
-
-    public void setData(String str) {
-      data = str;
-      done = true;
     }
   }
 

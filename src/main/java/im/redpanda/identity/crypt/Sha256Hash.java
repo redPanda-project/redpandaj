@@ -17,7 +17,6 @@ import com.google.common.io.ByteStreams;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.Serializable;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -29,7 +28,7 @@ import org.bouncycastle.util.encoders.Hex;
  * used as keys in a map. It also checks that the length is correct and provides a bit more type
  * safety.
  */
-public class Sha256Hash implements Serializable {
+public class Sha256Hash {
 
   public static final Sha256Hash ZERO_HASH = new Sha256Hash(new byte[32]);
   private byte[] bytes;

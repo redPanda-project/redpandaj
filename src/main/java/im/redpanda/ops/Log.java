@@ -6,7 +6,6 @@ package im.redpanda.ops;
 
 import im.redpanda.App;
 import im.redpanda.core.ServerContext;
-import im.redpanda.identity.crypt.Utils;
 import io.sentry.Sentry;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -29,11 +28,6 @@ public class Log {
   private static AtomicInteger rating;
 
   public static void init(ServerContext serverContext) {
-    if (Utils.isJUnitTest()) {
-      LEVEL = 3000;
-      //            LEVEL = 0;
-    }
-
     new Job(serverContext, 20000, true) {
       @Override
       public void init() {
