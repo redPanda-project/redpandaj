@@ -8,6 +8,7 @@ import im.redpanda.identity.crypt.Utils;
 import im.redpanda.mailbox.OhDht;
 import im.redpanda.mailbox.OhId;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -69,13 +70,16 @@ class ChannelDhtTest {
 
   @Test
   void rendezvousKademliaId_isDomainSeparatedFromOhAnnounce() {
-    // Feeding the same 32 bytes as an oh_id vs a channel secret must land in different namespaces:
-    // the channel record key is derived through a distinct domain tag.
+    // Feeding the same bytes as an oh_id vs a channel secret must land in different namespaces:
+    // the channel record key is derived through a distinct domain tag. An oh_id is exactly 20
+    // bytes (T129), so the oh_id side gets the 20-byte prefix of the 32-byte secret.
     byte[] shared = randomChannelSecret();
     long now = System.currentTimeMillis();
 
     assertThat(ChannelDht.rendezvousKademliaId(shared, now))
-        .isNotEqualTo(OhDht.announceKademliaId(OhId.fromBytes(shared), now));
+        .isNotEqualTo(
+            OhDht.announceKademliaId(
+                OhId.fromBytes(Arrays.copyOf(shared, OhId.GARLIC_BYTES)), now));
   }
 
   // --- Record building (padding, signature, self-certifying key) ---

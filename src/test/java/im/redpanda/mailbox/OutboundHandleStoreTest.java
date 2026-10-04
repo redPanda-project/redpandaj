@@ -2,6 +2,8 @@ package im.redpanda.mailbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.HashMap;
+import java.util.Map;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,5 +50,20 @@ class OutboundHandleStoreTest {
     // T109: a handle is only ever removed together with its mailbox
     outboundStore.removeHandle(ohId);
     assertThat(store.get(ohId)).isNull();
+  }
+
+  @Test
+  void listingsSkipPersistedKeysThatAreNoLongerValidOhIds() {
+    // T129: a pre-T129 handle may have been registered with a 16..64-byte oh_id. Such a persisted
+    // key must not abort the listings that drive the announce job and the expiry sweep.
+    long now = System.currentTimeMillis();
+    Map<String, OutboundHandleStore.HandleRecord> handles = new HashMap<>();
+    String legacyKey = "34".repeat(32);
+    handles.put(legacyKey, new OutboundHandleStore.HandleRecord(authKey, now, now + 10000));
+    handles.put(ohId.toHex(), new OutboundHandleStore.HandleRecord(authKey, now, now + 10000));
+    OutboundHandleStore legacyStore = new OutboundHandleStore(outboundStore, handles);
+
+    assertThat(legacyStore.listActiveOhIds(now)).containsExactly(ohId);
+    assertThat(legacyStore.expiredBefore(now + 20000)).containsExactly(ohId);
   }
 }

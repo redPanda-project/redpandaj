@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handle registry facade of the mailbox context: oh_id → {@link HandleRecord} (the lease of a
@@ -24,6 +26,8 @@ import java.util.Map;
  * the conversion lives in {@link OhId} and nowhere else.
  */
 public class OutboundHandleStore {
+
+  private static final Logger logger = LoggerFactory.getLogger(OutboundHandleStore.class);
 
   private final OutboundStore owner;
   private final Map<String, HandleRecord> handles;
@@ -122,7 +126,7 @@ public class OutboundHandleStore {
           for (Map.Entry<String, HandleRecord> entry : handles.entrySet()) {
             HandleRecord record = entry.getValue();
             if (record != null && record.getExpiresAtMs() >= now) {
-              result.add(OhId.fromHex(entry.getKey()));
+              addDecodedKey(result, entry.getKey());
             }
           }
           return result;
@@ -137,11 +141,25 @@ public class OutboundHandleStore {
           for (Map.Entry<String, HandleRecord> entry : handles.entrySet()) {
             HandleRecord record = entry.getValue();
             if (record != null && record.getExpiresAtMs() < now) {
-              result.add(OhId.fromHex(entry.getKey()));
+              addDecodedKey(result, entry.getKey());
             }
           }
           return result;
         });
+  }
+
+  /**
+   * T129: a persisted key that is no longer a valid {@link OhId} (a pre-T129 handle with a length
+   * other than 20 bytes) is skipped with a WARN instead of aborting the whole listing — otherwise
+   * one legacy entry would stop the announce job and the expiry sweep for every handle.
+   */
+  private static void addDecodedKey(List<OhId> result, String key) {
+    try {
+      result.add(OhId.fromHex(key));
+    } catch (IllegalArgumentException e) {
+      logger.warn(
+          "Skipping persisted handle with an invalid oh_id key ({} hex chars)", key.length());
+    }
   }
 
   /**

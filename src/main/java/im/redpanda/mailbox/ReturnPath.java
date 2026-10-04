@@ -45,9 +45,7 @@ public record ReturnPath(OhId ackOhId, byte[] ackSessionTag, List<Hop> hops) {
 
   /** Validates the wire-format invariants up front so {@link #serialize()} cannot fail late. */
   public ReturnPath {
-    if (!ackOhId.hasGarlicLength()) {
-      throw new IllegalArgumentException("invalid ack_oh_id length: " + ackOhId.length());
-    }
+    // ack_oh_id needs no length check: every OhId has the 20-byte garlic width (T129).
     if (ackSessionTag.length != FlaschenpostV2.SESSION_TAG_LEN) {
       throw new IllegalArgumentException("invalid ack_session_tag length: " + ackSessionTag.length);
     }

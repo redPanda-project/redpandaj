@@ -15,43 +15,35 @@ import java.util.Arrays;
  * node ids, replay nonces), the hex conversion was duplicated at every store entry point, and the
  * length rules lived in two unrelated places. This class is the single home for all of that.
  *
- * <h2>Length rules (the one place)</h2>
+ * <h2>Length rule (the one place)</h2>
  *
- * <ul>
- *   <li><b>{@link #MIN_BYTES}..{@link #MAX_BYTES} (16..64)</b> — the general validity range. It is
- *       the range the outbound command surface (register / fetch / revoke / subscribe / ack_fetch)
- *       has enforced since MS02b: an oh_id is a client-chosen opaque secret, so the lower bound is
- *       what makes it unguessable and the upper bound is defense-in-depth against oversized fields.
- *       Every {@code OhId} instance satisfies it — there is no way to construct one that does not.
- *   <li><b>{@link #GARLIC_BYTES} (20)</b> — the length every oh_id on the <em>garlic</em> wire
- *       actually has, because those frames reuse the fixed-width Kademlia destination slot for it:
- *       {@code FlaschenpostPut.oh_id}, {@code CMD_DELIVER}/{@code CMD_DELIVER_TAGGED}/{@code
- *       CMD_DELIVER_ACKED} and {@code ReturnPath.ack_oh_id}. Those call sites check for exactly
- *       this length <em>in addition</em> to the general range, and reject anything else.
- * </ul>
+ * <p>Every oh_id is exactly {@link #GARLIC_BYTES} (20) bytes — the width of the fixed Kademlia
+ * destination slot the <em>garlic</em> frames reuse for it: {@code FlaschenpostPut.oh_id}, {@code
+ * CMD_DELIVER}/{@code CMD_DELIVER_TAGGED}/{@code CMD_DELIVER_ACKED} and {@code
+ * ReturnPath.ack_oh_id}. 20 random bytes (160 bit) are what makes the client-chosen secret
+ * unguessable. Every {@code OhId} instance has this length — there is no way to construct one that
+ * does not.
  *
- * <p>The two rules overlap on purpose ({@code 16 <= 20 <= 64}): the same mailbox is addressable
- * both through the garlic path and through a direct outbound command. The consequence is the shared
- * namespace TD094 describes — a 20-byte garlic <em>node</em> destination is indistinguishable from
- * a 20-byte oh_id, which is what {@code MailboxDepositPolicy#tryDepositToLocalOh} exploits. This
- * type makes that sharing visible (a {@code KademliaId} does not silently become an {@code OhId}
- * any more; the conversion has to be written out) but does not yet remove it — that needs a wire
- * change.
+ * <p>T129 (TD148): until then the outbound command surface (register / fetch / revoke / subscribe /
+ * ack_fetch) accepted 16..64 bytes while every garlic path demanded exactly 20, so a client could
+ * register a mailbox that no garlic deposit could ever reach. The light client has always
+ * registered 20-byte ids, so the tightening is wire-invariant for conforming clients.
+ *
+ * <p>The same mailbox is addressable both through the garlic path and through a direct outbound
+ * command. The consequence is the shared namespace TD094 describes — a 20-byte garlic <em>node</em>
+ * destination is indistinguishable from a 20-byte oh_id, which is what {@code
+ * MailboxDepositPolicy#tryDepositToLocalOh} exploits. This type makes that sharing visible (a
+ * {@code KademliaId} does not silently become an {@code OhId} any more; the conversion has to be
+ * written out) but does not yet remove it — that needs a wire change.
  *
  * <p>Instances are immutable: the byte array is copied in and copied out, and the hex form (the key
  * used by the mailbox stores) is computed once.
  */
 public final class OhId {
 
-  /** Smallest accepted oh_id. Below this the identifier stops being unguessable. */
-  public static final int MIN_BYTES = 16;
-
-  /** Largest accepted oh_id (defense-in-depth against oversized wire fields). */
-  public static final int MAX_BYTES = 64;
-
   /**
-   * Length of every oh_id carried on the garlic wire — the frames reuse the fixed 20-byte Kademlia
-   * destination slot. See the class comment and TD094.
+   * The one accepted oh_id length — the fixed 20-byte Kademlia destination slot of the garlic wire.
+   * See the class comment, TD094 and TD148.
    */
   public static final int GARLIC_BYTES = KademliaId.ID_LENGTH_BYTES;
 
@@ -64,8 +56,7 @@ public final class OhId {
   }
 
   /**
-   * @throws IllegalArgumentException if the length is outside {@link #MIN_BYTES}..{@link
-   *     #MAX_BYTES}
+   * @throws IllegalArgumentException if the length is not {@link #GARLIC_BYTES}
    */
   public static OhId fromBytes(byte[] bytes) {
     OhId ohId = fromBytesOrNull(bytes);
@@ -91,8 +82,7 @@ public final class OhId {
    * Wire boundary without the extra array copy of {@link #fromBytes}: the protobuf {@code bytes}
    * field is materialized exactly once.
    *
-   * @throws IllegalArgumentException if the length is outside {@link #MIN_BYTES}..{@link
-   *     #MAX_BYTES}
+   * @throws IllegalArgumentException if the length is not {@link #GARLIC_BYTES}
    */
   public static OhId fromByteString(ByteString bytes) {
     OhId ohId = fromByteStringOrNull(bytes);
@@ -124,7 +114,8 @@ public final class OhId {
   }
 
   /**
-   * @throws IllegalArgumentException if the string is not valid hex of an accepted length
+   * @throws IllegalArgumentException if the string is not valid hex of exactly {@link
+   *     #GARLIC_BYTES} bytes
    */
   public static OhId fromHex(String hex) {
     if (hex == null || hex.length() % 2 != 0 || isInvalidLength(hex.length() / 2)) {
@@ -144,7 +135,7 @@ public final class OhId {
   }
 
   private static boolean isInvalidLength(int length) {
-    return length < MIN_BYTES || length > MAX_BYTES;
+    return length != GARLIC_BYTES;
   }
 
   /** The raw bytes — a fresh copy, the instance stays immutable. */
@@ -172,11 +163,6 @@ public final class OhId {
 
   public int length() {
     return bytes.length;
-  }
-
-  /** {@code true} if this id has the fixed garlic-wire length, see {@link #GARLIC_BYTES}. */
-  public boolean hasGarlicLength() {
-    return bytes.length == GARLIC_BYTES;
   }
 
   @Override
