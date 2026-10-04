@@ -12,7 +12,7 @@ on:
     inputs:
       force_sonar_smoke:
         # TD067: otherwise the smoke step only runs on Dependabot runs (a few times a year).
-        description: "Also run the tokenless Sonar smoke test step"
+        description: "Also run the tokenless Sonar smoke test step (the real Sonar analysis still runs as on a push)"
         type: boolean
         default: false
 
