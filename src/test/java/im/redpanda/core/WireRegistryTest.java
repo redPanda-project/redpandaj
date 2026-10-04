@@ -75,23 +75,24 @@ class WireRegistryTest {
 
   /**
    * TD092: {@link WireRegistry} renders only {@link WireCommand}-marked constants of {@link
-   * Command}. Every byte constant there must carry the marker - otherwise a forgotten marker would
-   * silently drop a real command from the registry, and a non-command byte would have no reason to
-   * live in {@link Command} at all.
+   * Command}, so every field there must be a marked {@code public static final byte}. Otherwise a
+   * forgotten marker - or a command declared non-public or as {@code int} - would silently drop a
+   * real command from the registry, and a non-command constant has no business in {@link Command}.
+   * Synthetic fields (e.g. JaCoCo's {@code $jacocoData}) are skipped.
    */
   @Test
-  void everyByteConstantInCommandIsMarkedAsWireCommand() {
-    List<String> unmarked =
+  void everyFieldInCommandIsAMarkedWireCommandByte() {
+    List<String> offenders =
         Arrays.stream(Command.class.getDeclaredFields())
-            .filter(WireRegistryTest::isPublicStaticFinalByte)
-            .filter(f -> !f.isAnnotationPresent(WireCommand.class))
+            .filter(f -> !f.isSynthetic())
+            .filter(f -> !isPublicStaticFinalByte(f) || !f.isAnnotationPresent(WireCommand.class))
             .map(Field::getName)
             .toList();
     assertTrue(
-        unmarked.isEmpty(),
-        "public static final byte constants in Command without @WireCommand: "
-            + unmarked
-            + " - mark wire commands with @WireCommand and move non-command bytes elsewhere");
+        offenders.isEmpty(),
+        "fields in Command that are not @WireCommand public static final byte: "
+            + offenders
+            + " - mark wire commands with @WireCommand and move anything else out of Command");
   }
 
   /** TD092: each marked constant must actually land in the top-level command table. */

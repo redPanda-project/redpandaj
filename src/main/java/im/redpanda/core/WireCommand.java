@@ -13,6 +13,9 @@ import java.lang.annotation.Target;
  * {@code WireRegistryTest} fails as soon as {@link Command} declares a {@code public static final
  * byte} without this marker. A new command therefore cannot be forgotten in the registry, and a
  * byte constant that is not a command cannot slip into it unnoticed (TD092).
+ *
+ * <p>Only read on {@link Command}; the garlic layer commands in {@code FlaschenpostV2} are still
+ * selected by their {@code CMD_} prefix.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
