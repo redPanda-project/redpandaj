@@ -19,6 +19,7 @@ import im.redpanda.proto.KademliaStore;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -34,15 +35,11 @@ class RecordDhtRouterTest {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   /**
-   * Explicit packet IDs for the rate-limit test (TD001): random per call, but never below this
-   * offset, so they can neither hit the small literals other tests use nor repeat on a rerun of the
-   * same test in the same fork (the GMStoreManager dedup would keep them for 5 minutes).
+   * Explicit packet IDs for the rate-limit test (TD001): handed out in increasing blocks starting
+   * far above the small literals other tests use, so they never repeat within a fork — not even on
+   * a rerun of the same test, which the 5-minute static GMStoreManager dedup would otherwise drop.
    */
-  private static final int LARGE_PACKET_ID_OFFSET = 0x4000_0000;
-
-  private static int largePacketId() {
-    return LARGE_PACKET_ID_OFFSET + RANDOM.nextInt(Integer.MAX_VALUE - LARGE_PACKET_ID_OFFSET);
-  }
+  private static final AtomicInteger NEXT_PACKET_ID = new AtomicInteger(0x4000_0000);
 
   private ServerContext node;
   private OutboundMailboxStore mailbox;
@@ -202,10 +199,10 @@ class RecordDhtRouterTest {
       assertThat(node.getKadStoreManager().put(record)).isTrue();
       byte[] layer = recordLookupLayer(key, zeroHopReturnPath());
 
-      // TD001: large random packet IDs instead of small literals — the GMStoreManager packet_id
+      // TD001: large unique packet IDs instead of small literals — the GMStoreManager packet_id
       // dedup is static (fork-global) for 5 minutes, so a literal reused by another test in the
       // fork would drop a packet as a duplicate instead of the rate limit doing it.
-      int packetId = largePacketId();
+      int packetId = NEXT_PACKET_ID.getAndAdd(3);
       GarlicRouter.handle(node, singleLayerPacket(layer, packetId));
       assertThat(mailbox.fetchMessages(ackOhId, 10, 0))
           .as("the 1st lookup consumes the single token and is answered synchronously")
