@@ -19,6 +19,8 @@ public class SaveJobs extends Job {
   public void work() {
     serverContext.getLocalSettings().save(serverContext.getPort());
     serverContext.getNodeStore().saveToDisk();
+    // after saveToDisk(): its recovery may have installed a successor, which shares the graph
+    serverContext.getNodeStore().saveGraph();
     Saver.savePeers(serverContext.getPeerList());
   }
 }

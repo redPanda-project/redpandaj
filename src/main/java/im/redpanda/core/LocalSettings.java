@@ -7,23 +7,23 @@ import com.google.gson.JsonObject;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Settings;
 import im.redpanda.ops.SystemUpTimeData;
-import im.redpanda.routing.graph.Node;
-import im.redpanda.routing.graph.NodeEdge;
-import im.redpanda.routing.graph.NodeGraphCodec;
-import im.redpanda.routing.graph.NodeStore;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.locks.Lock;
 import lombok.extern.slf4j.Slf4j;
-import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 
 /**
  * The persisted state of this node: its identity keypair, the updater timestamps/signatures it
- * serves, the uptime window and the node graph.
+ * serves and the uptime window.
+ *
+ * <p>T136/TD174: the routing node graph is no longer part of this file but of {@code
+ * data/nodeGraph<port>.json}, owned by {@code routing.graph}, so that the composition-root state
+ * does not depend on the routing context. A file written before T136 still carries the graph in
+ * {@code nodeGraph}; it is kept here as raw JSON ({@link #pendingLegacyNodeGraph()}) until the
+ * routing side has written it to its own file, and only then dropped.
  *
  * <p>T117: written as explicit JSON ({@code data/localSettings<port>.json}), not as a Java object
  * stream any more. Java serialization pinned the fully qualified class names of {@code NodeId},
@@ -55,26 +55,18 @@ public class LocalSettings {
   private long updateAndroidTimestamp;
   private byte[] updateAndroidSignature;
 
-  private DefaultDirectedWeightedGraph<Node, NodeEdge> nodeGraph;
+  /**
+   * The {@code nodeGraph} member of a pre-T136 settings file, as raw JSON, until the routing side
+   * has moved it into its own file and called {@link #dropLegacyNodeGraph()}. {@code null} when the
+   * file held no graph (the empty placeholder written since T136) or once the migration is done.
+   */
+  private volatile JsonObject legacyNodeGraph;
 
   private SystemUpTimeData systemUpTimeData;
-
-  /**
-   * Read lock of the {@link NodeStore} that owns {@link #nodeGraph}, or {@code null} while no
-   * NodeStore has adopted the graph (standalone uses such as {@code Updater}, and the window
-   * between {@link #load(int)} and {@code NodeStore.build...}).
-   *
-   * <p>The lock is a property of the running process, not of the persisted settings, so it is not
-   * part of the file. Set by {@link NodeStore#buildWithDiskCache(ServerContext)} / {@link
-   * NodeStore#buildWithMemoryCacheOnly(ServerContext)} rather than passed to {@link #save(int)}, so
-   * that every caller of {@code save()} is protected without having to know about the NodeStore.
-   */
-  private Lock nodeGraphLock;
 
   public LocalSettings() {
     myIdentity = new NodeId();
     updateTimestamp = -1;
-    nodeGraph = new DefaultDirectedWeightedGraph<>(NodeEdge.class);
     systemUpTimeData = new SystemUpTimeData();
   }
 
@@ -95,13 +87,20 @@ public class LocalSettings {
   }
 
   /**
-   * Sets the lock that guards {@link #nodeGraph} against concurrent mutation. See {@link
-   * #nodeGraphLock}.
-   *
-   * @param nodeGraphLock the owning NodeStore's read lock, or {@code null} to detach
+   * The node graph embedded in a pre-T136 settings file, still waiting to be moved into its own
+   * file, or {@code null}.
    */
-  public synchronized void setNodeGraphLock(Lock nodeGraphLock) {
-    this.nodeGraphLock = nodeGraphLock;
+  public JsonObject pendingLegacyNodeGraph() {
+    JsonObject pending = legacyNodeGraph;
+    return pending == null ? null : pending.deepCopy();
+  }
+
+  /**
+   * Called once the embedded graph is safely in its own file (or found unreadable): from the next
+   * {@link #save(int)} on, the settings file carries only an empty placeholder graph.
+   */
+  public void dropLegacyNodeGraph() {
+    legacyNodeGraph = null;
   }
 
   /**
@@ -112,16 +111,6 @@ public class LocalSettings {
    * another thread — REDPANDAJ-2E6 —, a full disk, ...) left behind a truncated file that {@link
    * #load(int)} cannot read, and the node silently generated a new identity on the next start.
    *
-   * <p>Encoding runs under the NodeStore read lock ({@link #nodeGraphLock}) because {@link
-   * #nodeGraph} is the very graph {@code NodeStore#maintainNodes} mutates under the matching write
-   * lock (REDPANDAJ-2DW). Without it the save itself still fails with a {@code
-   * ConcurrentModificationException} — harmlessly since #282, but the graph never reaches the disk.
-   * Only the in-memory encoding is covered; the file I/O and the fsync run outside the lock so that
-   * a slow disk cannot stall the node's graph maintenance.
-   *
-   * <p>Lock order is {@code LocalSettings monitor -> NodeStore read lock}. Nothing may therefore
-   * call {@code save()} while holding the NodeStore write lock; today no caller does.
-   *
    * <p>Synchronized because both the {@code SaveJobs} job and the update handling call this, and
    * two saves running at once would write the same file.
    */
@@ -130,7 +119,7 @@ public class LocalSettings {
     mkdirs.mkdir();
 
     try {
-      byte[] encoded = encodeUnderGraphLock();
+      byte[] encoded = new Gson().toJson(toJson()).getBytes(StandardCharsets.UTF_8);
       StateFormat.writeAtomically(settingsFile(port), tmpSettingsFile(port), encoded);
     } catch (IOException | RuntimeException ex) {
       // RuntimeException as well: unlike the removed object stream, which reported a broken object
@@ -138,20 +127,6 @@ public class LocalSettings {
       // Node, a ConcurrentModificationException, ...). Losing one save must never take the file
       // that holds the identity with it.
       log.info("error saving local settings", ex);
-    }
-  }
-
-  private byte[] encodeUnderGraphLock() {
-    Lock lock = nodeGraphLock;
-    if (lock != null) {
-      lock.lock();
-    }
-    try {
-      return new Gson().toJson(toJson()).getBytes(StandardCharsets.UTF_8);
-    } finally {
-      if (lock != null) {
-        lock.unlock();
-      }
     }
   }
 
@@ -169,17 +144,28 @@ public class LocalSettings {
     }
     json.add("upHits", upHits);
 
-    json.add("nodeGraph", NodeGraphCodec.toJson(nodeGraph));
+    // Rollback safety: a pre-T136 build requires this member and generates a NEW identity if it
+    // is missing. So the graph that has not been migrated yet is written back as it was read, and
+    // afterwards an empty graph in the shape NodeGraphCodec reads takes its place.
+    JsonObject pending = legacyNodeGraph;
+    json.add("nodeGraph", pending != null ? pending : emptyNodeGraph());
     return json;
+  }
+
+  private static JsonObject emptyNodeGraph() {
+    JsonObject graph = new JsonObject();
+    graph.add("vertices", new JsonArray());
+    graph.add("edges", new JsonArray());
+    return graph;
   }
 
   /**
    * Loads the settings of {@code port}, or generates fresh ones.
    *
-   * <p>Fresh settings mean a new node identity, an empty node graph and no update signatures — the
-   * node re-bootstraps from {@code REDPANDA_KNOWN_NODES} and gets a new KademliaId. That is the
-   * deliberate behaviour for an unreadable, missing or pre-T117 file (user decision 2026-09-01: no
-   * users yet, so no migration path is built). Nothing on disk is deleted.
+   * <p>Fresh settings mean a new node identity and no update signatures — the node re-bootstraps
+   * from {@code REDPANDA_KNOWN_NODES} and gets a new KademliaId. That is the deliberate behaviour
+   * for an unreadable, missing or pre-T117 file (user decision 2026-09-01: no users yet, so no
+   * migration path is built). Nothing on disk is deleted.
    */
   public static LocalSettings load(int port) {
     File file = settingsFile(port);
@@ -232,7 +218,15 @@ public class LocalSettings {
     }
     settings.systemUpTimeData = new SystemUpTimeData(upHits);
 
-    settings.nodeGraph = NodeGraphCodec.fromJson(StateFormat.requireObject(json, "nodeGraph"));
+    // Kept as raw JSON only; decoding it is the routing side's job (TD174). A file written since
+    // T136 carries an empty placeholder here, which is nothing to migrate.
+    JsonElement nodeGraph = json.get("nodeGraph");
+    if (nodeGraph != null && nodeGraph.isJsonObject()) {
+      JsonElement vertices = nodeGraph.getAsJsonObject().get("vertices");
+      if (vertices != null && vertices.isJsonArray() && !vertices.getAsJsonArray().isEmpty()) {
+        settings.legacyNodeGraph = nodeGraph.getAsJsonObject();
+      }
+    }
     return settings;
   }
 
@@ -268,10 +262,6 @@ public class LocalSettings {
 
   public NodeId getMyIdentity() {
     return myIdentity;
-  }
-
-  public DefaultDirectedWeightedGraph<Node, NodeEdge> getNodeGraph() {
-    return nodeGraph;
   }
 
   public SystemUpTimeData getSystemUpTimeData() {

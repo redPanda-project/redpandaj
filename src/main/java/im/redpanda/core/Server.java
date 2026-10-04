@@ -151,6 +151,7 @@ public class Server {
 
       Saver.savePeers(serverContext.getPeerList());
       serverContext.getNodeStore().close();
+      serverContext.getNodeStore().saveGraph();
       serverContext.getLocalSettings().save(serverContext.getPort());
 
       // Last statement on purpose: a shutdown that threw did NOT persist everything, and the

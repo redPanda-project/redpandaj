@@ -125,6 +125,7 @@ class NodeStoreNullIpConnectionPointTest {
     serverContext.setLocalSettings(new LocalSettings());
     nodeStore = NodeStore.buildWithDiskCache(serverContext);
     serverContext.setNodeStore(nodeStore);
+    Object graphBefore = nodeStore.getNodeGraph();
 
     NodeId nodeId = new NodeId();
     Node node = new Node(serverContext, nodeId);
@@ -138,10 +139,9 @@ class NodeStoreNullIpConnectionPointTest {
     assertThatCode(() -> serverContext.getNodeStore().get(nodeId.getKademliaId()))
         .doesNotThrowAnyException();
     assertThat(serverContext.getNodeStore().get(nodeId.getKademliaId())).isNotNull();
-    // ... and the routing graph it hands to the DHT jobs is the persisted one, not a fresh empty
-    // graph whose vertices nobody knows ("no such vertex in graph", 110 times in 40 minutes).
-    assertThat(serverContext.getNodeStore().getNodeGraph())
-        .isSameAs(serverContext.getLocalSettings().getNodeGraph());
+    // ... and the routing graph it hands to the DHT jobs is the one it started with, not a fresh
+    // empty graph whose vertices nobody knows ("no such vertex in graph", 110 times in 40 minutes).
+    assertThat(serverContext.getNodeStore().getNodeGraph()).isSameAs(graphBefore);
   }
 
   /**
@@ -188,11 +188,10 @@ class NodeStoreNullIpConnectionPointTest {
         .doesNotThrowAnyException();
     assertThat(nodeStore.get(fresh.getKademliaId())).isNotNull();
 
-    // Same graph object AND same lock object, so LocalSettings' registered read lock still guards
-    // the graph the successor mutates.
+    // Same graph object AND same lock object, so a saveGraph() on either store serializes under the
+    // lock the mutators of the successor take.
     assertThat(nodeStore.getNodeGraph()).isSameAs(graphBefore);
     assertThat(nodeStore.getReadWriteLock()).isSameAs(lockBefore);
-    assertThat(serverContext.getLocalSettings().getNodeGraph()).isSameAs(graphBefore);
   }
 
   /**

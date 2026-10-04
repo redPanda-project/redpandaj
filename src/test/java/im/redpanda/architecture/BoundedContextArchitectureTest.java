@@ -165,6 +165,36 @@ class BoundedContextArchitectureTest {
     rule.check(productionClasses);
   }
 
+  /**
+   * TD174: the persisted composition-root state and its codec helpers must not know any context
+   * beyond the shared leaves. Until T136 {@code LocalSettings} encoded the routing node graph
+   * itself ({@code core -> routing.graph}); the graph now has its own file in {@code
+   * routing.graph}. {@code ServerContext}/{@code Server} stay the accepted hub (TD173 remainder).
+   */
+  @Test
+  void persistedSettingsDoNotDependOnAnyContext() {
+    ArchRule rule =
+        noClasses()
+            .that()
+            .haveFullyQualifiedName("im.redpanda.core.LocalSettings")
+            .or()
+            .haveFullyQualifiedName("im.redpanda.core.StateFormat")
+            .or()
+            .haveFullyQualifiedName("im.redpanda.core.NodeIdCodec")
+            .should()
+            .dependOnClassesThat(
+                resideInAPackage("im.redpanda..")
+                    .and(
+                        not(
+                            resideInAnyPackage(
+                                "im.redpanda.core", "im.redpanda.ops", "im.redpanda.identity.."))))
+            .because(
+                "the node graph is persisted by routing.graph.NodeGraphFile, not by the settings"
+                    + " (TD174); state helpers every context uses must not close a cycle");
+
+    rule.check(productionClasses);
+  }
+
   @Test
   void onlyTheCompositionRootAndTransportKnowTheUpdater() {
     ArchRule rule =

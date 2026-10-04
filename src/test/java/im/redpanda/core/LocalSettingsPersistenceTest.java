@@ -4,19 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import im.redpanda.identity.NodeId;
 import im.redpanda.ops.Settings;
-import im.redpanda.routing.graph.Node;
-import im.redpanda.routing.graph.NodeEdge;
-import im.redpanda.testutil.ConcurrencyTestSupport;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,17 +80,16 @@ class LocalSettingsPersistenceTest {
     assertThat(loaded.getUpdateAndroidTimestamp()).isEqualTo(222L);
     assertArrayEquals(asig, loaded.getUpdateAndroidSignature());
     assertNotNull(loaded.getMyIdentity());
-    assertNotNull(loaded.getNodeGraph());
     assertNotNull(loaded.getSystemUpTimeData());
     assertThat(tmpSettingsFile()).doesNotExist();
   }
 
   /**
-   * Regression test for REDPANDAJ-2E6: a save that blows up half way through serialization (there:
-   * a ConcurrentModificationException on a collection another thread was mutating) must not destroy
-   * the settings file that is already on disk — it holds the node identity.
+   * Regression test for REDPANDAJ-2E6: a save that fails half way must not destroy the settings
+   * file that is already on disk — it holds the node identity. Since T136 the encoder cannot fail
+   * any more (the graph moved out, see {@code NodeGraphFileTest} for its own variant), so the
+   * failure is a write error: the temporary file cannot be created.
    */
-  @SuppressWarnings({"rawtypes", "unchecked"})
   @Test
   void failedSaveKeepsPreviousFile() throws Exception {
     LocalSettings ls = new LocalSettings();
@@ -100,20 +98,24 @@ class LocalSettingsPersistenceTest {
 
     byte[] savedFile = Files.readAllBytes(settingsFile().toPath());
 
-    // a vertex that is not a Node makes the encoder fail in the middle of the graph, just like
-    // the ConcurrentModificationException did (T117: unchecked now, hence the RuntimeException
-    // catch in save())
-    ((DefaultDirectedWeightedGraph) ls.getNodeGraph()).addVertex(new Object());
-    ls.setUpdateTimestamp(999L);
-
-    ls.save(port);
+    // a non-empty directory where the temporary file goes: the write fails and cleanup cannot
+    // remove it either
+    File blocker = new File(tmpSettingsFile(), "blocker");
+    assertThat(blocker.getParentFile().mkdir()).isTrue();
+    assertThat(blocker.createNewFile()).isTrue();
+    try {
+      ls.setUpdateTimestamp(999L);
+      ls.save(port);
+    } finally {
+      blocker.delete();
+      tmpSettingsFile().delete();
+    }
 
     assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
     // asserted as a boolean, an array comparison would dump both files into the failure message
     assertThat(Arrays.equals(savedFile, Files.readAllBytes(settingsFile().toPath())))
         .as("the settings file on disk must be byte identical to the last successful save")
         .isTrue();
-    assertThat(tmpSettingsFile()).doesNotExist();
   }
 
   /**
@@ -152,37 +154,10 @@ class LocalSettingsPersistenceTest {
     assertThat(tmpSettingsFile()).doesNotExist();
   }
 
-  /**
-   * The serialized node graph is the very object NodeStore mutates under its write lock (see the
-   * REDPANDAJ-2DW comment in NodeStore#maintainNodes). Serializing it without the matching read
-   * lock risks a ConcurrentModificationException; since #282 that no longer truncates the file, but
-   * the save fails and the graph never reaches the disk.
-   *
-   * <p>Asserted via the lock itself instead of a racing stress test: a save that takes the read
-   * lock cannot make progress while the write lock is held. That is deterministic and one-sided —
-   * see {@link ConcurrencyTestSupport}.
-   */
+  /** A standalone LocalSettings without any NodeStore (e.g. Updater) has to save. */
   @Test
   @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
-  void saveBlocksWhileTheNodeGraphWriteLockIsHeld() throws Exception {
-    ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    LocalSettings localSettings = serverContext.getLocalSettings();
-    localSettings.setUpdateTimestamp(4711L);
-
-    // buildDefaultServerContext builds the NodeStore, which is where the graph and its lock are
-    // handed over - so this also covers the wiring, not just LocalSettings itself.
-    ConcurrencyTestSupport.assertBlockedWhileHeld(
-        serverContext.getNodeStore().getReadWriteLock().writeLock(),
-        () -> localSettings.save(port));
-
-    assertThat(LocalSettings.load(port).getUpdateTimestamp()).isEqualTo(4711L);
-    assertThat(tmpSettingsFile()).doesNotExist();
-  }
-
-  /** A LocalSettings that no NodeStore has adopted (e.g. Updater) still has to save. */
-  @Test
-  @Timeout(value = 60_000, unit = TimeUnit.MILLISECONDS)
-  void saveWorksWithoutANodeGraphLock() {
+  void saveWorksWithoutANodeStore() {
     LocalSettings localSettings = new LocalSettings();
     localSettings.setUpdateTimestamp(1234L);
 
@@ -193,28 +168,15 @@ class LocalSettingsPersistenceTest {
   }
 
   /**
-   * T117: the identity, the updater timestamps and the node graph must survive a full save/load
-   * cycle in the explicit JSON format — the identity byte for byte, because it is the node's
-   * Kademlia standing.
+   * T117: the identity and the updater timestamps must survive a full save/load cycle in the
+   * explicit JSON format — the identity byte for byte, because it is the node's Kademlia standing.
+   * The node graph has its own file since T136, see {@code NodeGraphFileTest}.
    */
   @Test
-  void roundtripKeepsIdentityGraphAndUptime() {
-    ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    LocalSettings ls = serverContext.getLocalSettings();
+  void roundtripKeepsIdentityAndUptime() {
+    LocalSettings ls = new LocalSettings();
     ls.setUpdateTimestamp(1783728000001L);
     ls.getSystemUpTimeData().reportNow();
-
-    // two nodes, one edge - the edge state has to come back as it was, not as "checked just now"
-    Node a = new Node(serverContext, new NodeId());
-    a.seen("10.0.0.1", 59558);
-    a.setGmTestsSuccessful(7);
-    Node b = new Node(serverContext, new NodeId());
-    ls.getNodeGraph().addVertex(a);
-    ls.getNodeGraph().addVertex(b);
-    NodeEdge edge = ls.getNodeGraph().addEdge(a, b);
-    ls.getNodeGraph().setEdgeWeight(edge, 17d);
-    edge.setLastCheckFailed(true);
-    long timeLastCheckFailed = edge.getTimeLastCheckFailed();
 
     ls.save(port);
     LocalSettings loaded = LocalSettings.load(port);
@@ -226,52 +188,54 @@ class LocalSettingsPersistenceTest {
     assertThat(loaded.getUpdateTimestamp()).isEqualTo(1783728000001L);
     assertThat(loaded.getSystemUpTimeData().getUptimePercent())
         .isEqualTo(ls.getSystemUpTimeData().getUptimePercent());
-
-    DefaultDirectedWeightedGraph<Node, NodeEdge> graph = loaded.getNodeGraph();
-    assertThat(graph.vertexSet()).hasSize(2);
-    Node loadedA = graph.vertexSet().stream().filter(n -> n.equals(a)).findFirst().orElseThrow();
-    assertThat(loadedA.getGmTestsSuccessful()).isEqualTo(7);
-    assertThat(loadedA.latestSeenConnectionPoint().getIp()).isEqualTo("10.0.0.1");
-    assertThat(loadedA.latestSeenConnectionPoint().getPort()).isEqualTo(59558);
-    assertThat(graph.edgeSet()).hasSize(1);
-    NodeEdge loadedEdge = graph.edgeSet().iterator().next();
-    assertThat(graph.getEdgeWeight(loadedEdge)).isEqualTo(17d);
-    assertThat(loadedEdge.isLastCheckFailed()).isTrue();
-    assertThat(loadedEdge.getTimeLastCheckFailed()).isEqualTo(timeLastCheckFailed);
   }
 
   /**
-   * A node that shares an edge with two others must come back as ONE object, not one copy per edge:
-   * the graph is keyed on Node identity/equality and NodeStore mutates the vertices in place.
+   * T136 rollback safety: a pre-T136 build requires the {@code nodeGraph} member and generates a
+   * NEW identity when it is missing, so a settings file written now must still carry one — an empty
+   * graph in the shape the old decoder reads — and must not count as a graph to migrate.
    */
   @Test
-  void roundtripKeepsSharedVertexInstances() {
-    ServerContext serverContext = ServerContext.buildDefaultServerContext();
-    LocalSettings ls = serverContext.getLocalSettings();
-    Node hub = new Node(serverContext, new NodeId());
-    Node left = new Node(serverContext, new NodeId());
-    Node right = new Node(serverContext, new NodeId());
-    for (Node node : new Node[] {hub, left, right}) {
-      ls.getNodeGraph().addVertex(node);
+  void settingsFileStillCarriesAnEmptyNodeGraphForOlderBuilds() throws Exception {
+    new LocalSettings().save(port);
+
+    JsonObject json =
+        JsonParser.parseString(Files.readString(settingsFile().toPath())).getAsJsonObject();
+
+    JsonObject nodeGraph = json.getAsJsonObject("nodeGraph");
+    assertThat(nodeGraph).isNotNull();
+    assertThat(nodeGraph.getAsJsonArray("vertices")).isEmpty();
+    assertThat(nodeGraph.getAsJsonArray("edges")).isEmpty();
+    assertThat(LocalSettings.load(port).pendingLegacyNodeGraph()).isNull();
+  }
+
+  /**
+   * T136 migration, settings side: the graph embedded by a pre-T136 build is kept verbatim — and
+   * written back by every save — until the routing side reports it is in its own file.
+   */
+  @Test
+  void embeddedPreT136GraphIsKeptUntilDropped() throws Exception {
+    new File(Settings.SAVE_DIR).mkdir();
+    try (InputStream fixture =
+        getClass().getResourceAsStream("/fixtures/localSettings_pre_t136.json")) {
+      Files.write(settingsFile().toPath(), fixture.readAllBytes());
     }
-    ls.getNodeGraph().addEdge(left, hub);
-    ls.getNodeGraph().addEdge(hub, right);
 
-    ls.save(port);
-    DefaultDirectedWeightedGraph<Node, NodeEdge> graph = LocalSettings.load(port).getNodeGraph();
+    LocalSettings loaded = LocalSettings.load(port);
+    JsonObject embedded = loaded.pendingLegacyNodeGraph();
+    assertThat(embedded).isNotNull();
+    assertThat(embedded.getAsJsonArray("vertices")).hasSize(2);
 
-    assertThat(graph.vertexSet()).hasSize(3);
-    NodeEdge toHub =
-        graph.edgeSet().stream()
-            .filter(e -> graph.getEdgeTarget(e).equals(hub))
-            .findFirst()
-            .orElseThrow();
-    NodeEdge fromHub =
-        graph.edgeSet().stream()
-            .filter(e -> graph.getEdgeSource(e).equals(hub))
-            .findFirst()
-            .orElseThrow();
-    assertThat(graph.getEdgeTarget(toHub)).isSameAs(graph.getEdgeSource(fromHub));
+    loaded.save(port);
+    assertThat(LocalSettings.load(port).pendingLegacyNodeGraph())
+        .as("not migrated yet, so a save must not lose it")
+        .isEqualTo(embedded);
+
+    loaded.dropLegacyNodeGraph();
+    loaded.save(port);
+    assertThat(LocalSettings.load(port).pendingLegacyNodeGraph()).isNull();
+    assertThat(LocalSettings.load(port).getMyIdentity().getKademliaId())
+        .isEqualTo(loaded.getMyIdentity().getKademliaId());
   }
 
   /**
