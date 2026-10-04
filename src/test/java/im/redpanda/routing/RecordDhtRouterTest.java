@@ -33,6 +33,17 @@ class RecordDhtRouterTest {
 
   private static final SecureRandom RANDOM = new SecureRandom();
 
+  /**
+   * Explicit packet IDs for the rate-limit test (TD001): random per call, but never below this
+   * offset, so they can neither hit the small literals other tests use nor repeat on a rerun of the
+   * same test in the same fork (the GMStoreManager dedup would keep them for 5 minutes).
+   */
+  private static final int LARGE_PACKET_ID_OFFSET = 0x4000_0000;
+
+  private static int largePacketId() {
+    return LARGE_PACKET_ID_OFFSET + RANDOM.nextInt(Integer.MAX_VALUE - LARGE_PACKET_ID_OFFSET);
+  }
+
   private ServerContext node;
   private OutboundMailboxStore mailbox;
   private OutboundHandleStore handles;
@@ -170,35 +181,50 @@ class RecordDhtRouterTest {
   }
 
   @Test
-  void lookup_rateLimitExhausted_dropsWithoutSearching() throws Exception {
-    // Swap in a 1-token bucket with a refill interval far longer than the lookup job's own
-    // anti-profiling jitter (up to 1.5 s, see RecordLookupJob.LOOKUP_DELAY_JITTER_MS) so the second
-    // call is deterministically over budget regardless of how long the first answer takes.
+  void lookup_rateLimitExhausted_dropsSecondLookup() throws Exception {
+    // Swap in a 1-token bucket with a refill interval far longer than any test run, so the second
+    // call is deterministically over budget.
     RecordStoreRateLimiter previous =
         GarlicRouter.swapRecordLookupRateLimiterForTest(
             new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));
     try {
-      KademliaId key =
-          ChannelDht.rendezvousKademliaId(randomChannelSecret(), System.currentTimeMillis());
+      // TD147: the key resolves from the local KadStore, so an admitted lookup answers
+      // synchronously inside GarlicRouter.handle (RecordLookupJob.lookup: local hit → respond, no
+      // jittered DHT search). The rate limiter gates before that branch, so the mailbox count right
+      // after each handle() call is final — no polling, no settle sleep. An unknown key would go
+      // through the up-to-1.5 s randomized search job instead and need a fixed settle to rule out a
+      // late 2nd answer, which is what made this test fail under CI load.
+      byte[] secret = randomChannelSecret();
+      long now = System.currentTimeMillis();
+      KadContent record =
+          ChannelDht.buildRecordContent(secret, randomBytes(ChannelDht.RECORD_SIZE_BYTES), now);
+      KademliaId key = ChannelDht.rendezvousKademliaId(secret, now);
+      assertThat(node.getKadStoreManager().put(record)).isTrue();
       byte[] layer = recordLookupLayer(key, zeroHopReturnPath());
 
-      // 1st lookup consumes the single token and is admitted (answers not-found asynchronously).
-      // 2nd lookup arrives immediately after → bucket empty → dropped before a search ever starts.
-      // Fixed, distinct packet IDs (rather than the default random ones) so this can never be
-      // confused with a GMStoreManager packet_id-dedup drop.
-      GarlicRouter.handle(node, singleLayerPacket(layer, 1));
-      GarlicRouter.handle(node, singleLayerPacket(layer, 2));
-
-      List<MailItem> items = awaitMailbox(ackOhId);
-      // Both lookups share the same up-to-1.5 s jitter window (RecordLookupJob), so the 1st
-      // answer landing first proves nothing about the 2nd being dropped — settle past the max
-      // jitter before asserting the final count, so a regression that wrongly admits the 2nd
-      // lookup can't slip through as a late-arriving 2nd item.
-      Thread.sleep(1_700L); // > RecordLookupJob.LOOKUP_DELAY_JITTER_MS (1.5 s), package-private
-      items = mailbox.fetchMessages(ackOhId, 10, 0);
-      assertThat(items)
-          .as("only the 1st (admitted) lookup may produce an answer, the 2nd must be dropped")
+      // TD001: large random packet IDs instead of small literals — the GMStoreManager packet_id
+      // dedup is static (fork-global) for 5 minutes, so a literal reused by another test in the
+      // fork would drop a packet as a duplicate instead of the rate limit doing it.
+      int packetId = largePacketId();
+      GarlicRouter.handle(node, singleLayerPacket(layer, packetId));
+      assertThat(mailbox.fetchMessages(ackOhId, 10, 0))
+          .as("the 1st lookup consumes the single token and is answered synchronously")
           .hasSize(1);
+
+      GarlicRouter.handle(node, singleLayerPacket(layer, packetId + 1));
+      assertThat(mailbox.fetchMessages(ackOhId, 10, 0))
+          .as("the 2nd lookup finds the bucket empty and must be dropped without an answer")
+          .hasSize(1);
+
+      // Control: the identical lookup is answered again once a token is available, so the drop
+      // above came from the rate limiter and not from anything else on the path (dedup, the
+      // mailbox, the return path).
+      GarlicRouter.swapRecordLookupRateLimiterForTest(
+          new RecordStoreRateLimiter(1, 60_000L, System.currentTimeMillis()));
+      GarlicRouter.handle(node, singleLayerPacket(layer, packetId + 2));
+      assertThat(mailbox.fetchMessages(ackOhId, 10, 0))
+          .as("with a fresh token the same lookup is answered again")
+          .hasSize(2);
     } finally {
       GarlicRouter.swapRecordLookupRateLimiterForTest(previous);
     }
