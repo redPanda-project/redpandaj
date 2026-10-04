@@ -8,6 +8,13 @@ on:
   pull_request:
   schedule:
     - cron: "0 0 * * 0"
+  workflow_dispatch:
+    inputs:
+      force_sonar_smoke:
+        # TD067: otherwise the smoke step only runs on Dependabot runs (a few times a year).
+        description: "Also run the tokenless Sonar smoke test step"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -34,7 +41,11 @@ jobs:
       with:
         path: ~/.m2
         key: ${{ runner.os }}-m2-${{ github.ref_name }}-${{ hashFiles('**/pom.xml') }}
-        restore-keys: ${{ runner.os }}-m2-${{ github.ref_name }}-
+        # TD071: ref_name is "<pr>/merge" on PRs, so without the last fallback no PR run
+        # could ever restore the cache saved by main.
+        restore-keys: |
+          ${{ runner.os }}-m2-${{ github.ref_name }}-
+          ${{ runner.os }}-m2-
     - name: clean
       run: mvn -B clean
     - name: coverage
@@ -69,7 +80,7 @@ jobs:
     # is what exercises the 5.x JRE provisioning and scanner-engine startup. Without a
     # token the scanner cannot upload an analysis, so no results are published.
     - name: Sonar goal smoke test (no token)
-      if: steps.sonar.outputs.skipped == 'true'
+      if: steps.sonar.outputs.skipped == 'true' || inputs.force_sonar_smoke
       # Deliberately no SONAR_TOKEN in this step's env.
       run: |
         # A failing mvn here is an expected outcome. The default shell is `bash -e`
@@ -121,7 +132,9 @@ jobs:
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ github.ref_name }}-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2-${{ github.ref_name }}-
+          restore-keys: |
+            ${{ runner.os }}-m2-${{ github.ref_name }}-
+            ${{ runner.os }}-m2-
       - name: Run E2E ITs (Failsafe)
         run: mvn -B -Pe2e verify
 
