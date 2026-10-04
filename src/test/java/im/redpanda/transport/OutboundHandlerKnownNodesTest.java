@@ -55,9 +55,28 @@ class OutboundHandlerKnownNodesTest {
 
   @Test
   void anUnresolvableSeedIsSkippedAndTheOthersAreStillAdded() {
-    OutboundHandler.addKnownNodes(
-        peerList, new String[] {"gone.redpanda.im:" + PORT, SEED2 + ":" + PORT}, FAKE_DNS);
+    assertThat(
+            OutboundHandler.addKnownNodes(
+                peerList, new String[] {"gone.redpanda.im:" + PORT, SEED2 + ":" + PORT}, FAKE_DNS))
+        .as("reported, so that reseed() retries soon instead of in 10 minutes")
+        .isFalse();
 
+    assertThat(peerList.snapshot()).extracting(Peer::getIp).containsExactly(SEED2_IP);
+    assertThat(OutboundHandler.addKnownNodes(peerList, KNOWN_NODES, FAKE_DNS)).isTrue();
+  }
+
+  /** reseed() runs unguarded in the outbound thread's loop; a throwing resolver must not end it. */
+  @Test
+  void aResolverThatThrowsSomethingElseIsTreatedAsUnresolved() {
+    OutboundHandler.HostResolver broken =
+        host -> {
+          if (host.equals(SEED1)) {
+            throw new SecurityException("no lookups for you");
+          }
+          return FAKE_DNS.resolve(host);
+        };
+
+    assertThat(OutboundHandler.addKnownNodes(peerList, KNOWN_NODES, broken)).isFalse();
     assertThat(peerList.snapshot()).extracting(Peer::getIp).containsExactly(SEED2_IP);
   }
 
@@ -132,8 +151,8 @@ class OutboundHandlerKnownNodesTest {
   @Test
   void theDnsResolverReturnsIpLiterals() throws UnknownHostException {
     assertThat(OutboundHandler.DNS.resolve(SEED2_IP)).isEqualTo(SEED2_IP);
+    // only the shape: whether "localhost" is 127.0.0.1 or an uncompressed ::1 depends on the host
     String localhost = OutboundHandler.DNS.resolve("localhost");
     assertThat(Utils.isIpLiteral(localhost)).as(localhost).isTrue();
-    assertThat(Utils.isLocalAddress(localhost)).as(localhost).isTrue();
   }
 }

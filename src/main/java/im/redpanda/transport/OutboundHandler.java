@@ -190,15 +190,27 @@ public class OutboundHandler extends Thread {
     return dialableCons >= Math.min(Settings.MIN_CONNECTIONS, dialableKnown);
   }
 
+  private static final long RESEED_INTERVAL_MS = 1000L * 60L * 10L;
+
+  /**
+   * How soon a reseed is retried when a seed name did not resolve. Without it a node that boots
+   * before its resolver is ready (systemd without network-online, a container whose DNS is not up
+   * yet) would sit without seeds for the full {@link #RESEED_INTERVAL_MS}; before T154a the name
+   * was re-resolved on every dial attempt instead.
+   */
+  private static final long RESEED_RETRY_AFTER_DNS_FAILURE_MS = 1000L * 30L;
+
   private void reseed() {
 
-    if (System.currentTimeMillis() - lastAddedKnownNodes < 1000L * 60L * 10L) {
+    if (System.currentTimeMillis() - lastAddedKnownNodes < RESEED_INTERVAL_MS) {
       return;
     }
 
     lastAddedKnownNodes = System.currentTimeMillis();
 
-    addKnownNodes(peerList, Settings.knownNodes, DNS);
+    if (!addKnownNodes(peerList, Settings.knownNodes, DNS)) {
+      lastAddedKnownNodes -= RESEED_INTERVAL_MS - RESEED_RETRY_AFTER_DNS_FAILURE_MS;
+    }
   }
 
   /** Turns a configured seed host into the address string a {@link Peer} carries. */
@@ -227,10 +239,16 @@ public class OutboundHandler extends Thread {
    *
    * <p>Runs on the outbound thread, never the selector, and only once per reseed; the dial itself
    * resolved names on this thread already ({@code new InetSocketAddress(ip, port)}). The answer is
-   * taken fresh on every reseed, so a re-pointed DNS record is picked up then. A name that does not
-   * resolve is skipped until the next reseed.
+   * taken fresh on every reseed, so a re-pointed record yields a new placeholder then. It does not
+   * move the address of a peer that is already identified under the old IP (e.g. restored from
+   * disk): {@code PeerList.adoptAddress} only fills gaps, so that peer keeps dialling the old IP
+   * until its retries evict it, after which the next reseed brings the new one. A name that does
+   * not resolve is skipped; {@code reseed()} then retries after a short delay.
+   *
+   * @return {@code false} if at least one seed could not be resolved
    */
-  static void addKnownNodes(PeerList peerList, String[] knownNodes, HostResolver resolver) {
+  static boolean addKnownNodes(PeerList peerList, String[] knownNodes, HostResolver resolver) {
+    boolean allResolved = true;
     // No lock around the loop (T115): PeerList.add() takes the write lock itself and is atomic
     // per peer, which is all this needs — the seeds are independent and a concurrent add of the
     // same address is handled by add()'s own duplicate check.
@@ -250,13 +268,17 @@ public class OutboundHandler extends Thread {
       String ip;
       try {
         ip = resolver.resolve(host);
-      } catch (UnknownHostException e) {
-        Log.put("could not resolve known node " + host + ", skipping it until the next reseed", 20);
+      } catch (UnknownHostException | RuntimeException e) {
+        // RuntimeException too: reseed() runs unguarded in run(), so anything a resolver throws
+        // (SecurityException, a custom InetAddressResolverProvider) would end the outbound thread.
+        Log.put("could not resolve known node " + host + ": " + e, 20);
+        allResolved = false;
         continue;
       }
 
       peerList.add(new Peer(ip, port));
     }
+    return allResolved;
   }
 
   @Override
