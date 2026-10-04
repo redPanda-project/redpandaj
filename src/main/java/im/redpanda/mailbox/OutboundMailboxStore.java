@@ -269,7 +269,14 @@ public class OutboundMailboxStore {
    * transaction.
    */
   void deleteAll(OhId ohId) {
-    String ohIdHex = ohId.toHex();
+    deleteAll(ohId.toHex());
+  }
+
+  /**
+   * {@link #deleteAll(OhId)} by persisted key — for the expiry sweep, which must also drop the
+   * mailbox of a pre-T129 handle whose key is no longer a valid {@link OhId} (T129).
+   */
+  void deleteAll(String ohIdHex) {
     owner.tx(
         () -> {
           NavigableMap<String, byte[]> sub =

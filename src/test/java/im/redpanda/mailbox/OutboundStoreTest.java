@@ -8,6 +8,8 @@ import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
 import im.redpanda.outbound.v1.MailItem;
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
+import java.util.NavigableMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,6 +17,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mapdb.DB;
+import org.mapdb.DBMaker;
+import org.mapdb.Serializer;
 
 /**
  * T109: the handle registry and the mailboxes are one transactional store. These tests pin the two
@@ -35,6 +40,18 @@ class OutboundStoreTest {
 
   private static HandleRecord handle(long now, long ttlMs) {
     return new HandleRecord(AUTH_KEY, now, now + ttlMs);
+  }
+
+  /**
+   * The production MapDB serializer of the handle records — the catalog pins the serializer of a
+   * named map, so a test that writes {@code handlesV2} directly has to use the same one.
+   */
+  @SuppressWarnings("unchecked")
+  private static Serializer<HandleRecord> handleRecordSerializer() throws Exception {
+    java.lang.reflect.Field field =
+        OutboundStore.class.getDeclaredField("HANDLE_RECORD_SERIALIZER");
+    field.setAccessible(true);
+    return (Serializer<HandleRecord>) field.get(null);
   }
 
   private String dbPath() throws IOException {
@@ -62,6 +79,61 @@ class OutboundStoreTest {
     assertThat(store.mailbox().fetchMessages(OH_B, 10, 0)).isEmpty();
     assertThat(store.handles().get(OH_A)).isNotNull();
     assertThat(store.mailbox().fetchMessages(OH_A, 10, 0)).hasSize(1);
+  }
+
+  @Test
+  void cleanupExpiredHandles_removesPreT129HandleWhoseKeyIsNoLongerAValidOhId() throws Exception {
+    // T129: before T129 an oh_id could be 16..64 bytes. A handle persisted with a 32-byte key can
+    // no
+    // longer be decoded into an OhId, but must still expire together with its mailbox and
+    // watermark — and must not break the announce listing for the valid handles next to it.
+    String path = dbPath();
+    String legacyKey = "cc".repeat(32);
+    long now = System.currentTimeMillis();
+    Serializer<HandleRecord> recordSerializer = handleRecordSerializer();
+    DB raw = DBMaker.fileDB(path).transactionEnable().make();
+    try {
+      raw.hashMap("handlesV2", Serializer.STRING, recordSerializer)
+          .createOrOpen()
+          .put(legacyKey, handle(now - 5_000, 4_000)); // expired 1 s ago
+      raw.treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY)
+          .createOrOpen()
+          .put(legacyKey + ":" + String.format("%019d", 1L), msg("legacy").toByteArray());
+      raw.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG)
+          .createOrOpen()
+          .put(legacyKey, 1L);
+      raw.commit();
+    } finally {
+      raw.close();
+    }
+
+    OutboundStore store = OutboundStore.fileBacked(path);
+    try {
+      store.handles().put(OH_A, handle(now, 60_000));
+      assertThat(store.handles().listActiveOhIds(now - 10_000)).containsExactly(OH_A);
+
+      assertThat(store.cleanupExpiredHandles(now)).isEqualTo(1);
+      assertThat(store.handles().listActiveOhIds(now)).containsExactly(OH_A);
+    } finally {
+      store.close();
+    }
+
+    DB reopened = DBMaker.fileDB(path).transactionEnable().make();
+    try {
+      Map<String, HandleRecord> handles =
+          reopened.hashMap("handlesV2", Serializer.STRING, recordSerializer).createOrOpen();
+      NavigableMap<String, byte[]> items =
+          reopened
+              .treeMap("mailboxItemsV2", Serializer.STRING, Serializer.BYTE_ARRAY)
+              .createOrOpen();
+      Map<String, Long> watermarks =
+          reopened.hashMap("seqCountersV1", Serializer.STRING, Serializer.LONG).createOrOpen();
+      assertThat(handles).containsOnlyKeys(OH_A.toHex());
+      assertThat(items).isEmpty();
+      assertThat(watermarks).doesNotContainKey(legacyKey);
+    } finally {
+      reopened.close();
+    }
   }
 
   @Test

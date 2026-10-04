@@ -72,14 +72,12 @@ class ChannelDhtTest {
   void rendezvousKademliaId_isDomainSeparatedFromOhAnnounce() {
     // Feeding the same bytes as an oh_id vs a channel secret must land in different namespaces:
     // the channel record key is derived through a distinct domain tag. An oh_id is exactly 20
-    // bytes (T129), so the oh_id side gets the 20-byte prefix of the 32-byte secret.
-    byte[] shared = randomChannelSecret();
+    // bytes (T129); the channel-secret derivation takes any length, so both sides get the same 20.
+    byte[] shared = Arrays.copyOf(randomChannelSecret(), OhId.GARLIC_BYTES);
     long now = System.currentTimeMillis();
 
     assertThat(ChannelDht.rendezvousKademliaId(shared, now))
-        .isNotEqualTo(
-            OhDht.announceKademliaId(
-                OhId.fromBytes(Arrays.copyOf(shared, OhId.GARLIC_BYTES)), now));
+        .isNotEqualTo(OhDht.announceKademliaId(OhId.fromBytes(shared), now));
   }
 
   // --- Record building (padding, signature, self-certifying key) ---

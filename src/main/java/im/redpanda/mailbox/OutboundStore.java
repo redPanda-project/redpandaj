@@ -191,10 +191,15 @@ public final class OutboundStore {
    * be violated by a caller, and a crash mid-way leaves either both or neither.
    */
   public void removeHandle(OhId ohId) {
+    removeHandle(ohId.toHex());
+  }
+
+  /** {@link #removeHandle(OhId)} by persisted key, see {@link #cleanupExpiredHandles(long)}. */
+  private void removeHandle(String key) {
     tx(
         () -> {
-          handleStore.remove(ohId);
-          mailboxStore.deleteAll(ohId);
+          handleStore.remove(key);
+          mailboxStore.deleteAll(key);
         });
   }
 
@@ -211,10 +216,11 @@ public final class OutboundStore {
   public int cleanupExpiredHandles(long now) {
     return tx(
         () -> {
-          // Snapshot first: the removals below mutate the handle map.
-          List<OhId> expired = handleStore.expiredBefore(now);
-          for (OhId ohId : expired) {
-            removeHandle(ohId);
+          // Snapshot first: the removals below mutate the handle map. Raw keys, so a pre-T129
+          // handle whose oh_id is not 20 bytes (no longer a valid OhId) still expires (T129).
+          List<String> expired = handleStore.expiredKeysBefore(now);
+          for (String key : expired) {
+            removeHandle(key);
           }
           return expired.size();
         });

@@ -53,9 +53,9 @@ class OutboundHandleStoreTest {
   }
 
   @Test
-  void listingsSkipPersistedKeysThatAreNoLongerValidOhIds() {
+  void listingsCopeWithPersistedKeysThatAreNoLongerValidOhIds() {
     // T129: a pre-T129 handle may have been registered with a 16..64-byte oh_id. Such a persisted
-    // key must not abort the listings that drive the announce job and the expiry sweep.
+    // key must not abort the announce listing, and the expiry sweep must still see it.
     long now = System.currentTimeMillis();
     Map<String, OutboundHandleStore.HandleRecord> handles = new HashMap<>();
     String legacyKey = "34".repeat(32);
@@ -64,6 +64,7 @@ class OutboundHandleStoreTest {
     OutboundHandleStore legacyStore = new OutboundHandleStore(outboundStore, handles);
 
     assertThat(legacyStore.listActiveOhIds(now)).containsExactly(ohId);
-    assertThat(legacyStore.expiredBefore(now + 20000)).containsExactly(ohId);
+    assertThat(legacyStore.expiredKeysBefore(now + 20000))
+        .containsExactlyInAnyOrder(legacyKey, ohId.toHex());
   }
 }
