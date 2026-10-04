@@ -195,11 +195,11 @@ public class Utils {
       // injection this predicate exists to stop, and re-checking after an off-thread resolve would
       // still race the next DNS answer.
       //
-      // Names remain fine as *operator* input: Settings.knownNodes ships redpanda.im:59559 and
-      // REDPANDA_KNOWN_NODES may carry names. Those reach the peer list through
-      // OutboundHandler.addKnownNodes() and never pass through here — configured seeds are trusted,
-      // an unauthenticated peer is not. A peer that wants to be reachable can advertise its
-      // address.
+      // Names remain fine as *operator* input: Settings.knownNodes ships seed1/seed2.redpanda.im
+      // and REDPANDA_KNOWN_NODES may carry names. Those reach the peer list through
+      // OutboundHandler.addKnownNodes(), which resolves them to IP literals there, and never pass
+      // through here as names — configured seeds are trusted, an unauthenticated peer is not. A
+      // peer that wants to be reachable can advertise its address.
       return false;
     }
     String normalized = normalizeHost(advertisedIp);

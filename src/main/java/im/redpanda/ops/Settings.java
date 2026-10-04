@@ -115,8 +115,17 @@ public class Settings {
    * Nothing needs the default: every local topology (the mobile e2e suite, the emulator gate)
    * passes its loopback seeds explicitly via {@code REDPANDA_KNOWN_NODES} / {@code
    * -Dredpanda.knownNodes}, and for a hand-started local node the same one variable does the job.
+   *
+   * <p>The defaults are DNS names (T154a) so that moving a seed to another host is a DNS change,
+   * not a release: {@code seed1.redpanda.im} and {@code seed2.redpanda.im}, both on {@link
+   * #DEFAULT_PORT}. They only apply to a node started without any configuration — every testnet
+   * node sets {@code REDPANDA_KNOWN_NODES} explicitly. Names are resolved to IP literals when the
+   * seeds are added to the peer list ({@code OutboundHandler.addKnownNodes}), which is what lets
+   * the peer list recognise a seed as the same endpoint when that node also reaches us by address.
    */
-  private static final String[] DEFAULT_KNOWN_NODES = {"195.201.25.223:59558", "redpanda.im:59559"};
+  private static final String[] DEFAULT_KNOWN_NODES = {
+    "seed1.redpanda.im:59558", "seed2.redpanda.im:59558"
+  };
 
   /**
    * Upper bound on the peer list. Peer-list gossip is unauthenticated and we re-gossip what we

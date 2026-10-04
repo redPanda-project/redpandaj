@@ -6,6 +6,7 @@ import im.redpanda.ops.Log;
 import im.redpanda.ops.Settings;
 import im.redpanda.routing.graph.Node;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.channels.SocketChannel;
@@ -197,10 +198,43 @@ public class OutboundHandler extends Thread {
 
     lastAddedKnownNodes = System.currentTimeMillis();
 
+    addKnownNodes(peerList, Settings.knownNodes, DNS);
+  }
+
+  /** Turns a configured seed host into the address string a {@link Peer} carries. */
+  @FunctionalInterface
+  interface HostResolver {
+    String resolve(String host) throws UnknownHostException;
+  }
+
+  /** The production resolver. An IP literal comes back unchanged without a lookup. */
+  static final HostResolver DNS = host -> InetAddress.getByName(host).getHostAddress();
+
+  /**
+   * Adds the configured seeds to the peer list, with host names resolved to IP literals (T154a).
+   *
+   * <p>The peer list identifies an address by its string ({@code ip + ":" + port}), and so does
+   * every guard that keeps us from holding two objects for one endpoint: {@code PeerList.add}'s
+   * address branch, which lets a re-added seed collapse onto the peer that already owns the
+   * address, and {@link #isAddressAlreadyInUse}. A seed kept as {@code seed1.redpanda.im} never
+   * matches the same node known as {@code 91.98.79.117} — from its inbound connection, from
+   * peer-list gossip or from disk — so every reseed (every 10 minutes while the list is small, i.e.
+   * permanently on a two-node network) would put an id-less duplicate next to it, dial it, and the
+   * completed handshake would merge into the owner by identity and replace its live connection
+   * ("newest wins", T54). An owner that kept the name as its address would additionally never be
+   * gossiped: {@code Utils.isPlausibleAdvertisedAddress} only lets IP literals through, so light
+   * clients and other nodes would never learn the seed from us. Resolving here avoids all of that.
+   *
+   * <p>Runs on the outbound thread, never the selector, and only once per reseed; the dial itself
+   * resolved names on this thread already ({@code new InetSocketAddress(ip, port)}). The answer is
+   * taken fresh on every reseed, so a re-pointed DNS record is picked up then. A name that does not
+   * resolve is skipped until the next reseed.
+   */
+  static void addKnownNodes(PeerList peerList, String[] knownNodes, HostResolver resolver) {
     // No lock around the loop (T115): PeerList.add() takes the write lock itself and is atomic
     // per peer, which is all this needs — the seeds are independent and a concurrent add of the
     // same address is handled by add()'s own duplicate check.
-    for (String hostport : Settings.knownNodes) {
+    for (String hostport : knownNodes) {
       if (hostport.contains("[")) {
         // todo add port
         String[] split = hostport.split("]");
@@ -213,7 +247,15 @@ public class OutboundHandler extends Thread {
       String host = split[0];
       int port = Integer.parseInt(split[1]);
 
-      peerList.add(new Peer(host, port));
+      String ip;
+      try {
+        ip = resolver.resolve(host);
+      } catch (UnknownHostException e) {
+        Log.put("could not resolve known node " + host + ", skipping it until the next reseed", 20);
+        continue;
+      }
+
+      peerList.add(new Peer(ip, port));
     }
   }
 
