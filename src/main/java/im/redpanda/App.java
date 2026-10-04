@@ -9,11 +9,11 @@ import im.redpanda.mailbox.OhAnnounceJob;
 import im.redpanda.mailbox.OutboundCleanupJob;
 import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
-import im.redpanda.ops.ListenConsole;
 import im.redpanda.ops.Log;
-import im.redpanda.ops.SaveJobs;
 import im.redpanda.ops.ServerRestartJob;
 import im.redpanda.ops.UpTimeReporterJob;
+import im.redpanda.ops.driver.ListenConsole;
+import im.redpanda.ops.driver.SaveJobs;
 import im.redpanda.routing.GMManagerCleanJobs;
 import im.redpanda.routing.graph.Node;
 import im.redpanda.routing.graph.NodeConnectionPointsSeenJob;
@@ -35,8 +35,6 @@ import org.apache.logging.log4j.Logger;
 public class App {
 
   private static final Logger logger = LogManager.getLogger();
-
-  public static boolean sentryAllowed = false;
 
   public static void main(String[] args) throws IOException {
 
@@ -77,7 +75,7 @@ public class App {
 
       Sentry.configureScope(scope -> scope.setContexts("gitRev", gitRev));
 
-      sentryAllowed = true;
+      Log.sentryAllowed = true;
     }
 
     if (gitRev != null) {

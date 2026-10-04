@@ -31,7 +31,8 @@ together with the map, never around it.
 | `im.redpanda.mailbox` | N-MAILBOX | `OutboundService`, the outbound stores, `OhId`/`OhDht`, deposit/forward/R-ACK policy |
 | `im.redpanda.dht` (`.nodeinfo`) | N-DHT | blind custodian: `KadContent`, `KadStoreManager`, record schemas, Kademlia sagas |
 | `im.redpanda.identity` (`.crypt`) | N-IDENTITY | `NodeId`, `KademliaId`, crypto library. **Leaf: must not depend on any other context** |
-| `im.redpanda.ops` | N-OPS | `Log`, `Settings`, `ListenConsole`, `Job`/`JobScheduler`, operational sagas |
+| `im.redpanda.ops` | N-OPS | `Log`, `Settings`, `Job`/`JobScheduler`, operational sagas — may only depend on `core` and `identity` (TD173) |
+| `im.redpanda.ops.driver` | N-OPS | drivers that reach into other contexts: `ListenConsole`, `SaveJobs`; only `App` may depend on them |
 | `im.redpanda.updater` | N-UPDATER | `Updater`, `HTTPServer`, commands 9–16. Only `Server` and the wire dispatcher may reference it |
 | `im.redpanda.crypt.legacy` | — | frozen serialization tombstone, must stay unreferenced |
 

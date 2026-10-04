@@ -4,7 +4,6 @@
  */
 package im.redpanda.ops;
 
-import im.redpanda.App;
 import im.redpanda.core.ServerContext;
 import io.sentry.Sentry;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,10 +19,17 @@ public class Log {
 
   /**
    * Legacy verbosity level, no longer consulted by {@link #put(String, int)} and {@link
-   * #putStd(String)} — log output is governed by log4j2.xml. Kept for compatibility (e.g. {@link
+   * #putStd(String)} — log output is governed by log4j2.xml. Kept for compatibility (e.g. {@code
    * ListenConsole}).
    */
   public static int LEVEL = 10;
+
+  /**
+   * Whether {@link #sentry} reports to Sentry. Set once by {@code App.main} after Sentry is
+   * initialised. Lives here rather than in {@code App} so that ops, a leaf every context logs
+   * through, does not depend on the composition root (TD173).
+   */
+  public static volatile boolean sentryAllowed = false;
 
   private static AtomicInteger rating;
 
@@ -74,7 +80,7 @@ public class Log {
   }
 
   public static void sentry(Throwable e) {
-    if (!App.sentryAllowed) {
+    if (!sentryAllowed) {
       logger.warn(e);
       return;
     }
@@ -95,7 +101,7 @@ public class Log {
   }
 
   public static void sentry(String msg) {
-    if (!App.sentryAllowed) {
+    if (!sentryAllowed) {
       return;
     }
     int currentRating = rating.getAndIncrement();

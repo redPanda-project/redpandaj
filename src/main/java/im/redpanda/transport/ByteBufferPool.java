@@ -1,6 +1,5 @@
 package im.redpanda.transport;
 
-import im.redpanda.App;
 import im.redpanda.ops.Log;
 import io.sentry.Breadcrumb;
 import io.sentry.Sentry;
@@ -219,7 +218,7 @@ public class ByteBufferPool {
         out.append(e.toString()).append("\n");
       }
 
-      if (App.sentryAllowed) {
+      if (Log.sentryAllowed) {
         Breadcrumb breadcrumb = new Breadcrumb();
         breadcrumb.setCategory("IO");
         breadcrumb.setMessage("bytebuffer: " + byteBuffer);

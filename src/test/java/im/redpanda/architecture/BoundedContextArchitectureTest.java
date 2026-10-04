@@ -5,11 +5,14 @@ import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPac
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
+import im.redpanda.ops.OpsCycleFixture;
+import im.redpanda.transport.Peer;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -44,7 +47,8 @@ class BoundedContextArchitectureTest {
     "im.redpanda.dht.nodeinfo", // N-DHT record schema
     "im.redpanda.identity", // N-IDENTITY
     "im.redpanda.identity.crypt", // N-IDENTITY supporting library
-    "im.redpanda.ops", // N-OPS
+    "im.redpanda.ops", // N-OPS leaf utilities (Log, Settings, Job, JobScheduler, ...)
+    "im.redpanda.ops.driver", // N-OPS drivers that reach into other contexts (console, autosave)
     "im.redpanda.updater", // N-UPDATER
     "im.redpanda.crypt.legacy", // frozen serialization tombstone, see LegacyNodeId
     "im.redpanda.proto", // generated, java_package of commands.proto
@@ -104,6 +108,59 @@ class BoundedContextArchitectureTest {
             .because(
                 "NodeId/KademliaId/crypt are used by every other context, so identity must not"
                     + " depend on any of them");
+
+    rule.check(productionClasses);
+  }
+
+  /**
+   * TD173: every context logs, reads settings and schedules jobs through {@code ops}, so an edge
+   * from {@code ops} into another context (or into the composition root {@code App}) closes a
+   * package cycle. {@code core} is allowed: the {@code ServerContext} hub cycle is the accepted
+   * remainder of TD173, not something this rule can cut.
+   */
+  static ArchRule opsUtilitiesDependOnlyOnCoreAndIdentity() {
+    return noClasses()
+        .that()
+        .resideInAPackage("im.redpanda.ops")
+        .should()
+        .dependOnClassesThat(
+            resideInAPackage("im.redpanda..")
+                .and(
+                    not(
+                        resideInAnyPackage(
+                            "im.redpanda.ops", "im.redpanda.core", "im.redpanda.identity.."))))
+        .because(
+            "every context depends on ops, so an edge from ops into a context other than the"
+                + " core hub is a package cycle (TD173); drivers that need other contexts live in"
+                + " ops.driver");
+  }
+
+  @Test
+  void opsUtilitiesDoNotReachIntoOtherContexts() {
+    opsUtilitiesDependOnlyOnCoreAndIdentity().check(productionClasses);
+  }
+
+  @Test
+  void opsRule_rejectsAnOpsClassThatReachesIntoAContext() {
+    JavaClasses offender = new ClassFileImporter().importClasses(OpsCycleFixture.class, Peer.class);
+
+    assertThatThrownBy(() -> opsUtilitiesDependOnlyOnCoreAndIdentity().check(offender))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("OpsCycleFixture");
+  }
+
+  @Test
+  void onlyTheCompositionRootStartsTheOpsDrivers() {
+    ArchRule rule =
+        noClasses()
+            .that()
+            .resideOutsideOfPackages("im.redpanda", "im.redpanda.ops.driver")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("im.redpanda.ops.driver..")
+            .because(
+                "the drivers reach into transport and routing; a context depending on them would"
+                    + " turn ops.driver into the next cycle hub (TD173)");
 
     rule.check(productionClasses);
   }
