@@ -522,6 +522,11 @@
                                  and run ITs against the classes directory instead of the jar. -->
                             <useModulePath>false</useModulePath>
                             <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                            <systemPropertyVariables>
+                                <!-- same HashCash skip as Surefire (TD176); child nodes launched
+                                     by the ITs do not inherit it and still grind -->
+                                <redpanda.hashcash.skip>true</redpanda.hashcash.skip>
+                            </systemPropertyVariables>
                         </configuration>
                     </plugin>
                 </plugins>

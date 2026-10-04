@@ -134,15 +134,28 @@ class NodeIdTest {
 
   @Test
   void defaultConstructorGrindsHashCashUnlessSkipPropertyIsSet() {
-    // Surefire sets the skip property for speed (pom.xml); a real node never sets it.
-    assertEquals("true", System.getProperty(NodeId.HASHCASH_SKIP_PROPERTY));
-    String previous = System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, "false");
+    // Surefire sets the skip property for speed (pom.xml); a real node never sets it. Relies on
+    // sequential test execution within a fork (no JUnit parallel config).
+    String previous = System.getProperty(NodeId.HASHCASH_SKIP_PROPERTY);
     try {
+      System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, "false");
       for (int i = 0; i < 5; i++) {
         assertTrue(new NodeId().checkValid());
       }
+
+      // with the skip on, ~255/256 ids are invalid; 64 valid in a row is practically impossible
+      System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, "true");
+      boolean sawInvalid = false;
+      for (int i = 0; i < 64 && !sawInvalid; i++) {
+        sawInvalid = !new NodeId().checkValid();
+      }
+      assertTrue(sawInvalid);
     } finally {
-      System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, previous);
+      if (previous == null) {
+        System.clearProperty(NodeId.HASHCASH_SKIP_PROPERTY);
+      } else {
+        System.setProperty(NodeId.HASHCASH_SKIP_PROPERTY, previous);
+      }
     }
   }
 
