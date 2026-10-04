@@ -64,7 +64,7 @@ To reduce metadata leaks, we assume that untrusted intermediaries must not be ab
 
 ### Requirements
 - JDK **21+**
-- Maven **3.x**
+- Maven **3.9+** (required by git-commit-id-maven-plugin)
 - Git (optional, but recommended)
 
 ### Build a runnable jar

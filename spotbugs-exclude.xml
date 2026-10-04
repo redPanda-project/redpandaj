@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Generated protobuf code (target/generated-sources/protobuf, java_package of the .proto
+         files under src/main/proto), not ours to fix (TD073). No hand-written production class lives in
+         these packages (only tests do, and SpotBugs does not analyse them). -->
+    <Match>
+        <Package name="~im\.redpanda\.(proto|outbound\.v1)"/>
+    </Match>
+</FindBugsFilter>
