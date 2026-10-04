@@ -6,12 +6,16 @@ import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import im.redpanda.outbound.v1.FlaschenpostPutResponse;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.outbound.v1.RoutingAck;
 import im.redpanda.outbound.v1.Status;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.routing.GMAck;
+import im.redpanda.routing.GMStoreManager;
 import im.redpanda.routing.GMType;
+import im.redpanda.routing.GarlicMessage;
 import im.redpanda.routing.OhForwarder;
 import im.redpanda.transport.Peer;
 import im.redpanda.transport.PeerTestSupport;
@@ -335,16 +339,19 @@ class MailboxDepositPolicyTest {
 
   // --- legacy garlic path ----------------------------------------------------------------------
 
+  /**
+   * T144/TD094: node-to-node garlic carries no oh_id and its 20-byte destination is a node id. A
+   * locally registered OH whose id happens to equal that node id must not swallow the message (the
+   * removed shared-namespace fallback deposited it into the mailbox instead of forwarding it).
+   */
   @Test
-  void emptyOhId_depositsViaGarlicMessageDestination() {
-    registerOh(ohId);
-    byte[] body = "legacy body".getBytes(StandardCharsets.UTF_8);
-    ByteBuffer gm = ByteBuffer.allocate(1 + 4 + KademliaId.ID_LENGTH_BYTES + body.length);
-    gm.put(GMType.GARLIC_MESSAGE.getId());
-    gm.putInt(4 + KademliaId.ID_LENGTH_BYTES + body.length);
-    ohId.writeTo(gm);
-    gm.put(body);
-    byte[] gmBytes = gm.array();
+  void emptyOhId_garlicDestinationEqualToRegisteredOh_isNotDepositedButHandledAsGarlic() {
+    NodeId target = NodeId.importPublic(hostNode.getNodeId().exportPublic());
+    OhId shadowingOh = OhId.fromBytes(target.getKademliaId().getBytes());
+    registerOh(shadowingOh);
+    GarlicMessage garlic = new GarlicMessage(node, target);
+    garlic.addGMContent(new GMAck(4242));
+    byte[] gmBytes = garlic.getContent();
 
     Peer sender = lightClient(9414);
     MailboxDepositPolicy.handlePut(
@@ -353,11 +360,14 @@ class MailboxDepositPolicyTest {
         FlaschenpostPut.newBuilder().setContent(ByteString.copyFrom(gmBytes)).build(),
         sender);
 
-    List<MailItem> items = mailboxStore.fetchMessages(ohId, 10, 0);
-    assertThat(items).hasSize(1);
-    assertThat(items.get(0).getPayload().toByteArray()).isEqualTo(gmBytes);
+    assertThat(mailboxStore.fetchMessages(shadowingOh, 10, 0))
+        .as("a garlic node destination is never looked up as an oh_id")
+        .isEmpty();
+    assertThat(GMStoreManager.put(new GarlicMessage(node, gmBytes)))
+        .as("the frame went through GMParser.parse (dedup store already has it)")
+        .isTrue();
     assertThat(PeerTestSupport.writeBuffer(sender).position())
-        .as("the legacy path stays fire-and-forget")
+        .as("the garlic path stays fire-and-forget")
         .isZero();
   }
 

@@ -61,8 +61,8 @@ class OhIdTest {
 
   @Test
   void garlicLengthIsTheKademliaIdWidth() {
-    // The shared namespace TD094 describes: the fixed 20-byte garlic destination slot is the oh_id
-    // width. If this ever stops holding, tryDepositToLocalOh and the CMD_DELIVER paths break.
+    // The fixed 20-byte garlic destination slot is the oh_id width. If this ever stops holding,
+    // the CMD_DELIVER paths and ReturnPath.ack_oh_id break.
     assertThat(OhId.GARLIC_BYTES).isEqualTo(KademliaId.ID_LENGTH_BYTES).isEqualTo(20);
   }
 

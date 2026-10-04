@@ -3,11 +3,13 @@ package im.redpanda.transport;
 import static com.google.protobuf.ByteString.copyFrom;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.protobuf.ByteString;
 import im.redpanda.core.Command;
 import im.redpanda.core.ServerContext;
 import im.redpanda.identity.KademliaId;
+import im.redpanda.identity.NodeId;
 import im.redpanda.mailbox.OhId;
 import im.redpanda.mailbox.OutboundHandleStore;
 import im.redpanda.mailbox.OutboundHandleStore.HandleRecord;
@@ -16,6 +18,9 @@ import im.redpanda.mailbox.OutboundService;
 import im.redpanda.mailbox.OutboundStore;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.proto.FlaschenpostPut;
+import im.redpanda.routing.GMAck;
+import im.redpanda.routing.GMStoreManager;
+import im.redpanda.routing.GarlicMessage;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -266,27 +271,23 @@ class InboundCommandProcessorFlaschenpostPutTest {
   }
 
   /**
-   * When {@code oh_id} is absent and the content is a valid GarlicMessage with a destination that
-   * matches a registered OH, {@code tryDepositToLocalOh} deposits the message and returns early.
+   * T144/TD094: when {@code oh_id} is absent, a garlic-shaped payload whose 20-byte destination
+   * equals a registered OH is no longer deposited into that mailbox — the garlic destination is a
+   * node id and is never looked up as an oh_id (the removed shared-namespace fallback).
    */
   @Test
-  void flaschenpostPut_legacyPathDepositsViaGarlicMessageDestination() {
-    OhId ohId = sampleOhId();
+  void flaschenpostPut_withoutOhId_doesNotDepositViaGarlicMessageDestination() {
+    // A real (decodable) garlic frame addressed to another node whose KademliaId equals a
+    // registered OH id — the shadowing case the removed fallback got wrong.
+    NodeId target =
+        NodeId.importPublic(ServerContext.buildDefaultServerContext().getNodeId().exportPublic());
+    OhId ohId = OhId.fromBytes(target.getKademliaId().getBytes());
     registerOh(ohId);
+    GarlicMessage garlic = new GarlicMessage(ctx, target);
+    garlic.addGMContent(new GMAck(4711));
+    byte[] gmBytes = garlic.getContent();
 
-    // Build a GarlicMessage-formatted payload: [1 gmType][4 overallLen][20 destinationId][data]
-    byte[] extraData = "legacy-payload-body".getBytes(StandardCharsets.UTF_8);
-    int overallLen = 4 + KademliaId.ID_LENGTH_BYTES + extraData.length;
-    ByteBuffer gm = ByteBuffer.allocate(1 + 4 + KademliaId.ID_LENGTH_BYTES + extraData.length);
-    gm.put(im.redpanda.routing.GMType.GARLIC_MESSAGE.getId());
-    gm.putInt(overallLen);
-    ohId.writeTo(gm);
-    gm.put(extraData);
-    gm.flip();
-    byte[] gmBytes = new byte[gm.remaining()];
-    gm.get(gmBytes);
-
-    // No oh_id set → handler will try tryDepositToLocalOh → deposit succeeds
+    // No oh_id set → garlic path only, the destination is not treated as an oh_id
     FlaschenpostPut putMsg = FlaschenpostPut.newBuilder().setContent(copyFrom(gmBytes)).build();
     byte[] putData = putMsg.toByteArray();
 
@@ -298,19 +299,18 @@ class InboundCommandProcessorFlaschenpostPutTest {
 
     assertEquals(1 + 4 + putData.length, consumed);
 
-    // Verify the message was deposited via the legacy tryDepositToLocalOh path
     List<MailItem> items = mailboxStore.fetchMessages(ohId, 10, 0);
-    assertEquals(1, items.size());
-    assertArrayEquals(gmBytes, items.get(0).getPayload().toByteArray());
+    assertEquals(0, items.size());
+    // the frame reached GMParser.parse: its dedup store already holds it
+    assertTrue(GMStoreManager.put(new GarlicMessage(ctx, gmBytes)));
   }
 
   /**
-   * When {@code oh_id} is absent and content is too short for a GarlicMessage header, {@code
-   * tryDepositToLocalOh} returns false. The handler then falls through to GMParser which processes
-   * the valid ACK payload. This exercises the {@code content.length < headerLen} guard.
+   * When {@code oh_id} is absent and content is a short (9-byte) ACK frame, the handler hands it to
+   * GMParser, which processes the valid ACK payload without throwing.
    */
   @Test
-  void flaschenpostPut_withContentShorterThanGarlicHeader_tryDepositReturnsFalse() {
+  void flaschenpostPut_withoutOhId_ackFrame_isParsedAsAck() {
     // ACK payload is 9 bytes, shorter than GarlicMessage header (25 bytes)
     byte[] ackBytes = buildAckPayload(33);
 
