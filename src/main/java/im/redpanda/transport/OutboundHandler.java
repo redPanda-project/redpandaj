@@ -228,8 +228,8 @@ public class OutboundHandler extends Thread {
    * <p>The peer list identifies an address by its string ({@code ip + ":" + port}), and so does
    * every guard that keeps us from holding two objects for one endpoint: {@code PeerList.add}'s
    * address branch, which lets a re-added seed collapse onto the peer that already owns the
-   * address, and {@link #isAddressAlreadyInUse}. A seed kept as {@code seed1.redpanda.im} never
-   * matches the same node known as {@code 91.98.79.117} — from its inbound connection, from
+   * address, and {@link #isAddressAlreadyInUse}. A seed kept as {@code node.example.org} never
+   * matches the same node known as {@code 203.0.113.7} — from its inbound connection, from
    * peer-list gossip or from disk — so every reseed (every 10 minutes while the list is small, i.e.
    * permanently on a two-node network) would put an id-less duplicate next to it, dial it, and the
    * completed handshake would merge into the owner by identity and replace its live connection

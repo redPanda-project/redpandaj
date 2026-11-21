@@ -3,6 +3,7 @@ package im.redpanda.ops;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,7 @@ class SettingsKnownNodesTest {
    * shipping it as a bootstrap peer made every unconfigured node dial itself (T86). Local setups
    * pass their loopback seeds explicitly.
    */
-  private static final String[] DEFAULTS = {"seed1.redpanda.im:59558", "seed2.redpanda.im:59558"};
+  private static final String[] DEFAULTS = {"5.75.137.166:59558", "46.224.156.238:59558"};
 
   @Test
   void defaultsDoNotContainLoopback() {
@@ -21,6 +22,19 @@ class SettingsKnownNodesTest {
       assertFalse(
           im.redpanda.identity.crypt.Utils.isLocalAddress(defaultNode.split(":")[0]),
           "loopback must not be a default bootstrap peer: " + defaultNode);
+    }
+  }
+
+  /**
+   * T158: an unconfigured node must be able to bootstrap without any DNS record existing. The names
+   * T154a shipped were never created, which left such a node without a single seed.
+   */
+  @Test
+  void defaultsAreIpLiterals() {
+    for (String defaultNode : Settings.parseKnownNodes(null)) {
+      assertTrue(
+          im.redpanda.identity.crypt.Utils.isIpLiteral(defaultNode.split(":")[0]),
+          "a default bootstrap peer must not need a DNS lookup: " + defaultNode);
     }
   }
 
@@ -74,18 +88,16 @@ class SettingsKnownNodesTest {
   }
 
   /**
-   * Operator input is trusted and must keep working — the default seed list consists of names
-   * (T154a). Lived in {@code InboundCommandProcessorPeerListFilterTest} until T118 moved {@code
-   * Settings} into the ops context; it never tested the peer-list filter, only this parser.
+   * Operator input is trusted and must keep working — host names stay valid in a configured seed
+   * list even though the defaults are IP literals (T158). Lived in {@code
+   * InboundCommandProcessorPeerListFilterTest} until T118 moved {@code Settings} into the ops
+   * context; it never tested the peer-list filter, only this parser.
    */
   @Test
   void configuredSeedsMayUseHostNames() {
     assertArrayEquals(
         new String[] {"seed1.redpanda.im:59558", "my-host.example:1", "localhost:65535"},
         Settings.parseKnownNodes("seed1.redpanda.im:59558, my-host.example:1,localhost:65535"));
-    org.assertj.core.api.Assertions.assertThat(Settings.parseKnownNodes(null))
-        .as("the default seeds are DNS names, so a seed can move without a release")
-        .containsExactly("seed1.redpanda.im:59558", "seed2.redpanda.im:59558");
   }
 
   @Test
