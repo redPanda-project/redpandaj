@@ -19,7 +19,7 @@
 
         <bcprov.version>1.85</bcprov.version>
         <commons-text.version>1.15.0</commons-text.version>
-        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <commons-lang3.version>3.21.0</commons-lang3.version>
         <!-- Deliberately overrides mapdb 3.1.0's own range [1.9.22,1.9.999) (TD070). -->
         <kotlin.version>2.4.10</kotlin.version>
         <!-- One version for every org.apache.logging.log4j artifact, bumps stay atomic (TD069). -->
