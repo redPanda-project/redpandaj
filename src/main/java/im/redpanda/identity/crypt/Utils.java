@@ -15,16 +15,6 @@ import org.bouncycastle.util.encoders.Hex;
 
 public class Utils {
 
-  private static final MessageDigest digest;
-
-  static {
-    try {
-      digest = MessageDigest.getInstance("SHA-256");
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   private Utils() {}
 
   /** See {@link Utils#doubleDigest(byte[], int, int)}. */
@@ -37,11 +27,19 @@ public class Utils {
    * This is standard procedure in Bitcoin. The resulting hash is in big endian form.
    */
   public static byte[] doubleDigest(byte[] input, int offset, int length) {
-    synchronized (digest) {
-      digest.reset();
-      digest.update(input, offset, length);
-      byte[] first = digest.digest();
-      return digest.digest(first);
+    // One instance per call: a MessageDigest is stateful, so a shared one needs a lock around
+    // every use and serialises all callers.
+    MessageDigest digest = sha256();
+    digest.update(input, offset, length);
+    byte[] first = digest.digest();
+    return digest.digest(first);
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e); // every Java runtime has to provide SHA-256
     }
   }
 
@@ -195,8 +193,8 @@ public class Utils {
       // injection this predicate exists to stop, and re-checking after an off-thread resolve would
       // still race the next DNS answer.
       //
-      // Names remain fine as *operator* input: Settings.knownNodes ships seed1/seed2.redpanda.im
-      // and REDPANDA_KNOWN_NODES may carry names. Those reach the peer list through
+      // Names remain fine as *operator* input: REDPANDA_KNOWN_NODES / -Dredpanda.knownNodes may
+      // carry names (the shipped defaults are IP literals). Those reach the peer list through
       // OutboundHandler.addKnownNodes(), which resolves them to IP literals there, and never pass
       // through here as names — configured seeds are trusted, an unauthenticated peer is not. A
       // peer that wants to be reachable can advertise its address.

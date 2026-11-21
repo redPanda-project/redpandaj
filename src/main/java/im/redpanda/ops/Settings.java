@@ -116,15 +116,16 @@ public class Settings {
    * passes its loopback seeds explicitly via {@code REDPANDA_KNOWN_NODES} / {@code
    * -Dredpanda.knownNodes}, and for a hand-started local node the same one variable does the job.
    *
-   * <p>The defaults are DNS names (T154a) so that moving a seed to another host is a DNS change,
-   * not a release: {@code seed1.redpanda.im} and {@code seed2.redpanda.im}, both on {@link
-   * #DEFAULT_PORT}. They only apply to a node started without any configuration — every testnet
-   * node sets {@code REDPANDA_KNOWN_NODES} explicitly. Names are resolved to IP literals when the
-   * seeds are added to the peer list ({@code OutboundHandler.addKnownNodes}), which is what lets
-   * the peer list recognise a seed as the same endpoint when that node also reaches us by address.
+   * <p>The defaults are fixed IP literals (T158), so that bootstrapping does not depend on a DNS
+   * record: two of the public testnet nodes, both on {@link #DEFAULT_PORT}. They only apply to a
+   * node started without any configuration — every testnet node sets {@code REDPANDA_KNOWN_NODES}
+   * explicitly. Host names stay valid there: they are resolved to IP literals when the seeds are
+   * added to the peer list ({@code OutboundHandler.addKnownNodes}), which is what lets the peer
+   * list recognise a seed as the same endpoint when that node also reaches us by address.
    */
+  @SuppressWarnings("java:S1313") // deliberate: the bootstrap seeds are fixed addresses (T158)
   private static final String[] DEFAULT_KNOWN_NODES = {
-    "seed1.redpanda.im:59558", "seed2.redpanda.im:59558"
+    "5.75.137.166:59558", "46.224.156.238:59558"
   };
 
   /**
