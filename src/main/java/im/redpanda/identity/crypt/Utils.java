@@ -15,16 +15,6 @@ import org.bouncycastle.util.encoders.Hex;
 
 public class Utils {
 
-  private static final MessageDigest digest;
-
-  static {
-    try {
-      digest = MessageDigest.getInstance("SHA-256");
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   private Utils() {}
 
   /** See {@link Utils#doubleDigest(byte[], int, int)}. */
@@ -37,11 +27,19 @@ public class Utils {
    * This is standard procedure in Bitcoin. The resulting hash is in big endian form.
    */
   public static byte[] doubleDigest(byte[] input, int offset, int length) {
-    synchronized (digest) {
-      digest.reset();
-      digest.update(input, offset, length);
-      byte[] first = digest.digest();
-      return digest.digest(first);
+    // One instance per call: a MessageDigest is stateful, so a shared one needs a lock around
+    // every use and serialises all callers.
+    MessageDigest digest = sha256();
+    digest.update(input, offset, length);
+    byte[] first = digest.digest();
+    return digest.digest(first);
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e); // every Java runtime has to provide SHA-256
     }
   }
 
