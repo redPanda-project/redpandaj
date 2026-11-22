@@ -73,6 +73,10 @@ public class KademliaSearchJob extends Job {
       Long blacklistedTill = kademliaIdSearchBlacklist.get(id);
       if (blacklistedTill == null || currentTimeMillis - blacklistedTill >= 0) {
         kademliaIdSearchBlacklist.put(id, currentTimeMillis + BLACKLIST_KEY_FOR);
+      } else if (!rejectsBlacklistedKey()) {
+        // locally originated lookup (see rejectsBlacklistedKey): runs anyway, the entry stays
+        // so peer-triggered searches for this key keep being cut off
+        logger.debug("{} for blacklisted key {} runs anyway", getClass().getSimpleName(), id);
       } else {
         // todo: maybe we should inform the peer that he should retry a KadSearch in
         // some seconds?
@@ -182,6 +186,19 @@ public class KademliaSearchJob extends Job {
   }
 
   protected void fail() {}
+
+  /**
+   * Whether a search for a key that is still on the anti-loop blacklist fails right away. The
+   * blacklist exists for searches that peers trigger on our behalf (a {@code KADEMLIA_GET} we
+   * cannot answer locally starts {@link KademliaSearchJobAnswerPeer}): two nodes asking each other
+   * for the same missing key must not ping-pong. A lookup this node needs for its own work (T162:
+   * {@code OhResolveJob} for every forwarded deposit) is not part of such a loop — failing it only
+   * because an earlier lookup or a peer's search touched the same key in the last 30 s drops the
+   * deposit. Such subclasses return {@code false}; they still blacklist the key.
+   */
+  protected boolean rejectsBlacklistedKey() {
+    return true;
+  }
 
   protected ArrayList<KadContent> success() {
 
