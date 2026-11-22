@@ -73,21 +73,24 @@ public class OhResolveJob extends KademliaSearchJob {
       onResolved.accept(cached);
       return;
     }
-    if (!coalescer.join(ohId, new OhResolveCoalescer.Waiter(onResolved, onFailed), now)) {
-      return; // attached to the lookup already in flight for this OH
+    OhResolveCoalescer.Joined joined =
+        coalescer.join(ohId, new OhResolveCoalescer.Waiter(onResolved, onFailed), now);
+    if (!joined.mustStart()) {
+      return; // attached to the lookup in flight, or rejected (onFailed already ran)
     }
+    OhResolveCoalescer.Lookup lookup = joined.lookup();
     try {
       new DelayedSearchJob(
               serverContext,
               ohId,
-              record -> coalescer.complete(ohId, record, System.currentTimeMillis()),
-              () -> coalescer.complete(ohId, null, System.currentTimeMillis()))
+              record -> coalescer.complete(ohId, lookup, record, System.currentTimeMillis()),
+              () -> coalescer.complete(ohId, lookup, null, System.currentTimeMillis()))
           .start();
     } catch (RuntimeException e) {
       // scheduling failed (e.g. executor shutting down): fail every attached caller now instead of
       // leaving them to the in-flight timeout
       logger.debug("could not schedule OH lookup for {}: {}", ohId, e.getMessage());
-      coalescer.complete(ohId, null, System.currentTimeMillis());
+      coalescer.complete(ohId, lookup, null, System.currentTimeMillis());
     }
   }
 
@@ -123,6 +126,22 @@ public class OhResolveJob extends KademliaSearchJob {
   @Override
   protected boolean rejectsBlacklistedKey() {
     return false;
+  }
+
+  /**
+   * Review K2: every ending of this job reports back. {@code Job.run} calls {@code done()} when
+   * {@code init()} throws, {@code handleWorkFailure} when {@code work()} throws, the 60 s limit
+   * calls it too — none of them runs {@link #fail()}. Without a callback the coalesced callers (and
+   * their deposit payloads) would wait until the entry is replaced. A regular ending has already
+   * fired one of the callbacks, so this is a no-op then.
+   */
+  @Override
+  public void done() {
+    try {
+      super.done();
+    } finally {
+      fireFailed();
+    }
   }
 
   private synchronized void fireResolved(OhNodeRecord record) {
@@ -168,6 +187,10 @@ public class OhResolveJob extends KademliaSearchJob {
       try {
         new OhResolveJob(serverContext, ohId, onResolved, onFailed).start();
         logger.debug("started delayed OH resolve search");
+      } catch (RuntimeException e) {
+        // the search could not be started: report it instead of leaving the callers waiting (K2)
+        logger.debug("could not start OH resolve search for {}: {}", ohId, e.getMessage());
+        onFailed.run();
       } finally {
         done();
       }

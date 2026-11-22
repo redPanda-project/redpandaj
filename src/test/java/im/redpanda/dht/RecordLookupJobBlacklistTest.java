@@ -13,7 +13,16 @@ import im.redpanda.mailbox.ReturnPath;
 import im.redpanda.outbound.v1.MailItem;
 import im.redpanda.transport.Peer;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -151,14 +160,36 @@ class RecordLookupJobBlacklistTest {
   }
 
   @Test
-  void concurrentLookups_eachGetExactlyOneAnswer() throws InterruptedException {
+  void concurrentLookups_shareOneSearch_eachGetExactlyOneAnswer() throws Exception {
     // End to end through RecordLookupJob.lookup with the real job scheduler: unknown key, no
-    // peers → every lookup gets its own not-found answer from the shared search, exactly once.
+    // peers; three lookups arrive from three threads at once → one scheduled search, and every
+    // lookup gets its own not-found answer from it, exactly once.
     KademliaId key = ChannelDht.rendezvousKademliaId(randomBytes(32), System.currentTimeMillis());
     List<ReturnPath> paths = List.of(localReturnPath(), localReturnPath(), localReturnPath());
-    for (ReturnPath path : paths) {
-      RecordLookupJob.lookup(node, key, path);
+    CountDownLatch go = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(paths.size());
+    try {
+      List<Future<?>> calls = new ArrayList<>();
+      for (ReturnPath path : paths) {
+        calls.add(
+            pool.submit(
+                () -> {
+                  go.await();
+                  RecordLookupJob.lookup(node, key, path);
+                  return null;
+                }));
+      }
+      go.countDown();
+      for (Future<?> call : calls) {
+        call.get(10, TimeUnit.SECONDS);
+      }
+    } finally {
+      pool.shutdownNow();
     }
+    // The window stays open for the 0–1.5 s jitter; the three calls arrive within microseconds.
+    assertThat(node.getRecordLookupCoalescer().searchesScheduled())
+        .as("one search for all lookups that arrived while it waited")
+        .isEqualTo(1);
     for (ReturnPath path : paths) {
       assertThat(singleAnswer(path)).containsExactly(RecordLookupJob.RESPONSE_NOT_FOUND);
     }
@@ -167,5 +198,97 @@ class RecordLookupJobBlacklistTest {
       assertThat(mailbox.fetchMessages(path.ackOhId(), 10, 0)).hasSize(1);
     }
     assertThat(node.getRecordLookupCoalescer().waiting(key)).isZero();
+  }
+
+  @Test
+  void k5_concurrentJoinsWhileAnotherThreadCloses_everyLookupInExactlyOneSearch() throws Exception {
+    RecordLookupCoalescer coalescer = new RecordLookupCoalescer();
+    KademliaId key = new KademliaId();
+    int lookups = 48;
+    List<ReturnPath> paths = new ArrayList<>();
+    for (int i = 0; i < lookups; i++) {
+      paths.add(localReturnPath());
+    }
+    ConcurrentLinkedQueue<RecordLookupCoalescer.Window> opened = new ConcurrentLinkedQueue<>();
+    List<ReturnPath> answered = Collections.synchronizedList(new ArrayList<>());
+    CountDownLatch go = new CountDownLatch(1);
+    AtomicBoolean joinsDone = new AtomicBoolean();
+    ExecutorService pool = Executors.newFixedThreadPool(lookups + 1);
+    try {
+      List<Future<?>> joins = new ArrayList<>();
+      for (ReturnPath path : paths) {
+        joins.add(
+            pool.submit(
+                () -> {
+                  go.await();
+                  RecordLookupCoalescer.Window window =
+                      coalescer.join(key, path, System.currentTimeMillis());
+                  if (window != null) {
+                    opened.add(window);
+                  }
+                  return null;
+                }));
+      }
+      Future<?> closer =
+          pool.submit(
+              () -> {
+                go.await();
+                while (!joinsDone.get() || !opened.isEmpty()) {
+                  RecordLookupCoalescer.Window next = opened.poll();
+                  if (next != null) {
+                    answered.addAll(coalescer.close(key, next));
+                  }
+                }
+                return null;
+              });
+      go.countDown();
+      for (Future<?> join : joins) {
+        join.get(10, TimeUnit.SECONDS);
+      }
+      joinsDone.set(true);
+      closer.get(10, TimeUnit.SECONDS);
+    } finally {
+      pool.shutdownNow();
+    }
+    assertThat(answered)
+        .as("every lookup is answered by exactly one search")
+        .hasSize(lookups)
+        .containsExactlyInAnyOrderElementsOf(paths);
+    assertThat(coalescer.waiting(key)).isZero();
+  }
+
+  @Test
+  void k4_aReturnPathThatThrows_doesNotCostTheOthersTheirAnswer() {
+    // The deposit of the answer into the first lookup's ack mailbox throws (any runtime failure
+    // while answering one return path); the second lookup must still get its answer.
+    OutboundStore store = OutboundStore.inMemory();
+    OhId brokenOh = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
+    node.setOutboundService(
+        new OutboundService(store) {
+          @Override
+          public DepositResult depositMessage(OhId ohId, byte[] payload, byte[] sessionTag) {
+            if (ohId.equals(brokenOh)) {
+              throw new IllegalStateException("answer for this lookup fails");
+            }
+            return super.depositMessage(ohId, payload, sessionTag);
+          }
+        });
+    long now = System.currentTimeMillis();
+    OhId goodOh = OhId.fromBytes(randomBytes(KademliaId.ID_LENGTH_BYTES));
+    store
+        .handles()
+        .put(goodOh, new OutboundHandleStore.HandleRecord(new byte[65], now, now + 60_000));
+    ReturnPath broken = new ReturnPath(brokenOh, randomBytes(16), List.of());
+    ReturnPath good = new ReturnPath(goodOh, randomBytes(16), List.of());
+
+    KademliaId key = ChannelDht.rendezvousKademliaId(randomBytes(32), now);
+    RecordLookupJob job = new RecordLookupJob(node, key, List.of(broken, good));
+    job.init();
+    job.fail(); // no record found → answer every lookup with not-found
+
+    List<MailItem> items = store.mailbox().fetchMessages(goodOh, 10, 0);
+    assertThat(items).as("the lookup after the failing one is still answered").hasSize(1);
+    assertThat(items.get(0).getPayload().toByteArray())
+        .containsExactly(RecordLookupJob.RESPONSE_NOT_FOUND);
   }
 }

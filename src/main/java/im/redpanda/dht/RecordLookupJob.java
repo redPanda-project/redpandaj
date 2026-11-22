@@ -112,7 +112,12 @@ public class RecordLookupJob extends KademliaSearchJob {
     if (!answered) {
       answered = true;
       for (ReturnPath returnPath : returnPaths) {
-        respond(serverContext, searchedKey, returnPath, record);
+        // review K4: a failure for one return path must not cost the other lookups their answer
+        try {
+          respond(serverContext, searchedKey, returnPath, record);
+        } catch (RuntimeException e) {
+          logger.debug("could not answer a channel record lookup: {}", e.getMessage());
+        }
       }
     }
   }
