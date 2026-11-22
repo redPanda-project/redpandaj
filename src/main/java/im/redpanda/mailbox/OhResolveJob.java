@@ -85,6 +85,17 @@ public class OhResolveJob extends KademliaSearchJob {
     fireFailed();
   }
 
+  /**
+   * T162: every forwarded deposit resolves its OH, and a reverse-garlic reply and the R-ACK of the
+   * message it answers target the same OH at the same exit node milliseconds apart. Rejecting the
+   * second lookup on the anti-loop blacklist dropped the reply after the parked retry hit the same
+   * entry (HANDLE_EXPIRED after 15–35 s). Origin lookups are never part of a search loop.
+   */
+  @Override
+  protected boolean rejectsBlacklistedKey() {
+    return false;
+  }
+
   private synchronized void fireResolved(OhNodeRecord record) {
     if (!callbackFired) {
       callbackFired = true;
