@@ -160,10 +160,10 @@ class RecordLookupJobBlacklistTest {
   }
 
   @Test
-  void concurrentLookups_shareOneSearch_eachGetExactlyOneAnswer() throws Exception {
+  void concurrentLookups_eachGetExactlyOneAnswer() throws Exception {
     // End to end through RecordLookupJob.lookup with the real job scheduler: unknown key, no
-    // peers; three lookups arrive from three threads at once → one scheduled search, and every
-    // lookup gets its own not-found answer from it, exactly once.
+    // peers; three lookups arrive from three threads at once, and every lookup gets its own
+    // not-found answer, exactly once.
     KademliaId key = ChannelDht.rendezvousKademliaId(randomBytes(32), System.currentTimeMillis());
     List<ReturnPath> paths = List.of(localReturnPath(), localReturnPath(), localReturnPath());
     CountDownLatch go = new CountDownLatch(1);
@@ -186,10 +186,13 @@ class RecordLookupJobBlacklistTest {
     } finally {
       pool.shutdownNow();
     }
-    // The window stays open for the 0–1.5 s jitter; the three calls arrive within microseconds.
+    // Usually one search: the window stays open for the 0–1.5 s jitter and the calls arrive
+    // within microseconds. A jitter sample near zero or a delayed caller thread legitimately
+    // opens another window, so the count is only bounded here; that lookups arriving in an open
+    // window share its search is pinned by the coalescer tests, which do not depend on timing.
     assertThat(node.getRecordLookupCoalescer().searchesScheduled())
-        .as("one search for all lookups that arrived while it waited")
-        .isEqualTo(1);
+        .as("at least one search, never more than one per lookup")
+        .isBetween(1L, (long) paths.size());
     for (ReturnPath path : paths) {
       assertThat(singleAnswer(path)).containsExactly(RecordLookupJob.RESPONSE_NOT_FOUND);
     }
@@ -233,7 +236,9 @@ class RecordLookupJobBlacklistTest {
           pool.submit(
               () -> {
                 go.await();
-                while (!joinsDone.get() || !opened.isEmpty()) {
+                // interruptible: shutdownNow() must end this loop when a join failed above
+                while (!Thread.currentThread().isInterrupted()
+                    && (!joinsDone.get() || !opened.isEmpty())) {
                   RecordLookupCoalescer.Window next = opened.poll();
                   if (next != null) {
                     answered.addAll(coalescer.close(key, next));

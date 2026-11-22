@@ -255,7 +255,9 @@ class OhResolveCoalescerTest {
           pool.submit(
               () -> {
                 go.await();
-                while (!joinsDone.get() || !started.isEmpty()) {
+                // interruptible: shutdownNow() must end this loop when a join failed above
+                while (!Thread.currentThread().isInterrupted()
+                    && (!joinsDone.get() || !started.isEmpty())) {
                   OhResolveCoalescer.Lookup next = started.poll();
                   if (next != null) {
                     coalescer.complete(ohId, next, record(), System.currentTimeMillis());
@@ -312,8 +314,7 @@ class OhResolveCoalescerTest {
   }
 
   @Test
-  void resolve_concurrentCallsOnANodeWithoutPeers_oneLookup_eachCallerOneOutcome()
-      throws Exception {
+  void resolve_concurrentCallsOnANodeWithoutPeers_eachCallerOneOutcome() throws Exception {
     // End to end through OhResolveJob.resolve with the real job scheduler: no peers, so the
     // lookup fails; the callers arrive from several threads at once.
     ServerContext node = ServerContext.buildDefaultServerContext();
@@ -341,11 +342,13 @@ class OhResolveCoalescerTest {
     Thread.sleep(200); // a duplicate callback would land here
     assertThat(failed).hasValue(callers);
     assertThat(resolved).hasValue(0);
-    // The search waits 0–1.5 s of jitter before it starts; all callers arrive within
-    // microseconds, so they share one lookup (a second one would need a jitter sample below that).
+    // Usually one lookup: the search waits 0–1.5 s of jitter and the callers arrive within
+    // microseconds. A jitter sample near zero or a delayed caller thread legitimately starts
+    // another one (failures are not cached), so the count is only bounded here; that callers of
+    // a lookup in flight share it is pinned by the k5 tests above, which do not depend on timing.
     assertThat(node.getOhResolveCoalescer().lookupsStarted())
-        .as("one network lookup for all concurrent callers")
-        .isEqualTo(1);
+        .as("at least one network lookup, never more than one per caller")
+        .isBetween(1L, (long) callers);
     assertThat(node.getOhResolveCoalescer().waiting(ohId)).isZero();
   }
 
