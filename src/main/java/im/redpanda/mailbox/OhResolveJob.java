@@ -45,8 +45,10 @@ public class OhResolveJob extends KademliaSearchJob {
   }
 
   /**
-   * Resolves the host node for {@code ohId}: local KadStore first (no delay), then a randomized
-   * delayed DHT search. Exactly one of the callbacks fires.
+   * Resolves the host node for {@code ohId}: local KadStore first (no delay), then a host resolved
+   * within the last {@link OhResolveCoalescer#RESULT_TTL_MS}, then a randomized delayed DHT search
+   * — one per OH at a time: callers arriving while it runs attach to it (T162, see {@link
+   * OhResolveCoalescer}). Exactly one of the callbacks fires.
    */
   public static void resolve(
       ServerContext serverContext,
@@ -65,7 +67,28 @@ public class OhResolveJob extends KademliaSearchJob {
       }
     }
 
-    new DelayedSearchJob(serverContext, ohId, onResolved, onFailed).start();
+    OhResolveCoalescer coalescer = serverContext.getOhResolveCoalescer();
+    OhNodeRecord cached = coalescer.cached(ohId, now);
+    if (cached != null) {
+      onResolved.accept(cached);
+      return;
+    }
+    if (!coalescer.join(ohId, new OhResolveCoalescer.Waiter(onResolved, onFailed), now)) {
+      return; // attached to the lookup already in flight for this OH
+    }
+    try {
+      new DelayedSearchJob(
+              serverContext,
+              ohId,
+              record -> coalescer.complete(ohId, record, System.currentTimeMillis()),
+              () -> coalescer.complete(ohId, null, System.currentTimeMillis()))
+          .start();
+    } catch (RuntimeException e) {
+      // scheduling failed (e.g. executor shutting down): fail every attached caller now instead of
+      // leaving them to the in-flight timeout
+      logger.debug("could not schedule OH lookup for {}: {}", ohId, e.getMessage());
+      coalescer.complete(ohId, null, System.currentTimeMillis());
+    }
   }
 
   @Override
@@ -90,6 +113,12 @@ public class OhResolveJob extends KademliaSearchJob {
    * message it answers target the same OH at the same exit node milliseconds apart. Rejecting the
    * second lookup on the anti-loop blacklist dropped the reply after the parked retry hit the same
    * entry (HANDLE_EXPIRED after 15–35 s). Origin lookups are never part of a search loop.
+   *
+   * <p>Still needed next to the coalescing in {@link #resolve}: concurrent lookups are merged
+   * there, but a lookup that starts after the previous one for the same key ended — the T32 retry
+   * 15 s after a failed lookup (failures are not cached), or any lookup while a peer-triggered
+   * search ({@code KademliaSearchJobAnswerPeer}) holds the key — would otherwise still be rejected
+   * inside the 30 s window.
    */
   @Override
   protected boolean rejectsBlacklistedKey() {

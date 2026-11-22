@@ -50,6 +50,31 @@ class OhResolveJobBlacklistTest {
   }
 
   @Test
+  void ohLookup_stillBlacklistsItsKey_forPeerTriggeredSearches() {
+    // N4: the exemption must cover only the lookup itself. After an OhResolveJob for key K, a
+    // peer asking us for K (KADEMLIA_GET we cannot answer) must not start a recursive search.
+    ServerContext node = ServerContext.buildDefaultServerContext();
+    OhId ohId = randomOhId();
+    KademliaId key = OhDht.announceKademliaId(ohId, System.currentTimeMillis());
+    new OhResolveJob(node, ohId, record -> {}, () -> {}).init();
+
+    AtomicInteger failed = new AtomicInteger();
+    im.redpanda.dht.KademliaSearchJobAnswerPeer answer =
+        new im.redpanda.dht.KademliaSearchJobAnswerPeer(
+            node, key, new im.redpanda.transport.Peer("127.0.0.1", 9400), 7) {
+          @Override
+          protected void fail() {
+            failed.incrementAndGet();
+          }
+        };
+    answer.init();
+
+    assertThat(failed)
+        .as("a peer-triggered search for a key our own OH lookup holds must be cut off")
+        .hasValue(1);
+  }
+
+  @Test
   void recursivePeerSearch_staysBlacklisted() {
     // The blacklist itself is still needed against search loops between nodes: a peer-triggered
     // search for a key this node is already searching must not start a second one.
