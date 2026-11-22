@@ -1,6 +1,7 @@
 package im.redpanda.core;
 
 import im.redpanda.dht.KadStoreManager;
+import im.redpanda.dht.RecordLookupCoalescer;
 import im.redpanda.identity.KademliaId;
 import im.redpanda.identity.NodeId;
 import im.redpanda.mailbox.OhResolveCoalescer;
@@ -32,6 +33,9 @@ public class ServerContext {
 
   /** T162: coalesces and briefly caches this node's MS02b OH host lookups. */
   private final OhResolveCoalescer ohResolveCoalescer = new OhResolveCoalescer();
+
+  /** T162/N5: merges this node's channel-record lookups that wait for the same search. */
+  private final RecordLookupCoalescer recordLookupCoalescer = new RecordLookupCoalescer();
 
   private PeerList peerList = new PeerList();
   private NodeStore nodeStore;

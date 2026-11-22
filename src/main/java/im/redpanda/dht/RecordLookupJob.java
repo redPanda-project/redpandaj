@@ -42,18 +42,22 @@ public class RecordLookupJob extends KademliaSearchJob {
   static final long LOOKUP_DELAY_JITTER_MS = Duration.ofMillis(1500).toMillis();
 
   private final KademliaId searchedKey;
-  private final ReturnPath returnPath;
+  private final List<ReturnPath> returnPaths;
   private boolean answered = false;
 
-  RecordLookupJob(ServerContext serverContext, KademliaId searchedKey, ReturnPath returnPath) {
+  /** One search for {@code searchedKey}, answering every return path in {@code returnPaths}. */
+  RecordLookupJob(
+      ServerContext serverContext, KademliaId searchedKey, List<ReturnPath> returnPaths) {
     super(serverContext, searchedKey);
     this.searchedKey = searchedKey;
-    this.returnPath = returnPath;
+    this.returnPaths = List.copyOf(returnPaths);
   }
 
   /**
    * Resolves the rendezvous record for {@code searchedKey}: local KadStore first (no delay), then a
-   * randomized delayed DHT search. Exactly one reverse-garlic answer is sent.
+   * randomized delayed DHT search — shared with other lookups for the same key that arrive before
+   * that search starts (T162/N5, see {@link RecordLookupCoalescer}). Exactly one reverse-garlic
+   * answer is sent per lookup.
    */
   public static void lookup(
       ServerContext serverContext, KademliaId searchedKey, ReturnPath returnPath) {
@@ -63,7 +67,19 @@ public class RecordLookupJob extends KademliaSearchJob {
       respond(serverContext, searchedKey, returnPath, local);
       return;
     }
-    new DelayedSearchJob(serverContext, searchedKey, returnPath).start();
+    RecordLookupCoalescer coalescer = serverContext.getRecordLookupCoalescer();
+    RecordLookupCoalescer.Window window = coalescer.join(searchedKey, returnPath, now);
+    if (window == null) {
+      return; // attached to the search already scheduled for this key
+    }
+    try {
+      new DelayedSearchJob(serverContext, searchedKey, window).start();
+    } catch (RuntimeException e) {
+      // scheduling failed (executor shutting down): close the window so later lookups open a new
+      // one; the attached lookups get no answer, as before when the job could not be scheduled
+      coalescer.close(searchedKey, window);
+      logger.debug("could not schedule channel record lookup: {}", e.getMessage());
+    }
   }
 
   @Override
@@ -79,10 +95,25 @@ public class RecordLookupJob extends KademliaSearchJob {
     fireAnswer(null);
   }
 
+  /**
+   * T162/N5: this lookup is the node's own search for a client, never part of a search loop between
+   * nodes (those run as {@link KademliaSearchJobAnswerPeer} and stay blacklisted). Before, a second
+   * lookup for the same key within 30 s — the two parties of a channel, a joiner's dense lookup
+   * schedule, the today/yesterday keys of a repeated recovery — was failed in {@code init()}
+   * without asking anyone and answered {@code RESPONSE_NOT_FOUND}: a false "no record" that made
+   * the client believe its counterpart absent. The key is still blacklisted.
+   */
+  @Override
+  protected boolean rejectsBlacklistedKey() {
+    return false;
+  }
+
   private synchronized void fireAnswer(KadContent record) {
     if (!answered) {
       answered = true;
-      respond(serverContext, searchedKey, returnPath, record);
+      for (ReturnPath returnPath : returnPaths) {
+        respond(serverContext, searchedKey, returnPath, record);
+      }
     }
   }
 
@@ -118,12 +149,13 @@ public class RecordLookupJob extends KademliaSearchJob {
   static class DelayedSearchJob extends Job {
 
     private final KademliaId searchedKey;
-    private final ReturnPath returnPath;
+    private final RecordLookupCoalescer.Window window;
 
-    DelayedSearchJob(ServerContext serverContext, KademliaId searchedKey, ReturnPath returnPath) {
+    DelayedSearchJob(
+        ServerContext serverContext, KademliaId searchedKey, RecordLookupCoalescer.Window window) {
       super(serverContext, rand.nextLong(LOOKUP_DELAY_JITTER_MS + 1), false, true);
       this.searchedKey = searchedKey;
-      this.returnPath = returnPath;
+      this.window = window;
     }
 
     @Override
@@ -134,8 +166,15 @@ public class RecordLookupJob extends KademliaSearchJob {
     @Override
     public void work() {
       try {
-        new RecordLookupJob(serverContext, searchedKey, returnPath).start();
-        logger.debug("started delayed channel record lookup search");
+        // the window closes now: lookups arriving from here on get their own, newer search
+        List<ReturnPath> returnPaths =
+            serverContext.getRecordLookupCoalescer().close(searchedKey, window);
+        if (returnPaths.isEmpty()) {
+          return; // taken over by a newer window
+        }
+        new RecordLookupJob(serverContext, searchedKey, returnPaths).start();
+        logger.debug(
+            "started delayed channel record lookup search for {} lookup(s)", returnPaths.size());
       } finally {
         done();
       }
